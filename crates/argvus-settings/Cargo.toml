@@ -1,0 +1,16 @@
+[package]
+name = "argvus-control-center-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+argvus-i18n = { path = "../argvus-i18n" }
+argvus-theme = { path = "../argvus-theme" }
+argvus-tui = { path = "../argvus-tui" }
+argvus-settings-apps = { path = "../../../argvus-settings/crates/apps", default-features = false }
+argvus-settings-core = { path = "../../../argvus-settings/crates/core", default-features = false }
+crossterm.workspace = true
+ratatui.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "argvus-control-center-about"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+argvus-i18n = { path = "../argvus-i18n" }
+argvus-theme = { path = "../argvus-theme" }
+argvus-tui = { path = "../argvus-tui" }
+image.workspace = true
+ratatui.workspace = true
+ratatui-image.workspace = true
+resvg.workspace = true
+thiserror.workspace = true

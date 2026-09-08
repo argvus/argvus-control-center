@@ -1,0 +1,19 @@
+[package]
+name = "argvus-control-center"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Keyboard-first ARGVUS control center"
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+argvus-control-center-about = { path = "../argvus-about" }
+argvus-control-center-settings = { path = "../argvus-settings" }
+argvus-i18n = { path = "../argvus-i18n" }
+argvus-theme = { path = "../argvus-theme" }
+argvus-tui = { path = "../argvus-tui" }
+crossterm.workspace = true
+ratatui.workspace = true
+

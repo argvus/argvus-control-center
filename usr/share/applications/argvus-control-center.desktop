@@ -1,0 +1,27 @@
+[Desktop Entry]
+Type=Application
+Name=ARGVUS Control Center
+Name[pt_BR]=Central de Controle ARGVUS
+Comment=Configure ARGVUS from the terminal
+Comment[pt_BR]=Configure o ARGVUS pelo terminal
+Exec=argvus-control-center
+Icon=preferences-system
+Terminal=true
+Categories=Settings;
+Keywords=Settings;Control Center;Default Apps;Fonts;About;
+Actions=Apps;Fonts;About;
+
+[Desktop Action Apps]
+Name=Default Apps
+Name[pt_BR]=Apps Padrão
+Exec=argvus --control-center apps
+
+[Desktop Action Fonts]
+Name=Fonts
+Name[pt_BR]=Fontes
+Exec=argvus --control-center fonts
+
+[Desktop Action About]
+Name=About ARGVUS
+Name[pt_BR]=Sobre o ARGVUS
+Exec=argvus --about

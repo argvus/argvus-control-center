@@ -1,0 +1,43 @@
+# Maintainer: William C. Canin
+pkgname=argvus-control-center
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Terminal control center for the ARGVUS desktop."
+arch=('x86_64')
+url="https://github.com/argvus/argvus-control-center"
+license=('GPL-3.0-only')
+depends=(
+  'fontconfig'
+  'gcc-libs'
+  'glibc'
+  'kitty'
+  'xdg-utils'
+)
+makedepends=(
+  'cargo'
+)
+options=('!debug')
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "${pkgname}-${pkgver}"
+  cargo fetch --locked --target "${CARCH}-unknown-linux-gnu"
+}
+
+build() {
+  cd "${pkgname}-${pkgver}"
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${srcdir}=."
+  cargo build --release --locked --workspace --target-dir target
+}
+
+check() {
+  cd "${pkgname}-${pkgver}"
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${srcdir}=."
+  cargo test --locked --workspace --target-dir target
+}
+
+package() {
+  cd "${pkgname}-${pkgver}"
+  make DESTDIR="${pkgdir}" PREFIX=/usr install
+}
