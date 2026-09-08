@@ -39,5 +39,5 @@ check() {
 
 package() {
   cd "${pkgname}-${pkgver}"
-  make DESTDIR="${pkgdir}" PREFIX=/usr install
+  make DESTDIR="${pkgdir}" PREFIX=/usr install-files
 }

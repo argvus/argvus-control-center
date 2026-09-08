@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::SettingsError;
-use argvus_settings_apps::{
+use argvus_control_center_apps::{
   apply,
   catalog::{Category, find_app},
   detect::{self, DesktopFile, InstalledApp},
@@ -23,8 +23,8 @@ impl AppsBackend {
       .map(|category| (category, detect::installed_apps(category, &desktops)))
       .collect();
     let state = AppState::load();
-    let mimeapps =
-      std::fs::read_to_string(argvus_settings_core::paths::mimeapps_list()).unwrap_or_default();
+    let mimeapps = std::fs::read_to_string(argvus_control_center_core::paths::mimeapps_list())
+      .unwrap_or_default();
     let current = Category::ORDER
       .into_iter()
       .map(|category| {

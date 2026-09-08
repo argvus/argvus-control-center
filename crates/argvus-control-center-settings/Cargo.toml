@@ -9,8 +9,8 @@ rust-version.workspace = true
 argvus-i18n = { path = "../argvus-i18n" }
 argvus-theme = { path = "../argvus-theme" }
 argvus-tui = { path = "../argvus-tui" }
-argvus-settings-apps = { path = "../../../argvus-settings/crates/apps", default-features = false }
-argvus-settings-core = { path = "../../../argvus-settings/crates/core", default-features = false }
+argvus-control-center-apps = { path = "../argvus-control-center-apps" }
+argvus-control-center-core = { path = "../argvus-control-center-core" }
 crossterm.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true

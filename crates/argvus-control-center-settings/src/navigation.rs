@@ -1,4 +1,4 @@
-use argvus_settings_apps::catalog::Category;
+use argvus_control_center_apps::catalog::Category;
 
 use crate::config::fonts::{FontTarget, SettingKind};
 

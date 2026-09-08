@@ -5,7 +5,9 @@ members = [
   "crates/argvus-tui",
   "crates/argvus-theme",
   "crates/argvus-i18n",
-  "crates/argvus-settings",
+  "crates/argvus-control-center-settings",
+  "crates/argvus-control-center-apps",
+  "crates/argvus-control-center-core",
   "crates/argvus-about",
 ]
 
@@ -24,8 +26,9 @@ ratatui = "0.30.2"
 ratatui-image = { version = "11.0.8", default-features = false, features = ["crossterm", "image-defaults"] }
 resvg = { version = "0.48", default-features = false, features = ["text"] }
 thiserror = "2.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [profile.release]
 lto = true
 strip = true
-

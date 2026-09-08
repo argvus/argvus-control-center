@@ -9,8 +9,10 @@ use crate::error::SettingsError;
 use crate::system::fonts::FontEntry;
 
 const DEFAULT_FAMILY: &str = "IBM Plex Mono";
-const MANAGED_START: &str = "/* argvus-settings-fonts:start */";
-const MANAGED_END: &str = "/* argvus-settings-fonts:end */";
+const MANAGED_START: &str = "/* argvus-control-center-fonts:start */";
+const MANAGED_END: &str = "/* argvus-control-center-fonts:end */";
+const LEGACY_MANAGED_START: &str = "/* argvus-settings-fonts:start */";
+const LEGACY_MANAGED_END: &str = "/* argvus-settings-fonts:end */";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FontTarget {
@@ -277,7 +279,7 @@ impl FontSettings {
   }
 
   fn write_state(&self) -> Result<(), String> {
-    let mut output = String::from("# Written by argvus-settings. Edit with care.\n");
+    let mut output = String::from("# Written by argvus-control-center. Edit with care.\n");
     for target in FontTarget::ALL {
       let font = self.get(target);
       let key = target.key();
@@ -527,10 +529,22 @@ fn replace_or_append(lines: &mut Vec<String>, key: &str, replacement: &str) {
 fn write_managed_block(path: &Path, block: &str) -> Result<(), String> {
   let existing = fs::read_to_string(path).unwrap_or_default();
   let managed = format!("{MANAGED_START}\n{block}{MANAGED_END}\n");
-  let contents = if let Some(start) = existing.find(MANAGED_START) {
-    if let Some(relative_end) = existing[start..].find(MANAGED_END) {
-      let end = start + relative_end + MANAGED_END.len();
-      format!("{}{}{}", &existing[..start], managed, &existing[end..])
+  let markers = if existing.contains(MANAGED_START) {
+    Some((MANAGED_START, MANAGED_END))
+  } else if existing.contains(LEGACY_MANAGED_START) {
+    Some((LEGACY_MANAGED_START, LEGACY_MANAGED_END))
+  } else {
+    None
+  };
+  let contents = if let Some((start_marker, end_marker)) = markers {
+    if let Some(start) = existing.find(start_marker) {
+      let relative_end = existing[start..].find(end_marker);
+      if let Some(relative_end) = relative_end {
+        let end = start + relative_end + end_marker.len();
+        format!("{}{}{}", &existing[..start], managed, &existing[end..])
+      } else {
+        format!("{}\n{managed}", existing.trim_end())
+      }
     } else {
       format!("{}\n{managed}", existing.trim_end())
     }

@@ -102,12 +102,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "argvus-control-center-apps"
+version = "0.1.0"
+dependencies = [
+ "argvus-control-center-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "argvus-control-center-core"
+version = "0.1.0"
+
+[[package]]
 name = "argvus-control-center-settings"
 version = "0.1.0"
 dependencies = [
+ "argvus-control-center-apps",
+ "argvus-control-center-core",
  "argvus-i18n",
- "argvus-settings-apps",
- "argvus-settings-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -117,19 +130,6 @@ dependencies = [
 
 [[package]]
 name = "argvus-i18n"
-version = "0.1.0"
-
-[[package]]
-name = "argvus-settings-apps"
-version = "0.1.0"
-dependencies = [
- "argvus-settings-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "argvus-settings-core"
 version = "0.1.0"
 
 [[package]]

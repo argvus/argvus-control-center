@@ -48,9 +48,9 @@ pub fn modules() -> [(&'static str, &'static str, &'static str); 14] {
       "Themes, fonts, wallpapers and visual integration.",
     ),
     (
-      "argvus-settings",
+      "argvus-control-center",
       "Configurações do ARGVUS, incluindo fontes e aplicativos padrão.",
-      "ARGVUS settings, including fonts and default applications.",
+      "ARGVUS control center, including fonts and default applications.",
     ),
     (
       "argvus-about",

@@ -55,20 +55,23 @@ fn multiply_back(channel: u8, alpha: u8) -> Option<u8> {
 }
 
 pub fn find_logo_path() -> Option<std::path::PathBuf> {
-  let candidates = [
-    "/usr/share/argvus-control-center/argvus-about.svg",
-    "/usr/share/argvus-about/argvus-about.svg",
-    "/usr/share/argvus-logo/svg/logotype.svg",
-    "/usr/share/argvus-logo/svg/argvus-banner.svg",
-    "/usr/share/pixmaps/argvus.svg",
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/argvus-about.svg"),
-    "../argvus-logo/svg/logotype.svg",
-    "../argvus-logo/svg/argvus-banner.svg",
+  let mut candidates = vec![
+    std::path::PathBuf::from("/usr/share/argvus-control-center/argvus-about.svg"),
+    std::path::PathBuf::from("/usr/share/argvus-about/argvus-about.svg"),
+    std::path::PathBuf::from("/usr/share/argvus-logo/svg/logotype.svg"),
+    std::path::PathBuf::from("/usr/share/argvus-logo/svg/argvus-banner.svg"),
+    std::path::PathBuf::from("/usr/share/pixmaps/argvus.svg"),
+    std::path::PathBuf::from("../argvus-logo/svg/logotype.svg"),
+    std::path::PathBuf::from("../argvus-logo/svg/argvus-banner.svg"),
   ];
-  candidates
-    .iter()
-    .map(std::path::PathBuf::from)
-    .find(|path| path.exists())
+  if let Ok(current_dir) = std::env::current_dir() {
+    candidates.extend([
+      current_dir.join("assets/argvus-about.svg"),
+      current_dir.join("argvus-control-center/assets/argvus-about.svg"),
+      current_dir.join("../../assets/argvus-about.svg"),
+    ]);
+  }
+  candidates.iter().find(|&path| path.exists()).cloned()
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use argvus_settings_apps::catalog::Category;
+use argvus_control_center_apps::catalog::Category;
 
 use crate::config::apps::AppsBackend;
 use crate::config::fonts::{FontSettings, FontTarget, SettingKind};
