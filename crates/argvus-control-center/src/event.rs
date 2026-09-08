@@ -35,10 +35,16 @@ pub fn handle(app: &mut App, event: Event) {
   match app.route {
     Route::Home => handle_home(app, key),
     Route::Settings => {
-      if key.code == KeyCode::Esc && !app.settings.searching && app.settings.error_modal.is_none() {
+      if key.code == KeyCode::Esc
+        && !app.settings.searching
+        && app.settings.error_modal.is_none()
+        && app.settings.confirm.is_none()
+        && !app.settings.hostname_editing
+      {
         app.back();
       } else {
         argvus_control_center_settings::event::handle(&mut app.settings, Event::Key(key));
+        app.lang = app.settings.lang;
         if app.settings.page() == argvus_control_center_settings::Page::Main {
           app.route = Route::Home;
         }
@@ -87,6 +93,19 @@ mod tests {
       KeyEventKind::Press,
       KeyEventState::NONE,
     ))
+  }
+
+  #[test]
+  fn escape_cancels_settings_confirmation_without_leaving_page() {
+    let mut app = App::new(InitialRoute::Apps);
+    app.settings.confirm = Some(argvus_control_center_settings::app::PendingAction::ResetApps);
+    handle(&mut app, press(KeyCode::Esc));
+    assert_eq!(app.route, Route::Settings);
+    assert_eq!(
+      app.settings.page(),
+      argvus_control_center_settings::Page::DefaultApps
+    );
+    assert!(app.settings.confirm.is_none());
   }
 
   #[test]

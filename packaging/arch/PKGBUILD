@@ -11,6 +11,9 @@ depends=(
   'gcc-libs'
   'glibc'
   'kitty'
+  'polkit'
+  'systemd'
+  'xkeyboard-config'
   'xdg-utils'
 )
 makedepends=(

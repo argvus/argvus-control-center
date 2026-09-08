@@ -40,6 +40,9 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   if let Some(message) = app.error_modal.as_deref() {
     popup::draw_error(frame, area, app, message);
   }
+  if let Some(action) = app.confirm.as_ref() {
+    popup::draw_confirm(frame, area, app, action);
+  }
 }
 
 fn draw_too_small(app: &App, frame: &mut Frame, area: Rect) {

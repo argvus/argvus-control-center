@@ -6,4 +6,6 @@ pub enum SettingsError {
   Fonts(String),
   #[error("font discovery: {0}")]
   FontDiscovery(String),
+  #[error("system settings: {0}")]
+  System(String),
 }

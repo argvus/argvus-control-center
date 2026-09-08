@@ -11,11 +11,27 @@ impl Lang {
     if let Ok(value) = env::var("ARGVUS_LANG") {
       return from_locale(&value);
     }
+    if let Some(value) = persisted_language() {
+      return from_locale(&value);
+    }
     ["LC_ALL", "LC_MESSAGES", "LANGUAGE", "LANG"]
       .iter()
       .find_map(|key| env::var(key).ok().filter(|value| !value.is_empty()))
       .map_or(Self::En, |value| from_locale(&value))
   }
+}
+
+fn persisted_language() -> Option<String> {
+  let home = env::var_os("HOME").map(std::path::PathBuf::from)?;
+  let config_home = env::var_os("ARGVUS_CONFIG_HOME")
+    .map(std::path::PathBuf::from)
+    .or_else(|| env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from))
+    .unwrap_or_else(|| home.join(".config"))
+    .join("argvus");
+  std::fs::read_to_string(config_home.join("language"))
+    .ok()
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
 }
 
 fn from_locale(value: &str) -> Lang {

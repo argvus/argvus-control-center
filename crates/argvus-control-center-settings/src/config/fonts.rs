@@ -56,6 +56,14 @@ impl FontTarget {
       Self::Browser => 10,
     }
   }
+
+  const fn default_family(self) -> &'static str {
+    DEFAULT_FAMILY
+  }
+
+  const fn default_style(self) -> &'static str {
+    "Regular"
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,6 +188,53 @@ impl FontSettings {
     result.map_err(SettingsError::Fonts)
   }
 
+  pub fn reset_font(&mut self, target: FontTarget) -> Result<(), SettingsError> {
+    let previous = self.get(target).clone();
+    self.profile.insert(
+      target,
+      FontSelection {
+        family: target.default_family().to_string(),
+        style: target.default_style().to_string(),
+        size: target.default_size(),
+      },
+    );
+    let result = self.apply_target(target);
+    if result.is_err() {
+      self.profile.insert(target, previous);
+      let _ = self.write_state();
+    }
+    result.map_err(SettingsError::Fonts)
+  }
+
+  pub fn reset_setting(&mut self, setting: SettingKind) -> Result<(), SettingsError> {
+    let value = match setting {
+      SettingKind::Antialiasing => "enabled",
+      SettingKind::Hinting => "full",
+      SettingKind::Subpixel => "none",
+      SettingKind::Dpi => "automatic",
+    };
+    self.apply_setting(setting, value)
+  }
+
+  pub fn reset_all(&mut self) -> Result<(), SettingsError> {
+    let previous = self.clone();
+    *self = Self::defaults();
+    let result = (|| {
+      self.write_state()?;
+      for target in FontTarget::ALL {
+        self.apply_target(target)?;
+      }
+      self.apply_rendering()?;
+      self.refresh_runtime();
+      Ok(())
+    })();
+    if result.is_err() {
+      *self = previous;
+      let _ = self.write_state();
+    }
+    result.map_err(SettingsError::Fonts)
+  }
+
   pub fn apply_setting(&mut self, setting: SettingKind, value: &str) -> Result<(), SettingsError> {
     let previous = self.clone();
     match setting {
@@ -262,6 +317,28 @@ impl FontSettings {
     }
     self.refresh_runtime();
     Ok(())
+  }
+
+  fn defaults() -> Self {
+    let mut profile = HashMap::new();
+    for target in FontTarget::ALL {
+      profile.insert(
+        target,
+        FontSelection {
+          family: target.default_family().to_string(),
+          style: target.default_style().to_string(),
+          size: target.default_size(),
+        },
+      );
+    }
+    Self {
+      profile,
+      antialias: true,
+      hinting: "full".to_string(),
+      subpixel: "none".to_string(),
+      custom_dpi: false,
+      dpi: 96,
+    }
   }
 
   fn apply_rendering(&self) -> Result<(), String> {

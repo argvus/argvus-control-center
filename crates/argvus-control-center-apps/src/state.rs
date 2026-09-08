@@ -106,6 +106,16 @@ impl AppState {
     }
   }
 
+  /// Clear a stored user override for one category.
+  pub fn reset(&mut self, cat: Category) {
+    *self.field(cat) = None;
+  }
+
+  /// Clear every stored user override while preserving the state version.
+  pub fn reset_all(&mut self) {
+    *self = AppState::new();
+  }
+
   /// Categories that differ from the Argvus fallback (i.e. explicit picks).
   #[allow(dead_code)]
   pub fn explicit(&self) -> Vec<(Category, String)> {

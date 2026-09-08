@@ -10,6 +10,19 @@ pub enum Page {
   Fonts,
   FontSelector(FontTarget),
   SettingSelector(SettingKind),
+  LocaleRegion,
+  TimeZone,
+  DateTime,
+  RegionalLocale,
+  SystemLocales,
+  Encoding,
+  Keyboard,
+  KeyboardLayout,
+  KeyboardVariant,
+  ConsoleKeymap,
+  Language,
+  System,
+  Hostname,
 }
 
 #[derive(Debug, Clone, Copy)]

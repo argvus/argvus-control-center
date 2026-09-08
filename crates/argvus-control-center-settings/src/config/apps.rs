@@ -58,6 +58,10 @@ impl AppsBackend {
     self.current.get(&category).cloned().unwrap_or_default()
   }
 
+  pub fn is_default(&self, category: Category) -> bool {
+    self.state.get(category).is_none()
+  }
+
   pub fn set_default(&mut self, category: Category, binary: &str) -> Result<(), SettingsError> {
     let canonical = find_app(category, binary)
       .map(|app| app.binary)
@@ -80,6 +84,49 @@ impl AppsBackend {
       return Err(SettingsError::DefaultApps(error));
     }
     self.current.insert(category, canonical.to_string());
+    Ok(())
+  }
+
+  pub fn reset_default(&mut self, category: Category) -> Result<(), SettingsError> {
+    let previous = self.state.get(category);
+    self.state.reset(category);
+    if let Err(error) = self.state.save() {
+      self.state.set(category, previous.unwrap_or_default());
+      return Err(SettingsError::DefaultApps(error.to_string()));
+    }
+    let value = self.state.effective(category);
+    if !value.is_empty() {
+      if let Err(error) = apply::apply(category, &value, &self.desktops) {
+        self.state.set(category, previous.unwrap_or_default());
+        let _ = self.state.save();
+        return Err(SettingsError::DefaultApps(error));
+      }
+    } else {
+      apply::refresh_argvus();
+    }
+    *self = Self::load();
+    Ok(())
+  }
+
+  pub fn reset_all(&mut self) -> Result<(), SettingsError> {
+    let previous = self.state.clone();
+    self.state.reset_all();
+    if let Err(error) = self.state.save() {
+      self.state = previous;
+      return Err(SettingsError::DefaultApps(error.to_string()));
+    }
+    for category in Category::ORDER {
+      let value = self.state.effective(category);
+      if !value.is_empty()
+        && let Err(error) = apply::apply(category, &value, &self.desktops)
+      {
+        self.state = previous;
+        let _ = self.state.save();
+        return Err(SettingsError::DefaultApps(error));
+      }
+    }
+    apply::refresh_argvus();
+    *self = Self::load();
     Ok(())
   }
 }

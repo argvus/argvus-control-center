@@ -15,6 +15,9 @@ pub enum InitialRoute {
   Home,
   Apps,
   Fonts,
+  LocaleRegion,
+  Language,
+  System,
   About(Tab),
 }
 
@@ -39,6 +42,9 @@ impl App {
       InitialRoute::Home => (Route::Home, Page::Main, Tab::System),
       InitialRoute::Apps => (Route::Settings, Page::DefaultApps, Tab::System),
       InitialRoute::Fonts => (Route::Settings, Page::Fonts, Tab::System),
+      InitialRoute::LocaleRegion => (Route::Settings, Page::LocaleRegion, Tab::System),
+      InitialRoute::Language => (Route::Settings, Page::Language, Tab::System),
+      InitialRoute::System => (Route::Settings, Page::System, Tab::System),
       InitialRoute::About(tab) => (Route::About, Page::Main, tab),
     };
     Self {
@@ -55,23 +61,29 @@ impl App {
     }
   }
 
-  pub fn home_rows(&self) -> [&'static str; 3] {
+  pub fn home_rows(&self) -> [&'static str; 6] {
     [
       tr(self.lang, "Apps Padrão", "Default Apps"),
       tr(self.lang, "Fontes", "Fonts"),
+      tr(self.lang, "Locale e Região", "Locale & Region"),
+      tr(self.lang, "Idioma", "Language"),
+      tr(self.lang, "Sistema", "System"),
       tr(self.lang, "About", "About"),
     ]
   }
 
   pub fn move_home(&mut self, delta: isize) {
-    self.home_selected = (self.home_selected as isize + delta).clamp(0, 2) as usize;
+    self.home_selected = (self.home_selected as isize + delta).clamp(0, 5) as usize;
   }
 
   pub fn open_home(&mut self) {
     match self.home_selected {
       0 => self.open_settings(Page::DefaultApps),
       1 => self.open_settings(Page::Fonts),
-      2 => self.route = Route::About,
+      2 => self.open_settings(Page::LocaleRegion),
+      3 => self.open_settings(Page::Language),
+      4 => self.open_settings(Page::System),
+      5 => self.route = Route::About,
       _ => {}
     }
   }
@@ -163,7 +175,7 @@ mod tests {
     app.move_home(-1);
     assert_eq!(app.home_selected, 0);
     app.move_home(20);
-    assert_eq!(app.home_selected, 2);
+    assert_eq!(app.home_selected, 5);
   }
 
   #[test]
@@ -171,7 +183,7 @@ mod tests {
     let mut app = App::new(InitialRoute::About(Tab::Credits));
     app.back();
     assert_eq!(app.route, Route::Home);
-    app.home_selected = 2;
+    app.home_selected = 5;
     app.open_home();
     assert_eq!(app.route, Route::About);
     assert_eq!(app.about.active_tab, Tab::Credits);

@@ -11,10 +11,27 @@ pub fn handle(app: &mut App, event: Event) {
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
+  if app.confirm.is_some() {
+    match key.code {
+      KeyCode::Enter => app.confirm_accept(),
+      KeyCode::Esc => app.cancel_modal(),
+      KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => {
+        app.toggle_confirm_button()
+      }
+      _ => {}
+    }
+    return;
+  }
+
   if app.error_modal.is_some() {
     if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
       app.error_modal = None;
     }
+    return;
+  }
+
+  if app.hostname_editing {
+    app.hostname_input(key.code);
     return;
   }
 
@@ -42,6 +59,8 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.open_or_apply(),
     KeyCode::Left | KeyCode::Char('h') | KeyCode::Esc => app.back(),
     KeyCode::Char('/') => app.begin_search(),
+    KeyCode::Char('r') => app.reset_current(),
+    KeyCode::Char(' ') => app.toggle_current(),
     KeyCode::Char('+') | KeyCode::Char('=') => app.adjust_size(1),
     KeyCode::Char('-') => app.adjust_size(-1),
     KeyCode::Home => {

@@ -33,6 +33,9 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     }
     "apps" | "default-apps" if args.len() == 1 => Ok(Some(InitialRoute::Apps)),
     "fonts" if args.len() == 1 => Ok(Some(InitialRoute::Fonts)),
+    "locale" | "locale-region" if args.len() == 1 => Ok(Some(InitialRoute::LocaleRegion)),
+    "language" if args.len() == 1 => Ok(Some(InitialRoute::Language)),
+    "system" if args.len() == 1 => Ok(Some(InitialRoute::System)),
     "about" if args.len() == 1 => Ok(Some(InitialRoute::About(Tab::System))),
     "about" if args.len() == 2 => {
       parse_about_tab(&args[1]).map(|tab| Some(InitialRoute::About(tab)))
@@ -55,7 +58,7 @@ fn parse_about_tab(value: &str) -> Result<Tab, String> {
 pub fn print_help() {
   println!(
     "argvus-control-center - keyboard-first ARGVUS control center\n\n\
-     Usage:\n  argvus-control-center [apps|fonts|about [TAB]]\n\n\
+     Usage:\n  argvus-control-center [apps|fonts|locale|language|system|about [TAB]]\n\n\
      About tabs:\n  system, about, donate, credits, copyright\n\n\
      Options:\n  -h, --help       Print help\n  -V, --version    Print version\n\n\
      Global keys:\n  q                Quit\n  Esc              Back\n  ?                Contextual help"
