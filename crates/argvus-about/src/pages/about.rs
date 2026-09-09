@@ -30,7 +30,7 @@ pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   simple_doc(&rows, &app.theme, width, selected)
 }
 
-pub fn modules() -> [(&'static str, &'static str, &'static str); 14] {
+pub fn modules() -> [(&'static str, &'static str, &'static str); 15] {
   [
     (
       "argvus-session",
@@ -39,8 +39,13 @@ pub fn modules() -> [(&'static str, &'static str, &'static str); 14] {
     ),
     (
       "argvus-shell",
-      "Painel Quickshell, Waybar e interfaces de shell.",
-      "Quickshell panel, Waybar and shell interfaces.",
+      "Launchers Rofi e Wofi e utilitarios de integracao do shell.",
+      "Rofi and Wofi launchers and shell integration utilities.",
+    ),
+    (
+      "argvus-control-panel",
+      "Painel lateral Quickshell e seus temas.",
+      "Quickshell sidebar control panel and its themes.",
     ),
     (
       "argvus-appearance",
