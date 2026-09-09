@@ -429,7 +429,7 @@ impl FontSettings {
     self.write_waybar_profile(
       "argvus-taskbar.css",
       &format!(
-        "* {{\n  font-family: \"{}\", \"Symbols Nerd Font Mono\", monospace;\n  font-size: {}px;\n}}\n",
+        "* {{\n  font-family: \"{}\", \"Symbols Nerd Font Mono\", monospace;\n  font-size: {}px;\n}}\n\n#custom-icon-window,\n#network,\n#bluetooth,\n#custom-bluetooth,\n#custom-expand-icon,\n#custom-storage,\n#custom-recording,\n#custom-search,\n#pulseaudio,\n#power-profiles-daemon,\n#custom-settings,\n#custom-power {{\n  font-family: \"Symbols Nerd Font Mono\";\n}}\n",
         escape(&taskbar.family), taskbar.size
       ),
     )?;
