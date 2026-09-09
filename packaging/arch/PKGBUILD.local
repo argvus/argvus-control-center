@@ -10,7 +10,7 @@ depends=(
   'fontconfig'
   'gcc-libs'
   'glibc'
-  'kitty'
+  'foot'
   'polkit'
   'systemd'
   'xkeyboard-config'

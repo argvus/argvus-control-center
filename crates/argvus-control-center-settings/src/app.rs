@@ -1209,7 +1209,7 @@ pub fn category_label(lang: Lang, category: Category) -> &'static str {
 pub fn font_target_label(lang: Lang, target: FontTarget) -> &'static str {
   match target {
     FontTarget::Taskbar => tr(lang, "Fonte da Taskbar", "Taskbar Font"),
-    FontTarget::Sysinfo => tr(lang, "Fonte do SysInfo", "SysInfo Font"),
+    FontTarget::Sysinfo => tr(lang, "Fonte do Widget Telemetria", "Widget Telemetry Font"),
     FontTarget::ControlPanel => tr(lang, "Fonte do Painel de Controle", "Control Panel Font"),
     FontTarget::System => tr(lang, "Fonte do Sistema", "System Font"),
     FontTarget::Apps => tr(lang, "Fonte dos Aplicativos", "Applications Font"),

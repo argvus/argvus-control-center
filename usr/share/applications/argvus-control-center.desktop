@@ -4,9 +4,9 @@ Name=ARGVUS Control Center
 Name[pt_BR]=Central de Controle ARGVUS
 Comment=Configure ARGVUS from the terminal
 Comment[pt_BR]=Configure o ARGVUS pelo terminal
-Exec=argvus-control-center
+Exec=foot --app-id=argvus-control-center -e argvus-control-center
 Icon=preferences-system
-Terminal=true
+Terminal=false
 Categories=Settings;
 Keywords=Settings;Control Center;Default Apps;Fonts;About;
 Actions=Apps;Fonts;About;

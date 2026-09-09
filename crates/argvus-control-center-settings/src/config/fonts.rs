@@ -425,7 +425,7 @@ impl FontSettings {
 
   fn write_waybar_settings(&self) -> Result<(), String> {
     let taskbar = self.get(FontTarget::Taskbar);
-    let sysinfo = self.get(FontTarget::Sysinfo);
+    let widget_telemetry = self.get(FontTarget::Sysinfo);
     self.write_waybar_profile(
       "argvus-taskbar.css",
       &format!(
@@ -434,10 +434,10 @@ impl FontSettings {
       ),
     )?;
     self.write_waybar_profile(
-      "argvus-sysinfo.css",
+      "argvus-widget-telemetry.css",
       &format!(
         "* {{\n  font-family: \"{}\", \"Symbols Nerd Font Mono\", monospace;\n  font-size: {}px;\n}}\n",
-        escape(&sysinfo.family), sysinfo.size
+        escape(&widget_telemetry.family), widget_telemetry.size
       ),
     )
   }

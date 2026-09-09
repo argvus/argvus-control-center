@@ -15,5 +15,7 @@ mod theme {
 }
 
 pub use app::App;
+pub use argvus_control_center_apps::catalog::Category;
+pub use config::fonts::{FontTarget, SettingKind};
 pub use error::SettingsError;
 pub use navigation::Page;

@@ -6,6 +6,15 @@ use argvus_control_center::{cli, event, ui};
 use argvus_tui::terminal::{TerminalGuard, install_panic_hook};
 
 fn main() -> Result<()> {
+  let args: Vec<String> = std::env::args().skip(1).collect();
+  if args.first().is_some_and(|arg| arg == "system-settings") {
+    if let Err(error) = argvus_control_center_settings::system::command::run(&args[1..]) {
+      eprintln!("argvus-control-center: {error}");
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
   let Some(initial) = cli::parse_or_print()? else {
     return Ok(());
   };

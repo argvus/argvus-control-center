@@ -1,3 +1,4 @@
+pub mod command;
 pub mod fonts;
 pub mod host;
 pub mod keyboard;

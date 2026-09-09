@@ -13,6 +13,7 @@ pub enum Route {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InitialRoute {
   Home,
+  Settings(Page),
   Apps,
   Fonts,
   LocaleRegion,
@@ -40,6 +41,7 @@ impl App {
     let theme = Theme::load();
     let (route, page, tab) = match initial {
       InitialRoute::Home => (Route::Home, Page::Main, Tab::System),
+      InitialRoute::Settings(page) => (Route::Settings, page, Tab::System),
       InitialRoute::Apps => (Route::Settings, Page::DefaultApps, Tab::System),
       InitialRoute::Fonts => (Route::Settings, Page::Fonts, Tab::System),
       InitialRoute::LocaleRegion => (Route::Settings, Page::LocaleRegion, Tab::System),

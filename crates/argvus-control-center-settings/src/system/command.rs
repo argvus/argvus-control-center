@@ -6,23 +6,15 @@ use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use argvus_control_center_settings::system::{host, keyboard, locale, time};
+use super::{host, keyboard, locale, time};
 
 const ELEVATED_ENV: &str = "ARGVUS_SYSTEM_SETTINGS_ELEVATED";
 const LOCALE_GEN: &str = "/etc/locale.gen";
 
-fn main() {
-  if let Err(error) = run() {
-    eprintln!("{error}");
-    std::process::exit(1);
-  }
-}
-
-fn run() -> Result<(), String> {
-  let args: Vec<String> = std::env::args().skip(1).collect();
-  validate_args(&args)?;
-  ensure_root()?;
-  match args.as_slice() {
+pub fn run(args: &[String]) -> Result<(), String> {
+  validate_args(args)?;
+  ensure_root(args)?;
+  match args {
     [area, action, value] if area == "timezone" && action == "set" => {
       run_command("timedatectl", &["set-timezone", value])
     }
@@ -48,7 +40,7 @@ fn run() -> Result<(), String> {
     [area, action, keymap] if area == "keyboard" && action == "console-keymap" => {
       run_command("localectl", &["set-keymap", keymap])
     }
-    _ => Err("unsupported argvus-system-settings command".to_string()),
+    _ => Err("unsupported system-settings command".to_string()),
   }
 }
 
@@ -107,11 +99,13 @@ fn validate_args(args: &[String]) -> Result<(), String> {
         Err(format!("invalid console keymap: {keymap}"))
       }
     }
-    _ => Err("usage: argvus-system-settings <domain> <action> [value...]".to_string()),
+    _ => {
+      Err("usage: argvus-control-center system-settings <domain> <action> [value...]".to_string())
+    }
   }
 }
 
-fn ensure_root() -> Result<(), String> {
+fn ensure_root(args: &[String]) -> Result<(), String> {
   if effective_uid() == 0 || std::env::var_os(ELEVATED_ENV).is_some() {
     return Ok(());
   }
@@ -120,7 +114,8 @@ fn ensure_root() -> Result<(), String> {
   let mut command = Command::new(pkexec);
   command
     .arg(exe)
-    .args(std::env::args_os().skip(1))
+    .arg("system-settings")
+    .args(args)
     .env_clear()
     .env(ELEVATED_ENV, "1");
   if let Some(value) = std::env::var_os("DBUS_SESSION_BUS_ADDRESS") {
