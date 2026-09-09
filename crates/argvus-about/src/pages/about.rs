@@ -30,7 +30,7 @@ pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   simple_doc(&rows, &app.theme, width, selected)
 }
 
-pub fn modules() -> [(&'static str, &'static str, &'static str); 15] {
+pub fn modules() -> [(&'static str, &'static str, &'static str); 16] {
   [
     (
       "argvus-session",
@@ -38,9 +38,14 @@ pub fn modules() -> [(&'static str, &'static str, &'static str); 15] {
       "Session lifecycle, targets and Hyprland integration.",
     ),
     (
-      "argvus-shell",
-      "Launchers Rofi e Wofi e utilitarios de integracao do shell.",
-      "Rofi and Wofi launchers and shell integration utilities.",
+      "argvus-hyprland",
+      "Configuracao Hyprland e scripts do shell ARGVUS.",
+      "Hyprland configuration and ARGVUS shell scripts.",
+    ),
+    (
+      "argvus-launcher",
+      "Launcher Rofi, menus e temas.",
+      "Rofi launcher, menus and themes.",
     ),
     (
       "argvus-control-panel",

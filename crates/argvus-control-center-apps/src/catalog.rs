@@ -528,7 +528,6 @@ pub const CATALOG: &[CategorySpec] = &[
     category: Category::Launcher,
     apps: &[
       known("rofi", "Rofi", "rofi.desktop"),
-      known("wofi", "Wofi", "wofi.desktop"),
       known("fuzzel", "Fuzzel", "fuzzel.desktop"),
       known("tofi", "tofi", "tofi.desktop"),
       known("wmenu", "wmenu", "wmenu.desktop"),
