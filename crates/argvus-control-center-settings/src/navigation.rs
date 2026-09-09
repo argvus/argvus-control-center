@@ -23,6 +23,14 @@ pub enum Page {
   Language,
   System,
   Hostname,
+  Firewall,
+  Users,
+  User,
+  CreateUser,
+  UserGroups,
+  UserPassword,
+  UserShell,
+  UserPrimaryGroup,
 }
 
 #[derive(Debug, Clone, Copy)]

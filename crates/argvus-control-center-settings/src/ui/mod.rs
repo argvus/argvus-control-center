@@ -37,6 +37,9 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   list::draw(frame, areas.body, app);
   search::draw(frame, areas.message, app);
   footer::draw(frame, areas.footer, app);
+  if let Some(editor) = &app.admin.editor {
+    editor.draw(frame, area, app);
+  }
   if let Some(message) = app.error_modal.as_deref() {
     popup::draw_error(frame, area, app, message);
   }

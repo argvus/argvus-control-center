@@ -35,6 +35,11 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     return;
   }
 
+  if app.admin.editor.is_some() {
+    app.admin_input(key);
+    return;
+  }
+
   if app.searching {
     match key.code {
       KeyCode::Esc => app.back(),

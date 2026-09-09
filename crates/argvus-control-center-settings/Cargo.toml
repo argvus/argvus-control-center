@@ -14,3 +14,4 @@ argvus-control-center-core = { path = "../argvus-control-center-core" }
 crossterm.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
+serde_json.workspace = true

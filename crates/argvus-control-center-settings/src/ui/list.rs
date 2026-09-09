@@ -27,7 +27,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
       } else {
         " "
       };
-      let detail = row.detail.unwrap_or_default();
+      let mut detail = row.detail.unwrap_or_default();
+      if crate::administration::is_page(app.page()) && detail.chars().count() > width / 2 {
+        detail = detail
+          .chars()
+          .take((width / 2).saturating_sub(1))
+          .collect::<String>()
+          + "…";
+      }
       let reserved = detail.chars().count().saturating_add(5);
       let label_width = width.saturating_sub(reserved).max(8);
       let mut label = row.label;

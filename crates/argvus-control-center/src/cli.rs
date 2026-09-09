@@ -131,6 +131,8 @@ fn parse_system(args: &[String]) -> Result<Page, String> {
   }
   match option(&args[0]) {
     "hostname" => Ok(Page::Hostname),
+    "firewall" => Ok(Page::Firewall),
+    "users" => Ok(Page::Users),
     value => Err(format!("unknown System page '{value}'")),
   }
 }
@@ -150,7 +152,7 @@ pub fn print_help() {
   println!(
     "argvus-control-center - keyboard-first ARGVUS control center\n\n\
      Usage:\n  argvus-control-center [apps|fonts|locale|language|system|about [TAB]]\n  argvus-control-center system-settings <domain> <action> [value...]\n\n\
-     Page selectors:\n  apps [terminal|file-manager|text-editor|terminal-editor|browser|image-viewer|pdf-viewer|video-player|audio-player|archive|launcher]\n  fonts [taskbar|widget-telemetry|control-panel|system|apps|terminal|browser|antialiasing|hinting|subpixel|dpi]\n  locale [timezone|date-time|regional-locale|system-locales|encoding|keyboard|keyboard-layout|keyboard-variant|console-keymap]\n  system [hostname]\n\n\
+     Page selectors:\n  apps [terminal|file-manager|text-editor|terminal-editor|browser|image-viewer|pdf-viewer|video-player|audio-player|archive|launcher]\n  fonts [taskbar|widget-telemetry|control-panel|system|apps|terminal|browser|antialiasing|hinting|subpixel|dpi]\n  locale [timezone|date-time|regional-locale|system-locales|encoding|keyboard|keyboard-layout|keyboard-variant|console-keymap]\n  system [hostname|firewall|users]\n\n\
      About tabs:\n  system, about, donate, credits, copyright\n\n\
      Options:\n  -h, --help       Print help\n  -V, --version    Print version\n\n\
      Global keys:\n  q                Quit\n  Esc              Back\n  ?                Contextual help"
@@ -289,6 +291,8 @@ mod tests {
       (vec!["language"], Page::Language),
       (vec!["system"], Page::System),
       (vec!["system", "hostname"], Page::Hostname),
+      (vec!["system", "firewall"], Page::Firewall),
+      (vec!["system", "--users"], Page::Users),
     ];
 
     for (arguments, expected) in cases {

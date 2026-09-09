@@ -35,6 +35,7 @@ pub struct Row {
 
 #[derive(Debug, Clone)]
 pub enum PendingAction {
+  Administration(String),
   ResetApps,
   ResetApp(Category),
   ResetFonts,
@@ -45,6 +46,7 @@ pub enum PendingAction {
 }
 
 pub struct App {
+  pub admin: crate::administration::Administration,
   pub lang: Lang,
   pub theme: Theme,
   pub navigation: Navigation,
@@ -97,6 +99,7 @@ impl App {
     let keyboard_info = keyboard::info();
     let hostname = host::current();
     Self {
+      admin: crate::administration::Administration::new(initial),
       lang,
       theme,
       navigation: Navigation::new(initial),
@@ -134,6 +137,9 @@ impl App {
   }
 
   pub fn rows(&self) -> Vec<Row> {
+    if crate::administration::is_page(self.page()) {
+      return self.admin.rows(self.page(), self.lang);
+    }
     match self.page() {
       Page::Main => vec![
         Row::plain(tr(self.lang, "Apps Padrão", "Default Apps")),
@@ -378,7 +384,19 @@ impl App {
           current: self.lang == Lang::Pt,
         },
       ],
-      Page::System => vec![Row::plain(tr(self.lang, "Hostname", "Hostname"))],
+      Page::System => vec![
+        Row::plain("Hostname"),
+        Row::plain("Firewall"),
+        Row::plain(tr(self.lang, "Usuários", "Users")),
+      ],
+      Page::Firewall
+      | Page::Users
+      | Page::User
+      | Page::CreateUser
+      | Page::UserGroups
+      | Page::UserPassword
+      | Page::UserShell
+      | Page::UserPrimaryGroup => unreachable!(),
       Page::Hostname => vec![Row {
         label: if self.hostname_editing {
           tr(self.lang, "Novo hostname", "New hostname").to_string()
@@ -468,6 +486,20 @@ impl App {
       ),
       Page::Language => format!("{root} > {}", tr(self.lang, "Idioma", "Language")),
       Page::System => format!("{root} > {}", tr(self.lang, "Sistema", "System")),
+      Page::Firewall => format!("{root} > {} > Firewall", tr(self.lang, "Sistema", "System")),
+      Page::Users
+      | Page::User
+      | Page::CreateUser
+      | Page::UserGroups
+      | Page::UserPassword
+      | Page::UserShell
+      | Page::UserPrimaryGroup => {
+        format!(
+          "{root} > {} > {}",
+          tr(self.lang, "Sistema", "System"),
+          tr(self.lang, "Usuários", "Users")
+        )
+      }
       Page::Hostname => format!("{root} > {} > Hostname", tr(self.lang, "Sistema", "System")),
     }
   }
@@ -555,6 +587,10 @@ impl App {
   }
 
   pub fn open_or_apply(&mut self) {
+    if crate::administration::is_page(self.page()) {
+      self.admin_open();
+      return;
+    }
     if self.error_modal.take().is_some() {
       return;
     }
@@ -620,11 +656,26 @@ impl App {
       Page::KeyboardVariant => self.apply_keyboard_variant(selected),
       Page::ConsoleKeymap => self.apply_console_keymap(selected),
       Page::Language => self.apply_language(selected),
-      Page::System => {
-        if selected == 0 {
-          self.open_system_page(Page::Hostname);
+      Page::System => match selected {
+        0 => self.open_system_page(Page::Hostname),
+        1 => {
+          self.admin.load(true);
+          self.navigation.push(Page::Firewall);
         }
-      }
+        2 => {
+          self.admin.load(false);
+          self.navigation.push(Page::Users);
+        }
+        _ => {}
+      },
+      Page::Firewall
+      | Page::Users
+      | Page::User
+      | Page::CreateUser
+      | Page::UserGroups
+      | Page::UserPassword
+      | Page::UserShell
+      | Page::UserPrimaryGroup => unreachable!(),
       Page::Hostname => {
         self.hostname_editing = true;
         self.hostname_input = self.hostname.clone();
@@ -646,6 +697,10 @@ impl App {
   }
 
   pub fn toggle_current(&mut self) {
+    if crate::administration::is_page(self.page()) {
+      self.admin_open();
+      return;
+    }
     if self.page() != Page::SystemLocales {
       return;
     }
@@ -719,6 +774,7 @@ impl App {
         Err(error) => self.fail(error),
       },
       PendingAction::ApplySystemLocales => self.apply_system_locales(),
+      PendingAction::Administration(_) => self.admin.submit(),
       PendingAction::SetNtp(enabled) => match time::set_ntp(enabled) {
         Ok(()) => {
           self.refresh_time();
@@ -737,6 +793,7 @@ impl App {
   }
 
   pub fn cancel_modal(&mut self) {
+    self.admin.cancel_pending();
     self.confirm = None;
     self.confirm_apply_selected = true;
   }
@@ -841,6 +898,24 @@ impl App {
   }
 
   pub fn expire_status(&mut self) -> bool {
+    if let Some(result) = self.admin.poll() {
+      match result {
+        Ok(()) => {
+          match self.admin.completed.take().as_deref() {
+            Some("create") if self.page() == Page::CreateUser => {
+              self.navigation.current_mut().page = Page::User
+            }
+            Some("delete") => {
+              self.navigation.back();
+            }
+            _ => {}
+          }
+          self.success(tr(self.lang, "Dados atualizados", "Data updated").into());
+        }
+        Err(error) => self.fail(error),
+      }
+      return true;
+    }
     if self
       .status
       .as_ref()
@@ -1229,6 +1304,15 @@ pub fn setting_label(lang: Lang, setting: SettingKind) -> &'static str {
 
 pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, String) {
   match action {
+    PendingAction::Administration(body) => (
+      tr(
+        lang,
+        "Confirmar operação administrativa?",
+        "Confirm administrative operation?",
+      )
+      .into(),
+      body.clone(),
+    ),
     PendingAction::ResetApps => (
       tr(
         lang,

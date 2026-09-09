@@ -3,6 +3,12 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crate::app::{App, Route};
 
 pub fn handle(app: &mut App, event: Event) {
+  if let Event::Paste(text) = event {
+    if app.route == Route::Settings {
+      app.settings.admin_paste(&text);
+    }
+    return;
+  }
   if let Event::Resize(width, height) = event {
     app.resize(width, height);
     return;
@@ -11,6 +17,13 @@ pub fn handle(app: &mut App, event: Event) {
     return;
   };
   if key.kind != KeyEventKind::Press {
+    return;
+  }
+  if app.route == Route::Settings && app.settings.admin.editor.is_some() {
+    argvus_control_center_settings::event::handle(&mut app.settings, Event::Key(key));
+    return;
+  }
+  if app.route == Route::Settings && app.settings.admin.busy() {
     return;
   }
   if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -113,6 +126,29 @@ mod tests {
     let mut app = App::new(InitialRoute::About(Tab::System));
     handle(&mut app, press(KeyCode::Char('q')));
     assert!(app.quit);
+  }
+
+  #[test]
+  fn account_editor_receives_quit_and_help_characters() {
+    let mut app = App::new(InitialRoute::Home);
+    app.route = Route::Settings;
+    app.settings.error_modal = None;
+    app
+      .settings
+      .navigation
+      .push(argvus_control_center_settings::Page::CreateUser);
+    app.settings.open_or_apply();
+    handle(&mut app, press(KeyCode::Char('q')));
+    handle(&mut app, press(KeyCode::Char('?')));
+    assert!(!app.quit);
+    assert!(!app.help);
+    assert!(app.settings.admin.editor.is_some());
+    handle(&mut app, press(KeyCode::Esc));
+    assert!(app.settings.admin.editor.is_none());
+    assert_eq!(
+      app.settings.page(),
+      argvus_control_center_settings::Page::CreateUser
+    );
   }
 
   #[test]
