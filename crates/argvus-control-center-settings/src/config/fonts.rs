@@ -429,7 +429,7 @@ impl FontSettings {
     self.write_waybar_profile(
       "argvus-taskbar.css",
       &format!(
-        "* {{\n  font-family: \"{}\", \"Font Awesome 7 Free\", monospace;\n  font-size: {}px;\n}}\n",
+        "* {{\n  font-family: \"{}\", \"Symbols Nerd Font Mono\", monospace;\n  font-size: {}px;\n}}\n",
         escape(&taskbar.family), taskbar.size
       ),
     )?;
