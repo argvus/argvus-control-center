@@ -1,3 +1,4 @@
+pub mod buttons;
 pub mod footer;
 pub mod header;
 pub mod layout;
@@ -6,7 +7,7 @@ pub mod popup;
 pub mod search;
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget};
 
@@ -32,9 +33,33 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   }
 
   let areas = layout::areas(area);
-  app.set_viewport(areas.body.height as usize);
-  header::draw(frame, areas.header, app);
-  list::draw(frame, areas.body, app);
+  let buttons = if crate::administration::is_page(app.page()) {
+    app.admin_buttons(app.page())
+  } else {
+    Vec::new()
+  };
+  if buttons.is_empty() {
+    app.set_viewport(areas.body.height as usize);
+    header::draw(frame, areas.header, app);
+    list::draw(frame, areas.body, app);
+  } else {
+    let button_height = buttons::height(&buttons, areas.body.width).min(areas.body.height);
+    let split =
+      Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(areas.body);
+    app.set_viewport(split[0].height as usize);
+    header::draw(frame, areas.header, app);
+    list::draw(frame, split[0], app);
+    let selected = app.navigation.current().selected;
+    let rows = app.rows().len();
+    let focus = selected.checked_sub(rows);
+    buttons::draw(
+      frame,
+      split[1],
+      &buttons,
+      focus.unwrap_or(usize::MAX),
+      &app.theme,
+    );
+  }
   search::draw(frame, areas.message, app);
   footer::draw(frame, areas.footer, app);
   if let Some(editor) = &app.admin.editor {
@@ -84,6 +109,76 @@ mod tests {
   use super::*;
   use crate::navigation::Page;
   use ratatui::{Terminal, backend::TestBackend};
+  use serde_json::json;
+
+  fn user_app() -> App {
+    let mut app = App::new(Page::Main);
+    app.error_modal = None;
+    app.navigation.push(Page::User);
+    app.admin.accounts = json!({"actor_uid":1000, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel"],
+    "group_details":[
+      {"name":"users","gid":1000,"members":[]},
+      {"name":"wheel","gid":998,"members":["alice"]}
+    ],
+    "users":[
+      {"user":"root", "uid":0, "gid":0, "name":"root", "shell":"/bin/bash", "primary_group":"root", "groups":[]},
+      {"user":"alice", "uid":1000, "gid":1000, "name":"Alice", "shell":"/bin/bash", "primary_group":"users", "groups":["wheel"]}
+    ]});
+    app.admin.user = app.admin.accounts["users"][1].clone();
+    app
+  }
+
+  fn button_cell(terminal: &Terminal<TestBackend>, label: &str) -> (u16, u16) {
+    let width = terminal.backend().buffer().area.width as usize;
+    for (y, row) in terminal
+      .backend()
+      .buffer()
+      .content
+      .chunks(width)
+      .enumerate()
+    {
+      let text: String = row.iter().map(|cell| cell.symbol()).collect();
+      if let Some(index) = text.find(label)
+        && index >= 2
+      {
+        return (index as u16 - 2, y as u16);
+      }
+    }
+    (0, 0)
+  }
+
+  fn button_bg(terminal: &Terminal<TestBackend>, label: &str) -> ratatui::style::Color {
+    let (x, y) = button_cell(terminal, label);
+    let width = terminal.backend().buffer().area.width;
+    terminal.backend().buffer().content[(y * width + x) as usize].bg
+  }
+
+  #[test]
+  fn button_bar_highlights_only_the_focused_action() {
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    let mut app = user_app();
+    app.normalize_selection();
+    assert_eq!(app.navigation.current().selected, 2);
+    let selected_bg = app.theme.selected_background;
+    terminal.draw(|frame| draw(&mut app, frame)).unwrap();
+    assert_ne!(button_bg(&terminal, "Salvar alterações"), selected_bg);
+    assert_ne!(
+      button_bg(&terminal, "Excluir usuário (manter home)"),
+      selected_bg
+    );
+
+    app.navigation.current_mut().selected = 10;
+    terminal.draw(|frame| draw(&mut app, frame)).unwrap();
+    assert_eq!(button_bg(&terminal, "Salvar alterações"), selected_bg);
+
+    app.navigation.current_mut().selected = 17;
+    terminal.draw(|frame| draw(&mut app, frame)).unwrap();
+    assert_ne!(button_bg(&terminal, "Salvar alterações"), selected_bg);
+    assert_eq!(
+      button_bg(&terminal, "Excluir usuário (manter home)"),
+      selected_bg
+    );
+  }
 
   #[test]
   fn main_page_renders_brand_menu_and_footer() {

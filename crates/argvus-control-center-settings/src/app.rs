@@ -65,6 +65,7 @@ pub struct App {
   pub width: u16,
   pub height: u16,
   pub viewport: usize,
+  button_from: Option<usize>,
   distro: locale::Distro,
   timezones: Vec<String>,
   datetime: time::DateTimeInfo,
@@ -118,6 +119,7 @@ impl App {
       width: 80,
       height: 24,
       viewport: 1,
+      button_from: None,
       distro: locale::distro(),
       timezones: time::list_timezones(),
       datetime: time::datetime_info(),
@@ -138,7 +140,9 @@ impl App {
 
   pub fn rows(&self) -> Vec<Row> {
     if crate::administration::is_page(self.page()) {
-      return self.admin.rows(self.page(), self.lang);
+      return self
+        .admin
+        .rows_filtered(self.page(), self.lang, &self.search);
     }
     match self.page() {
       Page::Main => vec![
@@ -388,15 +392,24 @@ impl App {
         Row::plain("Hostname"),
         Row::plain("Firewall"),
         Row::plain(tr(self.lang, "Usuários", "Users")),
+        Row::plain(tr(self.lang, "Grupos", "Groups")),
       ],
       Page::Firewall
       | Page::Users
+      | Page::UserList
+      | Page::SystemUsers
       | Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => unreachable!(),
+      | Page::UserPrimaryGroup
+      | Page::Groups
+      | Page::GroupList
+      | Page::SystemGroups
+      | Page::Group
+      | Page::GroupMembers
+      | Page::CreateGroup => unreachable!(),
       Page::Hostname => vec![Row {
         label: if self.hostname_editing {
           tr(self.lang, "Novo hostname", "New hostname").to_string()
@@ -487,19 +500,55 @@ impl App {
       Page::Language => format!("{root} > {}", tr(self.lang, "Idioma", "Language")),
       Page::System => format!("{root} > {}", tr(self.lang, "Sistema", "System")),
       Page::Firewall => format!("{root} > {} > Firewall", tr(self.lang, "Sistema", "System")),
-      Page::Users
-      | Page::User
+      Page::Users => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users")
+      ),
+      Page::UserList => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users"),
+        tr(self.lang, "Listar", "List")
+      ),
+      Page::SystemUsers => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users"),
+        tr(self.lang, "Contas do sistema", "System accounts")
+      ),
+      Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => {
-        format!(
-          "{root} > {} > {}",
-          tr(self.lang, "Sistema", "System"),
-          tr(self.lang, "Usuários", "Users")
-        )
-      }
+      | Page::UserPrimaryGroup => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users")
+      ),
+      Page::Groups => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups")
+      ),
+      Page::GroupList => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups"),
+        tr(self.lang, "Listar", "List")
+      ),
+      Page::SystemGroups => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups"),
+        tr(self.lang, "Contas do sistema", "System accounts")
+      ),
+      Page::Group | Page::GroupMembers | Page::CreateGroup => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups")
+      ),
       Page::Hostname => format!("{root} > {} > Hostname", tr(self.lang, "Sistema", "System")),
     }
   }
@@ -566,6 +615,16 @@ impl App {
         "↑/↓ Navegar   Enter Aplicar   r Reset Default   ←/Esc Voltar   ? Ajuda",
         "↑/↓ Navigate   Enter Apply   r Reset Default   ←/Esc Back   ? Help",
       ),
+      Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups => tr(
+        self.lang,
+        "↑/↓ Navegar   / Buscar   →/Enter Abrir   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   / Search   →/Enter Open   ←/Esc Back   ? Help",
+      ),
+      Page::User | Page::CreateUser | Page::CreateGroup | Page::Group | Page::Firewall => tr(
+        self.lang,
+        "↑/↓ Campos   Tab Alternar   ←/→ Ações   Enter Ativar   Esc Voltar   ? Ajuda",
+        "↑/↓ Fields   Tab Switch   ←/→ Actions   Enter Activate   Esc Back   ? Help",
+      ),
       _ => tr(
         self.lang,
         "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   ? Ajuda",
@@ -575,15 +634,172 @@ impl App {
   }
 
   pub fn move_selection(&mut self, delta: isize) {
-    let count = self.rows().len();
-    let location = self.navigation.current_mut();
+    let count = self.item_count();
     if count == 0 {
+      let location = self.navigation.current_mut();
       location.selected = 0;
       location.scroll = 0;
       return;
     }
-    location.selected = (location.selected as isize + delta).clamp(0, count as isize - 1) as usize;
+    let step = delta.signum();
+    if step == 0 {
+      return;
+    }
+    let page = self.page();
+    let current = self.navigation.current().selected;
+    let rows = if crate::administration::is_page(page) {
+      self.rows().len()
+    } else {
+      count
+    };
+    let buttons = if crate::administration::is_page(page) {
+      self.admin.buttons(page, self.lang).len()
+    } else {
+      0
+    };
+    if buttons > 0 && current >= rows {
+      return;
+    }
+    let (lo, hi) = if buttons > 0 {
+      (0, rows.saturating_sub(1))
+    } else {
+      (0, count - 1)
+    };
+    if lo > hi {
+      self.navigation.current_mut().selected = 0;
+      self.ensure_visible(count);
+      return;
+    }
+    let mut selected = current;
+    let mut candidate = current;
+    loop {
+      let probe = (candidate as isize + step).clamp(lo as isize, hi as isize) as usize;
+      if probe == candidate {
+        break;
+      }
+      candidate = probe;
+      if self.row_selectable(candidate) {
+        selected = candidate;
+        break;
+      }
+    }
+    self.navigation.current_mut().selected = selected;
     self.ensure_visible(count);
+  }
+
+  pub fn on_buttons(&self) -> bool {
+    let page = self.page();
+    if !crate::administration::is_page(page) {
+      return false;
+    }
+    let rows = self.rows().len();
+    !self.admin.buttons(page, self.lang).is_empty() && self.navigation.current().selected >= rows
+  }
+
+  pub fn row_selectable(&self, index: usize) -> bool {
+    if self.page() == Page::DateTime {
+      return (index == 0 && !self.datetime.ntp.unwrap_or(false)) || index == 1 || index == 2;
+    }
+    if self.page() == Page::Encoding {
+      return false;
+    }
+    if self.page() == Page::Keyboard {
+      return matches!(index, 0 | 1 | 4);
+    }
+    let page = self.page();
+    if crate::administration::is_page(page) {
+      let rows = self.rows();
+      let buttons = self.admin.buttons(page, self.lang).len();
+      if index >= rows.len() {
+        return index < rows.len() + buttons;
+      }
+      return rows.get(index).is_some() && self.admin.row_selectable(page, index);
+    }
+    self.rows().get(index).is_some()
+  }
+
+  pub fn normalize_selection(&mut self) {
+    let count = self.item_count();
+    if count == 0 {
+      return;
+    }
+    if !self.row_selectable(self.navigation.current().selected)
+      && let Some(index) = (0..count).find(|index| self.row_selectable(*index))
+    {
+      self.navigation.current_mut().selected = index;
+      self.ensure_visible(count);
+    }
+  }
+
+  pub fn item_count(&self) -> usize {
+    if crate::administration::is_page(self.page()) {
+      let rows = self
+        .admin
+        .rows_filtered(self.page(), self.lang, &self.search)
+        .len();
+      rows + self.admin.buttons(self.page(), self.lang).len()
+    } else {
+      self.rows().len()
+    }
+  }
+
+  pub fn cycle_selection(&mut self, delta: isize) {
+    if delta == 0 {
+      return;
+    }
+    let page = self.page();
+    if !crate::administration::is_page(page) {
+      return;
+    }
+    let rows = self.rows().len();
+    let buttons = self.admin.buttons(page, self.lang).len();
+    if rows == 0 || buttons == 0 {
+      return;
+    }
+    let current = self.navigation.current().selected;
+    if current >= rows {
+      let field = match self.button_from {
+        Some(index) if index < rows && self.row_selectable(index) => index,
+        _ => (0..rows)
+          .find(|index| self.row_selectable(*index))
+          .unwrap_or(0),
+      };
+      self.button_from = None;
+      self.navigation.current_mut().selected = field;
+    } else {
+      self.button_from = Some(current);
+      let button = if delta > 0 { 0 } else { buttons - 1 };
+      self.navigation.current_mut().selected = rows + button;
+    }
+    self.ensure_visible(self.item_count());
+  }
+
+  pub fn move_button(&mut self, delta: isize) {
+    let page = self.page();
+    if !crate::administration::is_page(page) || delta == 0 {
+      return;
+    }
+    let rows = self.rows().len();
+    let buttons = self.admin.buttons(page, self.lang).len();
+    if buttons == 0 {
+      return;
+    }
+    let current = self.navigation.current().selected;
+    if current < rows {
+      return;
+    }
+    let mut index = current - rows;
+    if delta > 0 {
+      index = (index + 1) % buttons;
+    } else {
+      index = (index + buttons - 1) % buttons;
+    }
+    self.navigation.current_mut().selected = rows + index;
+    self.ensure_visible(self.item_count());
+  }
+
+  pub fn admin_buttons(&self, page: Page) -> Vec<crate::administration::Button> {
+    self.admin.buttons(page, self.lang)
   }
 
   pub fn open_or_apply(&mut self) {
@@ -637,7 +853,14 @@ impl App {
       },
       Page::TimeZone => self.apply_timezone(selected),
       Page::DateTime => {
-        if selected == 1 {
+        if selected == 0 && !self.datetime.ntp.unwrap_or(false) {
+          self.admin.editor = Some(crate::administration::Editor::new(
+            tr(self.lang, "Data/hora local", "Local date/time").into(),
+            self.datetime.local_time.clone(),
+            crate::administration::EditTarget::DateTime,
+            false,
+          ));
+        } else if selected == 1 {
           self.open_system_page(Page::TimeZone);
         } else if selected == 2 {
           self.open_confirm(PendingAction::SetNtp(!self.datetime.ntp.unwrap_or(false)));
@@ -665,17 +888,31 @@ impl App {
         2 => {
           self.admin.load(false);
           self.navigation.push(Page::Users);
+          self.normalize_selection();
+        }
+        3 => {
+          self.admin.load(false);
+          self.navigation.push(Page::Groups);
+          self.normalize_selection();
         }
         _ => {}
       },
       Page::Firewall
       | Page::Users
+      | Page::UserList
+      | Page::SystemUsers
       | Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => unreachable!(),
+      | Page::UserPrimaryGroup
+      | Page::Groups
+      | Page::GroupList
+      | Page::SystemGroups
+      | Page::Group
+      | Page::GroupMembers
+      | Page::CreateGroup => unreachable!(),
       Page::Hostname => {
         self.hostname_editing = true;
         self.hostname_input = self.hostname.clone();
@@ -844,6 +1081,7 @@ impl App {
     }
     self.hostname_editing = false;
     self.navigation.back();
+    self.normalize_selection();
   }
 
   pub fn begin_search(&mut self) {
@@ -857,6 +1095,9 @@ impl App {
         | Page::KeyboardLayout
         | Page::KeyboardVariant
         | Page::ConsoleKeymap
+        | Page::SystemUsers
+        | Page::GroupList
+        | Page::SystemGroups
     ) {
       self.searching = true;
       self.search.clear();
@@ -903,9 +1144,10 @@ impl App {
         Ok(()) => {
           match self.admin.completed.take().as_deref() {
             Some("create") if self.page() == Page::CreateUser => {
-              self.navigation.current_mut().page = Page::User
+              self.navigation.current_mut().page = Page::User;
+              self.normalize_selection();
             }
-            Some("delete") => {
+            Some("delete") | Some("delete-group") => {
               self.navigation.back();
             }
             _ => {}
@@ -1171,7 +1413,7 @@ impl App {
     }
   }
 
-  fn refresh_time(&mut self) {
+  pub(crate) fn refresh_time(&mut self) {
     self.datetime = time::datetime_info();
   }
 
@@ -1184,16 +1426,31 @@ impl App {
     if let Some(index) = self.rows().iter().position(|row| row.current) {
       self.navigation.current_mut().selected = index;
       self.ensure_visible(self.rows().len());
+    } else {
+      self.normalize_selection();
     }
   }
 
   fn ensure_visible(&mut self, count: usize) {
+    let page = self.page();
+    let buttons = if crate::administration::is_page(page) {
+      self.admin.buttons(page, self.lang).len()
+    } else {
+      0
+    };
+    let rows = if buttons > 0 {
+      self.rows().len()
+    } else {
+      count
+    };
+    let full = rows + buttons;
     let location = self.navigation.current_mut();
-    location.selected = location.selected.min(count.saturating_sub(1));
-    if location.selected < location.scroll {
-      location.scroll = location.selected;
-    } else if location.selected >= location.scroll + self.viewport {
-      location.scroll = location.selected + 1 - self.viewport;
+    location.selected = location.selected.min(full.saturating_sub(1));
+    let effective = location.selected.min(rows.saturating_sub(1));
+    if effective < location.scroll {
+      location.scroll = effective;
+    } else if effective >= location.scroll + self.viewport {
+      location.scroll = effective + 1 - self.viewport;
     }
   }
 
@@ -1246,7 +1503,7 @@ impl App {
     });
   }
 
-  fn fail(&mut self, error: impl ToString) {
+  pub(crate) fn fail(&mut self, error: impl ToString) {
     let error = error.to_string();
     self.status = Some(Status {
       text: error.clone(),

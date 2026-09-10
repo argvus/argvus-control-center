@@ -137,6 +137,7 @@ mod tests {
       .settings
       .navigation
       .push(argvus_control_center_settings::Page::CreateUser);
+    app.settings.normalize_selection();
     app.settings.open_or_apply();
     handle(&mut app, press(KeyCode::Char('q')));
     handle(&mut app, press(KeyCode::Char('?')));

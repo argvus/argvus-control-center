@@ -19,7 +19,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     .enumerate()
     .map(|(visible, row)| {
       let index = location.scroll + visible;
-      let selected = index == location.selected;
+      let selectable = app.row_selectable(index);
+      let selected = index == location.selected && selectable;
       let marker = if row.current {
         "●"
       } else if selected {
@@ -53,6 +54,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
           .bg(app.theme.selected_background)
           .fg(app.theme.selected_foreground)
           .add_modifier(Modifier::BOLD)
+      } else if !selectable {
+        Style::new().bg(app.theme.background).fg(app.theme.muted)
       } else {
         Style::new().bg(app.theme.background).fg(if row.current {
           app.theme.accent

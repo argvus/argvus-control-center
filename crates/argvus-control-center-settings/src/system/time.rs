@@ -79,6 +79,26 @@ pub fn set_ntp(enabled: bool) -> Result<(), SettingsError> {
   super::privileged::run(&["datetime", "ntp", if enabled { "true" } else { "false" }]).map(|_| ())
 }
 
+pub fn set_local_time(value: &str) -> Result<(), SettingsError> {
+  if !is_valid_datetime(value) {
+    return Err(SettingsError::System("invalid date/time".into()));
+  }
+  super::privileged::run(&["datetime", "set", value]).map(|_| ())
+}
+
+pub fn is_valid_datetime(value: &str) -> bool {
+  value.len() == 19
+    && value.as_bytes()[4] == b'-'
+    && value.as_bytes()[7] == b'-'
+    && value.as_bytes()[10] == b' '
+    && value.as_bytes()[13] == b':'
+    && value.as_bytes()[16] == b':'
+    && value
+      .bytes()
+      .enumerate()
+      .all(|(index, byte)| matches!(index, 4 | 7 | 10 | 13 | 16) || byte.is_ascii_digit())
+}
+
 pub fn is_valid_timezone_name(value: &str) -> bool {
   !value.is_empty()
     && !value.starts_with('/')

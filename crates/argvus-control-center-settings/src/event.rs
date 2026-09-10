@@ -61,6 +61,10 @@ fn handle_key(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
     KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),
+    KeyCode::Tab => app.cycle_selection(1),
+    KeyCode::BackTab => app.cycle_selection(-1),
+    KeyCode::Right | KeyCode::Char('l') if app.on_buttons() => app.move_button(1),
+    KeyCode::Left | KeyCode::Char('h') if app.on_buttons() => app.move_button(-1),
     KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.open_or_apply(),
     KeyCode::Left | KeyCode::Char('h') | KeyCode::Esc => app.back(),
     KeyCode::Char('/') => app.begin_search(),
@@ -73,7 +77,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
       app.move_selection(-(selected as isize));
     }
     KeyCode::End => {
-      let count = app.rows().len();
+      let count = app.item_count();
       let selected = app.navigation.current().selected;
       app.move_selection(count.saturating_sub(selected + 1) as isize);
     }
