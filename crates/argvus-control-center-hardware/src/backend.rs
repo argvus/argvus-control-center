@@ -39,7 +39,22 @@ pub fn collect(cap: &Capabilities) -> HardwareSnapshot {
     firmware: read_dmi("bios_version"),
     virtualization: virtualization(cap),
     software_rendering: std::env::var_os("LIBGL_ALWAYS_SOFTWARE").is_some_and(|v| v == "1"),
+    is_laptop: detect_is_laptop(),
   }
+}
+
+fn detect_is_laptop() -> bool {
+  if let Ok(chassis) = fs::read_to_string("/sys/class/dmi/id/chassis_type") {
+    if let Ok(n) = chassis.trim().parse::<u8>() {
+      if matches!(n, 8..=14 | 30..=32) {
+        return true;
+      }
+    }
+  }
+  fs::read_dir("/sys/class/power_supply")
+    .ok()
+    .and_then(|dir| dir.flatten().find(|e| e.file_name().to_string_lossy().starts_with("BAT")))
+    .is_some()
 }
 
 fn read_dmi(name: &str) -> Option<String> {

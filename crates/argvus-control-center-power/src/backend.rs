@@ -26,9 +26,10 @@ pub fn load() -> PowerState {
     .and_then(PowerButtonBehavior::parse)
     .unwrap_or(PowerButtonBehavior::Poweroff);
   let screen_off_minutes = hypridle::screen_off_minutes();
-  let screen_off_supported = hypridle::config_path().is_some();
+  let screen_off_supported = hypridle::config_path().exists();
   let can_suspend = systemctl_can("can-suspend");
   let can_hibernate = systemctl_can("can-hibernate");
+  let is_laptop = detect_is_laptop();
   PowerState {
     lid: [lid_battery, lid_ac],
     power_button,
@@ -36,7 +37,22 @@ pub fn load() -> PowerState {
     can_suspend,
     can_hibernate,
     screen_off_supported,
+    is_laptop,
   }
+}
+
+fn detect_is_laptop() -> bool {
+  if let Ok(chassis) = fs::read_to_string("/sys/class/dmi/id/chassis_type") {
+    if let Ok(n) = chassis.trim().parse::<u8>() {
+      if matches!(n, 8..=14 | 30..=32) {
+        return true;
+      }
+    }
+  }
+  fs::read_dir("/sys/class/power_supply")
+    .ok()
+    .and_then(|dir| dir.flatten().find(|e| e.file_name().to_string_lossy().starts_with("BAT")))
+    .is_some()
 }
 
 /// Reads a logind `Key = value`, honoring the ARGVUS drop-in first, then the

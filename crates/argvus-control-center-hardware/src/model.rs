@@ -28,6 +28,7 @@ pub struct HardwareSnapshot {
   pub firmware: Option<String>,
   pub virtualization: Option<String>,
   pub software_rendering: bool,
+  pub is_laptop: bool,
 }
 
 #[derive(Debug, Clone, Default)]

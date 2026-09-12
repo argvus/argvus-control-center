@@ -259,31 +259,42 @@ impl PowerApp {
   }
 
   fn row_count(&self) -> usize {
-    4 + usize::from(self.state.as_ref().is_some_and(|s| s.screen_off_supported))
+    let Some(state) = &self.state else { return 0; };
+    if state.is_laptop {
+      5
+    } else {
+      1
+    }
   }
 
   fn cycle_row(&mut self) {
     let Some(state) = &mut self.state else {
       return;
     };
-    let screen_off_supported = state.screen_off_supported;
+    let is_laptop = state.is_laptop;
+
+    let lid_battery_idx = 0;
+    let lid_ac_idx = 1;
+    let power_btn_idx = 2;
+    let screen_off_idx = if is_laptop { 3 } else { 0 };
+
     match self.selected {
-      0 => {
+      i if i == lid_battery_idx && is_laptop => {
         state.lid[0] = next_lid(state.lid[0]);
         let behavior = state.lid[0];
         self.apply_lid(LidContext::Battery, behavior);
       }
-      1 => {
+      i if i == lid_ac_idx && is_laptop => {
         state.lid[1] = next_lid(state.lid[1]);
         let behavior = state.lid[1];
         self.apply_lid(LidContext::Ac, behavior);
       }
-      2 => {
+      i if i == power_btn_idx && is_laptop => {
         state.power_button = next_button(state.power_button);
         let behavior = state.power_button;
         self.apply_button(behavior);
       }
-      3 if screen_off_supported => {
+      i if i == screen_off_idx => {
         state.screen_off_minutes = Some(next_idle(state.screen_off_minutes.unwrap_or(0)));
         let minutes = state.screen_off_minutes.unwrap_or(0);
         self.apply_idle(minutes);
@@ -344,8 +355,10 @@ impl PowerApp {
     let Some(state) = &self.state else {
       return vec![tr(self.lang, "Carregando...", "Loading...").into()];
     };
-    vec![
-      format!(
+    let mut rows = Vec::new();
+
+    if state.is_laptop {
+      rows.push(format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("💻"),
         tr(
@@ -354,45 +367,51 @@ impl PowerApp {
           "On lid close (battery)"
         ),
         behavior_label(self.lang, state.lid[0].value()),
-      ),
-      format!(
+      ));
+      rows.push(format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("🔌"),
         tr(self.lang, "Ao fechar a tampa (CA)", "On lid close (AC)"),
         behavior_label(self.lang, state.lid[1].value()),
-      ),
-      format!(
+      ));
+      rows.push(format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("⏻"),
         tr(self.lang, "Botão de energia", "Power button"),
         behavior_label(self.lang, state.power_button.value()),
-      ),
-    ]
-    .into_iter()
-    .chain(std::iter::once_with(|| {
-      if state.screen_off_supported {
-        format!(
-          " {}  {}  ·  ▸ {}",
-          AppConfig::icon("🖥️"),
-          tr(self.lang, "Desligar tela após", "Screen off after"),
-          idle_label(state.screen_off_minutes.unwrap_or(0)),
-        )
-      } else {
-        format!(
-          " {}  {}  ·  {}",
-          AppConfig::icon("🖥️"),
-          tr(self.lang, "Desligar tela após", "Screen off after"),
-          tr(self.lang, "via ARGVUS hypridle", "via ARGVUS hypridle"),
-        )
-      }
-    }))
-    .collect()
+      ));
+    }
+
+    rows.push(if state.screen_off_supported {
+      format!(
+        " {}  {}  ·  ▸ {}",
+        AppConfig::icon("🖥️"),
+        tr(self.lang, "Desligar tela após", "Screen off after"),
+        idle_label(state.screen_off_minutes.unwrap_or(0)),
+      )
+    } else {
+      format!(
+        " {}  {}  ·  {}",
+        AppConfig::icon("🖥️"),
+        tr(self.lang, "Desligar tela após", "Screen off after"),
+        tr(self.lang, "via ARGVUS hypridle", "via ARGVUS hypridle"),
+      )
+    });
+
+    if state.is_laptop {
+      rows.push(self.capabilities_line());
+    }
+
+    rows
   }
 
   fn capabilities_line(&self) -> String {
     let Some(state) = &self.state else {
       return String::new();
     };
+    if !state.is_laptop {
+      return String::new();
+    }
     let suspend_icon = if state.can_suspend { "✓" } else { "✕" };
     let hibernate_icon = if state.can_hibernate { "✓" } else { "✕" };
     format!(
@@ -473,7 +492,11 @@ impl PowerApp {
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let mut lines = self.rows();
-    lines.push(self.capabilities_line());
+    if let Some(state) = &self.state {
+      if state.is_laptop {
+        lines.push(self.capabilities_line());
+      }
+    }
     let shell_body = shell(
       frame,
       area,
@@ -590,7 +613,7 @@ fn next_idle(current: u32) -> u32 {
 mod tests {
   use super::*;
 
-  fn state() -> PowerState {
+  fn laptop_state() -> PowerState {
     PowerState {
       lid: [PowerBehavior::Suspend, PowerBehavior::Hibernate],
       power_button: PowerButtonBehavior::Poweroff,
@@ -598,6 +621,19 @@ mod tests {
       can_suspend: true,
       can_hibernate: true,
       screen_off_supported: true,
+      is_laptop: true,
+    }
+  }
+
+  fn desktop_state() -> PowerState {
+    PowerState {
+      lid: [PowerBehavior::Suspend, PowerBehavior::Hibernate],
+      power_button: PowerButtonBehavior::Poweroff,
+      screen_off_minutes: Some(15),
+      can_suspend: true,
+      can_hibernate: true,
+      screen_off_supported: true,
+      is_laptop: false,
     }
   }
 
@@ -609,11 +645,19 @@ mod tests {
   }
 
   #[test]
-  fn row_count_grows_with_screen_off_entry() {
+  fn row_count_laptop() {
     let mut app = PowerApp::new(Lang::En, Theme::load());
-    assert_eq!(app.row_count(), 4);
-    app.state = Some(state());
+    assert_eq!(app.row_count(), 0);
+    app.state = Some(laptop_state());
     assert_eq!(app.row_count(), 5);
+  }
+
+  #[test]
+  fn row_count_desktop() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    assert_eq!(app.row_count(), 0);
+    app.state = Some(desktop_state());
+    assert_eq!(app.row_count(), 1);
   }
 
   #[test]
@@ -633,7 +677,7 @@ mod tests {
     let mut app = PowerApp::new(Lang::En, Theme::load());
     app.job = None;
     app.action = None;
-    app.state = Some(state());
+    app.state = Some(laptop_state());
     app.handle(KeyCode::Down);
     assert_eq!(app.selected, 1);
     app.handle(KeyCode::Tab);
@@ -655,7 +699,15 @@ mod tests {
   #[test]
   fn power_app_renders_without_panic() {
     let mut app = PowerApp::new(Lang::En, Theme::load());
-    app.state = Some(state());
+    app.state = Some(laptop_state());
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 20)).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+  }
+
+  #[test]
+  fn power_app_desktop_renders_without_panic() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.state = Some(desktop_state());
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 20)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
   }

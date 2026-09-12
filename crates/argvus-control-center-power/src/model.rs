@@ -130,6 +130,7 @@ pub struct PowerState {
   pub can_suspend: bool,
   pub can_hibernate: bool,
   pub screen_off_supported: bool,
+  pub is_laptop: bool,
 }
 
 impl PowerState {
@@ -167,6 +168,7 @@ mod tests {
       can_suspend: true,
       can_hibernate: false,
       screen_off_supported: true,
+      is_laptop: true,
     };
     assert_eq!(state.lid_for(LidContext::Battery), PowerBehavior::Lock);
     assert_eq!(state.lid_for(LidContext::Ac), PowerBehavior::Ignore);
