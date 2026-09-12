@@ -1,11 +1,14 @@
 use argvus_control_center_core::paths::argvus_config_home;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::time::Duration;
 
-/// The ARGVUS hypridle configuration lives under the generated-config strategy.
-/// Only the DPMS listener timeout is touched; everything else in the user config is preserved byte-for-byte.
+/// The ARGVUS hypridle configuration lives under the user config path.
+/// This matches the path resolved by `paths_config hypr/hypridle.conf` when
+/// ARGVUS_MUTABLE_CONFIG=1 (used by argvus-session and argvus-power scripts).
 pub fn config_path() -> PathBuf {
-  argvus_config_home().join("generated/hypr/hypridle.conf")
+  argvus_config_home().join("hypr/hypridle.conf")
 }
 
 const DEFAULT_HYPRIDLE_CONF: &str = r#"# ARGVUS hypridle configuration
@@ -55,6 +58,18 @@ pub fn set_screen_off_minutes(content: &str, minutes: u32) -> Result<String, Str
   Ok(updated)
 }
 
+/// Builds a config by appending an active DPMS-off listener. Used when the
+/// existing config has no recognizable screen-off listener (the stock ARGVUS
+/// config ships with that example commented out), preserving everything else
+/// such as the inactivity-lock listener.
+fn with_screen_off_listener(content: &str, minutes: u32) -> String {
+  let seconds = minutes.saturating_mul(60);
+  let base = content.trim_end_matches(['\r', '\n']).to_string();
+  format!(
+    "{base}\n\n# Screen-off timer (managed by ARGVUS Control Center)\nlistener {{\n  timeout = {seconds}\n  on-timeout = hyprctl dispatch dpms off\n  on-resume = hyprctl dispatch dpms on\n}}\n"
+  )
+}
+
 /// Writes a new DPMS timeout back to the ARGVUS hypridle config. Returns the
 /// previous timeout when the change was applied.
 pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
@@ -77,8 +92,11 @@ pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
     DEFAULT_HYPRIDLE_CONF.to_string()
   };
 
-  let previous = screen_off_minutes_from(&content).unwrap_or(5);
-  let updated = set_screen_off_minutes(&content, minutes)?;
+  let previous = screen_off_minutes_from(&content).unwrap_or(0);
+  let updated = match set_screen_off_minutes(&content, minutes) {
+    Ok(rewritten) => rewritten,
+    Err(_) => with_screen_off_listener(&content, minutes),
+  };
   let tmp = path.with_extension("tmp");
   fs::write(&tmp, updated).map_err(|error| error.to_string())?;
   fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
@@ -88,11 +106,54 @@ pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
   Ok(previous)
 }
 
+const RESTART_DEBOUNCE: Duration = Duration::from_millis(800);
+
+static RESTART_REQUEST: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+
+/// Restarts the running hypridle through the ARGVUS session wrapper. Rapid
+/// changes are coalesced into a single restart once they settle, and systemd's
+/// start rate-limiter is cleared first so a burst of changes cannot drop the
+/// service into the `start-limit-hit` failed state.
 fn restart_hypridle() {
+  let mut guard = RESTART_REQUEST
+    .get_or_init(|| Mutex::new(None))
+    .lock()
+    .unwrap_or_else(std::sync::PoisonError::into_inner);
+  let Some(sender) = guard.as_ref() else {
+    let (sender, receiver) = mpsc::channel::<()>();
+    *guard = Some(sender.clone());
+    drop(guard);
+    std::thread::Builder::new()
+      .name("hypridle-restart".to_string())
+      .spawn(move || hypridle_restart_worker(receiver))
+      .expect("failed to spawn the hypridle restart worker");
+    let _ = sender.send(());
+    return;
+  };
+  let _ = sender.send(());
+}
+
+fn hypridle_restart_worker(receiver: mpsc::Receiver<()>) {
+  loop {
+    match receiver.recv_timeout(RESTART_DEBOUNCE) {
+      Err(mpsc::RecvTimeoutError::Disconnected) => break,
+      Err(mpsc::RecvTimeoutError::Timeout) => continue,
+      Ok(()) => {
+        while matches!(receiver.recv_timeout(RESTART_DEBOUNCE), Ok(())) {}
+        restart_hypridle_now();
+      }
+    }
+  }
+}
+
+fn restart_hypridle_now() {
   use std::process::Command;
+  let _ = Command::new("systemctl")
+    .args(["--user", "reset-failed", "argvus-hypridle.service"])
+    .status();
   let _ = Command::new("argvus-sessionctl")
     .args(["restart", "hypridle"])
-    .spawn();
+    .status();
 }
 
 fn screen_off_minutes_from(content: &str) -> Option<u32> {
@@ -199,5 +260,24 @@ on-timeout = systemctl suspend
 ";
     assert!(set_screen_off_minutes(idle_only, 10).is_err());
     assert!(screen_off_minutes_from(idle_only).is_none());
+  }
+
+  #[test]
+  fn adds_a_dpms_listener_when_missing() {
+    let stock = "\
+general {
+  lock_cmd = sh /usr/share/argvus/scripts/apps/hypr-power-menu.sh --lock
+}
+
+listener {
+  timeout = 900
+  on-timeout = sh /usr/share/argvus/scripts/apps/hypr-power-menu.sh --lock
+}
+";
+    assert_eq!(screen_off_minutes_from(stock), None);
+    let updated = with_screen_off_listener(stock, 1);
+    assert_eq!(screen_off_minutes_from(&updated), Some(1));
+    assert!(updated.contains("timeout = 900"), "{updated}");
+    assert!(updated.contains("on-timeout = hyprctl dispatch dpms off"), "{updated}");
   }
 }
