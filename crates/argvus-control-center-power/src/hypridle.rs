@@ -70,6 +70,46 @@ fn with_screen_off_listener(content: &str, minutes: u32) -> String {
   )
 }
 
+/// Removes the listener block that turns the screen off, disabling auto
+/// screen-off (the "never" option) while preserving every other listener.
+fn remove_screen_off_listener(content: &str) -> String {
+  let pieces: Vec<&str> = content.split_inclusive('\n').collect();
+  let mut drop = vec![false; pieces.len()];
+  let mut in_listener = false;
+  let mut has_dpms = false;
+  let mut start = 0;
+  for (index, piece) in pieces.iter().enumerate() {
+    let trimmed = piece.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+      continue;
+    }
+    if !in_listener && trimmed.starts_with("listener") && trimmed.ends_with('{') {
+      in_listener = true;
+      has_dpms = false;
+      start = index;
+      continue;
+    }
+    if in_listener {
+      if trimmed.starts_with("on-timeout") && calls_dpms_off(trimmed) {
+        has_dpms = true;
+      }
+      if trimmed.ends_with('}') {
+        if has_dpms {
+          for line in &mut drop[start..=index] {
+            *line = true;
+          }
+        }
+        in_listener = false;
+      }
+    }
+  }
+  pieces
+    .into_iter()
+    .zip(drop)
+    .filter_map(|(piece, remove)| (!remove).then_some(piece))
+    .collect()
+}
+
 /// Writes a new DPMS timeout back to the ARGVUS hypridle config. Returns the
 /// previous timeout when the change was applied.
 pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
@@ -93,9 +133,13 @@ pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
   };
 
   let previous = screen_off_minutes_from(&content).unwrap_or(0);
-  let updated = match set_screen_off_minutes(&content, minutes) {
-    Ok(rewritten) => rewritten,
-    Err(_) => with_screen_off_listener(&content, minutes),
+  let updated = if minutes == 0 {
+    remove_screen_off_listener(&content)
+  } else {
+    match set_screen_off_minutes(&content, minutes) {
+      Ok(rewritten) => rewritten,
+      Err(_) => with_screen_off_listener(&content, minutes),
+    }
   };
   let tmp = path.with_extension("tmp");
   fs::write(&tmp, updated).map_err(|error| error.to_string())?;
@@ -171,7 +215,7 @@ fn screen_off_minutes_from(content: &str) -> Option<u32> {
     })
     .next()
     .flatten()
-    .map(|seconds| (seconds / 60).max(1))
+    .and_then(|seconds| (seconds > 0).then(|| (seconds / 60).max(1)))
 }
 
 /// Locates the `timeout =` line that precedes a `hyprctl ... dpms off`
@@ -279,5 +323,37 @@ listener {
     assert_eq!(screen_off_minutes_from(&updated), Some(1));
     assert!(updated.contains("timeout = 900"), "{updated}");
     assert!(updated.contains("on-timeout = hyprctl dispatch dpms off"), "{updated}");
+  }
+
+  #[test]
+  fn removing_the_dpms_listener_disables_screen_off() {
+    let config = "\
+general {
+  lock_cmd = sh /usr/share/argvus/scripts/apps/hypr-power-menu.sh --lock
+}
+
+listener {
+  timeout = 1
+  on-timeout = hyprctl dispatch dpms off
+  on-resume = hyprctl dispatch dpms on
+}
+
+listener {
+  timeout = 1800
+  on-timeout = sh /usr/share/argvus/scripts/apps/hypr-power-menu.sh --lock
+}
+";
+    assert_eq!(screen_off_minutes_from(config), Some(1));
+    let updated = remove_screen_off_listener(config);
+    assert_eq!(screen_off_minutes_from(&updated), None);
+    assert!(updated.contains("general {"), "{updated}");
+    assert!(updated.contains("timeout = 1800"), "{updated}");
+    assert!(!updated.contains("dpms off"), "{updated}");
+  }
+
+  #[test]
+  fn a_zero_timeout_reads_as_disabled() {
+    let content = "timeout = 0\non-timeout = hyprctl dispatch dpms off\n";
+    assert_eq!(screen_off_minutes_from(content), None);
   }
 }

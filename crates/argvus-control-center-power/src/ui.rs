@@ -9,6 +9,7 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::buttons::{Button, ButtonKind};
+use argvus_tui::chrome::centered;
 use argvus_tui::components::{
   ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
   draw_confirmation,
@@ -16,7 +17,10 @@ use argvus_tui::components::{
 use argvus_tui::page::{list, shell, status};
 use crossterm::event::KeyCode;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Clear, Paragraph};
 
 const LID_BEHAVIORS: [PowerBehavior; 5] = [
   PowerBehavior::Suspend,
@@ -34,6 +38,20 @@ const BUTTON_BEHAVIORS: [PowerButtonBehavior; 4] = [
 ];
 
 const IDLE_OPTIONS: [u32; 7] = [5, 10, 15, 30, 60, 120, 0];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PickerTarget {
+  LidBattery,
+  LidAc,
+  PowerButton,
+  ScreenOff,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Picker {
+  target: PickerTarget,
+  selected: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PowerButton {
@@ -65,6 +83,7 @@ pub struct PowerApp {
   action: Option<JobHandle<JobData>>,
   pending: Option<Pending>,
   confirmation: ConfirmationState,
+  picker: Option<Picker>,
   manager: JobManager,
   pub lang: Lang,
   pub theme: Theme,
@@ -88,6 +107,7 @@ impl PowerApp {
       action: None,
       pending: None,
       confirmation: ConfirmationState::default(),
+      picker: None,
       manager: JobManager::default(),
       lang,
       theme,
@@ -172,6 +192,10 @@ impl PowerApp {
   }
 
   pub fn handle(&mut self, key: KeyCode) -> bool {
+    if self.picker.is_some() {
+      self.handle_picker(key);
+      return false;
+    }
     if self.pending.is_none() && self.action.is_none() && self.job.is_none() && self.on_buttons {
       match key {
         KeyCode::Tab | KeyCode::BackTab => {
@@ -251,7 +275,7 @@ impl PowerApp {
       }
       KeyCode::Home => self.selected = 0,
       KeyCode::End => self.selected = self.row_count().saturating_sub(1),
-      KeyCode::Enter => self.cycle_row(),
+      KeyCode::Enter => self.open_row_picker(),
       _ => {}
     }
     self.selected = self.selected.min(self.row_count().saturating_sub(1));
@@ -267,8 +291,41 @@ impl PowerApp {
     }
   }
 
-  fn cycle_row(&mut self) {
-    let Some(state) = &mut self.state else {
+  fn handle_picker(&mut self, key: KeyCode) {
+    let mut apply: Option<(PickerTarget, usize)> = None;
+    let mut close = false;
+    {
+      let Some(picker) = &mut self.picker else {
+        return;
+      };
+      let count = picker_target_len(picker.target);
+      match key {
+        KeyCode::Up | KeyCode::Char('k') => {
+          picker.selected = picker.selected.saturating_sub(1);
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+          picker.selected = (picker.selected + 1).min(count.saturating_sub(1));
+        }
+        KeyCode::Home => picker.selected = 0,
+        KeyCode::End => picker.selected = count.saturating_sub(1),
+        KeyCode::Enter => {
+          apply = Some((picker.target, picker.selected));
+          close = true;
+        }
+        KeyCode::Esc | KeyCode::Left => close = true,
+        _ => {}
+      }
+    }
+    if close {
+      self.picker = None;
+    }
+    if let Some((target, selected)) = apply {
+      self.picker_apply(target, selected);
+    }
+  }
+
+  fn open_row_picker(&mut self) {
+    let Some(state) = &self.state else {
       return;
     };
     let is_laptop = state.is_laptop;
@@ -278,28 +335,57 @@ impl PowerApp {
     let power_btn_idx = 2;
     let screen_off_idx = if is_laptop { 3 } else { 0 };
 
-    match self.selected {
-      i if i == lid_battery_idx && is_laptop => {
-        state.lid[0] = next_lid(state.lid[0]);
-        let behavior = state.lid[0];
+    let target = match self.selected {
+      i if i == lid_battery_idx && is_laptop => PickerTarget::LidBattery,
+      i if i == lid_ac_idx && is_laptop => PickerTarget::LidAc,
+      i if i == power_btn_idx && is_laptop => PickerTarget::PowerButton,
+      i if i == screen_off_idx => PickerTarget::ScreenOff,
+      _ => return,
+    };
+    self.picker = Some(Picker {
+      target,
+      selected: picker_default(target, state),
+    });
+  }
+
+  fn picker_apply(&mut self, target: PickerTarget, selected: usize) {
+    match target {
+      PickerTarget::LidBattery => {
+        let Some(&behavior) = LID_BEHAVIORS.get(selected) else {
+          return;
+        };
+        if let Some(state) = &mut self.state {
+          state.lid[0] = behavior;
+        }
         self.apply_lid(LidContext::Battery, behavior);
       }
-      i if i == lid_ac_idx && is_laptop => {
-        state.lid[1] = next_lid(state.lid[1]);
-        let behavior = state.lid[1];
+      PickerTarget::LidAc => {
+        let Some(&behavior) = LID_BEHAVIORS.get(selected) else {
+          return;
+        };
+        if let Some(state) = &mut self.state {
+          state.lid[1] = behavior;
+        }
         self.apply_lid(LidContext::Ac, behavior);
       }
-      i if i == power_btn_idx && is_laptop => {
-        state.power_button = next_button(state.power_button);
-        let behavior = state.power_button;
+      PickerTarget::PowerButton => {
+        let Some(&behavior) = BUTTON_BEHAVIORS.get(selected) else {
+          return;
+        };
+        if let Some(state) = &mut self.state {
+          state.power_button = behavior;
+        }
         self.apply_button(behavior);
       }
-      i if i == screen_off_idx => {
-        state.screen_off_minutes = Some(next_idle(state.screen_off_minutes.unwrap_or(0)));
-        let minutes = state.screen_off_minutes.unwrap_or(0);
+      PickerTarget::ScreenOff => {
+        let Some(&minutes) = IDLE_OPTIONS.get(selected) else {
+          return;
+        };
+        if let Some(state) = &mut self.state {
+          state.screen_off_minutes = (minutes > 0).then_some(minutes);
+        }
         self.apply_idle(minutes);
       }
-      _ => {}
     }
   }
 
@@ -504,8 +590,8 @@ impl PowerApp {
       tr(self.lang, "Energia", "Power"),
       tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   Enter Alterar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   Enter Cycle   r Refresh   ←/Esc Back   ? Help",
+        "↑/↓ Navegar   Tab Ações   Enter Lista   r Atualizar   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   Tab Actions   Enter List   r Refresh   ←/Esc Back   ? Help",
       ),
     );
     let buttons = self.buttons();
@@ -558,6 +644,9 @@ impl PowerApp {
         },
       )
     }
+    if let Some(picker) = &self.picker {
+      draw_picker(frame, area, &self.theme, self.lang, picker);
+    }
   }
 }
 
@@ -585,28 +674,104 @@ fn idle_label(minutes: u32) -> String {
   }
 }
 
-fn next_lid(current: PowerBehavior) -> PowerBehavior {
-  LID_BEHAVIORS
-    .iter()
-    .position(|&value| value == current)
-    .map(|index| LID_BEHAVIORS[(index + 1) % LID_BEHAVIORS.len()])
-    .unwrap_or(LID_BEHAVIORS[0])
+fn picker_target_len(target: PickerTarget) -> usize {
+  match target {
+    PickerTarget::LidBattery | PickerTarget::LidAc => LID_BEHAVIORS.len(),
+    PickerTarget::PowerButton => BUTTON_BEHAVIORS.len(),
+    PickerTarget::ScreenOff => IDLE_OPTIONS.len(),
+  }
 }
 
-fn next_button(current: PowerButtonBehavior) -> PowerButtonBehavior {
-  BUTTON_BEHAVIORS
-    .iter()
-    .position(|&value| value == current)
-    .map(|index| BUTTON_BEHAVIORS[(index + 1) % BUTTON_BEHAVIORS.len()])
-    .unwrap_or(BUTTON_BEHAVIORS[0])
+/// The current value's position within the picker option list.
+fn picker_default(target: PickerTarget, state: &PowerState) -> usize {
+  match target {
+    PickerTarget::LidBattery => LID_BEHAVIORS
+      .iter()
+      .position(|&value| value == state.lid[0])
+      .unwrap_or(0),
+    PickerTarget::LidAc => LID_BEHAVIORS
+      .iter()
+      .position(|&value| value == state.lid[1])
+      .unwrap_or(0),
+    PickerTarget::PowerButton => BUTTON_BEHAVIORS
+      .iter()
+      .position(|&value| value == state.power_button)
+      .unwrap_or(0),
+    PickerTarget::ScreenOff => {
+      let current = state.screen_off_minutes.unwrap_or(0);
+      IDLE_OPTIONS
+        .iter()
+        .position(|&value| value == current)
+        .unwrap_or_else(|| IDLE_OPTIONS.len().saturating_sub(1))
+    }
+  }
 }
 
-fn next_idle(current: u32) -> u32 {
-  IDLE_OPTIONS
+fn picker_options(target: PickerTarget, lang: Lang) -> Vec<String> {
+  match target {
+    PickerTarget::LidBattery | PickerTarget::LidAc => LID_BEHAVIORS
+      .iter()
+      .map(|&behavior| behavior_label(lang, behavior.value()))
+      .collect(),
+    PickerTarget::PowerButton => BUTTON_BEHAVIORS
+      .iter()
+      .map(|&behavior| behavior_label(lang, behavior.value()))
+      .collect(),
+    PickerTarget::ScreenOff => IDLE_OPTIONS.iter().map(|&minutes| idle_label(minutes)).collect(),
+  }
+}
+
+fn picker_title(lang: Lang, target: PickerTarget) -> String {
+  match target {
+    PickerTarget::LidBattery => tr(lang, "Tampa (bateria)", "Lid close (battery)").into(),
+    PickerTarget::LidAc => tr(lang, "Tampa (CA)", "Lid close (AC)").into(),
+    PickerTarget::PowerButton => tr(lang, "Botão de energia", "Power button").into(),
+    PickerTarget::ScreenOff => tr(lang, "Desligar tela após", "Screen off after").into(),
+  }
+}
+
+fn draw_picker(
+  frame: &mut Frame,
+  area: Rect,
+  theme: &Theme,
+  lang: Lang,
+  picker: &Picker,
+) {
+  let options = picker_options(picker.target, lang);
+  let title = picker_title(lang, picker.target);
+  let width = area.width.saturating_sub(8).clamp(28, 48);
+  let height = (options.len() as u16).saturating_add(2).min(area.height);
+  let popup = centered(area, width, height.max(4));
+  frame.render_widget(Clear, popup);
+  let lines: Vec<Line> = options
     .iter()
-    .position(|&value| value == current)
-    .map(|index| IDLE_OPTIONS[(index + 1) % IDLE_OPTIONS.len()])
-    .unwrap_or(IDLE_OPTIONS[0])
+    .enumerate()
+    .map(|(index, option)| {
+      let chosen = index == picker.selected;
+      let style = if chosen {
+        Style::new()
+          .fg(theme.selected_foreground)
+          .bg(theme.selected_background)
+          .add_modifier(Modifier::BOLD)
+      } else {
+        Style::new().fg(theme.foreground)
+      };
+      Line::from(Span::styled(
+        format!(" {} {} ", if chosen { ">" } else { " " }, option),
+        style,
+      ))
+    })
+    .collect();
+  frame.render_widget(
+    Paragraph::new(lines)
+      .block(
+        Block::bordered()
+          .title(format!(" {title} "))
+          .border_style(Style::new().fg(theme.border_active))
+          .style(Style::new().bg(theme.background)),
+      ),
+    popup,
+  );
 }
 
 #[cfg(test)]
@@ -661,15 +826,96 @@ mod tests {
   }
 
   #[test]
-  fn behaviors_cycle_on_enter() {
-    assert_eq!(next_lid(PowerBehavior::Suspend), PowerBehavior::Hibernate);
-    assert_eq!(
-      next_button(PowerButtonBehavior::Poweroff),
-      PowerButtonBehavior::Suspend
-    );
-    assert_eq!(next_idle(15), 30);
-    assert_eq!(next_idle(120), 0);
-    assert_eq!(next_idle(0), 5);
+  fn picker_opens_closes_and_applies_screen_off() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.job = None;
+    app.action = None;
+    app.state = Some(desktop_state());
+    app.selected = 0;
+    app.handle(KeyCode::Enter);
+    assert!(app.picker.is_some());
+    assert_eq!(app.picker.unwrap().target, PickerTarget::ScreenOff);
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Enter);
+    assert!(app.picker.is_none());
+    assert_eq!(app.state.as_ref().unwrap().screen_off_minutes, Some(60));
+    assert!(app.action.is_some());
+  }
+
+  #[test]
+  fn picker_escape_cancels_without_change() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.job = None;
+    app.action = None;
+    app.state = Some(desktop_state());
+    app.selected = 0;
+    app.handle(KeyCode::Enter);
+    app.handle(KeyCode::Down);
+    assert_eq!(app.picker.unwrap().selected, 3);
+    app.handle(KeyCode::Esc);
+    assert!(app.picker.is_none());
+    assert_eq!(app.state.as_ref().unwrap().screen_off_minutes, Some(15));
+    assert!(app.action.is_none());
+  }
+
+  #[test]
+  fn picker_nunca_clears_screen_off() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.job = None;
+    app.action = None;
+    app.state = Some(desktop_state());
+    app.selected = 0;
+    app.handle(KeyCode::Enter);
+    app.handle(KeyCode::End);
+    assert_eq!(app.picker.unwrap().selected, 6);
+    app.handle(KeyCode::Enter);
+    assert!(app.picker.is_none());
+    assert_eq!(app.state.as_ref().unwrap().screen_off_minutes, None);
+    assert!(app.action.is_some());
+  }
+
+  #[test]
+  fn picker_navigation_is_bounded() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.job = None;
+    app.action = None;
+    app.state = Some(desktop_state());
+    app.selected = 0;
+    app.handle(KeyCode::Enter);
+    for _ in 0..6 {
+      app.handle(KeyCode::Down);
+    }
+    assert_eq!(app.picker.unwrap().selected, 6);
+    app.handle(KeyCode::Home);
+    assert_eq!(app.picker.unwrap().selected, 0);
+  }
+
+  #[test]
+  fn lid_picker_applies_selected_behavior() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.job = None;
+    app.action = None;
+    app.state = Some(laptop_state());
+    app.selected = 0;
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.picker.unwrap().target, PickerTarget::LidBattery);
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Enter);
+    assert!(app.picker.is_none());
+    assert_eq!(app.state.as_ref().unwrap().lid[0], PowerBehavior::Hibernate);
+    assert!(app.action.is_some());
+  }
+
+  #[test]
+  fn picker_defaults_match_current_state() {
+    let state = laptop_state();
+    assert_eq!(picker_default(PickerTarget::LidBattery, &state), 0);
+    assert_eq!(picker_default(PickerTarget::LidAc, &state), 1);
+    assert_eq!(picker_default(PickerTarget::PowerButton, &state), 0);
+    assert_eq!(picker_target_len(PickerTarget::ScreenOff), 7);
+    let desktop = desktop_state();
+    assert_eq!(picker_default(PickerTarget::ScreenOff, &desktop), 2);
   }
 
   #[test]
@@ -708,6 +954,18 @@ mod tests {
   fn power_app_desktop_renders_without_panic() {
     let mut app = PowerApp::new(Lang::En, Theme::load());
     app.state = Some(desktop_state());
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 20)).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+  }
+
+  #[test]
+  fn power_app_renders_with_picker_open() {
+    let mut app = PowerApp::new(Lang::En, Theme::load());
+    app.state = Some(desktop_state());
+    app.picker = Some(Picker {
+      target: PickerTarget::ScreenOff,
+      selected: 6,
+    });
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 20)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
   }
