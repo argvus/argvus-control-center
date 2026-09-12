@@ -37,6 +37,80 @@ fn main() -> Result<()> {
     if app.settings.expire_status() {
       dirty = true;
     }
+    if app.settings.poll() {
+      dirty = true;
+    }
+    if app.config.poll() {
+      dirty = true;
+    }
+    #[cfg(any(
+      feature = "hardware",
+      feature = "services",
+      feature = "network",
+      feature = "audio",
+      feature = "bluetooth",
+      feature = "boot",
+      feature = "packages",
+      feature = "storage",
+      feature = "diagnostics",
+      feature = "power",
+      feature = "session",
+      feature = "displays"
+    ))]
+    {
+      let mut domain_dirty = false;
+      #[cfg(feature = "hardware")]
+      {
+        domain_dirty |= app.hardware.poll();
+      }
+      #[cfg(feature = "services")]
+      {
+        domain_dirty |= app.services.poll();
+      }
+      #[cfg(feature = "network")]
+      {
+        domain_dirty |= app.network.poll();
+      }
+      #[cfg(feature = "audio")]
+      {
+        domain_dirty |= app.audio.poll();
+      }
+      #[cfg(feature = "bluetooth")]
+      {
+        domain_dirty |= app.bluetooth.poll();
+      }
+      #[cfg(feature = "boot")]
+      {
+        domain_dirty |= app.boot.poll();
+      }
+      #[cfg(feature = "packages")]
+      {
+        domain_dirty |= app.packages.poll();
+      }
+      #[cfg(feature = "storage")]
+      {
+        domain_dirty |= app.storage.poll();
+      }
+      #[cfg(feature = "diagnostics")]
+      {
+        domain_dirty |= app.diagnostics.poll();
+      }
+      #[cfg(feature = "power")]
+      {
+        domain_dirty |= app.power.poll();
+      }
+      #[cfg(feature = "session")]
+      {
+        domain_dirty |= app.session.poll();
+      }
+      #[cfg(feature = "displays")]
+      {
+        domain_dirty |= app.displays.poll();
+      }
+      if domain_dirty {
+        dirty = true;
+      }
+    }
   }
   Ok(())
 }

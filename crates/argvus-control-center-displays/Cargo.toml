@@ -1,0 +1,17 @@
+[package]
+name = "argvus-control-center-displays"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+argvus-control-center-core = { path = "../argvus-control-center-core" }
+argvus-i18n = { path = "../argvus-i18n" }
+argvus-theme = { path = "../argvus-theme" }
+argvus-tui = { path = "../argvus-tui" }
+ratatui.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

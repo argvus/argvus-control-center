@@ -1,0 +1,16 @@
+[package]
+name = "argvus-control-center-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+argvus-control-center-core = { path = "../argvus-control-center-core" }
+argvus-i18n = { path = "../argvus-i18n" }
+argvus-theme = { path = "../argvus-theme" }
+argvus-tui = { path = "../argvus-tui" }
+serde_json.workspace = true
+thiserror.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true

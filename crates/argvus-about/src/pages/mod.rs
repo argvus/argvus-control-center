@@ -1,6 +1,8 @@
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use argvus_tui::text::{display_width, truncate_to_width};
+
 use crate::app::{App, Tab};
 use crate::theme::Theme;
 
@@ -47,6 +49,9 @@ pub enum Row {
   Section(String),
   Sub(String),
   Para(String),
+  Lead(String),
+  Divider { label: Option<String> },
+  Module { name: String, description: String },
   KeyValue { key: String, value: String },
   Link { label: String, url: String },
 }
@@ -76,6 +81,20 @@ pub fn simple_doc(rows: &[Row], theme: &Theme, width: usize, selected: usize) ->
             .push(Line::styled(part, Style::new().fg(theme.foreground)));
         }
       }
+      Row::Lead(text) => {
+        for part in wrap_paragraphs(text, width) {
+          doc.lines.push(Line::styled(
+            part,
+            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+          ));
+        }
+      }
+      Row::Divider { label } => {
+        doc.lines.push(divider_line(label.as_deref(), theme, width));
+      }
+      Row::Module { name, description } => {
+        append_module(&mut doc, name, description, theme, width);
+      }
       Row::KeyValue { key, value } => {
         append_key_value(&mut doc, key, value, theme, width);
       }
@@ -99,11 +118,11 @@ pub fn simple_doc(rows: &[Row], theme: &Theme, width: usize, selected: usize) ->
 fn append_key_value(doc: &mut Doc, key: &str, value: &str, theme: &Theme, width: usize) {
   let key_span = Span::styled(key.to_string(), Style::new().fg(theme.muted));
   let separator = Span::raw("  ");
-  let indent = key.chars().count().saturating_add(2);
+  let indent = display_width(key).saturating_add(2);
 
   let mut first = true;
   for part in value.lines() {
-    let joined_width = indent.saturating_add(part.chars().count());
+    let joined_width = indent.saturating_add(display_width(part));
     if joined_width > width {
       for wrapped in wrap_paragraphs(part, width.saturating_sub(indent)) {
         let line = if first {
@@ -149,6 +168,45 @@ fn continuation_line(text: &str, indent: usize, theme: &Theme) -> Line<'static> 
   ])
 }
 
+fn divider_line(label: Option<&str>, theme: &Theme, width: usize) -> Line<'static> {
+  let width = width.max(1);
+  let Some(label) = label.filter(|label| !label.trim().is_empty()) else {
+    return Line::styled("─".repeat(width), Style::new().fg(theme.muted));
+  };
+  let label = label.trim();
+  let available = width.saturating_sub(1);
+  let labeled = if display_width(label) + 4 <= available {
+    format!(" {} ", label)
+  } else {
+    format!(
+      " {}… ",
+      truncate_to_width(label, available.saturating_sub(4))
+    )
+  };
+  let fill = width
+    .saturating_sub(1)
+    .saturating_sub(display_width(&labeled));
+  Line::from(vec![
+    Span::styled("─", Style::new().fg(theme.muted)),
+    Span::styled(
+      labeled,
+      Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+    ),
+    Span::styled("─".repeat(fill), Style::new().fg(theme.muted)),
+  ])
+}
+
+fn append_module(doc: &mut Doc, name: &str, description: &str, theme: &Theme, width: usize) {
+  doc.lines.push(Line::styled(
+    format!("▪ {}", name),
+    Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+  ));
+  let indent = 3;
+  for part in wrap_paragraphs(description, width.saturating_sub(indent)) {
+    doc.lines.push(continuation_line(&part, indent, theme));
+  }
+}
+
 fn line_for_link(
   label: &str,
   _url: &str,
@@ -157,9 +215,8 @@ fn line_for_link(
   width: usize,
 ) -> Line<'static> {
   let mut text = label.to_string();
-  if text.chars().count() > width {
-    let cut: String = text.chars().take(width.saturating_sub(3)).collect();
-    text = format!("{cut}...");
+  if display_width(&text) > width {
+    text = format!("{}...", truncate_to_width(&text, width.saturating_sub(3)));
   }
   let style = if selected {
     Style::new()
@@ -192,7 +249,7 @@ fn wrap_words(paragraph: &str, width: usize) -> Vec<String> {
   for word in paragraph.split_whitespace() {
     if current.is_empty() {
       current = word.to_string();
-    } else if current.chars().count() + 1 + word.chars().count() <= width {
+    } else if display_width(&current) + 1 + display_width(word) <= width {
       current.push(' ');
       current.push_str(word);
     } else {
@@ -245,5 +302,38 @@ mod tests {
     assert_eq!(doc.actions[0].line, 1);
     assert_eq!(doc.actions[1].line, 3);
     assert_eq!(doc.actions[1].url, "https://argvus.github.io/#support");
+  }
+
+  #[test]
+  fn dividers_fit_the_full_width_and_keep_labels() {
+    let rows = vec![Row::Divider {
+      label: Some("Núcleo".into()),
+    }];
+    let doc = simple_doc(&rows, &Theme::load(), 40, 0);
+    assert_eq!(doc.lines.len(), 1);
+    let rendered = doc.lines[0].to_string();
+    assert!(rendered.contains("Núcleo"));
+    assert_eq!(display_width(&rendered), 40);
+  }
+
+  #[test]
+  fn module_rows_bullet_and_indent_description() {
+    let rows = vec![Row::Module {
+      name: "argvus-session".into(),
+      description: "Session lifecycle".into(),
+    }];
+    let doc = simple_doc(&rows, &Theme::load(), 40, 0);
+    assert!(doc.lines[0].to_string().contains("▪ argvus-session"));
+    assert!(doc.lines[1].to_string().contains("Session lifecycle"));
+    assert!(doc.lines[1].to_string().starts_with("   "));
+  }
+
+  #[test]
+  fn lead_is_emphasized_and_wraps_like_paragraphs() {
+    let rows = vec![Row::Lead("aaa bbb ccc ddd".into())];
+    let doc = simple_doc(&rows, &Theme::load(), 7, 0);
+    assert!(doc.lines.len() > 1);
+    let rendered = doc.lines[0].to_string();
+    assert!(rendered.contains("aaa"));
   }
 }

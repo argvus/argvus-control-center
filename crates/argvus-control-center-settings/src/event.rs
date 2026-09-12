@@ -11,6 +11,44 @@ pub fn handle(app: &mut App, event: Event) {
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
+  if app.task_open {
+    match key.code {
+      KeyCode::Esc => {
+        app.task_open = false;
+        app.task_live = None;
+        app.task_scroll = 0;
+        app.task_follow = false;
+      }
+      KeyCode::Up | KeyCode::Char('k') => {
+        app.task_follow = false;
+        app.task_scroll = app.task_scroll.saturating_sub(1);
+      }
+      KeyCode::Down | KeyCode::Char('j') => {
+        app.task_follow = false;
+        app.task_scroll = app.task_scroll.saturating_add(1);
+      }
+      KeyCode::PageUp => {
+        app.task_follow = false;
+        app.task_scroll = app.task_scroll.saturating_sub(10);
+      }
+      KeyCode::PageDown => {
+        app.task_follow = false;
+        app.task_scroll = app.task_scroll.saturating_add(10);
+      }
+      KeyCode::Home => {
+        app.task_follow = false;
+        app.task_scroll = 0;
+      }
+      KeyCode::End => {
+        if let Some(live) = &app.task_live {
+          app.task_scroll = crate::app::task_bottom_offset(&live.output());
+        }
+      }
+      _ => {}
+    }
+    return;
+  }
+
   if app.confirm.is_some() {
     match key.code {
       KeyCode::Enter => app.confirm_accept(),
@@ -61,10 +99,20 @@ fn handle_key(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
     KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),
+    KeyCode::Tab => app.cycle_selection(1),
+    KeyCode::BackTab => app.cycle_selection(-1),
+    KeyCode::Right | KeyCode::Char('l') if app.on_buttons() => app.move_button(1),
+    KeyCode::Left | KeyCode::Char('h') if app.on_buttons() => app.move_button(-1),
     KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.open_or_apply(),
     KeyCode::Left | KeyCode::Char('h') | KeyCode::Esc => app.back(),
     KeyCode::Char('/') => app.begin_search(),
-    KeyCode::Char('r') => app.reset_current(),
+    KeyCode::Char('r') => {
+      if app.page() == crate::navigation::Page::System {
+        app.refresh_system();
+      } else {
+        app.reset_current();
+      }
+    }
     KeyCode::Char(' ') => app.toggle_current(),
     KeyCode::Char('+') | KeyCode::Char('=') => app.adjust_size(1),
     KeyCode::Char('-') => app.adjust_size(-1),
@@ -73,7 +121,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
       app.move_selection(-(selected as isize));
     }
     KeyCode::End => {
-      let count = app.rows().len();
+      let count = app.item_count();
       let selected = app.navigation.current().selected;
       app.move_selection(count.saturating_sub(selected + 1) as isize);
     }

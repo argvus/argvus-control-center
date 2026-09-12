@@ -1,12 +1,24 @@
 use crate::app::App;
 use crate::i18n::tr;
 
-use super::{ARGVUS_URL, Doc, Row, simple_doc};
+use super::{ARGVUS_URL, DONATE_URL, Doc, Row, simple_doc};
+
+pub struct Module {
+  pub name: &'static str,
+  pub pt: &'static str,
+  pub en: &'static str,
+}
+
+pub struct Group {
+  pub pt: &'static str,
+  pub en: &'static str,
+  pub modules: &'static [Module],
+}
 
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let mut rows = vec![
-        Row::Para(
+        Row::Lead(
             tr(
                 lang,
                 "O ARGVUS é uma coleção modular de pacotes que juntos entregam um ambiente de desktop completo para Wayland e Hyprland.",
@@ -14,104 +26,153 @@ pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
             )
             .to_string(),
         ),
-        Row::Section(tr(lang, "Site oficial", "Official website").to_string()),
-        Row::Link {
-            label: ARGVUS_URL.to_string(),
-            url: ARGVUS_URL.to_string(),
-        },
+        Row::Spacer,
+        kv_row(lang, "Versão", "Version", app.argvus_version.clone()),
+        kv_row(lang, "Licença", "License", "GPL-3.0".to_string()),
         Row::Spacer,
     ];
 
-  for (name, pt, en) in modules() {
-    rows.push(Row::Sub(name.to_string()));
-    rows.push(Row::Para(tr(lang, pt, en).to_string()));
+  for group in groups() {
+    rows.push(Row::Divider {
+      label: Some(tr(lang, group.pt, group.en).to_string()),
+    });
+    for module in group.modules {
+      rows.push(Row::Module {
+        name: module.name.to_string(),
+        description: tr(lang, module.pt, module.en).to_string(),
+      });
+    }
   }
+
+  rows.push(Row::Spacer);
+  rows.push(Row::Divider {
+    label: Some(tr(lang, "Links", "Links").to_string()),
+  });
+  rows.push(Row::Link {
+    label: ARGVUS_URL.to_string(),
+    url: ARGVUS_URL.to_string(),
+  });
+  rows.push(Row::Link {
+    label: tr(lang, "Apoiar o projeto", "Support the project").to_string(),
+    url: DONATE_URL.to_string(),
+  });
 
   simple_doc(&rows, &app.theme, width, selected)
 }
 
-pub fn modules() -> [(&'static str, &'static str, &'static str); 16] {
+fn kv_row<'a>(lang: crate::i18n::Lang, pt: &'a str, en: &'a str, value: String) -> Row {
+  Row::KeyValue {
+    key: format!("{:<8}", tr(lang, pt, en)),
+    value,
+  }
+}
+
+pub fn groups() -> [Group; 4] {
   [
-    (
-      "argvus-session",
-      "Ciclo de vida da sessão, targets e integração Hyprland.",
-      "Session lifecycle, targets and Hyprland integration.",
-    ),
-    (
-      "argvus-hyprland",
-      "Configuracao Hyprland e scripts do shell ARGVUS.",
-      "Hyprland configuration and ARGVUS shell scripts.",
-    ),
-    (
-      "argvus-launcher",
-      "Launcher Rofi, menus e temas.",
-      "Rofi launcher, menus and themes.",
-    ),
-    (
-      "argvus-control-panel",
-      "Painel lateral Quickshell e seus temas.",
-      "Quickshell sidebar control panel and its themes.",
-    ),
-    (
-      "argvus-appearance",
-      "Temas, fontes, wallpapers e integração visual.",
-      "Themes, fonts, wallpapers and visual integration.",
-    ),
-    (
-      "argvus-control-center",
-      "Configurações do ARGVUS, incluindo fontes e aplicativos padrão.",
-      "ARGVUS control center, including fonts and default applications.",
-    ),
-    (
-      "argvus-about",
-      "Informações do sistema, créditos e licença do ARGVUS.",
-      "System information, credits and ARGVUS license.",
-    ),
-    (
-      "argvus-calendar",
-      "Calendário e popup integrado à taskbar.",
-      "Calendar and taskbar popup integration.",
-    ),
-    (
-      "argvus-storage",
-      "Módulo de dispositivos removíveis e armazenamento.",
-      "Removable device and storage module.",
-    ),
-    (
-      "argvus-greeter",
-      "Tela gráfica de login do ARGVUS.",
-      "ARGVUS graphical login screen.",
-    ),
-    (
-      "argvus-accounts",
-      "Configurações de conta e usuário.",
-      "Account and user settings.",
-    ),
-    (
-      "argvus-display",
-      "Gerenciamento de monitores e layouts.",
-      "Monitor and layout management.",
-    ),
-    (
-      "argvus-network",
-      "NetworkManager, Wi-Fi e Bluetooth.",
-      "NetworkManager, Wi-Fi and Bluetooth.",
-    ),
-    (
-      "argvus-power",
-      "Menu de energia, idle e ações de sessão.",
-      "Power menu, idle and session actions.",
-    ),
-    (
-      "argvus-lock",
-      "Bloqueio de tela e temas do lock screen.",
-      "Screen locking and lock screen themes.",
-    ),
-    (
-      "argvus-portal",
-      "Portais Wayland, DBus e preferências de integração.",
-      "Wayland portals, DBus and integration preferences.",
-    ),
+    Group {
+      pt: "Núcleo",
+      en: "Core",
+      modules: &[
+        Module {
+          name: "argvus-session",
+          pt: "Ciclo de vida da sessão, targets e integração Hyprland.",
+          en: "Session lifecycle, targets and Hyprland integration.",
+        },
+        Module {
+          name: "argvus-hyprland",
+          pt: "Configuracao Hyprland e scripts do shell ARGVUS.",
+          en: "Hyprland configuration and ARGVUS shell scripts.",
+        },
+        Module {
+          name: "argvus-portal",
+          pt: "Portais Wayland, DBus e preferências de integração.",
+          en: "Wayland portals, DBus and integration preferences.",
+        },
+      ],
+    },
+    Group {
+      pt: "Interface e Desktop",
+      en: "Shell and desktop",
+      modules: &[
+        Module {
+          name: "argvus-launcher",
+          pt: "Launcher Rofi, menus e temas.",
+          en: "Rofi launcher, menus and themes.",
+        },
+        Module {
+          name: "argvus-control-panel",
+          pt: "Painel lateral Quickshell e seus temas.",
+          en: "Quickshell sidebar control panel and its themes.",
+        },
+        Module {
+          name: "argvus-appearance",
+          pt: "Temas, fontes, wallpapers e integração visual.",
+          en: "Themes, fonts, wallpapers and visual integration.",
+        },
+        Module {
+          name: "argvus-taskbar-calendar",
+          pt: "Calendário e popup integrado à taskbar.",
+          en: "Calendar and taskbar popup integration.",
+        },
+        Module {
+          name: "argvus-taskbar-storage",
+          pt: "Módulo de dispositivos removíveis e armazenamento.",
+          en: "Removable device and storage module.",
+        },
+        Module {
+          name: "argvus-greeter",
+          pt: "Tela gráfica de login do ARGVUS.",
+          en: "ARGVUS graphical login screen.",
+        },
+        Module {
+          name: "argvus-lock",
+          pt: "Bloqueio de tela e temas do lock screen.",
+          en: "Screen locking and lock screen themes.",
+        },
+      ],
+    },
+    Group {
+      pt: "Configuração",
+      en: "Configuration",
+      modules: &[
+        Module {
+          name: "argvus-control-center",
+          pt: "Configurações do ARGVUS, incluindo fontes e aplicativos padrão.",
+          en: "ARGVUS control center, including fonts and default applications.",
+        },
+        Module {
+          name: "argvus-about",
+          pt: "Informações do sistema, créditos e licença do ARGVUS.",
+          en: "System information, credits and ARGVUS license.",
+        },
+        Module {
+          name: "argvus-accounts",
+          pt: "Configurações de conta e usuário.",
+          en: "Account and user settings.",
+        },
+        Module {
+          name: "argvus-display",
+          pt: "Gerenciamento de monitores e layouts.",
+          en: "Monitor and layout management.",
+        },
+      ],
+    },
+    Group {
+      pt: "Serviços e Energia",
+      en: "Services and power",
+      modules: &[
+        Module {
+          name: "argvus-network",
+          pt: "NetworkManager, Wi-Fi e Bluetooth.",
+          en: "NetworkManager, Wi-Fi and Bluetooth.",
+        },
+        Module {
+          name: "argvus-power",
+          pt: "Menu de energia, idle e ações de sessão.",
+          en: "Power menu, idle and session actions.",
+        },
+      ],
+    },
   ]
 }
 
@@ -130,5 +191,44 @@ mod tests {
     let text = doc.lines.iter().map(|l| l.to_string()).collect::<String>();
     assert!(text.contains("argvus-session"));
     assert!(text.contains("argvus-portal"));
+  }
+
+  #[test]
+  fn every_group_is_represented_in_both_languages() {
+    use crate::i18n::Lang;
+    for lang in [Lang::Pt, Lang::En] {
+      let mut app = App::test();
+      app.lang = lang;
+      let doc = doc(&app, 80, 0);
+      let text = doc.lines.iter().map(|l| l.to_string()).collect::<String>();
+      for group in groups() {
+        let label = tr(lang, group.pt, group.en);
+        assert!(
+          text.contains(label),
+          "missing group '{}' for {:?}",
+          label,
+          lang
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn about_offers_site_and_support_links() {
+    let doc = doc(&App::test(), 80, 0);
+    assert!(doc.actions.iter().any(|a| a.url == ARGVUS_URL));
+    assert!(doc.actions.iter().any(|a| a.url == DONATE_URL));
+  }
+
+  #[test]
+  fn groups_cover_every_module_name() {
+    let names = groups()
+      .iter()
+      .flat_map(|group| group.modules.iter())
+      .map(|module| module.name)
+      .collect::<Vec<_>>();
+    assert_eq!(names.len(), 16);
+    assert!(names.contains(&"argvus-about"));
+    assert!(names.contains(&"argvus-taskbar-storage"));
   }
 }

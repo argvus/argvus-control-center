@@ -12,7 +12,7 @@ pub struct Loader {
 impl Loader {
   pub fn new() -> Self {
     let explicit = std::env::var_os("ARGVUS_CONTROL_CENTER_RESOURCE_DIR").map(PathBuf::from);
-    let installed = PathBuf::from("/etc/argvus-control-center");
+    let installed = PathBuf::from("/etc/argvus/control-center");
     let development = development_resources_dir();
     let resource_dir = explicit.unwrap_or_else(|| {
       if installed.is_dir() {
@@ -27,7 +27,7 @@ impl Loader {
     Self {
       resource_dir,
       active_file: argvus_config_home().join(".active-theme"),
-      cache_file: cache_home.join("argvus-calendar/theme.css"),
+      cache_file: cache_home.join("argvus-taskbar-calendar/theme.css"),
     }
   }
 

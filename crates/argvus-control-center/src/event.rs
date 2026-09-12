@@ -47,12 +47,18 @@ pub fn handle(app: &mut App, event: Event) {
 
   match app.route {
     Route::Home => handle_home(app, key),
+    Route::Config => {
+      if app.config.handle(key.code) {
+        app.route = Route::Home;
+      }
+    }
     Route::Settings => {
       if key.code == KeyCode::Esc
         && !app.settings.searching
         && app.settings.error_modal.is_none()
         && app.settings.confirm.is_none()
         && !app.settings.hostname_editing
+        && !app.settings.task_open
       {
         app.back();
       } else {
@@ -63,19 +69,116 @@ pub fn handle(app: &mut App, event: Event) {
         }
       }
     }
+    #[cfg(feature = "about")]
     Route::About => handle_about(app, key),
+    #[cfg(feature = "hardware")]
+    Route::Hardware => {
+      if app.hardware.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "services")]
+    Route::Services => {
+      if app.services.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "network")]
+    Route::Network => {
+      if app.network.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "audio")]
+    Route::Audio => {
+      if app.audio.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "bluetooth")]
+    Route::Bluetooth => {
+      if app.bluetooth.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "boot")]
+    Route::Boot => {
+      if app.boot.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "packages")]
+    Route::Packages => {
+      if app.packages.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "storage")]
+    Route::Storage => {
+      if app.storage.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "diagnostics")]
+    Route::Diagnostics => {
+      if app.diagnostics.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "power")]
+    Route::Power => {
+      if app.power.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "session")]
+    Route::Session => {
+      if app.session.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
+    #[cfg(feature = "displays")]
+    Route::Displays => {
+      if app.displays.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
   }
+}
+
+#[cfg(any(
+  feature = "hardware",
+  feature = "services",
+  feature = "network",
+  feature = "audio",
+  feature = "bluetooth",
+  feature = "boot",
+  feature = "packages",
+  feature = "storage",
+  feature = "diagnostics",
+  feature = "power",
+  feature = "session",
+  feature = "displays"
+))]
+fn domain_key(key: KeyCode) -> KeyCode {
+  key
 }
 
 fn handle_home(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Up | KeyCode::Char('k') => app.move_home(-1),
     KeyCode::Down | KeyCode::Char('j') => app.move_home(1),
+    KeyCode::Home => app.home_selected = 0,
+    KeyCode::End => app.home_selected = app.home_item_count().saturating_sub(1),
+    KeyCode::PageUp => app.move_home(-5),
+    KeyCode::PageDown => app.move_home(5),
     KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.open_home(),
+    KeyCode::Char('s') => app.route = Route::Config,
     _ => {}
   }
 }
 
+#[cfg(feature = "about")]
 fn handle_about(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Esc => app.back(),
@@ -96,6 +199,7 @@ fn handle_about(app: &mut App, key: KeyEvent) {
 mod tests {
   use super::*;
   use crate::app::{InitialRoute, Route};
+  #[cfg(feature = "about")]
   use argvus_control_center_about::Tab;
   use crossterm::event::{KeyEventState, KeyModifiers};
 
@@ -108,6 +212,7 @@ mod tests {
     ))
   }
 
+  #[cfg(feature = "apps")]
   #[test]
   fn escape_cancels_settings_confirmation_without_leaving_page() {
     let mut app = App::new(InitialRoute::Apps);
@@ -121,6 +226,7 @@ mod tests {
     assert!(app.settings.confirm.is_none());
   }
 
+  #[cfg(feature = "about")]
   #[test]
   fn q_quits_from_about() {
     let mut app = App::new(InitialRoute::About(Tab::System));
@@ -137,6 +243,7 @@ mod tests {
       .settings
       .navigation
       .push(argvus_control_center_settings::Page::CreateUser);
+    app.settings.normalize_selection();
     app.settings.open_or_apply();
     handle(&mut app, press(KeyCode::Char('q')));
     handle(&mut app, press(KeyCode::Char('?')));
@@ -151,6 +258,7 @@ mod tests {
     );
   }
 
+  #[cfg(feature = "fonts")]
   #[test]
   fn q_quits_during_settings_search() {
     let mut app = App::new(InitialRoute::Fonts);
@@ -159,6 +267,7 @@ mod tests {
     assert!(app.quit);
   }
 
+  #[cfg(feature = "about")]
   #[test]
   fn escape_returns_from_about_to_home() {
     let mut app = App::new(InitialRoute::About(Tab::System));
@@ -166,10 +275,199 @@ mod tests {
     assert_eq!(app.route, Route::Home);
   }
 
+  #[cfg(feature = "about")]
   #[test]
   fn arrows_switch_about_tabs() {
     let mut app = App::new(InitialRoute::About(Tab::System));
     handle(&mut app, press(KeyCode::Right));
     assert_eq!(app.about.active_tab, Tab::About);
+  }
+
+  #[test]
+  fn all_domain_subpages_return_one_level_with_escape_and_left() {
+    let cases = [
+      #[cfg(feature = "network")]
+      (
+        InitialRoute::Network(argvus_control_center_network::NetworkPage::Wifi),
+        Route::Network,
+      ),
+      #[cfg(feature = "audio")]
+      (
+        InitialRoute::Audio(argvus_control_center_audio::AudioPage::Output),
+        Route::Audio,
+      ),
+      #[cfg(feature = "bluetooth")]
+      (
+        InitialRoute::Bluetooth(argvus_control_center_bluetooth::BluetoothPage::Devices),
+        Route::Bluetooth,
+      ),
+      #[cfg(feature = "boot")]
+      (
+        InitialRoute::Boot(argvus_control_center_boot::BootPage::Kernel),
+        Route::Boot,
+      ),
+      #[cfg(feature = "packages")]
+      (
+        InitialRoute::Packages(argvus_control_center_packages::PackagesPage::Updates),
+        Route::Packages,
+      ),
+      #[cfg(feature = "hardware")]
+      (
+        InitialRoute::Hardware(argvus_control_center_hardware::HardwarePage::Gpu),
+        Route::Hardware,
+      ),
+      #[cfg(feature = "services")]
+      (
+        InitialRoute::Services(argvus_control_center_services::ServicePage::Logs),
+        Route::Services,
+      ),
+    ];
+    for (initial, route) in cases {
+      let mut app = App::new(initial);
+      assert_eq!(app.route, route);
+      handle(&mut app, press(KeyCode::Esc));
+      assert_eq!(app.route, route, "first back must stay in the domain");
+      handle(&mut app, press(KeyCode::Left));
+      assert_eq!(app.route, Route::Home, "second back must reach global home");
+    }
+  }
+
+  #[cfg(feature = "network")]
+  #[test]
+  fn home_opens_network_and_back_returns_home() {
+    let mut app = App::new(InitialRoute::Home);
+    app.home_selected = app
+      .home_rows()
+      .iter()
+      .filter_map(|row| match row {
+        crate::app::HomeRow::Item { action, .. } => Some(*action),
+        crate::app::HomeRow::Header(_) => None,
+      })
+      .position(|action| action == 5)
+      .expect("Network row must be listed");
+    handle(&mut app, press(KeyCode::Enter));
+    assert_eq!(app.route, Route::Network);
+    handle(&mut app, press(KeyCode::Esc));
+    assert_eq!(app.route, Route::Home);
+  }
+
+  #[cfg(feature = "boot")]
+  #[test]
+  fn boot_home_enter_uses_the_selected_item() {
+    let mut app = App::new(InitialRoute::Boot(
+      argvus_control_center_boot::BootPage::Home,
+    ));
+    handle(&mut app, press(KeyCode::Down));
+    handle(&mut app, press(KeyCode::Enter));
+    assert_eq!(app.boot.page, argvus_control_center_boot::BootPage::Kernel);
+  }
+
+  #[test]
+  fn s_opens_config_and_escape_returns_home() {
+    let mut app = App::new(InitialRoute::Home);
+    handle(&mut app, press(KeyCode::Char('s')));
+    assert_eq!(app.route, Route::Config);
+    handle(&mut app, press(KeyCode::Esc));
+    assert_eq!(app.route, Route::Home);
+  }
+
+  #[test]
+  fn domain_home_lists_open_the_selected_page() {
+    #[cfg(feature = "network")]
+    {
+      let mut app = App::new(InitialRoute::Home);
+      app.route = Route::Network;
+      handle(&mut app, press(KeyCode::Down));
+      handle(&mut app, press(KeyCode::Enter));
+      assert_eq!(
+        app.network.page,
+        argvus_control_center_network::NetworkPage::Interfaces
+      );
+    }
+
+    #[cfg(feature = "audio")]
+    {
+      let mut app = App::new(InitialRoute::Home);
+      app.route = Route::Audio;
+      handle(&mut app, press(KeyCode::Down));
+      handle(&mut app, press(KeyCode::Enter));
+      assert_eq!(
+        app.audio.page,
+        argvus_control_center_audio::AudioPage::Output
+      );
+    }
+
+    #[cfg(feature = "bluetooth")]
+    {
+      let mut app = App::new(InitialRoute::Home);
+      app.route = Route::Bluetooth;
+      handle(&mut app, press(KeyCode::Down));
+      handle(&mut app, press(KeyCode::Enter));
+      assert_eq!(
+        app.bluetooth.page,
+        argvus_control_center_bluetooth::BluetoothPage::Devices
+      );
+    }
+
+    #[cfg(feature = "packages")]
+    {
+      let mut app = App::new(InitialRoute::Home);
+      app.route = Route::Packages;
+      handle(&mut app, press(KeyCode::Down));
+      handle(&mut app, press(KeyCode::Down));
+      handle(&mut app, press(KeyCode::Enter));
+      assert_eq!(
+        app.packages.page,
+        argvus_control_center_packages::PackagesPage::Installed
+      );
+    }
+  }
+
+  #[test]
+  fn hardware_and_services_nested_pages_back_out_one_level() {
+    #[cfg(feature = "hardware")]
+    {
+      let mut app = App::new(InitialRoute::Hardware(
+        argvus_control_center_hardware::HardwarePage::Cpu,
+      ));
+      handle(&mut app, press(KeyCode::Esc));
+      assert_eq!(
+        app.hardware.page,
+        argvus_control_center_hardware::HardwarePage::Home
+      );
+      handle(&mut app, press(KeyCode::Esc));
+      assert_eq!(app.route, Route::Home);
+    }
+
+    #[cfg(feature = "services")]
+    {
+      let mut app = App::new(InitialRoute::Services(
+        argvus_control_center_services::ServicePage::Detail,
+      ));
+      handle(&mut app, press(KeyCode::Esc));
+      assert_eq!(
+        app.services.page,
+        argvus_control_center_services::ServicePage::System
+      );
+      handle(&mut app, press(KeyCode::Esc));
+      assert_eq!(
+        app.services.page,
+        argvus_control_center_services::ServicePage::Home
+      );
+      handle(&mut app, press(KeyCode::Esc));
+      assert_eq!(app.route, Route::Home);
+    }
+  }
+
+  #[cfg(feature = "hardware")]
+  #[test]
+  fn hardware_route_initialization_is_reachable() {
+    let app = App::new(InitialRoute::Hardware(
+      argvus_control_center_hardware::HardwarePage::Cpu,
+    ));
+    assert_eq!(
+      app.hardware.page,
+      argvus_control_center_hardware::HardwarePage::Cpu
+    );
   }
 }

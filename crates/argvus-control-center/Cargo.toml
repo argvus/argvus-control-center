@@ -7,10 +7,81 @@ rust-version.workspace = true
 description = "Keyboard-first ARGVUS control center"
 repository.workspace = true
 
+[features]
+default = ["full"]
+
+# Compile-time module switches. Remove a module from "full" (or build with
+# --no-default-features --features <the ones you want>) and that module will
+# not appear in argvus-control-center. Flip a module back to true by adding
+# it to the list again. Examples:
+#   const DEFAULT_APP: bool = true;   -> apps, fonts, locale, language, system
+#   const BLUETOOTH:   bool = false;  -> bluetooth
+full = [
+  "about",
+  "apps",
+  "fonts",
+  "locale",
+  "language",
+  "hardware",
+  "network",
+  "audio",
+  "bluetooth",
+  "boot",
+  "packages",
+  "services",
+  "system",
+  "storage",
+  "diagnostics",
+  "power",
+  "session",
+  "displays",
+]
+stable = [
+  "about",
+  "apps",
+  "fonts",
+  "locale",
+  "language",
+  "network",
+  "services",
+  "system",
+]
+about = ["dep:argvus-control-center-about"]
+hardware = ["dep:argvus-control-center-hardware"]
+services = ["dep:argvus-control-center-services"]
+network = ["dep:argvus-control-center-network"]
+audio = ["dep:argvus-control-center-audio"]
+bluetooth = ["dep:argvus-control-center-bluetooth"]
+boot = ["dep:argvus-control-center-boot"]
+packages = ["dep:argvus-control-center-packages"]
+storage = ["dep:argvus-control-center-storage"]
+diagnostics = ["dep:argvus-control-center-diagnostics"]
+power = ["dep:argvus-control-center-power"]
+session = ["dep:argvus-control-center-session"]
+displays = ["dep:argvus-control-center-displays"]
+apps = []
+fonts = []
+locale = []
+language = []
+system = []
+
 [dependencies]
 anyhow.workspace = true
-argvus-control-center-about = { path = "../argvus-about" }
+argvus-control-center-about = { path = "../argvus-about", optional = true }
 argvus-control-center-settings = { path = "../argvus-control-center-settings" }
+argvus-control-center-hardware = { path = "../argvus-control-center-hardware", optional = true }
+argvus-control-center-services = { path = "../argvus-control-center-services", optional = true }
+argvus-control-center-network = { path = "../argvus-control-center-network", optional = true }
+argvus-control-center-audio = { path = "../argvus-control-center-audio", optional = true }
+argvus-control-center-bluetooth = { path = "../argvus-control-center-bluetooth", optional = true }
+argvus-control-center-boot = { path = "../argvus-control-center-boot", optional = true }
+argvus-control-center-packages = { path = "../argvus-control-center-packages", optional = true }
+argvus-control-center-storage = { path = "../argvus-control-center-storage", optional = true }
+argvus-control-center-diagnostics = { path = "../argvus-control-center-diagnostics", optional = true }
+argvus-control-center-power = { path = "../argvus-control-center-power", optional = true }
+argvus-control-center-session = { path = "../argvus-control-center-session", optional = true }
+argvus-control-center-displays = { path = "../argvus-control-center-displays", optional = true }
+argvus-control-center-core = { path = "../argvus-control-center-core" }
 argvus-i18n = { path = "../argvus-i18n" }
 argvus-theme = { path = "../argvus-theme" }
 argvus-tui = { path = "../argvus-tui" }

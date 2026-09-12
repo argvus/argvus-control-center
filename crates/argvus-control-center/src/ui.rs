@@ -7,7 +7,7 @@ use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Widget};
 
-use crate::app::{App, Route};
+use crate::app::{App, HomeRow, Route};
 
 pub fn draw(app: &mut App, frame: &mut Frame) {
   let area = frame.area();
@@ -30,8 +30,34 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
 
   match app.route {
     Route::Home => draw_home(app, frame),
+    Route::Config => app.config.draw(frame),
     Route::Settings => argvus_control_center_settings::ui::draw(&mut app.settings, frame),
+    #[cfg(feature = "about")]
     Route::About => argvus_control_center_about::ui::draw(&mut app.about, frame),
+    #[cfg(feature = "hardware")]
+    Route::Hardware => app.hardware.draw(frame),
+    #[cfg(feature = "services")]
+    Route::Services => app.services.draw(frame),
+    #[cfg(feature = "network")]
+    Route::Network => app.network.draw(frame),
+    #[cfg(feature = "audio")]
+    Route::Audio => app.audio.draw(frame),
+    #[cfg(feature = "bluetooth")]
+    Route::Bluetooth => app.bluetooth.draw(frame),
+    #[cfg(feature = "boot")]
+    Route::Boot => app.boot.draw(frame),
+    #[cfg(feature = "packages")]
+    Route::Packages => app.packages.draw(frame),
+    #[cfg(feature = "storage")]
+    Route::Storage => app.storage.draw(frame),
+    #[cfg(feature = "diagnostics")]
+    Route::Diagnostics => app.diagnostics.draw(frame),
+    #[cfg(feature = "power")]
+    Route::Power => app.power.draw(frame),
+    #[cfg(feature = "session")]
+    Route::Session => app.session.draw(frame),
+    #[cfg(feature = "displays")]
+    Route::Displays => app.displays.draw(frame),
   }
   if app.help {
     draw_help(
@@ -63,32 +89,42 @@ fn draw_home(app: &App, frame: &mut Frame) {
     rows[0],
     &app.theme,
     Header {
-      title: tr(app.lang, "Central de Controle", "Control Center"),
+      title: tr(app.lang, "ARGVUS Control Center", "ARGVUS Control Center"),
       version: None,
       version_label: "",
     },
   );
+  let mut selected = 0;
   let lines: Vec<Line<'static>> = app
     .home_rows()
     .into_iter()
-    .enumerate()
-    .map(|(index, label)| {
-      let selected = index == app.home_selected;
-      let style = if selected {
-        Style::new()
-          .fg(app.theme.selected_foreground)
-          .bg(app.theme.selected_background)
-          .add_modifier(Modifier::BOLD)
-      } else {
-        Style::new()
-          .fg(app.theme.foreground)
+    .map(|row| match row {
+      HomeRow::Header(label) => {
+        let style = Style::new()
+          .fg(app.theme.accent)
           .bg(app.theme.background)
-      };
-      Line::from(vec![Span::styled(
-        format!(" {} {label}", if selected { ">" } else { " " }),
-        style,
-      )])
-      .style(style)
+          .add_modifier(Modifier::BOLD);
+        Line::from(Span::styled(format!("  {label}"), style)).style(style)
+      }
+      HomeRow::Item { label, .. } => {
+        let is_selected = selected == app.home_selected;
+        selected += 1;
+        let style = if is_selected {
+          Style::new()
+            .fg(app.theme.selected_foreground)
+            .bg(app.theme.selected_background)
+            .add_modifier(Modifier::BOLD)
+        } else {
+          Style::new()
+            .fg(app.theme.foreground)
+            .bg(app.theme.background)
+        };
+        Line::from(vec![Span::styled(
+          format!(" {} {label}", if is_selected { ">" } else { " " }),
+          style,
+        )])
+        .style(style)
+      }
     })
     .collect();
   frame.render_widget(Paragraph::new(lines), rows[1].inner(Margin::new(2, 1)));
@@ -99,8 +135,8 @@ fn draw_home(app: &App, frame: &mut Frame) {
     None,
     tr(
       app.lang,
-      "↑/↓ Navegar   →/Enter Abrir   ? Ajuda   q Sair",
-      "↑/↓ Navigate   →/Enter Open   ? Help   q Quit",
+      "↑/↓ Navegar   →/Enter Abrir   s Configuração   ? Ajuda   q Sair",
+      "↑/↓ Navigate   →/Enter Open   s Configuration   ? Help   q Quit",
     ),
   );
 }
@@ -112,9 +148,9 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   #[test]
-  fn home_renders_all_three_destinations() {
+  fn home_renders_existing_and_phase_two_destinations() {
     let mut app = App::new(InitialRoute::Home);
-    let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(90, 32)).unwrap();
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
     let text = terminal
       .backend()
@@ -123,8 +159,67 @@ mod tests {
       .iter()
       .map(|cell| cell.symbol())
       .collect::<String>();
+    assert!(text.contains("ARGVUS"));
+    assert!(text.contains("Control Center"));
+    #[cfg(feature = "about")]
     assert!(text.contains("About"));
+    #[cfg(feature = "fonts")]
     assert!(text.contains("Fonts") || text.contains("Fontes"));
+    #[cfg(feature = "apps")]
     assert!(text.contains("Default Apps") || text.contains("Apps Padrão"));
+    #[cfg(feature = "hardware")]
+    assert!(text.contains("Hardware"));
+    #[cfg(feature = "services")]
+    assert!(text.contains("Services") || text.contains("Serviços"));
+    assert!(text.contains("? Help") || text.contains("? Ajuda"));
+  }
+
+  #[test]
+  fn domain_pages_use_the_shared_chrome() {
+    let cases: [(Route, [&str; 2]); _] = [
+      #[cfg(feature = "network")]
+      (Route::Network, ["Network", "Rede"]),
+      #[cfg(feature = "boot")]
+      (Route::Boot, ["Boot", "Boot"]),
+      #[cfg(feature = "packages")]
+      (Route::Packages, ["Packages", "Pacotes"]),
+    ];
+    for (route, marker) in cases {
+      let mut app = App::new(InitialRoute::Home);
+      app.route = route;
+      let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
+      terminal.draw(|frame| draw(&mut app, frame)).unwrap();
+      let text = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect::<String>();
+      assert!(text.contains("ARGVUS"));
+      assert!(text.contains(marker[0]) || text.contains(marker[1]));
+      assert!(text.contains(app.theme.name.as_str()));
+      assert!(text.contains("Enter") || text.contains("Abrir"));
+      assert!(!text.contains("┌ Network") && !text.contains("┌ Boot"));
+    }
+  }
+
+  #[test]
+  fn config_screen_renders_with_chrome_and_checkbox() {
+    let mut app = App::new(InitialRoute::Home);
+    app.route = Route::Config;
+    let mut terminal = Terminal::new(TestBackend::new(90, 24)).unwrap();
+    terminal.draw(|frame| draw(&mut app, frame)).unwrap();
+    let text = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .map(|cell| cell.symbol())
+      .collect::<String>();
+    assert!(text.contains("ARGVUS"));
+    assert!(text.contains("Configuração") || text.contains("Configuration"));
+    assert!(text.contains("[✓]") || text.contains("[ ]"));
+    assert!(text.contains("Icones") || text.contains("Icons"));
   }
 }

@@ -25,10 +25,12 @@ pub fn draw_header(frame: &mut Frame, area: Rect, theme: &Theme, header: Header<
   let inner = area.inner(Margin::new(1, 0));
   let version_width = header
     .version
-    .map(|version| header.version_label.chars().count() + version.chars().count() + 3)
+    .map(|version| {
+      crate::text::display_width(header.version_label) + crate::text::display_width(version) + 3
+    })
     .unwrap_or(0);
-  let requested = version_width + theme.name.chars().count();
-  let left_minimum = 10 + header.title.chars().count();
+  let requested = version_width + crate::text::display_width(&theme.name);
+  let left_minimum = 10 + crate::text::display_width(header.title);
   let right_width = requested.min((inner.width as usize).saturating_sub(left_minimum));
   let columns =
     Layout::horizontal([Constraint::Fill(1), Constraint::Length(right_width as u16)]).split(inner);
@@ -157,4 +159,43 @@ pub fn centered(area: Rect, width: u16, height: u16) -> Rect {
     width.min(area.width),
     height.min(area.height),
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use ratatui::{Terminal, backend::TestBackend};
+
+  #[test]
+  fn header_shows_full_theme_name_on_realistic_width() {
+    let mut theme = argvus_theme::Theme::load();
+    theme.name = "argvus-dark-aether".into();
+    let mut terminal = Terminal::new(TestBackend::new(120, 3)).unwrap();
+    terminal
+      .draw(|frame| {
+        draw_header(
+          frame,
+          Rect::new(0, 0, 120, 1),
+          &theme,
+          Header {
+            title: "ARGVUS Control Center > Locale e Região",
+            version: Some("0.1.0"),
+            version_label: "v",
+          },
+        );
+      })
+      .unwrap();
+    let rendered = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .map(|cell| cell.symbol())
+      .collect::<String>();
+    assert!(
+      rendered.contains("argvus-dark-aether"),
+      "theme name must render in full, got: {}",
+      rendered
+    );
+  }
 }

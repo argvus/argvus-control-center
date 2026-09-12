@@ -19,7 +19,7 @@ validate:
 	$(CARGO) test --workspace
 	$(CARGO) build --release --workspace
 	test -x target/release/argvus-control-center
-	test -f usr/share/applications/argvus-control-center.desktop
+	test -f packaging/arch/usr/share/applications/argvus-control-center.desktop
 	test -f assets/argvus-about.svg
 
 install: build-bin install-files
@@ -28,9 +28,10 @@ install-files:
 	install -Dm755 target/release/argvus-control-center $(DESTDIR)$(PREFIX)/bin/argvus-control-center
 	ln -sf argvus-control-center $(DESTDIR)$(PREFIX)/bin/argvus-controle-center
 	install -Dm644 assets/argvus-about.svg $(DESTDIR)$(PREFIX)/share/argvus-control-center/argvus-about.svg
-	install -dm755 $(DESTDIR)/etc/argvus-control-center
-	cp -R --no-preserve=ownership resources/. $(DESTDIR)/etc/argvus-control-center/
-	install -Dm644 usr/share/applications/argvus-control-center.desktop $(DESTDIR)$(PREFIX)/share/applications/argvus-control-center.desktop
+	install -dm755 $(DESTDIR)/etc/argvus/control-center
+	cp -R --no-preserve=ownership resources/. $(DESTDIR)/etc/argvus/control-center/
+	install -Dm644 packaging/arch/etc/argvus/control-center/config.toml $(DESTDIR)/etc/argvus/control-center/config.toml
+	install -Dm644 packaging/arch/usr/share/applications/argvus-control-center.desktop $(DESTDIR)$(PREFIX)/share/applications/argvus-control-center.desktop
 	install -Dm644 README.md $(DESTDIR)$(PREFIX)/share/doc/argvus-control-center/README.md
 	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/licenses/argvus-control-center/LICENSE
 clean:

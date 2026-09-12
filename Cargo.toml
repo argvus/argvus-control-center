@@ -8,6 +8,18 @@ members = [
   "crates/argvus-control-center-settings",
   "crates/argvus-control-center-apps",
   "crates/argvus-control-center-core",
+  "crates/argvus-control-center-hardware",
+  "crates/argvus-control-center-services",
+  "crates/argvus-control-center-network",
+  "crates/argvus-control-center-audio",
+  "crates/argvus-control-center-bluetooth",
+  "crates/argvus-control-center-boot",
+  "crates/argvus-control-center-packages",
+  "crates/argvus-control-center-storage",
+  "crates/argvus-control-center-diagnostics",
+  "crates/argvus-control-center-power",
+  "crates/argvus-control-center-session",
+  "crates/argvus-control-center-displays",
   "crates/argvus-about",
 ]
 
@@ -22,10 +34,14 @@ repository = "https://github.com/argvus/argvus-control-center"
 anyhow = "1.0"
 crossterm = "0.29"
 image = { version = "0.25", default-features = false }
+rayon = "1"
 ratatui = "0.30.2"
 ratatui-image = { version = "11.0.8", default-features = false, features = ["crossterm", "image-defaults"] }
 resvg = { version = "0.48", default-features = false, features = ["text"] }
 thiserror = "2.0"
+toml = "0.8"
+unicode-width = "0.2"
+zbus = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 

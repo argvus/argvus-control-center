@@ -348,11 +348,10 @@ impl FontSettings {
       if self.antialias { "grayscale" } else { "none" },
     )?;
     gsettings_set("org.gnome.desktop.interface", "font-hinting", &self.hinting)?;
-    gsettings_set(
-      "org.gnome.desktop.interface",
-      "font-rgba-order",
-      &self.subpixel,
-    )
+    if let Some(order) = rgba_order(&self.subpixel) {
+      gsettings_set("org.gnome.desktop.interface", "font-rgba-order", order)?;
+    }
+    Ok(())
   }
 
   fn write_state(&self) -> Result<(), String> {
@@ -541,6 +540,13 @@ pub fn parse_state(contents: &str) -> HashMap<String, String> {
     .collect()
 }
 
+fn rgba_order(subpixel: &str) -> Option<&str> {
+  match subpixel {
+    "rgba" | "rgb" | "bgr" | "vrgb" | "vbgr" => Some(subpixel),
+    _ => None,
+  }
+}
+
 fn gsettings_set(schema: &str, key: &str, value: &str) -> Result<(), String> {
   let status = Command::new("gsettings")
     .args(["set", schema, key, value])
@@ -677,5 +683,15 @@ mod tests {
   #[test]
   fn xml_values_are_escaped() {
     assert_eq!(xml_escape("A&B <Mono>"), "A&amp;B &lt;Mono&gt;");
+  }
+
+  #[test]
+  fn subpixel_none_is_not_mapped_to_an_invalid_rgba_order() {
+    assert_eq!(rgba_order("none"), None);
+    assert_eq!(rgba_order("rgb"), Some("rgb"));
+    assert_eq!(rgba_order("bgr"), Some("bgr"));
+    assert_eq!(rgba_order("vrgb"), Some("vrgb"));
+    assert_eq!(rgba_order("vbgr"), Some("vbgr"));
+    assert_eq!(rgba_order("unknown"), None);
   }
 }

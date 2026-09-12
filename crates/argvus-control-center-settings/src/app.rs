@@ -5,14 +5,23 @@ use argvus_control_center_apps::catalog::Category;
 
 use crate::config::apps::AppsBackend;
 use crate::config::fonts::{FontSettings, FontTarget, SettingKind};
-use crate::i18n::{Lang, tr};
+use crate::i18n::{Lang, na, tr};
 use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
 use crate::system::{host, keyboard, locale, time};
 use crate::theme::Theme;
+use argvus_control_center_core::config::AppConfig;
+use argvus_control_center_core::{
+  jobs::{JobHandle, JobManager, JobState},
+  privileged::{PrivilegedRequest, SystemSettingsOperation},
+  process::{LiveProcess, SystemProcessRunner},
+};
 
 pub const MIN_WIDTH: u16 = 60;
 pub const MIN_HEIGHT: u16 = 15;
+
+const LANGUAGE_INFO_ROWS: usize = 3;
+const REGIONAL_LOCALE_INFO_ROWS: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub enum StatusKind {
@@ -65,6 +74,7 @@ pub struct App {
   pub width: u16,
   pub height: u16,
   pub viewport: usize,
+  button_from: Option<usize>,
   distro: locale::Distro,
   timezones: Vec<String>,
   datetime: time::DateTimeInfo,
@@ -76,6 +86,12 @@ pub struct App {
   keyboard_variants: Vec<keyboard::Variant>,
   console_keymaps: Vec<String>,
   hostname: String,
+  jobs: JobManager,
+  task_job: Option<JobHandle<Result<String, String>>>,
+  pub task_live: Option<LiveProcess>,
+  pub task_open: bool,
+  pub task_scroll: u16,
+  pub task_follow: bool,
 }
 
 impl App {
@@ -98,7 +114,7 @@ impl App {
       .collect();
     let keyboard_info = keyboard::info();
     let hostname = host::current();
-    Self {
+    let mut app = Self {
       admin: crate::administration::Administration::new(initial),
       lang,
       theme,
@@ -112,12 +128,13 @@ impl App {
       status: None,
       error_modal,
       confirm: None,
-      confirm_apply_selected: true,
+      confirm_apply_selected: false,
       hostname_editing: false,
       hostname_input: hostname.clone(),
       width: 80,
       height: 24,
       viewport: 1,
+      button_from: None,
       distro: locale::distro(),
       timezones: time::list_timezones(),
       datetime: time::datetime_info(),
@@ -129,7 +146,17 @@ impl App {
       keyboard_layouts: keyboard::layouts(),
       console_keymaps: keyboard::console_keymaps(),
       hostname,
+      jobs: JobManager::default(),
+      task_job: None,
+      task_live: None,
+      task_open: false,
+      task_scroll: 0,
+      task_follow: false,
+    };
+    if initial != Page::Main {
+      app.select_current();
     }
+    app
   }
 
   pub fn page(&self) -> Page {
@@ -138,20 +165,25 @@ impl App {
 
   pub fn rows(&self) -> Vec<Row> {
     if crate::administration::is_page(self.page()) {
-      return self.admin.rows(self.page(), self.lang);
+      return self
+        .admin
+        .rows_filtered(self.page(), self.lang, &self.search);
     }
     match self.page() {
       Page::Main => vec![
         Row::plain(tr(self.lang, "Apps Padrão", "Default Apps")),
         Row::plain(tr(self.lang, "Fontes", "Fonts")),
         Row::plain(tr(self.lang, "Locale e Região", "Locale & Region")),
-        Row::plain(tr(self.lang, "Idioma", "Language")),
         Row::plain(tr(self.lang, "Sistema", "System")),
       ],
       Page::DefaultApps => Category::ORDER
         .into_iter()
         .map(|category| Row {
-          label: category_label(self.lang, category).to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon(category_icon(category)),
+            category_label(self.lang, category)
+          ),
           detail: Some(
             self.default_detail(self.apps.current(category), self.apps.is_default(category)),
           ),
@@ -177,13 +209,21 @@ impl App {
         .map(|target| {
           let font = self.fonts.get(target);
           Row {
-            label: font_target_label(self.lang, target).to_string(),
-            detail: Some(format!("{} {}", font.display_name(), font.size)),
+            label: format!(
+              "{} {}",
+              AppConfig::icon(font_target_icon(target)),
+              font_target_label(self.lang, target)
+            ),
+            detail: Some(format!("{} · {}", font.display_name(), font.size)),
             current: false,
           }
         })
         .chain(SettingKind::ALL.into_iter().map(|setting| Row {
-          label: setting_label(self.lang, setting).to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon(setting_icon(setting)),
+            setting_label(self.lang, setting)
+          ),
           detail: Some(setting_value_label(
             self.lang,
             &self.fonts.setting_value(setting),
@@ -206,12 +246,59 @@ impl App {
       }
       Page::SettingSelector(setting) => self.setting_options(setting),
       Page::LocaleRegion => vec![
-        Row::plain(tr(self.lang, "Fuso horário", "Time Zone")),
-        Row::plain(tr(self.lang, "Data e hora", "Date & Time")),
-        Row::plain(tr(self.lang, "Locale regional", "Regional Locale")),
-        Row::plain(tr(self.lang, "Locales do sistema", "System Locales")),
-        Row::plain("Encoding"),
-        Row::plain(tr(self.lang, "Teclado", "Keyboard")),
+        Row {
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🌍"),
+            tr(self.lang, "Fuso horário", "Time Zone")
+          ),
+          detail: Some(non_empty(&self.datetime.time_zone)),
+          current: false,
+        },
+        Row {
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🕒"),
+            tr(self.lang, "Data e hora", "Date & Time")
+          ),
+          detail: Some(non_empty(&self.datetime.local_time)),
+          current: false,
+        },
+        Row {
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🌐"),
+            tr(self.lang, "Locale regional", "Regional Locale")
+          ),
+          detail: Some(locale::current_lang()),
+          current: false,
+        },
+        Row {
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🗂️"),
+            tr(self.lang, "Locales do sistema", "System Locales")
+          ),
+          detail: Some(format!(
+            "{} / {}",
+            self.selected_locales.len(),
+            self.locale_gen_entries.len()
+          )),
+          current: false,
+        },
+        Row {
+          label: format!(
+            "{} {}",
+            AppConfig::icon("⌨️"),
+            tr(self.lang, "Teclado", "Keyboard")
+          ),
+          detail: Some(format!(
+            "{}  ·  {}",
+            non_empty(&self.keyboard_info.x11_layout),
+            non_empty(&self.keyboard_info.x11_variant)
+          )),
+          current: false,
+        },
       ],
       Page::TimeZone => self
         .timezones
@@ -225,27 +312,38 @@ impl App {
         .collect(),
       Page::DateTime => vec![
         Row {
-          label: tr(self.lang, "Data/hora local", "Local date/time").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🕒"),
+            tr(self.lang, "Data/hora local", "Local date/time")
+          ),
           detail: Some(self.datetime.local_time.clone()),
           current: false,
         },
         Row {
-          label: tr(self.lang, "Fuso horário", "Time Zone").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🌍"),
+            tr(self.lang, "Fuso horário", "Time Zone")
+          ),
           detail: Some(self.datetime.time_zone.clone()),
           current: false,
         },
         Row {
-          label: tr(
-            self.lang,
-            "Data e hora automáticas (NTP)",
-            "Automatic date & time (NTP)",
-          )
-          .to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🛰️"),
+            tr(
+              self.lang,
+              "Data e hora automáticas (NTP)",
+              "Automatic date & time (NTP)",
+            )
+          ),
           detail: Some(enabled_label(self.lang, self.datetime.ntp.unwrap_or(false)).to_string()),
           current: false,
         },
         Row {
-          label: "RTC".to_string(),
+          label: format!("{} RTC", AppConfig::icon("🔋")),
           detail: Some(
             if self.datetime.rtc_local.unwrap_or(false) {
               tr(self.lang, "local", "local")
@@ -259,16 +357,30 @@ impl App {
       ],
       Page::RegionalLocale => {
         let current = locale::current_lang();
-        self
-          .generated_locales
-          .iter()
-          .filter(|value| search_matches(&self.search, &[value]))
-          .map(|value| Row {
-            label: value.clone(),
-            detail: None,
-            current: *value == current,
-          })
-          .collect()
+        let mut rows = vec![
+          Row {
+            label: tr(self.lang, "Locale atual", "Current locale").to_string(),
+            detail: Some(non_empty(&current)),
+            current: false,
+          },
+          Row {
+            label: tr(self.lang, "Codificação", "Encoding").to_string(),
+            detail: Some(non_empty(&locale::encoding_from_locale(&current))),
+            current: false,
+          },
+        ];
+        rows.extend(
+          self
+            .generated_locales
+            .iter()
+            .filter(|value| search_matches(&self.search, &[value]))
+            .map(|value| Row {
+              label: value.clone(),
+              detail: None,
+              current: *value == current,
+            }),
+        );
+        rows
       }
       Page::SystemLocales => self
         .locale_gen_entries
@@ -291,49 +403,59 @@ impl App {
           }
         })
         .collect(),
-      Page::Encoding => vec![Row {
-        label: tr(
-          self.lang,
-          "Codificação de caracteres atual",
-          "Current character encoding",
-        )
-        .to_string(),
-        detail: Some(locale::encoding_from_locale(&locale::current_lang())),
-        current: false,
-      }],
       Page::Keyboard => vec![
         Row {
-          label: tr(self.lang, "Layout", "Layout").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("⌨️"),
+            tr(self.lang, "Layout", "Layout")
+          ),
           detail: Some(non_empty(&self.keyboard_info.x11_layout)),
           current: false,
         },
         Row {
-          label: tr(self.lang, "Variante", "Variant").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🔠"),
+            tr(self.lang, "Variante", "Variant")
+          ),
           detail: Some(non_empty(&self.keyboard_info.x11_variant)),
           current: false,
         },
         Row {
-          label: tr(self.lang, "Modelo", "Model").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🖮"),
+            tr(self.lang, "Modelo", "Model")
+          ),
           detail: Some(non_empty(&self.keyboard_info.x11_model)),
           current: false,
         },
         Row {
-          label: tr(self.lang, "Opções", "Options").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("⚙️"),
+            tr(self.lang, "Opções", "Options")
+          ),
           detail: Some(non_empty(&self.keyboard_info.x11_options)),
           current: false,
         },
         Row {
-          label: tr(self.lang, "Keymap do console", "Console Keymap").to_string(),
+          label: format!(
+            "{} {}",
+            AppConfig::icon("🖥️"),
+            tr(self.lang, "Keymap do console", "Console Keymap")
+          ),
           detail: Some(non_empty(&self.keyboard_info.console_keymap)),
           current: false,
         },
         Row {
-          label: "Hyprland XKB".to_string(),
+          label: format!("{} Hyprland XKB", AppConfig::icon("🌿")),
           detail: Some(format!(
             "{} {} {}",
-            self.keyboard_info.hypr_layout,
-            self.keyboard_info.hypr_variant,
-            self.keyboard_info.hypr_options
+            non_empty(&self.keyboard_info.hypr_layout),
+            non_empty(&self.keyboard_info.hypr_variant),
+            non_empty(&self.keyboard_info.hypr_options)
           )),
           current: false,
         },
@@ -372,45 +494,116 @@ impl App {
           current: *keymap == self.keyboard_info.console_keymap,
         })
         .collect(),
-      Page::Language => vec![
-        Row {
-          label: "English".to_string(),
-          detail: None,
-          current: self.lang == Lang::En,
-        },
-        Row {
-          label: "Português".to_string(),
-          detail: None,
-          current: self.lang == Lang::Pt,
-        },
-      ],
-      Page::System => vec![
-        Row::plain("Hostname"),
-        Row::plain("Firewall"),
-        Row::plain(tr(self.lang, "Usuários", "Users")),
-      ],
+      Page::Language => self.language_rows(),
+      Page::System => self.system_rows(),
       Page::Firewall
       | Page::Users
+      | Page::UserList
+      | Page::SystemUsers
       | Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => unreachable!(),
+      | Page::UserPrimaryGroup
+      | Page::Groups
+      | Page::GroupList
+      | Page::SystemGroups
+      | Page::Group
+      | Page::GroupMembers
+      | Page::CreateGroup => unreachable!(),
       Page::Hostname => vec![Row {
-        label: if self.hostname_editing {
-          tr(self.lang, "Novo hostname", "New hostname").to_string()
-        } else {
-          tr(self.lang, "Hostname atual", "Current hostname").to_string()
-        },
-        detail: Some(if self.hostname_editing {
-          format!("{}_", self.hostname_input)
-        } else {
-          self.hostname.clone()
-        }),
+        label: tr(self.lang, "Hostname atual", "Current hostname").to_string(),
+        detail: Some(self.hostname.clone()),
         current: false,
       }],
     }
+  }
+
+  fn system_rows(&self) -> Vec<Row> {
+    let hostname = if self.hostname.is_empty() {
+      na(self.lang).to_string()
+    } else {
+      self.hostname.clone()
+    };
+    let accounts_loaded = self.admin.is_loaded();
+    let users = if accounts_loaded {
+      self.admin.users(false).len().to_string()
+    } else {
+      na(self.lang).to_string()
+    };
+    let groups = if accounts_loaded {
+      self.admin.groups(false).len().to_string()
+    } else {
+      na(self.lang).to_string()
+    };
+    vec![
+      Row {
+        label: format!("{} Hostname", AppConfig::icon("🖥️")),
+        detail: Some(hostname),
+        current: false,
+      },
+      Row {
+        label: format!(
+          "{} {}",
+          AppConfig::icon("👤"),
+          tr(self.lang, "Usuários", "Users")
+        ),
+        detail: Some(users),
+        current: false,
+      },
+      Row {
+        label: format!(
+          "{} {}",
+          AppConfig::icon("👥"),
+          tr(self.lang, "Grupos", "Groups")
+        ),
+        detail: Some(groups),
+        current: false,
+      },
+    ]
+  }
+
+  fn language_rows(&self) -> Vec<Row> {
+    let current_lang = locale::current_lang();
+    let current_language = match self.lang {
+      Lang::En => "English (US) · en_US",
+      Lang::Pt => "Português (Brasil) · pt_BR",
+    };
+    let in_use = tr(self.lang, "Em uso", "In use");
+    let mut rows = vec![
+      Row {
+        label: tr(self.lang, "Idioma atual", "Current language").to_string(),
+        detail: Some(current_language.to_string()),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "Locale regional", "Regional locale").to_string(),
+        detail: Some(non_empty(&current_lang)),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "Codificação", "Encoding").to_string(),
+        detail: Some(non_empty(&locale::encoding_from_locale(&current_lang))),
+        current: false,
+      },
+    ];
+    for (lang, flag, name, detail) in [
+      (Lang::En, "🇺🇸", "English", "English (US) · en_US"),
+      (Lang::Pt, "🇧🇷", "Português", "Português (Brasil) · pt_BR"),
+    ] {
+      let badge = if self.lang == lang {
+        format!(" · {in_use}")
+      } else {
+        String::new()
+      };
+      rows.push(Row {
+        label: format!("{}  {}", AppConfig::icon(flag), name),
+        detail: Some(format!("{detail}{badge}")),
+        current: self.lang == lang,
+      });
+    }
+    rows
   }
 
   pub fn breadcrumb(&self) -> String {
@@ -458,10 +651,6 @@ impl App {
         tr(self.lang, "Locale e Região", "Locale & Region"),
         tr(self.lang, "Locales do sistema", "System Locales")
       ),
-      Page::Encoding => format!(
-        "{root} > {} > Encoding",
-        tr(self.lang, "Locale e Região", "Locale & Region")
-      ),
       Page::Keyboard => format!(
         "{root} > {} > {}",
         tr(self.lang, "Locale e Região", "Locale & Region"),
@@ -486,20 +675,56 @@ impl App {
       ),
       Page::Language => format!("{root} > {}", tr(self.lang, "Idioma", "Language")),
       Page::System => format!("{root} > {}", tr(self.lang, "Sistema", "System")),
-      Page::Firewall => format!("{root} > {} > Firewall", tr(self.lang, "Sistema", "System")),
-      Page::Users
-      | Page::User
+      Page::Firewall => format!("{root} > {} > Firewall", tr(self.lang, "Rede", "Network")),
+      Page::Users => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users")
+      ),
+      Page::UserList => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users"),
+        tr(self.lang, "Listar", "List")
+      ),
+      Page::SystemUsers => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users"),
+        tr(self.lang, "Contas do sistema", "System accounts")
+      ),
+      Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => {
-        format!(
-          "{root} > {} > {}",
-          tr(self.lang, "Sistema", "System"),
-          tr(self.lang, "Usuários", "Users")
-        )
-      }
+      | Page::UserPrimaryGroup => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Usuários", "Users")
+      ),
+      Page::Groups => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups")
+      ),
+      Page::GroupList => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups"),
+        tr(self.lang, "Listar", "List")
+      ),
+      Page::SystemGroups => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups"),
+        tr(self.lang, "Contas do sistema", "System accounts")
+      ),
+      Page::Group | Page::GroupMembers | Page::CreateGroup => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "Grupos", "Groups")
+      ),
       Page::Hostname => format!("{root} > {} > Hostname", tr(self.lang, "Sistema", "System")),
     }
   }
@@ -510,13 +735,6 @@ impl App {
         self.lang,
         "Enter Confirmar   Esc Cancelar",
         "Enter Confirm   Esc Cancel",
-      );
-    }
-    if self.hostname_editing {
-      return tr(
-        self.lang,
-        "Digite hostname   Enter Aplicar   Esc Cancelar",
-        "Type hostname   Enter Apply   Esc Cancel",
       );
     }
     if self.searching {
@@ -532,15 +750,25 @@ impl App {
         "↑/↓ Navegar   →/Enter Abrir   ? Ajuda   q Sair",
         "↑/↓ Navigate   →/Enter Open   ? Help   q Quit",
       ),
-      Page::DefaultApps | Page::Fonts => tr(
+      Page::DefaultApps => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   r Reset Defaults   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   r Reset Defaults   ←/Esc Back   ? Help",
+        "↑/↓ Navegar   →/Enter Abrir   Tab Ações   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   →/Enter Open   Tab Actions   ←/Esc Back   ? Help",
       ),
-      Page::AppSelector(_) | Page::FontSelector(_) => tr(
+      Page::Fonts => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Aplicar   r Reset Default   / Buscar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Enter Apply   r Reset Default   / Search   ←/Esc Back   ? Help",
+        "↑/↓ Navegar   →/Enter Abrir   Tab Ações   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   →/Enter Open   Tab Actions   ←/Esc Back   ? Help",
+      ),
+      Page::AppSelector(_) => tr(
+        self.lang,
+        "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   / Buscar   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   / Search   ←/Esc Back   ? Help",
+      ),
+      Page::FontSelector(_) => tr(
+        self.lang,
+        "↑/↓ Navegar   Enter Aplicar   +/- Tamanho   / Buscar   Tab Ações   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   Enter Apply   +/- Size   / Search   Tab Actions   ←/Esc Back   ? Help",
       ),
       Page::SystemLocales => tr(
         self.lang,
@@ -561,10 +789,30 @@ impl App {
         "Enter Editar   ←/Esc Voltar   ? Ajuda",
         "Enter Edit   ←/Esc Back   ? Help",
       ),
+      Page::Language => tr(
+        self.lang,
+        "↑/↓ Navegar   Enter Aplicar   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   Enter Apply   ←/Esc Back   ? Help",
+      ),
+      Page::System => tr(
+        self.lang,
+        "↑/↓ Navegar   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+      ),
       Page::SettingSelector(_) => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Aplicar   r Reset Default   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Enter Apply   r Reset Default   ←/Esc Back   ? Help",
+        "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   ←/Esc Back   ? Help",
+      ),
+      Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups => tr(
+        self.lang,
+        "↑/↓ Navegar   / Buscar   →/Enter Abrir   ←/Esc Voltar   ? Ajuda",
+        "↑/↓ Navigate   / Search   →/Enter Open   ←/Esc Back   ? Help",
+      ),
+      Page::User | Page::CreateUser | Page::CreateGroup | Page::Group | Page::Firewall => tr(
+        self.lang,
+        "↑/↓ Campos   Tab Alternar   ←/→ Ações   Enter Ativar   Esc Voltar   ? Ajuda",
+        "↑/↓ Fields   Tab Switch   ←/→ Actions   Enter Activate   Esc Back   ? Help",
       ),
       _ => tr(
         self.lang,
@@ -575,20 +823,209 @@ impl App {
   }
 
   pub fn move_selection(&mut self, delta: isize) {
-    let count = self.rows().len();
-    let location = self.navigation.current_mut();
+    let count = self.item_count();
     if count == 0 {
+      let location = self.navigation.current_mut();
       location.selected = 0;
       location.scroll = 0;
       return;
     }
-    location.selected = (location.selected as isize + delta).clamp(0, count as isize - 1) as usize;
+    let step = delta.signum();
+    if step == 0 {
+      return;
+    }
+    let page = self.page();
+    let current = self.navigation.current().selected;
+    let rows = if crate::administration::is_page(page) || self.reset_page() {
+      self.rows().len()
+    } else {
+      count
+    };
+    let buttons = self.page_buttons().len();
+    if buttons > 0 && current >= rows {
+      return;
+    }
+    let (lo, hi) = if buttons > 0 {
+      (0, rows.saturating_sub(1))
+    } else {
+      (0, count - 1)
+    };
+    if lo > hi {
+      self.navigation.current_mut().selected = 0;
+      self.ensure_visible(count);
+      return;
+    }
+    let mut selected = current;
+    let mut candidate = current;
+    loop {
+      let probe = (candidate as isize + step).clamp(lo as isize, hi as isize) as usize;
+      if probe == candidate {
+        break;
+      }
+      candidate = probe;
+      if self.row_selectable(candidate) {
+        selected = candidate;
+        break;
+      }
+    }
+    self.navigation.current_mut().selected = selected;
     self.ensure_visible(count);
+  }
+
+  pub fn on_buttons(&self) -> bool {
+    let buttons = self.page_buttons();
+    let rows = self.rows().len();
+    !buttons.is_empty() && self.navigation.current().selected >= rows
+  }
+
+  pub fn row_selectable(&self, index: usize) -> bool {
+    if self.page() == Page::DateTime {
+      return (index == 0 && !self.datetime.ntp.unwrap_or(false)) || index == 2;
+    }
+    if self.page() == Page::Keyboard {
+      return matches!(index, 0 | 1 | 4);
+    }
+    if self.page() == Page::Language {
+      return index >= LANGUAGE_INFO_ROWS && index < self.rows().len();
+    }
+    if self.page() == Page::RegionalLocale {
+      return index >= REGIONAL_LOCALE_INFO_ROWS && index < self.rows().len();
+    }
+    let page = self.page();
+    if crate::administration::is_page(page) {
+      let rows = self.rows();
+      let buttons = self.page_buttons().len();
+      if index >= rows.len() {
+        return index < rows.len() + buttons;
+      }
+      return rows.get(index).is_some() && self.admin.row_selectable(page, index);
+    }
+    let rows = self.rows();
+    if self.reset_page() {
+      let buttons = self.page_buttons().len();
+      if index >= rows.len() {
+        return index < rows.len() + buttons;
+      }
+    }
+    rows.get(index).is_some()
+  }
+
+  pub fn normalize_selection(&mut self) {
+    let count = self.item_count();
+    if count == 0 {
+      return;
+    }
+    if !self.row_selectable(self.navigation.current().selected)
+      && let Some(index) = (0..count).find(|index| self.row_selectable(*index))
+    {
+      self.navigation.current_mut().selected = index;
+      self.ensure_visible(count);
+    }
+  }
+
+  pub fn item_count(&self) -> usize {
+    if crate::administration::is_page(self.page()) {
+      let rows = self
+        .admin
+        .rows_filtered(self.page(), self.lang, &self.search)
+        .len();
+      rows + self.admin.buttons(self.page(), self.lang).len()
+    } else {
+      self.rows().len() + self.page_buttons().len()
+    }
+  }
+
+  pub fn cycle_selection(&mut self, delta: isize) {
+    if delta == 0 {
+      return;
+    }
+    let page = self.page();
+    if !crate::administration::is_page(page) && !self.reset_page() {
+      return;
+    }
+    let rows = self.rows().len();
+    let buttons = self.page_buttons().len();
+    if rows == 0 || buttons == 0 {
+      return;
+    }
+    let current = self.navigation.current().selected;
+    if current >= rows {
+      let field = match self.button_from {
+        Some(index) if index < rows && self.row_selectable(index) => index,
+        _ => (0..rows)
+          .find(|index| self.row_selectable(*index))
+          .unwrap_or(0),
+      };
+      self.button_from = None;
+      self.navigation.current_mut().selected = field;
+    } else {
+      self.button_from = Some(current);
+      let button = if delta > 0 { 0 } else { buttons - 1 };
+      self.navigation.current_mut().selected = rows + button;
+    }
+    self.ensure_visible(self.item_count());
+  }
+
+  pub fn move_button(&mut self, delta: isize) {
+    let page = self.page();
+    if (!crate::administration::is_page(page) && !self.reset_page()) || delta == 0 {
+      return;
+    }
+    let rows = self.rows().len();
+    let buttons = self.page_buttons().len();
+    if buttons == 0 {
+      return;
+    }
+    let current = self.navigation.current().selected;
+    if current < rows {
+      return;
+    }
+    let mut index = current - rows;
+    if delta > 0 {
+      index = (index + 1) % buttons;
+    } else {
+      index = (index + buttons - 1) % buttons;
+    }
+    self.navigation.current_mut().selected = rows + index;
+    self.ensure_visible(self.item_count());
+  }
+
+  pub fn admin_buttons(&self, page: Page) -> Vec<crate::administration::Button> {
+    self.admin.buttons(page, self.lang)
+  }
+
+  pub fn reset_page(&self) -> bool {
+    matches!(
+      self.page(),
+      Page::DefaultApps
+        | Page::Fonts
+        | Page::AppSelector(_)
+        | Page::FontSelector(_)
+        | Page::SettingSelector(_)
+    )
+  }
+
+  pub fn page_buttons(&self) -> Vec<crate::administration::Button> {
+    let page = self.page();
+    if crate::administration::is_page(page) {
+      self.admin.buttons(page, self.lang)
+    } else if self.reset_page() {
+      vec![crate::administration::Button::new(
+        tr(self.lang, "Restaurar padrões", "Reset Defaults"),
+        crate::administration::ButtonKind::Secondary,
+      )]
+    } else {
+      Vec::new()
+    }
   }
 
   pub fn open_or_apply(&mut self) {
     if crate::administration::is_page(self.page()) {
       self.admin_open();
+      return;
+    }
+    if self.reset_page() && self.on_buttons() {
+      self.reset_current();
       return;
     }
     if self.error_modal.take().is_some() {
@@ -600,8 +1037,7 @@ impl App {
         0 => self.navigation.push(Page::DefaultApps),
         1 => self.navigation.push(Page::Fonts),
         2 => self.navigation.push(Page::LocaleRegion),
-        3 => self.navigation.push(Page::Language),
-        4 => self.navigation.push(Page::System),
+        3 => self.navigation.push(Page::System),
         _ => {}
       },
       Page::DefaultApps => {
@@ -631,21 +1067,24 @@ impl App {
         1 => self.open_system_page(Page::DateTime),
         2 => self.open_system_page(Page::RegionalLocale),
         3 => self.open_system_page(Page::SystemLocales),
-        4 => self.open_system_page(Page::Encoding),
-        5 => self.open_system_page(Page::Keyboard),
+        4 => self.open_system_page(Page::Keyboard),
         _ => {}
       },
       Page::TimeZone => self.apply_timezone(selected),
       Page::DateTime => {
-        if selected == 1 {
-          self.open_system_page(Page::TimeZone);
+        if selected == 0 && !self.datetime.ntp.unwrap_or(false) {
+          self.admin.editor = Some(crate::administration::Editor::new(
+            tr(self.lang, "Data/hora local", "Local date/time").into(),
+            self.datetime.local_time.clone(),
+            crate::administration::EditTarget::DateTime,
+            false,
+          ));
         } else if selected == 2 {
           self.open_confirm(PendingAction::SetNtp(!self.datetime.ntp.unwrap_or(false)));
         }
       }
       Page::RegionalLocale => self.apply_regional_locale(selected),
       Page::SystemLocales => self.open_confirm(PendingAction::ApplySystemLocales),
-      Page::Encoding => {}
       Page::Keyboard => match selected {
         0 => self.open_system_page(Page::KeyboardLayout),
         1 => self.open_system_page(Page::KeyboardVariant),
@@ -659,23 +1098,33 @@ impl App {
       Page::System => match selected {
         0 => self.open_system_page(Page::Hostname),
         1 => {
-          self.admin.load(true);
-          self.navigation.push(Page::Firewall);
+          self.admin.load(false);
+          self.navigation.push(Page::Users);
+          self.normalize_selection();
         }
         2 => {
           self.admin.load(false);
-          self.navigation.push(Page::Users);
+          self.navigation.push(Page::Groups);
+          self.normalize_selection();
         }
         _ => {}
       },
       Page::Firewall
       | Page::Users
+      | Page::UserList
+      | Page::SystemUsers
       | Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => unreachable!(),
+      | Page::UserPrimaryGroup
+      | Page::Groups
+      | Page::GroupList
+      | Page::SystemGroups
+      | Page::Group
+      | Page::GroupMembers
+      | Page::CreateGroup => unreachable!(),
       Page::Hostname => {
         self.hostname_editing = true;
         self.hostname_input = self.hostname.clone();
@@ -694,6 +1143,12 @@ impl App {
       }
       _ => {}
     }
+  }
+
+  pub fn refresh_system(&mut self) {
+    self.hostname = host::current();
+    self.admin.load(false);
+    self.success(tr(self.lang, "Dados atualizados", "Data updated").to_string());
   }
 
   pub fn toggle_current(&mut self) {
@@ -795,7 +1250,7 @@ impl App {
   pub fn cancel_modal(&mut self) {
     self.admin.cancel_pending();
     self.confirm = None;
-    self.confirm_apply_selected = true;
+    self.confirm_apply_selected = false;
   }
 
   pub fn toggle_confirm_button(&mut self) {
@@ -844,6 +1299,7 @@ impl App {
     }
     self.hostname_editing = false;
     self.navigation.back();
+    self.normalize_selection();
   }
 
   pub fn begin_search(&mut self) {
@@ -857,6 +1313,9 @@ impl App {
         | Page::KeyboardLayout
         | Page::KeyboardVariant
         | Page::ConsoleKeymap
+        | Page::SystemUsers
+        | Page::GroupList
+        | Page::SystemGroups
     ) {
       self.searching = true;
       self.search.clear();
@@ -903,9 +1362,10 @@ impl App {
         Ok(()) => {
           match self.admin.completed.take().as_deref() {
             Some("create") if self.page() == Page::CreateUser => {
-              self.navigation.current_mut().page = Page::User
+              self.navigation.current_mut().page = Page::User;
+              self.normalize_selection();
             }
-            Some("delete") => {
+            Some("delete") | Some("delete-group") => {
               self.navigation.back();
             }
             _ => {}
@@ -926,6 +1386,41 @@ impl App {
     } else {
       false
     }
+  }
+
+  pub fn poll(&mut self) -> bool {
+    let mut changed = false;
+    if let Some(job) = self.task_job.take() {
+      match job.try_state() {
+        JobState::Running => {
+          self.task_job = Some(job);
+          if self.task_open {
+            if self.task_follow
+              && let Some(live) = &self.task_live
+            {
+              self.task_scroll = task_bottom_offset(&live.output());
+            }
+            changed = true;
+          }
+        }
+        JobState::Finished(Ok(Ok(_))) => {
+          self.locale_gen_entries =
+            locale::locale_gen_entries(std::path::Path::new("/etc/locale.gen")).unwrap_or_default();
+          self.generated_locales = locale::generated_locales();
+          self.success(
+            tr(
+              self.lang,
+              "Locales gerados com sucesso",
+              "Locales generated successfully",
+            )
+            .to_string(),
+          );
+          changed = true;
+        }
+        JobState::Finished(Ok(Err(error))) | JobState::Finished(Err(error)) => self.fail(error),
+      }
+    }
+    changed
   }
 
   fn open_system_page(&mut self, page: Page) {
@@ -951,7 +1446,7 @@ impl App {
 
   fn open_confirm(&mut self, action: PendingAction) {
     self.confirm = Some(action);
-    self.confirm_apply_selected = true;
+    self.confirm_apply_selected = false;
   }
 
   fn apply_app(&mut self, category: Category, selected: usize) {
@@ -1037,7 +1532,7 @@ impl App {
       .filter(|value| search_matches(&self.search, &[value]))
       .cloned()
       .collect();
-    if let Some(value) = locales.get(selected) {
+    if let Some(value) = locales.get(selected.saturating_sub(REGIONAL_LOCALE_INFO_ROWS)) {
       match locale::set_lang(value, &self.generated_locales) {
         Ok(()) => self.success(format!(
           "{}: {value}",
@@ -1053,22 +1548,58 @@ impl App {
   }
 
   fn apply_system_locales(&mut self) {
-    match locale::set_system_locales(&self.locale_gen_entries, &self.selected_locales) {
-      Ok(()) => {
-        self.locale_gen_entries =
-          locale::locale_gen_entries(std::path::Path::new("/etc/locale.gen")).unwrap_or_default();
-        self.generated_locales = locale::generated_locales();
-        self.success(
-          tr(
-            self.lang,
-            "Locales gerados com sucesso",
-            "Locales generated successfully",
-          )
-          .to_string(),
-        );
-      }
-      Err(error) => self.fail(error),
+    let valid: BTreeSet<String> = self
+      .locale_gen_entries
+      .iter()
+      .map(|entry| format!("{} {}", entry.locale, entry.encoding))
+      .collect();
+    if self
+      .selected_locales
+      .iter()
+      .any(|value| !valid.contains(value))
+    {
+      self.fail("selected locale is not present in /etc/locale.gen");
+      return;
     }
+    let executable = match std::env::current_exe() {
+      Ok(path) => path.to_string_lossy().into_owned(),
+      Err(error) => {
+        self.fail(error.to_string());
+        return;
+      }
+    };
+    let request = match PrivilegedRequest::new(
+      "locale",
+      "set-generated",
+      self.selected_locales.iter().cloned().collect(),
+    ) {
+      Ok(request) => request,
+      Err(error) => {
+        self.fail(error.to_string());
+        return;
+      }
+    };
+    let live = LiveProcess::new();
+    self.task_live = Some(live.clone());
+    self.task_open = true;
+    self.task_scroll = 0;
+    self.task_follow = true;
+    live.push_line("$ locale-gen");
+    let operation = SystemSettingsOperation::new(SystemProcessRunner, executable);
+    self.task_job = Some(self.jobs.spawn(move |_| {
+      Ok(match operation.execute_live(&request, &live) {
+        Ok(output) if output.status == Some(0) => {
+          let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+          Ok(if stdout.is_empty() {
+            "ok".into()
+          } else {
+            stdout
+          })
+        }
+        Ok(output) => Err(String::from_utf8_lossy(&output.stderr).trim().to_string()),
+        Err(error) => Err(error.to_string()),
+      })
+    }));
   }
 
   fn apply_keyboard_layout(&mut self, selected: usize) {
@@ -1146,7 +1677,7 @@ impl App {
   }
 
   fn apply_language(&mut self, selected: usize) {
-    self.lang = if selected == 1 { Lang::Pt } else { Lang::En };
+    self.lang = language_from_selected(selected);
     let path = crate::config::paths::argvus_config_home().join("language");
     if let Err(error) = std::fs::create_dir_all(crate::config::paths::argvus_config_home()) {
       self.fail(error);
@@ -1171,7 +1702,7 @@ impl App {
     }
   }
 
-  fn refresh_time(&mut self) {
+  pub(crate) fn refresh_time(&mut self) {
     self.datetime = time::datetime_info();
   }
 
@@ -1180,20 +1711,30 @@ impl App {
     self.keyboard_variants = keyboard::variants(&self.keyboard_info.x11_layout);
   }
 
-  fn select_current(&mut self) {
+  pub fn select_current(&mut self) {
     if let Some(index) = self.rows().iter().position(|row| row.current) {
       self.navigation.current_mut().selected = index;
       self.ensure_visible(self.rows().len());
+    } else {
+      self.normalize_selection();
     }
   }
 
   fn ensure_visible(&mut self, count: usize) {
+    let buttons = self.page_buttons().len();
+    let rows = if buttons > 0 {
+      self.rows().len()
+    } else {
+      count
+    };
+    let full = rows + buttons;
     let location = self.navigation.current_mut();
-    location.selected = location.selected.min(count.saturating_sub(1));
-    if location.selected < location.scroll {
-      location.scroll = location.selected;
-    } else if location.selected >= location.scroll + self.viewport {
-      location.scroll = location.selected + 1 - self.viewport;
+    location.selected = location.selected.min(full.saturating_sub(1));
+    let effective = location.selected.min(rows.saturating_sub(1));
+    if effective < location.scroll {
+      location.scroll = effective;
+    } else if effective >= location.scroll + self.viewport {
+      location.scroll = effective + 1 - self.viewport;
     }
   }
 
@@ -1246,7 +1787,7 @@ impl App {
     });
   }
 
-  fn fail(&mut self, error: impl ToString) {
+  pub(crate) fn fail(&mut self, error: impl ToString) {
     let error = error.to_string();
     self.status = Some(Status {
       text: error.clone(),
@@ -1274,10 +1815,47 @@ pub fn search_matches(query: &str, values: &[&str]) -> bool {
       .any(|value| value.to_lowercase().contains(&query.to_lowercase()))
 }
 
+pub fn category_icon(category: Category) -> &'static str {
+  match category {
+    Category::Terminal => "🖥️",
+    Category::FileManager => "📁",
+    Category::TextEditor => "📝",
+    Category::TerminalEditor => "⌨️",
+    Category::Browser => "🌐",
+    Category::ImageViewer => "🖼️",
+    Category::PdfViewer => "📄",
+    Category::VideoPlayer => "🎬",
+    Category::AudioPlayer => "🎵",
+    Category::Archive => "📦",
+    Category::Launcher => "🚀",
+  }
+}
+
 pub fn category_label(lang: Lang, category: Category) -> &'static str {
   match lang {
     Lang::Pt => category.title_pt(),
     Lang::En => category.title(),
+  }
+}
+
+pub fn font_target_icon(target: FontTarget) -> &'static str {
+  match target {
+    FontTarget::Taskbar => "🖥️",
+    FontTarget::Sysinfo => "📊",
+    FontTarget::ControlPanel => "🎛️",
+    FontTarget::System => "💻",
+    FontTarget::Apps => "📦",
+    FontTarget::Terminal => "⌨️",
+    FontTarget::Browser => "🌐",
+  }
+}
+
+pub fn setting_icon(setting: SettingKind) -> &'static str {
+  match setting {
+    SettingKind::Antialiasing => "✨",
+    SettingKind::Hinting => "🔍",
+    SettingKind::Subpixel => "🌈",
+    SettingKind::Dpi => "📐",
   }
 }
 
@@ -1415,6 +1993,37 @@ fn non_empty(value: &str) -> String {
   }
 }
 
+pub(crate) const TASK_POPUP_WIDTH: u16 = 100;
+pub(crate) const TASK_POPUP_HEIGHT: u16 = 20;
+pub(crate) const TASK_CONTENT_WIDTH: usize = TASK_POPUP_WIDTH as usize - 2;
+pub(crate) const TASK_CONTENT_HEIGHT: usize = TASK_POPUP_HEIGHT as usize - 2;
+
+pub(crate) fn task_wrapped_lines(output: &str) -> usize {
+  output
+    .lines()
+    .map(|line| {
+      let width = argvus_tui::text::display_width(line);
+      if width == 0 {
+        1
+      } else {
+        width.div_ceil(TASK_CONTENT_WIDTH)
+      }
+    })
+    .sum()
+}
+
+pub(crate) fn task_bottom_offset(output: &str) -> u16 {
+  task_wrapped_lines(output).saturating_sub(TASK_CONTENT_HEIGHT) as u16
+}
+
+fn language_from_selected(selected: usize) -> Lang {
+  if selected.saturating_sub(LANGUAGE_INFO_ROWS) == 1 {
+    Lang::Pt
+  } else {
+    Lang::En
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1431,5 +2040,201 @@ mod tests {
       assert!(!category_label(Lang::En, category).is_empty());
       assert!(!category_label(Lang::Pt, category).is_empty());
     }
+  }
+
+  #[test]
+  fn language_page_shows_status_lines_and_selectable_choices() {
+    let app = App::with_context(Page::Language, Lang::En, Theme::load());
+    let rows = app.rows();
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0].label, "Current language");
+    assert!(rows[0].detail.is_some());
+    assert_eq!(rows[1].label, "Regional locale");
+    assert_eq!(rows[2].label, "Encoding");
+    assert!(rows[3].label.starts_with('🇺'), "{}", rows[3].label);
+    assert!(rows[4].label.starts_with('🇧'), "{}", rows[4].label);
+    let current = rows.iter().position(|row| row.current).unwrap();
+    assert!(current == 3 || current == 4, "current at {current}");
+    for index in 0..LANGUAGE_INFO_ROWS {
+      assert!(!app.row_selectable(index));
+    }
+    assert!(app.row_selectable(LANGUAGE_INFO_ROWS));
+    assert!(app.row_selectable(LANGUAGE_INFO_ROWS + 1));
+    assert!(!app.row_selectable(LANGUAGE_INFO_ROWS + 2));
+    assert_eq!(app.navigation.current().selected, current);
+  }
+
+  #[test]
+  fn language_selection_maps_to_languages() {
+    assert_eq!(language_from_selected(LANGUAGE_INFO_ROWS), Lang::En);
+    assert_eq!(language_from_selected(LANGUAGE_INFO_ROWS + 1), Lang::Pt);
+    assert_eq!(language_from_selected(0), Lang::En);
+  }
+
+  #[test]
+  fn fonts_dashboard_uses_icons_and_status() {
+    let app = App::with_context(Page::Fonts, Lang::En, Theme::load());
+    let rows = app.rows();
+    assert_eq!(rows.len(), 11, "7 font targets + 4 settings");
+    assert!(rows[0].label.contains("Taskbar"), "{}", rows[0].label);
+    assert!(rows[0].label.contains("🖥"), "{}", rows[0].label);
+    assert!(rows[0].detail.is_some(), "font target should have detail");
+    assert!(rows[7].label.contains("Antialiasing"), "{}", rows[7].label);
+    assert!(rows[7].label.contains("✨"), "{}", rows[7].label);
+    for (i, row) in rows.iter().enumerate() {
+      assert!(row.detail.is_some(), "row {i} should have detail");
+    }
+  }
+
+  #[test]
+  fn fonts_dashboard_icons_are_distinct() {
+    let mut seen = std::collections::HashSet::new();
+    for target in FontTarget::ALL {
+      let icon = font_target_icon(target);
+      assert!(seen.insert(icon), "duplicate icon {icon} for {target:?}");
+    }
+    seen.clear();
+    for setting in SettingKind::ALL {
+      let icon = setting_icon(setting);
+      assert!(seen.insert(icon), "duplicate icon {icon} for {setting:?}");
+    }
+  }
+
+  #[test]
+  fn default_apps_dashboard_uses_icons_and_status() {
+    let app = App::with_context(Page::DefaultApps, Lang::En, Theme::load());
+    let rows = app.rows();
+    assert_eq!(rows.len(), Category::ORDER.len());
+    assert!(rows[0].label.contains("Terminal"), "{}", rows[0].label);
+    assert!(rows[0].label.contains("🖥"), "{}", rows[0].label);
+    assert!(rows[0].detail.is_some(), "category should have detail");
+    assert!(rows[2].label.contains("Editor"), "{}", rows[2].label);
+    assert!(rows[4].label.contains("Browser"), "{}", rows[4].label);
+    for (i, row) in rows.iter().enumerate() {
+      assert!(row.detail.is_some(), "row {i} should have detail");
+    }
+  }
+
+  #[test]
+  fn default_apps_dashboard_icons_are_distinct() {
+    let mut seen = std::collections::HashSet::new();
+    for category in Category::ORDER {
+      let icon = category_icon(category);
+      assert!(seen.insert(icon), "duplicate icon {icon} for {category:?}");
+    }
+  }
+
+  #[test]
+  fn system_dashboard_uses_icons_and_live_state() {
+    let app = App::with_context(Page::System, Lang::En, Theme::load());
+    let rows = app.rows();
+    assert_eq!(rows.len(), 3);
+    assert!(rows[0].label.contains("Hostname"), "{}", rows[0].label);
+    assert!(rows[0].label.contains("🖥"), "{}", rows[0].label);
+    assert!(rows[0].detail.is_some(), "hostname should have detail");
+    assert_eq!(rows[1].label, "👤 Users");
+    assert_eq!(rows[1].detail.as_deref(), Some("N/A"));
+    assert_eq!(rows[2].label, "👥 Groups");
+    assert_eq!(rows[2].detail.as_deref(), Some("N/A"));
+    for (index, row) in rows.iter().enumerate() {
+      assert!(row.detail.is_some(), "row {index} should have detail");
+    }
+  }
+
+  #[test]
+  fn hostname_page_row_keeps_current_value_while_editing() {
+    let mut app = App::with_context(Page::Hostname, Lang::En, Theme::load());
+    app.hostname = "current-machine".into();
+    app.hostname_editing = true;
+    app.hostname_input = "draft-name".into();
+    let rows = app.rows();
+    assert_eq!(rows.len(), 1);
+    assert!(
+      rows[0].label.contains("Current hostname"),
+      "{}",
+      rows[0].label
+    );
+    assert_eq!(rows[0].detail.as_deref(), Some("current-machine"));
+  }
+
+  #[test]
+  fn system_dashboard_counts_match_loaded_accounts() {
+    let mut app = App::with_context(Page::System, Lang::En, Theme::load());
+    app.admin.accounts = serde_json::json!({
+      "actor_uid":1000,
+      "shells":["/bin/bash", "/bin/zsh"],
+      "groups":["users", "wheel"],
+      "group_details":[
+        {"name":"users","gid":1000,"members":[]},
+        {"name":"wheel","gid":998,"members":["alice"]}
+      ],
+      "users":[
+        {"user":"root","uid":0,"gid":0,"name":"root","shell":"/bin/bash","primary_group":"root","groups":[]},
+        {"user":"alice","uid":1000,"gid":1000,"name":"Alice","shell":"/bin/bash","primary_group":"users","groups":["wheel"]}
+      ]
+    });
+    let rows = app.rows();
+    assert_eq!(rows[1].detail.as_deref(), Some("1"));
+    assert_eq!(rows[2].detail.as_deref(), Some("1"));
+    assert!(app.row_selectable(0));
+    assert!(app.row_selectable(1));
+    assert!(app.row_selectable(2));
+  }
+
+  #[test]
+  fn task_window_scrolls_and_closes() {
+    let mut app = App::with_context(Page::Main, Lang::En, Theme::load());
+    let live = LiveProcess::new();
+    for _ in 0..40 {
+      live.push_line("line");
+    }
+    app.task_live = Some(live.clone());
+    app.task_open = true;
+    app.task_scroll = 0;
+    let send = |app: &mut App, key: crossterm::event::KeyCode| {
+      crate::event::handle(
+        app,
+        crossterm::event::Event::Key(crossterm::event::KeyEvent::from(key)),
+      )
+    };
+    send(&mut app, crossterm::event::KeyCode::Down);
+    assert_eq!(app.task_scroll, 1);
+    send(&mut app, crossterm::event::KeyCode::Up);
+    assert_eq!(app.task_scroll, 0);
+    send(&mut app, crossterm::event::KeyCode::PageDown);
+    assert_eq!(app.task_scroll, 10);
+    send(&mut app, crossterm::event::KeyCode::Home);
+    assert_eq!(app.task_scroll, 0);
+    send(&mut app, crossterm::event::KeyCode::End);
+    assert_eq!(
+      app.task_scroll as usize,
+      40usize.saturating_sub(TASK_CONTENT_HEIGHT)
+    );
+    send(&mut app, crossterm::event::KeyCode::Esc);
+    assert!(!app.task_open);
+    assert_eq!(app.task_scroll, 0);
+  }
+
+  #[test]
+  fn task_bottom_offset_is_zero_for_short_output() {
+    let mut app = App::with_context(Page::Main, Lang::En, Theme::load());
+    let live = LiveProcess::new();
+    live.push_line("done.");
+    app.task_live = Some(live);
+    app.task_open = true;
+    crate::event::handle(
+      &mut app,
+      crossterm::event::Event::Key(crossterm::event::KeyEvent::from(
+        crossterm::event::KeyCode::End,
+      )),
+    );
+    assert_eq!(app.task_scroll, 0);
+    assert_eq!(task_bottom_offset("done."), 0);
+  }
+
+  #[test]
+  fn empty_poll_returns_false() {
+    let mut app = App::with_context(Page::Main, Lang::En, Theme::load());
+    assert!(!app.poll());
   }
 }
