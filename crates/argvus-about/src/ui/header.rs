@@ -6,12 +6,17 @@ use crate::app::App;
 use crate::i18n::tr;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
+  let title = format!(
+    "{} > {}",
+    tr(app.lang, "ARGVUS Control Center", "ARGVUS Control Center",),
+    app.active_tab.label(app.lang),
+  );
   draw_header(
     frame,
     area,
     &app.theme,
     Header {
-      title: tr(app.lang, "Sobre o ARGVUS", "About ARGVUS"),
+      title: &title,
       version: Some(&app.argvus_version),
       version_label: tr(app.lang, "versão", "version"),
     },

@@ -15,7 +15,6 @@ pub enum Page {
   DateTime,
   RegionalLocale,
   SystemLocales,
-  Encoding,
   Keyboard,
   KeyboardLayout,
   KeyboardVariant,
@@ -25,12 +24,20 @@ pub enum Page {
   Hostname,
   Firewall,
   Users,
+  UserList,
+  SystemUsers,
   User,
   CreateUser,
   UserGroups,
   UserPassword,
   UserShell,
   UserPrimaryGroup,
+  Groups,
+  GroupList,
+  SystemGroups,
+  Group,
+  GroupMembers,
+  CreateGroup,
 }
 
 #[derive(Debug, Clone, Copy)]

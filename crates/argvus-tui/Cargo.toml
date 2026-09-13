@@ -10,4 +10,5 @@ argvus-i18n = { path = "../argvus-i18n" }
 argvus-theme = { path = "../argvus-theme" }
 crossterm.workspace = true
 ratatui.workspace = true
+unicode-width.workspace = true
 

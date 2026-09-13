@@ -17,14 +17,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
   let hints = if area.width < 110 {
     tr(
       app.lang,
-      "q Sair | ←/→ Abas | ↑/↓ Rolar | Enter Abrir | ? Ajuda",
-      "q Quit | ←/→ Tabs | ↑/↓ Scroll | Enter Open | ? Help",
+      "q Sair | Esc Voltar | ←/→ Abas | ↑/↓ Rolar | Enter Abrir | ? Ajuda",
+      "q Quit | Esc Back | ←/→ Tabs | ↑/↓ Scroll | Enter Open | ? Help",
     )
   } else {
     tr(
       app.lang,
-      "q Sair  |  ←/→ Abas  |  ↑/↓ Navegar  |  Enter Abrir  |  PgUp/PgDn Rolar  |  ? Ajuda",
-      "q Quit  |  ←/→ Tabs  |  ↑/↓ Navigate  |  Enter Open  |  PgUp/PgDn Scroll  |  ? Help",
+      "q Sair  |  Esc Voltar  |  ←/→ Abas  |  ↑/↓ Navegar  |  Enter Abrir  |  PgUp/PgDn Rolar  |  ? Ajuda",
+      "q Quit  |  Esc Back  |  ←/→ Tabs  |  ↑/↓ Navigate  |  Enter Open  |  PgUp/PgDn Scroll  |  ? Help",
     )
   };
   draw_footer(frame, area, &app.theme, status, hints);

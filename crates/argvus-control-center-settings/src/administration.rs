@@ -52,12 +52,20 @@ pub fn is_page(page: Page) -> bool {
     page,
     Page::Firewall
       | Page::Users
+      | Page::UserList
+      | Page::SystemUsers
       | Page::User
       | Page::CreateUser
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
       | Page::UserPrimaryGroup
+      | Page::Groups
+      | Page::GroupList
+      | Page::SystemGroups
+      | Page::Group
+      | Page::GroupMembers
+      | Page::CreateGroup
   )
 }
 
@@ -83,6 +91,22 @@ fn row(label: &str, detail: impl Into<String>) -> Row {
     current: false,
   }
 }
+fn plain(label: &str) -> Row {
+  Row {
+    label: label.into(),
+    detail: None,
+    current: false,
+  }
+}
+fn section(label: &str) -> Row {
+  Row {
+    label: format!("-- {label}"),
+    detail: None,
+    current: false,
+  }
+}
+
+pub use argvus_tui::buttons::{Button, ButtonKind};
 
 fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, String> {
   let binary = if firewall {
@@ -100,10 +124,21 @@ fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, Stri
       .arg("--disable-internal-agent")
       .arg(binary)
       .env_clear();
-    for name in ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
+    for name in [
+      "PATH",
+      "DBUS_SESSION_BUS_ADDRESS",
+      "DBUS_SYSTEM_BUS_ADDRESS",
+      "XDG_RUNTIME_DIR",
+    ] {
       if let Some(value) = std::env::var_os(name) {
         command.env(name, value);
       }
+    }
+    if std::env::var_os("PATH").is_none() {
+      command.env(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin",
+      );
     }
   }
   let mut child = command
@@ -136,11 +171,11 @@ fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, Stri
 
 pub struct Administration {
   firewall: Value,
-  accounts: Value,
+  pub(crate) accounts: Value,
   config: Value,
-  user: Value,
+  pub(crate) user: Value,
+  group: Value,
   passwords: [String; 3],
-  show_system: bool,
   pub editor: Option<Editor>,
   pending: Option<(bool, Value)>,
   worker: Option<Receiver<Result<(bool, Value), String>>>,
@@ -155,8 +190,8 @@ impl Administration {
       accounts: Value::Null,
       config: Value::Null,
       user: Value::Null,
+      group: Value::Null,
       passwords: Default::default(),
-      show_system: false,
       editor: None,
       pending: None,
       worker: None,
@@ -222,9 +257,20 @@ impl Administration {
         {
           self.user = user.clone();
         }
+        if let Some(groups) = value["group_details"].as_array()
+          && let Some(group) = groups.iter().find(|group| {
+            group["name"] == self.group["original"] || group["gid"] == self.group["gid"]
+          })
+        {
+          self.group = group.clone();
+          self.group["original"] = self.group["name"].clone();
+        }
         self.accounts = value;
         if self.operation == "delete" {
           self.user = Value::Null;
+        }
+        if self.operation == "delete-group" {
+          self.group = Value::Null;
         }
       }
     }))
@@ -236,7 +282,11 @@ impl Administration {
     }
   }
 
-  fn users(&self) -> Vec<Value> {
+  pub fn is_loaded(&self) -> bool {
+    self.accounts["users"].is_array()
+  }
+
+  pub(crate) fn users(&self, include_system: bool) -> Vec<Value> {
     self.accounts["users"]
       .as_array()
       .map(|users| {
@@ -244,7 +294,7 @@ impl Administration {
           .iter()
           .filter(|user| {
             let uid = user["uid"].as_u64().unwrap_or(0);
-            self.show_system
+            include_system
               || (1000..65534).contains(&uid)
               || user["uid"] == self.accounts["actor_uid"]
           })
@@ -252,6 +302,133 @@ impl Administration {
           .collect()
       })
       .unwrap_or_default()
+  }
+
+  pub(crate) fn groups(&self, include_system: bool) -> Vec<Value> {
+    self.accounts["group_details"]
+      .as_array()
+      .map(|groups| {
+        groups
+          .iter()
+          .filter(|group| include_system || group["gid"].as_u64().unwrap_or(0) >= 1000)
+          .cloned()
+          .collect()
+      })
+      .unwrap_or_else(|| {
+        strings(&self.accounts["groups"])
+          .into_iter()
+          .filter(|name| include_system || !matches!(name.as_str(), "root" | "bin" | "daemon"))
+          .map(|name| json!({"name":name,"gid":"","members":[]}))
+          .collect()
+      })
+  }
+
+  pub fn buttons(&self, page: Page, lang: Lang) -> Vec<Button> {
+    if self.busy() {
+      return Vec::new();
+    }
+    match page {
+      Page::User => vec![
+        Button::new(
+          tr(lang, "Salvar alterações", "Save changes"),
+          ButtonKind::Primary,
+        ),
+        Button::new(
+          tr(lang, "Alterar senha", "Change password"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(lang, "Bloquear senha", "Lock password"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(lang, "Desbloquear senha", "Unlock password"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(
+            lang,
+            "Exigir nova senha no login",
+            "Require password change at login",
+          ),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(lang, "Imagem do avatar", "Avatar image"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(lang, "Remover avatar", "Remove avatar"),
+          ButtonKind::Danger,
+        ),
+        Button::new(
+          tr(
+            lang,
+            "Excluir usuário (manter home)",
+            "Delete user (keep home)",
+          ),
+          ButtonKind::Danger,
+        ),
+        Button::new(
+          tr(lang, "Excluir usuário e home", "Delete user and home"),
+          ButtonKind::Danger,
+        ),
+      ],
+      Page::CreateUser => vec![Button::new(
+        if self.passwords[1].is_empty() {
+          tr(
+            lang,
+            "Criar conta (senha bloqueada)",
+            "Create account (password locked)",
+          )
+        } else {
+          tr(
+            lang,
+            "Criar conta com senha",
+            "Create account with password",
+          )
+        },
+        ButtonKind::Primary,
+      )],
+      Page::CreateGroup => vec![Button::new(
+        tr(lang, "Criar grupo", "Create group"),
+        ButtonKind::Primary,
+      )],
+      Page::UserList | Page::SystemUsers => vec![Button::new(
+        tr(lang, "Recarregar", "Reload"),
+        ButtonKind::Secondary,
+      )],
+      Page::Group => vec![
+        Button::new(
+          tr(lang, "Salvar alterações", "Save changes"),
+          ButtonKind::Primary,
+        ),
+        Button::new(
+          tr(lang, "Alterar membros", "Edit members"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(lang, "Excluir grupo", "Delete group"),
+          ButtonKind::Danger,
+        ),
+      ],
+      Page::Firewall => vec![
+        Button::new(
+          tr(lang, "Salvar Configuração", "Save configuration"),
+          ButtonKind::Primary,
+        ),
+        Button::new(
+          tr(lang, "Adicionar Regras IPTables", "Add IPTables rules"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(
+          tr(lang, "Aplicar regras salvas", "Apply saved rules"),
+          ButtonKind::Secondary,
+        ),
+        Button::new(tr(lang, "Cancelar", "Cancel"), ButtonKind::Danger),
+      ],
+      _ => Vec::new(),
+    }
   }
 
   pub fn rows(&self, page: Page, lang: Lang) -> Vec<Row> {
@@ -299,102 +476,119 @@ impl Administration {
             },
           )
         }));
-        rows.push(row(
-          tr(lang, "Salvar configuração", "Save configuration"),
-          "",
-        ));
-        rows.push(row(tr(lang, "Editar rules.fw", "Edit rules.fw"), ""));
-        rows.push(row(
-          tr(lang, "Aplicar regras salvas", "Apply saved rules"),
-          "",
-        ));
-        rows.push(row(
-          tr(
-            lang,
-            "Recarregar / descartar alterações",
-            "Reload / discard changes",
-          ),
-          "",
-        ));
         rows
       }
       Page::Users => {
-        let mut rows = vec![
-          row(tr(lang, "Criar usuário", "Create user"), ""),
-          row(tr(lang, "Criar grupo", "Create group"), ""),
+        vec![
+          plain(tr(lang, "Criar", "Create")),
+          plain(tr(lang, "Listar", "List")),
+          plain(tr(lang, "Contas do sistema", "System accounts")),
+        ]
+      }
+      Page::UserList | Page::SystemUsers => {
+        let include_system = page == Page::SystemUsers;
+        self
+          .users(include_system)
+          .iter()
+          .map(|user| row(&text(user, "user"), text(user, "name")))
+          .collect()
+      }
+      Page::CreateUser => vec![
+        section(tr(lang, "Conta", "Account")),
+        row(tr(lang, "Usuário", "Username"), text(&self.user, "user")),
+        row(
+          tr(lang, "Nome completo", "Full name"),
+          text(&self.user, "name"),
+        ),
+        row("Shell", text(&self.user, "shell")),
+        row(
+          tr(lang, "Grupos suplementares", "Supplementary groups"),
+          strings(&self.user["groups"]).join(", "),
+        ),
+        row(
+          tr(lang, "Nova senha", "New password"),
+          "*".repeat(argvus_tui::text::display_width(&self.passwords[1])),
+        ),
+        row(
+          tr(lang, "Confirmar senha", "Confirm password"),
+          "*".repeat(argvus_tui::text::display_width(&self.passwords[2])),
+        ),
+      ],
+      Page::User => vec![
+        section(tr(lang, "Conta", "Account")),
+        row(tr(lang, "Usuário", "Username"), text(&self.user, "user")),
+        row(
+          tr(lang, "Nome completo", "Full name"),
+          text(&self.user, "name"),
+        ),
+        row("Shell", text(&self.user, "shell")),
+        row(
+          tr(lang, "Grupos suplementares", "Supplementary groups"),
+          strings(&self.user["groups"]).join(", "),
+        ),
+        section(tr(lang, "Identidade", "Identity")),
+        row(
+          tr(lang, "Grupo primário", "Primary group"),
+          text(&self.user, "primary_group"),
+        ),
+        section(tr(lang, "Informações", "Information")),
+        row(
+          "UID / GID",
+          format!("{} / {}", self.user["uid"], self.user["gid"]),
+        ),
+        row("Home", text(&self.user, "home")),
+      ],
+      Page::Groups => vec![
+        plain(tr(lang, "Criar", "Create")),
+        plain(tr(lang, "Listar", "List")),
+      ],
+      Page::GroupList | Page::SystemGroups => {
+        let mut rows = vec![plain(tr(lang, "Recarregar", "Reload"))];
+        rows.extend(self.groups(true).iter().map(|group| {
+          let members = strings(&group["members"]);
           row(
-            tr(lang, "Mostrar contas de sistema", "Show system accounts"),
-            if self.show_system { "[x]" } else { "[ ]" },
-          ),
-          row(tr(lang, "Recarregar", "Reload"), ""),
-        ];
-        rows.extend(
-          self
-            .users()
-            .iter()
-            .map(|user| row(&text(user, "user"), text(user, "name"))),
-        );
+            &text(group, "name"),
+            if members.is_empty() {
+              format!("GID {}", group["gid"])
+            } else {
+              format!("GID {} | {}", group["gid"], members.join(", "))
+            },
+          )
+        }));
         rows
       }
-      Page::User | Page::CreateUser => {
-        let mut rows = vec![
-          row(tr(lang, "Usuário", "Username"), text(&self.user, "user")),
+      Page::CreateGroup => vec![
+        section(tr(lang, "Grupo", "Group")),
+        row(
+          tr(lang, "Nome do grupo", "Group name"),
+          text(&self.group, "name"),
+        ),
+      ],
+      Page::Group => vec![
+        section(tr(lang, "Grupo", "Group")),
+        row(tr(lang, "Nome", "Name"), text(&self.group, "name")),
+        row("GID", self.group["gid"].to_string()),
+        section(tr(lang, "Membros", "Members")),
+        row(
+          tr(lang, "Usuários", "Users"),
+          strings(&self.group["members"]).join(", "),
+        ),
+      ],
+      Page::GroupMembers => self
+        .users(true)
+        .iter()
+        .map(|user| {
+          let name = text(user, "user");
           row(
-            tr(lang, "Nome completo", "Full name"),
-            text(&self.user, "name"),
-          ),
-          row("Shell", text(&self.user, "shell")),
-          row(
-            tr(lang, "Grupos suplementares", "Supplementary groups"),
-            strings(&self.user["groups"]).join(", "),
-          ),
-        ];
-        if page == Page::CreateUser {
-          rows.push(row(
-            tr(
-              lang,
-              "Criar conta (senha bloqueada)",
-              "Create account (password locked)",
-            ),
-            "",
-          ));
-        } else {
-          rows.extend([
-            row(
-              tr(lang, "Grupo primário", "Primary group"),
-              text(&self.user, "primary_group"),
-            ),
-            row(tr(lang, "Salvar alterações", "Save changes"), ""),
-            row(tr(lang, "Alterar senha", "Change password"), ""),
-            row(tr(lang, "Bloquear senha", "Lock password"), ""),
-            row(tr(lang, "Desbloquear senha", "Unlock password"), ""),
-            row(
-              tr(
-                lang,
-                "Exigir nova senha no login",
-                "Require password change at login",
-              ),
-              "",
-            ),
-            row(tr(lang, "Imagem do avatar", "Avatar image"), ""),
-            row(tr(lang, "Remover avatar", "Remove avatar"), ""),
-            row(
-              tr(
-                lang,
-                "Excluir usuário (preservar home)",
-                "Delete user (keep home)",
-              ),
-              "",
-            ),
-            row(
-              "UID / GID",
-              format!("{} / {}", self.user["uid"], self.user["gid"]),
-            ),
-            row("Home", text(&self.user, "home")),
-          ]);
-        }
-        rows
-      }
+            &name,
+            if strings(&self.group["members"]).contains(&name) {
+              "[x]"
+            } else {
+              "[ ]"
+            },
+          )
+        })
+        .collect(),
       Page::UserShell | Page::UserPrimaryGroup => {
         let (source, field) = if page == Page::UserShell {
           ("shells", "shell")
@@ -437,19 +631,72 @@ impl Administration {
             "Senha atual (própria conta)",
             "Current password (own account)",
           ),
-          "*".repeat(self.passwords[0].chars().count()),
+          "*".repeat(argvus_tui::text::display_width(&self.passwords[0])),
         ),
         row(
           tr(lang, "Nova senha", "New password"),
-          "*".repeat(self.passwords[1].chars().count()),
+          "*".repeat(argvus_tui::text::display_width(&self.passwords[1])),
         ),
         row(
           tr(lang, "Confirmar senha", "Confirm password"),
-          "*".repeat(self.passwords[2].chars().count()),
+          "*".repeat(argvus_tui::text::display_width(&self.passwords[2])),
         ),
         row(tr(lang, "Salvar senha", "Save password"), ""),
       ],
       _ => Vec::new(),
+    }
+  }
+
+  pub fn rows_filtered(&self, page: Page, lang: Lang, query: &str) -> Vec<Row> {
+    let rows = self.rows(page, lang);
+    if query.trim().is_empty()
+      || !matches!(
+        page,
+        Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups
+      )
+    {
+      return rows;
+    }
+    let query = query.to_lowercase();
+    rows
+      .into_iter()
+      .enumerate()
+      .filter(|(index, row)| {
+        *index == 0
+          || row.label.to_lowercase().contains(&query)
+          || row
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.to_lowercase().contains(&query))
+      })
+      .map(|(_, row)| row)
+      .collect()
+  }
+
+  pub fn row_selectable(&self, page: Page, index: usize) -> bool {
+    if self.busy() {
+      return false;
+    }
+    match page {
+      Page::User => matches!(index, 2 | 3 | 4 | 6),
+      Page::CreateUser => matches!(index, 1..=6),
+      Page::UserGroups => strings(&self.accounts["groups"])
+        .get(index)
+        .is_some_and(|group| *group != text(&self.user, "primary_group")),
+      Page::Group => matches!(index, 1),
+      Page::GroupMembers => true,
+      Page::CreateGroup => matches!(index, 1),
+      Page::Firewall
+      | Page::Users
+      | Page::UserList
+      | Page::SystemUsers
+      | Page::UserPassword
+      | Page::UserShell
+      | Page::UserPrimaryGroup
+      | Page::Groups
+      | Page::GroupList
+      | Page::SystemGroups => true,
+      _ => true,
     }
   }
 }
@@ -479,13 +726,28 @@ impl App {
       return;
     }
     let selected = self.navigation.current().selected;
+    if !self.row_selectable(selected) {
+      return;
+    }
     let page = self.page();
-    let title = self
-      .admin
-      .rows(page, self.lang)
-      .get(selected)
-      .map(|row| row.label.clone())
-      .unwrap_or_default();
+    let rows = self.admin.rows_filtered(page, self.lang, &self.search);
+    let title = if selected >= rows.len() {
+      self
+        .admin
+        .buttons(page, self.lang)
+        .get(selected - rows.len())
+        .map(|button| button.label.clone())
+        .unwrap_or_default()
+    } else {
+      rows
+        .get(selected)
+        .map(|row| row.label.clone())
+        .unwrap_or_default()
+    };
+    if selected >= rows.len() {
+      self.admin_button(selected - rows.len());
+      return;
+    }
     match page {
       Page::Firewall => {
         if self.admin.firewall.is_null() {
@@ -518,23 +780,6 @@ impl App {
           1 => {
             json!({"action": if self.admin.firewall["enabled"] == true { "disable" } else { "enable" }})
           }
-          17 => {
-            json!({"action":"save-config", "original":self.admin.firewall["config_text"], "config":self.admin.config})
-          }
-          18 => {
-            self.admin.editor = Some(Editor::new(
-              title,
-              text(&self.admin.firewall, "rules"),
-              EditTarget::Rules,
-              true,
-            ));
-            return;
-          }
-          19 => json!({"action":"restart"}),
-          20 => {
-            self.admin.load(true);
-            return;
-          }
           _ => return,
         };
         self.admin_confirm(true, value, tr(self.lang, "Alterar o firewall? A conexão de rede pode ser interrompida. Salvar não aplica as regras.", "Change the firewall? Network connectivity may be interrupted. Saving does not apply rules.").into());
@@ -543,21 +788,35 @@ impl App {
         0 => {
           self.admin.user = json!({"user":"", "name":"", "shell":strings(&self.admin.accounts["shells"]).first().cloned().unwrap_or("/bin/bash".into()), "groups":[]});
           self.navigation.push(Page::CreateUser);
+          self.normalize_selection();
         }
-        1 => self.admin.editor = Some(Editor::new(title, String::new(), EditTarget::Group, false)),
-        2 => self.admin.show_system = !self.admin.show_system,
-        3 => self.admin.load(false),
-        _ => {
-          if let Some(user) = self.admin.users().get(selected - 4) {
-            self.admin.user = user.clone();
-            self.navigation.push(Page::User);
-          }
+        1 => {
+          self.navigation.push(Page::UserList);
+          self.normalize_selection();
         }
+        2 => {
+          self.navigation.push(Page::SystemUsers);
+          self.normalize_selection();
+        }
+        _ => {}
       },
+      Page::UserList | Page::SystemUsers => {
+        let include_system = page == Page::SystemUsers;
+        let user = self
+          .admin
+          .users(include_system)
+          .into_iter()
+          .find(|user| text(user, "user") == title);
+        if let Some(user) = user {
+          self.admin.user = user.clone();
+          self.navigation.push(Page::User);
+          self.normalize_selection();
+        }
+      }
       Page::CreateUser | Page::User => {
         let user = text(&self.admin.user, "user");
         match selected {
-          0 if page == Page::CreateUser => {
+          1 if page == Page::CreateUser => {
             self.admin.editor = Some(Editor::new(
               title,
               user,
@@ -565,7 +824,7 @@ impl App {
               false,
             ))
           }
-          1 => {
+          2 => {
             self.admin.editor = Some(Editor::new(
               title,
               text(&self.admin.user, "name"),
@@ -573,33 +832,85 @@ impl App {
               false,
             ))
           }
-          2 => self.navigation.push(Page::UserShell),
-          3 => self.navigation.push(Page::UserGroups),
-          4 if page == Page::User => self.navigation.push(Page::UserPrimaryGroup),
-          4 | 5 => {
-            let mut value = json!({"action":if page == Page::CreateUser { "create" } else { "edit" }, "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"]});
-            if page == Page::User {
-              value["primary_group"] = self.admin.user["primary_group"].clone();
-            }
-            self.admin_confirm(false, value, format!("{title}: {user}?"));
+          3 => {
+            self.navigation.push(Page::UserShell);
+            self.normalize_selection();
           }
-          6 => {
-            self.admin.passwords = Default::default();
-            self.navigation.push(Page::UserPassword);
+          4 => {
+            self.navigation.push(Page::UserGroups);
+            self.normalize_selection();
           }
-          7..=9 | 11 | 12 => {
-            let value = match selected {
-              7 | 8 => json!({"action":"lock", "user":user, "locked":selected == 7}),
-              9 => json!({"action":"expire-password", "user":user}),
-              11 => json!({"action":"avatar", "user":user, "path":""}),
-              _ => json!({"action":"delete", "user":user}),
-            };
-            self.admin_confirm(false, value, format!("{title}: {user}?"));
+          5 | 6 if page == Page::CreateUser => {
+            let target = if selected == 5 { 1 } else { 2 };
+            self.admin.editor = Some(Editor::new(
+              title,
+              self.admin.passwords[target].clone(),
+              EditTarget::Password(target),
+              false,
+            ));
           }
-          10 => {
-            self.admin.editor = Some(Editor::new(title, String::new(), EditTarget::Avatar, false))
+          6 if page == Page::User => {
+            self.navigation.push(Page::UserPrimaryGroup);
+            self.normalize_selection();
           }
           _ => {}
+        }
+      }
+      Page::Groups => match selected {
+        0 => {
+          self.admin.group = json!({"name":""});
+          self.navigation.push(Page::CreateGroup);
+          self.normalize_selection();
+        }
+        1 => {
+          self.navigation.push(Page::GroupList);
+          self.normalize_selection();
+        }
+        _ => {}
+      },
+      Page::GroupList | Page::SystemGroups => match selected {
+        0 => self.admin.load(false),
+        _ => {
+          let group = self
+            .admin
+            .groups(true)
+            .into_iter()
+            .find(|group| text(group, "name") == title);
+          if let Some(group) = group {
+            self.admin.group = group.clone();
+            self.admin.group["original"] = self.admin.group["name"].clone();
+            self.navigation.push(Page::Group);
+            self.normalize_selection();
+          }
+        }
+      },
+      Page::CreateGroup if selected == 1 => {
+        self.admin.editor = Some(Editor::new(
+          title,
+          text(&self.admin.group, "name"),
+          EditTarget::Group,
+          false,
+        ));
+      }
+      Page::Group if selected == 1 => {
+        self.admin.editor = Some(Editor::new(
+          title,
+          text(&self.admin.group, "name"),
+          EditTarget::Group,
+          false,
+        ));
+      }
+      Page::GroupMembers => {
+        if let Some(user) = self.admin.users(true).get(selected)
+          && let Some(member) = user["user"].as_str()
+        {
+          let mut members = strings(&self.admin.group["members"]);
+          if members.iter().any(|value| value == member) {
+            members.retain(|value| value != member);
+          } else {
+            members.push(member.to_string());
+          }
+          self.admin.group["members"] = json!(members);
         }
       }
       Page::UserShell | Page::UserPrimaryGroup => {
@@ -662,6 +973,143 @@ impl App {
     }
   }
 
+  pub fn admin_button(&mut self, button: usize) {
+    let page = self.page();
+    let user = text(&self.admin.user, "user");
+    let title = self
+      .admin
+      .buttons(page, self.lang)
+      .get(button)
+      .map(|button| button.label.clone())
+      .unwrap_or_default();
+    match page {
+      Page::User => match button {
+        0 => {
+          let value = json!({"action":"edit", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"], "primary_group":self.admin.user["primary_group"]});
+          self.admin_confirm(false, value, format!("{title}: {user}?"));
+        }
+        1 => {
+          self.admin.passwords = Default::default();
+          self.navigation.push(Page::UserPassword);
+          self.normalize_selection();
+        }
+        2 | 3 => {
+          self.admin_confirm(
+            false,
+            json!({"action":"lock", "user":user, "locked":button == 2}),
+            format!("{title}: {user}?"),
+          );
+        }
+        4 => {
+          self.admin_confirm(
+            false,
+            json!({"action":"expire-password", "user":user}),
+            format!("{title}: {user}?"),
+          );
+        }
+        5 => {
+          self.admin.editor = Some(Editor::new(title, String::new(), EditTarget::Avatar, false));
+        }
+        6 => {
+          self.admin_confirm(
+            false,
+            json!({"action":"avatar", "user":user, "path":""}),
+            format!("{title}: {user}?"),
+          );
+        }
+        7 | 8 => {
+          let remove_home = button == 8;
+          self.admin_confirm(
+            false,
+            json!({"action":"delete", "user":user, "remove_home":remove_home}),
+            format!("{title}: {user}?"),
+          );
+        }
+        _ => {}
+      },
+      Page::CreateUser if button == 0 => {
+        let mut value = json!({"action":"create", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"]});
+        if self.admin.passwords[1].is_empty() && self.admin.passwords[2].is_empty() {
+          self.admin_confirm(false, value, format!("{title}: {user}?"));
+          return;
+        }
+        if self.admin.passwords[1].is_empty() || self.admin.passwords[1] != self.admin.passwords[2]
+        {
+          self.error_modal = Some(
+            tr(
+              self.lang,
+              "A nova senha deve ser preenchida e coincidir com a confirmação.",
+              "The new password must be nonempty and match its confirmation.",
+            )
+            .into(),
+          );
+          return;
+        }
+        value["password"] = self.admin.passwords[1].clone().into();
+        self.admin.passwords = Default::default();
+        self.admin_confirm(false, value, format!("{title}: {user}?"));
+      }
+      Page::UserList | Page::SystemUsers if button == 0 => self.admin.load(false),
+      Page::CreateGroup if button == 0 => {
+        let group = text(&self.admin.group, "name");
+        self.admin_confirm(
+          false,
+          json!({"action":"create-group", "group":group}),
+          format!("{title}: {group}?"),
+        );
+      }
+      Page::Group => match button {
+        0 => {
+          let group = text(&self.admin.group, "name");
+          self.admin_confirm(
+            false,
+            json!({
+              "action":"edit-group",
+              "group": text(&self.admin.group, "original"),
+              "name": group,
+              "members": self.admin.group["members"]}),
+            format!("{title}: {}?", text(&self.admin.group, "original")),
+          );
+        }
+        1 => {
+          self.navigation.push(Page::GroupMembers);
+          self.normalize_selection();
+        }
+        2 => {
+          let group = text(&self.admin.group, "original");
+          self.admin_confirm(
+            false,
+            json!({"action":"delete-group", "group":group}),
+            format!("{title}: {group}?"),
+          );
+        }
+        _ => {}
+      },
+      Page::Firewall => match button {
+        0 => {
+          let value = json!({"action":"save-config", "original":self.admin.firewall["config_text"], "config":self.admin.config});
+          self.admin_confirm(true, value, format!("{title}?"));
+        }
+        1 => {
+          self.admin.editor = Some(Editor::new(
+            title,
+            text(&self.admin.firewall, "rules"),
+            EditTarget::Rules,
+            true,
+          ));
+        }
+        2 => {
+          self.admin_confirm(true, json!({"action":"restart"}), format!("{title}?"));
+        }
+        3 => {
+          self.admin.load(true);
+        }
+        _ => {}
+      },
+      _ => {}
+    }
+  }
+
   pub fn admin_input(&mut self, key: KeyEvent) {
     let Some(mut editor) = self.admin.editor.take() else {
       return;
@@ -687,11 +1135,11 @@ impl App {
           )
           .into(),
         ),
-        EditTarget::Group => self.admin_confirm(
-          false,
-          json!({"action":"create-group", "group":value}),
-          format!("{}: {value}?", tr(self.lang, "Criar grupo", "Create group")),
-        ),
+        EditTarget::Group => self.admin.group["name"] = json!(value),
+        EditTarget::DateTime => match crate::system::time::set_local_time(&value) {
+          Ok(()) => self.refresh_time(),
+          Err(error) => self.fail(error),
+        },
         EditTarget::Avatar => self.admin_confirm(
           false,
           json!({"action":"avatar", "user":self.admin.user["user"], "path":value}),
@@ -705,13 +1153,15 @@ impl App {
   }
 }
 
-enum EditTarget {
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) enum EditTarget {
   Config(String),
   User(String),
   Password(usize),
   Rules,
   Group,
   Avatar,
+  DateTime,
 }
 
 pub struct Editor {
@@ -723,7 +1173,7 @@ pub struct Editor {
 }
 
 impl Editor {
-  fn new(title: String, value: String, target: EditTarget, multiline: bool) -> Self {
+  pub(crate) fn new(title: String, value: String, target: EditTarget, multiline: bool) -> Self {
     let value: Vec<char> = value.chars().collect();
     Self {
       title,
@@ -861,7 +1311,11 @@ mod tests {
     let mut app = App::new(Page::Main);
     app.error_modal = None;
     app.navigation.push(page);
-    app.admin.accounts = json!({"actor_uid":1000, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel", "audio"], "users":[
+    app.admin.accounts = json!({"actor_uid":1000, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel", "audio"], "group_details":[
+      {"name":"audio","gid":986,"members":["alice"]},
+      {"name":"users","gid":1000,"members":[]},
+      {"name":"wheel","gid":998,"members":["alice"]}
+    ], "users":[
       {"user":"root", "uid":0, "gid":0, "name":"root", "shell":"/bin/bash", "primary_group":"root", "groups":[]},
       {"user":"alice", "uid":1000, "gid":1000, "name":"Alice", "shell":"/bin/bash", "primary_group":"users", "groups":["wheel"]}
     ]});
@@ -910,7 +1364,7 @@ mod tests {
   #[test]
   fn destructive_actions_default_to_cancel_and_never_run_on_selection() {
     let mut app = app(Page::User);
-    app.navigation.current_mut().selected = 12;
+    app.navigation.current_mut().selected = 17;
     app.admin_open();
     assert!(app.confirm.is_some());
     assert!(!app.confirm_apply_selected);
@@ -963,10 +1417,330 @@ mod tests {
 
   #[test]
   fn system_users_are_optional_and_own_user_is_visible() {
+    let app = app(Page::Users);
+    assert_eq!(app.admin.users(false).len(), 1);
+    assert_eq!(app.admin.users(true).len(), 2);
+  }
+
+  #[test]
+  fn users_overview_is_separate_from_account_list() {
     let mut app = app(Page::Users);
-    assert_eq!(app.admin.users().len(), 1);
-    app.admin.show_system = true;
-    assert_eq!(app.admin.users().len(), 2);
+    let labels = app
+      .rows()
+      .into_iter()
+      .map(|row| row.label)
+      .collect::<Vec<_>>();
+    assert_eq!(labels, vec!["Criar", "Listar", "Contas do sistema"]);
+    app.navigation.current_mut().selected = 1;
+    app.admin_open();
+    assert_eq!(app.page(), Page::UserList);
+    assert_eq!(app.rows()[0].label, "alice");
+    assert!(app.rows().iter().any(|row| row.label == "alice"));
+    let buttons = app.admin.buttons(Page::UserList, Lang::En);
+    assert_eq!(buttons.len(), 1);
+    assert_eq!(buttons[0].label, "Reload");
+    app.admin_button(0);
+    assert!(app.admin.busy());
+  }
+
+  #[test]
+  fn create_user_screen_has_masked_password_rows_and_routes_to_editor() {
+    let mut app = app(Page::CreateUser);
+    app.normalize_selection();
+    let labels = app
+      .rows()
+      .into_iter()
+      .map(|row| row.label)
+      .collect::<Vec<_>>();
+    assert_eq!(
+      labels,
+      vec![
+        "-- Conta",
+        "Usuário",
+        "Nome completo",
+        "Shell",
+        "Grupos suplementares",
+        "Nova senha",
+        "Confirmar senha",
+      ]
+    );
+    assert!(app.row_selectable(5));
+    assert!(app.row_selectable(6));
+    assert!(!app.row_selectable(0));
+    app.navigation.current_mut().selected = 5;
+    app.admin_open();
+    let editor = app.admin.editor.take().expect("password row opens editor");
+    assert_eq!(editor.target, EditTarget::Password(1));
+    assert!(editor.value.is_empty());
+  }
+
+  #[test]
+  fn create_user_button_is_dynamic_and_validates_passwords() {
+    let mut app = app(Page::CreateUser);
+    assert_eq!(
+      app.admin.buttons(Page::CreateUser, Lang::Pt)[0].label,
+      "Criar conta (senha bloqueada)"
+    );
+    app.admin.passwords[1] = "segredo".into();
+    app.admin.passwords[2] = "segredo".into();
+    assert_eq!(
+      app.admin.buttons(Page::CreateUser, Lang::Pt)[0].label,
+      "Criar conta com senha"
+    );
+    app.admin_button(0);
+    assert!(
+      app.admin.pending.is_some(),
+      "valid passwords must reach the confirm flow"
+    );
+    let payload = app.admin.pending.as_ref().unwrap().1.clone();
+    assert_eq!(payload["password"].as_str(), Some("segredo"));
+    app.admin.pending = None;
+
+    app.admin.passwords[1] = "a".into();
+    app.admin.passwords[2] = "b".into();
+    app.admin_button(0);
+    assert!(
+      app.error_modal.is_some(),
+      "mismatched passwords must be rejected"
+    );
+    assert!(app.admin.pending.is_none());
+    app.error_modal = None;
+
+    app.admin.passwords[1].clear();
+    app.admin.passwords[2].clear();
+    app.admin_button(0);
+    assert!(
+      app.admin.pending.is_some(),
+      "empty passwords keep the locked-account confirm flow"
+    );
+  }
+
+  #[test]
+  fn readonly_user_and_group_rows_are_not_selectable() {
+    let mut user_app = app(Page::User);
+    user_app.normalize_selection();
+    assert_eq!(user_app.navigation.current().selected, 2);
+    assert!(!user_app.row_selectable(0));
+    assert!(!user_app.row_selectable(1));
+    assert!(!user_app.row_selectable(8));
+    assert!(!user_app.row_selectable(9));
+    assert_eq!(user_app.item_count(), 19);
+    assert!(user_app.row_selectable(18));
+
+    let group_app = app(Page::Group);
+    assert!(!group_app.row_selectable(0));
+    assert!(group_app.row_selectable(1));
+    assert!(!group_app.row_selectable(2));
+    assert!(!group_app.row_selectable(4));
+  }
+
+  #[test]
+  fn group_actions_are_buttons_outside_the_field_list() {
+    let app = app(Page::Group);
+    let rows = app.admin.rows(Page::Group, Lang::Pt);
+    assert!(rows.iter().all(|row| !row.label.contains("Excluir grupo")));
+    let buttons = app.admin.buttons(Page::Group, Lang::Pt);
+    assert_eq!(buttons.len(), 3);
+    assert_eq!(buttons[0].label, "Salvar alterações");
+    assert_eq!(buttons[2].kind, ButtonKind::Danger);
+    assert!(app.admin.row_selectable(Page::Group, 1));
+  }
+
+  #[test]
+  fn group_members_picker_toggles_users_in_list() {
+    let mut app = app(Page::GroupMembers);
+    app.admin.accounts = json!({
+      "users": [
+        {"user":"alice","uid":1000,"shell":"/bin/bash","groups":["users"],"password":"x","locked":false},
+        {"user":"bob","uid":1001,"shell":"/bin/bash","groups":["users"],"password":"x","locked":false}
+      ],
+      "groups": [],
+      "group_details": []
+    });
+    app.admin.group = json!({"name":"dev","gid":1000,"members":["alice"]});
+    assert_eq!(strings(&app.admin.group["members"]), vec!["alice"]);
+    app.navigation.current_mut().selected = 1;
+    app.admin_open();
+    assert_eq!(strings(&app.admin.group["members"]), vec!["alice", "bob"]);
+    app.admin_open();
+    assert_eq!(strings(&app.admin.group["members"]), vec!["alice"]);
+  }
+
+  #[test]
+  fn group_open_keeps_original_name_for_rename_and_delete() {
+    let mut app = app(Page::GroupList);
+    app.admin.accounts = json!({
+      "users": [],
+      "groups": [{"name":"dev","gid":1000,"members":["alice"]}],
+      "group_details": [{"name":"dev","gid":1000,"members":["alice"]}]
+    });
+    app.navigation.current_mut().selected = 1;
+    app.admin_open();
+    assert_eq!(app.page(), Page::Group);
+    assert_eq!(text(&app.admin.group, "original"), "dev");
+  }
+
+  #[test]
+  fn firewall_actions_are_buttons_outside_the_config_rows() {
+    let mut app = app(Page::Firewall);
+    app.admin.firewall = json!({"active":false,"enabled":false});
+    app.admin.config = json!({});
+    let rows = app.admin.rows(Page::Firewall, Lang::Pt);
+    assert_eq!(rows.len(), 2 + FIREWALL_FIELDS.len());
+    assert!(
+      rows
+        .iter()
+        .all(|row| !row.label.contains("Editar rules.fw"))
+    );
+    let buttons = app.admin.buttons(Page::Firewall, Lang::Pt);
+    assert_eq!(buttons.len(), 4);
+    assert_eq!(buttons[0].label, "Salvar Configuração");
+    assert_eq!(buttons[3].label, "Cancelar");
+    assert_eq!(buttons[3].kind, ButtonKind::Danger);
+  }
+
+  #[test]
+  fn firewall_buttons_route_to_confirm_editor_reload_and_cancel_like_before() {
+    let mut app = app(Page::Firewall);
+    app.admin.firewall = json!({
+      "active":false,
+      "enabled":false,
+      "config_text":"",
+      "rules":"iptables -A INPUT -j DROP"
+    });
+    app.admin.config = json!({"ALLOW_SSH":"n"});
+    app.admin_button(0); // Salvar Configuração
+    assert!(app.admin.pending.is_some());
+    app.admin.pending = None;
+    app.admin_button(1); // Adicionar Regras
+    assert_eq!(app.admin.editor.take().unwrap().target, EditTarget::Rules);
+    app.admin_button(2); // Aplicar regras salvas
+    assert!(app.admin.pending.is_some());
+    app.admin.pending = None;
+    app.admin_button(3); // Cancelar
+    assert!(app.admin.busy());
+  }
+
+  #[test]
+  fn user_actions_are_buttons_outside_the_field_list() {
+    let app = app(Page::User);
+    let rows = app.admin.rows(Page::User, Lang::Pt);
+    assert!(
+      rows
+        .iter()
+        .all(|row| !row.label.contains("Excluir usuário"))
+    );
+    let buttons = app.admin.buttons(Page::User, Lang::Pt);
+    assert_eq!(buttons.len(), 9);
+    assert_eq!(buttons[0].label, "Salvar alterações");
+    assert_eq!(buttons[7].label, "Excluir usuário (manter home)");
+    assert_eq!(buttons[8].label, "Excluir usuário e home");
+    assert_eq!(app.item_count(), rows.len() + buttons.len());
+  }
+
+  #[test]
+  fn save_and_delete_buttons_confirm_without_running() {
+    let mut app = app(Page::User);
+    app.navigation.current_mut().selected = 10;
+    app.admin_open();
+    assert!(app.confirm.is_some());
+    assert!(!app.admin.busy());
+  }
+
+  #[test]
+  fn down_navigation_reaches_buttons_and_tab_cycles() {
+    let mut app = app(Page::User);
+    app.normalize_selection();
+    assert_eq!(app.navigation.current().selected, 2);
+    app.move_selection(1);
+    app.move_selection(1);
+    assert_eq!(app.navigation.current().selected, 4);
+    app.move_selection(1);
+    assert_eq!(app.navigation.current().selected, 6);
+    app.move_selection(1);
+    assert_eq!(app.navigation.current().selected, 6);
+    assert!(!app.row_selectable(9));
+    assert!(app.row_selectable(10));
+
+    app.cycle_selection(1);
+    assert_eq!(app.navigation.current().selected, 10);
+    assert!(app.on_buttons());
+    app.cycle_selection(1);
+    assert_eq!(app.navigation.current().selected, 6);
+    assert!(!app.on_buttons());
+
+    app.cycle_selection(1);
+    assert_eq!(app.navigation.current().selected, 10);
+    app.move_button(1);
+    app.move_button(1);
+    assert_eq!(app.navigation.current().selected, 12);
+    app.move_button(1);
+    app.move_button(1);
+    app.move_button(1);
+    app.move_button(1);
+    app.move_button(1);
+    assert_eq!(app.navigation.current().selected, 17);
+    app.move_button(1);
+    assert_eq!(app.navigation.current().selected, 18);
+    app.move_button(1);
+    assert_eq!(app.navigation.current().selected, 10);
+    app.move_button(-1);
+    assert_eq!(app.navigation.current().selected, 18);
+
+    let before = app.navigation.current().selected;
+    app.move_selection(1);
+    app.move_selection(-1);
+    assert_eq!(app.navigation.current().selected, before);
+
+    app.cycle_selection(-1);
+    assert_eq!(app.navigation.current().selected, 6);
+    app.cycle_selection(-1);
+    assert_eq!(app.navigation.current().selected, 18);
+  }
+
+  #[test]
+  fn tab_cycles_action_buttons_through_key_events() {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = app(Page::User);
+    app.normalize_selection();
+    assert_eq!(app.navigation.current().selected, 2);
+    let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+    let shift_tab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE);
+    let right = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
+    let up = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+    let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+
+    crate::event::handle(&mut app, Event::Key(tab));
+    assert_eq!(app.navigation.current().selected, 10);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 11);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 12);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 13);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 14);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 15);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 16);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 17);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 18);
+    crate::event::handle(&mut app, Event::Key(right));
+    assert_eq!(app.navigation.current().selected, 10);
+
+    let before = app.navigation.current().selected;
+    crate::event::handle(&mut app, Event::Key(up));
+    crate::event::handle(&mut app, Event::Key(down));
+    assert_eq!(app.navigation.current().selected, before);
+
+    crate::event::handle(&mut app, Event::Key(tab));
+    assert_eq!(app.navigation.current().selected, 2);
+    crate::event::handle(&mut app, Event::Key(shift_tab));
+    assert_eq!(app.navigation.current().selected, 18);
   }
 
   #[test]
@@ -975,12 +1749,19 @@ mod tests {
     for (width, height) in [(60, 15), (120, 40)] {
       for page in [
         Page::Users,
+        Page::UserList,
+        Page::SystemUsers,
         Page::User,
         Page::CreateUser,
         Page::UserGroups,
         Page::UserShell,
         Page::UserPrimaryGroup,
         Page::UserPassword,
+        Page::Groups,
+        Page::GroupList,
+        Page::SystemGroups,
+        Page::Group,
+        Page::CreateGroup,
       ] {
         let mut app = app(page);
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -995,6 +1776,17 @@ mod tests {
             .iter()
             .any(|cell| cell.symbol() != " ")
         );
+        if page == Page::User {
+          let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+          assert!(rendered.contains("Excluir usuário (manter home)"));
+          assert!(!rendered.contains("-- Segurança"));
+        }
         app.admin.editor = Some(Editor::new(
           "Password".into(),
           "private-password".into(),

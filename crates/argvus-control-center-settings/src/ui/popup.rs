@@ -87,3 +87,29 @@ pub fn draw_confirm(frame: &mut Frame, area: Rect, app: &App, action: &PendingAc
     popup,
   );
 }
+
+pub fn draw_hostname_input(frame: &mut Frame, area: Rect, app: &App) {
+  let width = area.width.saturating_sub(8).clamp(40, 52);
+  let height = 7.min(area.height);
+  let popup = super::layout::centered(area, width, height);
+  frame.render_widget(Clear, popup);
+  let title = tr(app.lang, "Hostname", "Hostname");
+  let content = vec![
+    Line::from(tr(app.lang, "Novo hostname:", "New hostname:")),
+    Line::from(format!("{}_", app.hostname_input)),
+    Line::from(tr(
+      app.lang,
+      "Enter aplicar   Esc cancelar",
+      "Enter apply   Esc cancel",
+    )),
+  ];
+  frame.render_widget(
+    Paragraph::new(content).block(
+      Block::bordered()
+        .title(format!(" {title} "))
+        .border_style(Style::new().fg(app.theme.border_active))
+        .style(Style::new().bg(app.theme.background)),
+    ),
+    popup,
+  );
+}

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::error::SettingsError;
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Layout {
@@ -38,6 +39,17 @@ pub fn info() -> KeyboardInfo {
   info.hypr_layout = hypr.0;
   info.hypr_variant = hypr.1;
   info.hypr_options = hypr.2;
+  // Keyboard changes are session-scoped and intentionally do not update the
+  // privileged localectl database.  The generated Hyprland input is therefore
+  // the authoritative state shown by this page.
+  if !info.hypr_layout.is_empty() {
+    info.x11_layout = active_layout(&info.hypr_layout);
+  }
+  if !info.hypr_variant.is_empty() {
+    info.x11_variant = first_csv_value(&info.hypr_variant);
+  } else if !info.hypr_layout.is_empty() {
+    info.x11_variant.clear();
+  }
   info
 }
 
@@ -67,15 +79,49 @@ pub fn set_x11_layout(layout: &str, valid: &[Layout]) -> Result<(), SettingsErro
       "invalid keyboard layout: {layout}"
     )));
   }
-  super::privileged::run(&["keyboard", "layout", layout])?;
-  write_generated_hypr_input(Some(layout), None)?;
-  apply_hypr_keyword("input:kb_layout", layout);
-  restart_keyboard_daemon();
+  let layouts = merged_layout_list(&parse_hypr_keyboard_config().0, layout);
+  let layouts = layouts.split(',').map(str::to_string).collect::<Vec<_>>();
+  set_x11_layouts(layout, &layouts, valid)
+}
+
+pub fn set_x11_layouts(
+  default_layout: &str,
+  layouts: &[String],
+  valid: &[Layout],
+) -> Result<(), SettingsError> {
+  if layouts.is_empty() || !layouts.iter().any(|layout| layout == default_layout) {
+    return Err(SettingsError::System(
+      "at least one keyboard layout must be selected".to_string(),
+    ));
+  }
+  if layouts
+    .iter()
+    .any(|layout| !valid.iter().any(|candidate| candidate.code == *layout))
+  {
+    return Err(SettingsError::System(
+      "invalid selected keyboard layout".to_string(),
+    ));
+  }
+  let mut ordered = vec![default_layout.to_string()];
+  ordered.extend(
+    layouts
+      .iter()
+      .filter(|layout| layout.as_str() != default_layout)
+      .cloned(),
+  );
+  let layouts = ordered.join(",");
+  // A variant belongs to the selected layout.  Keeping (for example)
+  // br/abnt2 while selecting us makes Hyprland reject the complete config.
+  write_generated_hypr_input(Some(&layouts), Some(""))?;
+  apply_hypr_keyword("input:kb_layout", &layouts);
+  apply_hypr_keyword("input:kb_variant", "");
+  switch_active_layout(default_layout, &layouts);
+  reload_taskbar();
   Ok(())
 }
 
 pub fn set_x11_variant(
-  layout: &str,
+  _layout: &str,
   variant: &str,
   valid: &[Variant],
 ) -> Result<(), SettingsError> {
@@ -84,10 +130,11 @@ pub fn set_x11_variant(
       "invalid keyboard variant: {variant}"
     )));
   }
-  super::privileged::run(&["keyboard", "variant", layout, variant])?;
-  write_generated_hypr_input(Some(layout), Some(variant))?;
+  // Preserve the complete cycle list while changing only the variant of the
+  // currently selected layout.
+  write_generated_hypr_input(None, Some(variant))?;
   apply_hypr_keyword("input:kb_variant", variant);
-  restart_keyboard_daemon();
+  reload_taskbar();
   Ok(())
 }
 
@@ -224,6 +271,43 @@ fn extract_lua_string(contents: &str, key: &str) -> Option<String> {
   })
 }
 
+fn first_csv_value(value: &str) -> String {
+  value
+    .split(',')
+    .map(str::trim)
+    .find(|part| !part.is_empty())
+    .unwrap_or_default()
+    .to_string()
+}
+
+fn active_layout(layouts: &str) -> String {
+  let fallback = first_csv_value(layouts);
+  let Some(output) = command_stdout("hyprctl", &["devices", "-j"]) else {
+    return fallback;
+  };
+  let Ok(root) = serde_json::from_str::<Value>(&output) else {
+    return fallback;
+  };
+  let Some(index) = root
+    .get("keyboards")
+    .and_then(Value::as_array)
+    .and_then(|keyboards| {
+      keyboards
+        .iter()
+        .find_map(|keyboard| keyboard.get("active_layout_index").and_then(Value::as_u64))
+    })
+  else {
+    return fallback;
+  };
+  layouts
+    .split(',')
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .nth(index as usize)
+    .unwrap_or(&fallback)
+    .to_string()
+}
+
 fn write_generated_hypr_input(
   layout: Option<&str>,
   variant: Option<&str>,
@@ -312,9 +396,41 @@ fn apply_hypr_keyword(key: &str, value: &str) {
     .status();
 }
 
-fn restart_keyboard_daemon() {
+fn merged_layout_list(current: &str, layout: &str) -> String {
+  let mut parts: Vec<String> = current
+    .split(',')
+    .map(str::trim)
+    .filter(|part| !part.is_empty())
+    .map(str::to_string)
+    .collect();
+  let mut merged: Vec<String> = Vec::with_capacity(parts.len() + 1);
+  for part in parts.drain(..) {
+    if part != layout && !merged.contains(&part) {
+      merged.push(part);
+    }
+  }
+  merged.insert(0, layout.to_string());
+  merged.join(",")
+}
+
+fn switch_active_layout(layout: &str, layouts: &str) {
+  let index = layouts
+    .split(',')
+    .position(|part| part == layout)
+    .unwrap_or(0);
+  let _ = Command::new("hyprctl")
+    .args(["switchxkblayout", "all", &index.to_string()])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .status();
+}
+
+fn reload_taskbar() {
+  // Keep this identical to SUPER+SHIFT+R, which is the supported ARGVUS
+  // session reload and is required for the managed Waybar configuration.
   let _ = Command::new("argvus-sessionctl")
-    .args(["restart", "keyboard-layout"])
+    .args(["reload"])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null())
@@ -353,5 +469,26 @@ mod tests {
     assert!(is_xkb_name("br"));
     assert!(is_xkb_name("br_abnt2"));
     assert!(!is_xkb_name("br;reboot"));
+  }
+
+  #[test]
+  fn merged_layout_list_moves_the_chosen_layout_first() {
+    assert_eq!(merged_layout_list("", "br"), "br");
+    assert_eq!(merged_layout_list("br", "br"), "br");
+    assert_eq!(merged_layout_list("br,us", "us"), "us,br");
+    assert_eq!(merged_layout_list("us,br,de", "br"), "br,us,de");
+    assert_eq!(merged_layout_list("us,br", "us"), "us,br");
+  }
+
+  #[test]
+  fn first_csv_value_reads_the_active_layout() {
+    assert_eq!(first_csv_value("us,br"), "us");
+    assert_eq!(first_csv_value("  br  "), "br");
+    assert_eq!(first_csv_value(""), "");
+  }
+
+  #[test]
+  fn active_layout_falls_back_to_the_first_configured_layout() {
+    assert_eq!(active_layout("br,us"), "br");
   }
 }
