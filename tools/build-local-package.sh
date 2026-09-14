@@ -21,7 +21,6 @@ tar -czf "$archive" \
   --exclude='./dist' \
   --exclude='./target' \
   --exclude='./pkg' \
-  --exclude='./src' \
   --exclude='./packaging/arch/pkg' \
   --exclude='./packaging/arch/src' \
   --exclude='./packaging/arch/*.pkg.tar*' \

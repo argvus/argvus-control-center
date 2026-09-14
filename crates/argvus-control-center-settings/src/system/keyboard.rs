@@ -247,11 +247,11 @@ fn parse_hypr_keyboard_config() -> (String, String, String) {
 }
 
 fn hypr_config_path() -> PathBuf {
-  let user = argvus_control_center_core::paths::argvus_config_home().join("hypr/hyprland.lua");
+  let user = argvus_control_center_core::paths::config_home().join("hypr/hyprland.lua");
   if user.exists() {
     user
   } else {
-    argvus_control_center_core::paths::system_config_root().join("hypr/hyprland.lua")
+    argvus_control_center_core::paths::system_config_root().join("hyprland/config/hyprland.lua")
   }
 }
 

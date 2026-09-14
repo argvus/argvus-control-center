@@ -12,7 +12,7 @@ pub struct Loader {
 impl Loader {
   pub fn new() -> Self {
     let explicit = std::env::var_os("ARGVUS_CONTROL_CENTER_RESOURCE_DIR").map(PathBuf::from);
-    let installed = PathBuf::from("/etc/argvus/control-center");
+    let installed = PathBuf::from("/usr/share/argvus/control-center/config");
     let development = development_resources_dir();
     let resource_dir = explicit.unwrap_or_else(|| {
       if installed.is_dir() {
@@ -81,6 +81,8 @@ fn development_resources_dir() -> PathBuf {
     .ok()
     .and_then(|dir| {
       [
+        dir.join("src/usr/share/argvus/control-center/config"),
+        dir.join("../../src/usr/share/argvus/control-center/config"),
         dir.join("resources"),
         dir.join("argvus-control-center/resources"),
         dir.join("../../resources"),

@@ -396,7 +396,7 @@ impl FontSettings {
   }
 
   fn write_rofi_settings(&self) -> Result<(), String> {
-    let system = paths::system_config_root().join("rofi/theme.rasi");
+    let system = paths::system_config_root().join("launcher/config/theme.rasi");
     let user_theme = paths::argvus_config_home().join("rofi/theme.rasi");
     let theme = if user_theme.exists() {
       user_theme
@@ -446,7 +446,15 @@ impl FontSettings {
     if user.exists() {
       return write_managed_block(&user, block);
     }
-    let system = paths::system_config_root().join("waybar").join(name);
+    let project = match name {
+      "argvus-taskbar.css" => "taskbar",
+      "argvus-widget-telemetry.css" => "widget-telemetry",
+      _ => "taskbar",
+    };
+    let system = paths::system_config_root()
+      .join(project)
+      .join("config")
+      .join(name);
     let generated = paths::argvus_config_home()
       .join("generated/waybar")
       .join(name);
@@ -462,7 +470,7 @@ impl FontSettings {
   fn write_terminal_settings(&self) -> Result<(), String> {
     let foot = paths::argvus_config_home().join("foot/foot.ini");
     if !foot.exists() {
-      let system = paths::system_config_root().join("foot/foot.ini");
+      let system = paths::system_config_root().join("app-profiles/config/foot/foot.ini");
       if system.exists() {
         write_file(
           &foot,
@@ -517,7 +525,7 @@ impl FontSettings {
   fn refresh_runtime(&self) {
     spawn_if_available("hyprctl", &["reload"]);
     spawn_if_available("argvus-sessionctl", &["restart", "waybar", "shell"]);
-    let script = paths::system_config_root().join("scripts/argvus/hyprlock-theme.sh");
+    let script = paths::system_config_root().join("lock/sh/hyprlock-theme.sh");
     if script.is_file() {
       let script = script.to_string_lossy();
       spawn_if_available("sh", &[script.as_ref(), "--invalidate"]);

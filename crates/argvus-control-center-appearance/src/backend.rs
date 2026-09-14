@@ -15,12 +15,15 @@ const WALLPAPERS_DIR: &str = "/usr/share/backgrounds/argvus";
 const DEFAULT_THEME: &str = "argvus-dark-aether";
 const DEFAULT_ACCENT: &str = "#3590bd";
 
-fn scripts_dir() -> PathBuf {
-  system_config_root().join("scripts").join("argvus")
-}
-
 fn script(name: &str) -> PathBuf {
-  scripts_dir().join(name)
+  let project = match name {
+    "effects-toggle.sh" => "session",
+    "theme-switch.sh" | "accent-switch.sh" | "hypr-wallpaper-pick.sh" => "appearance",
+    "hyprlock-theme.sh" => "lock",
+    "spaces-switch.sh" => "hyprland",
+    _ => "session",
+  };
+  system_config_root().join(project).join("sh").join(name)
 }
 
 fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
@@ -104,7 +107,7 @@ fn is_tui_file_manager(command: &[String]) -> bool {
 
 fn default_app(category: &str) -> Option<Vec<String>> {
   let output = run_script_output(
-    &system_config_root().join("scripts/argvus/get-default.sh"),
+    &system_config_root().join("session/sh/get-default.sh"),
     &[category],
   )?;
   let words = command_words(output.trim());

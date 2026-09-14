@@ -40,7 +40,8 @@ build() {
 check() {
   cd "${pkgname}-${pkgver}"
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${srcdir}=."
-  cargo test --locked --workspace --target-dir target
+  env -u LC_ALL -u LC_MESSAGES -u LANGUAGE LANG=pt_BR.UTF-8 \
+    cargo test --locked --workspace --target-dir target
 }
 
 package() {
