@@ -85,7 +85,7 @@ fn with_screen_off_listener(content: &str, minutes: u32) -> String {
   let seconds = minutes.saturating_mul(60);
   let base = content.trim_end_matches(['\r', '\n']).to_string();
   format!(
-    "{base}\n\n# Screen-off timer (managed by ARGVUS Control Center)\nlistener {{\n  timeout = {seconds}\n  on-timeout = hyprctl dispatch 'hl.dsp.dpms({{ action = \"off\" }})'\n  on-resume = hyprctl dispatch 'hl.dsp.dpms({{ action = \"on\" }})'\n}}\n"
+    "{base}\n\nlistener {{\n  timeout = {seconds}\n  on-timeout = hyprctl dispatch 'hl.dsp.dpms({{ action = \"off\" }})'\n  on-resume = hyprctl dispatch 'hl.dsp.dpms({{ action = \"on\" }})'\n}}\n"
   )
 }
 
@@ -411,8 +411,12 @@ listener {
     assert!(calls_dpms_off("hyprctl dispatch dpms_state 0"));
     assert!(!calls_dpms_off("systemctl suspend"));
     assert!(!calls_dpms_off("hyprctl dispatch dpms on"));
-    assert!(calls_dpms_off("hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'"));
-    assert!(!calls_dpms_off("hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'"));
+    assert!(calls_dpms_off(
+      "hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'"
+    ));
+    assert!(!calls_dpms_off(
+      "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'"
+    ));
   }
 
   #[test]
@@ -442,7 +446,11 @@ listener {
     let updated = with_screen_off_listener(stock, 1);
     assert_eq!(screen_off_minutes_from(&updated), Some(1));
     assert!(updated.contains("timeout = 900"), "{updated}");
-    assert!(updated.contains("on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'"), "{updated}");
+    assert!(
+      updated.contains("on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'"),
+      "{updated}"
+    );
+    assert!(!updated.contains("Screen-off timer"), "{updated}");
   }
 
   #[test]
@@ -506,7 +514,10 @@ listener {
 ";
     assert_eq!(lock_command(config), "custom-locker --damp");
     let updated = with_lock_listener(config, 5);
-    assert!(updated.contains("on-timeout = custom-locker --damp"), "{updated}");
+    assert!(
+      updated.contains("on-timeout = custom-locker --damp"),
+      "{updated}"
+    );
     assert_eq!(lock_minutes_from(&updated), Some(5));
   }
 
@@ -531,13 +542,21 @@ listener {
     let updated = remove_listener(config, calls_lock);
     assert_eq!(lock_minutes_from(&updated), None);
     assert_eq!(listener_minutes_from(&updated, calls_dpms_off), Some(5));
-    assert!(updated.contains("lock_cmd = sh /usr/share/argvus/power/sh/hypr-power-menu.sh --lock"), "{updated}");
-    assert!(!updated.contains("on-timeout = sh /usr/share/argvus/power/sh/hypr-power-menu.sh --lock"), "{updated}");
+    assert!(
+      updated.contains("lock_cmd = sh /usr/share/argvus/power/sh/hypr-power-menu.sh --lock"),
+      "{updated}"
+    );
+    assert!(
+      !updated.contains("on-timeout = sh /usr/share/argvus/power/sh/hypr-power-menu.sh --lock"),
+      "{updated}"
+    );
   }
 
   #[test]
   fn calls_lock_matches_lock_idioms_but_not_sleep_or_dpms() {
-    assert!(calls_lock("sh /usr/share/argvus/power/sh/hypr-power-menu.sh --lock"));
+    assert!(calls_lock(
+      "sh /usr/share/argvus/power/sh/hypr-power-menu.sh --lock"
+    ));
     assert!(calls_lock("swaylock"));
     assert!(!calls_lock("systemctl suspend"));
     assert!(!calls_lock("hyprctl dispatch dpms off"));
