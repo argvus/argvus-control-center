@@ -107,7 +107,7 @@ pub fn groups() -> [Group; 4] {
           key: "control_center.about_calendar_and_taskbar_popup_integration",
         },
         Module {
-          name: "argvus-taskbar-storage",
+          name: "argvus-removable-devices",
           key: "control_center.about_removable_device_and_storage_module",
         },
         Module {
@@ -210,6 +210,6 @@ mod tests {
       .collect::<Vec<_>>();
     assert_eq!(names.len(), 16);
     assert!(names.contains(&"argvus-about"));
-    assert!(names.contains(&"argvus-taskbar-storage"));
+    assert!(names.contains(&"argvus-removable-devices"));
   }
 }
