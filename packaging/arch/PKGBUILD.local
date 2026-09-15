@@ -27,6 +27,10 @@ source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
+  if [[ ! -f "$srcdir/argvus-i18n/Cargo.toml" ]]; then
+    error "argvus-i18n source is missing from the local source archive"
+    return 1
+  fi
   cd "${pkgname}-${pkgver}"
   cargo fetch --locked --target "${CARCH}-unknown-linux-gnu"
 }

@@ -85,7 +85,7 @@ argvus-control-center-session = { path = "../argvus-control-center-session", opt
 argvus-control-center-displays = { path = "../argvus-control-center-displays", optional = true }
 argvus-control-center-appearance = { path = "../argvus-control-center-appearance", optional = true }
 argvus-control-center-core = { path = "../argvus-control-center-core" }
-argvus-i18n = { path = "../argvus-i18n" }
+argvus-i18n.workspace = true
 argvus-theme = { path = "../argvus-theme" }
 argvus-tui = { path = "../argvus-tui" }
 crossterm.workspace = true

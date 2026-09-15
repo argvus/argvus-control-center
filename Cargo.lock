@@ -181,6 +181,7 @@ dependencies = [
 name = "argvus-control-center-core"
 version = "0.1.0"
 dependencies = [
+ "argvus-i18n",
  "serde",
  "toml",
 ]
@@ -326,6 +327,9 @@ dependencies = [
 [[package]]
 name = "argvus-i18n"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "argvus-theme"

@@ -6,48 +6,43 @@ use super::{ARGVUS_URL, Doc, Row, WILLIAM_CANIN_URL, simple_doc};
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let rows = vec![
-        Row::Section(
-            tr(lang, "Desenvolvedor principal", "Lead developer").to_string(),
-        ),
-        Row::Para(
-            tr(
-                lang,
-                "O ARGVUS é idealizado e desenvolvido por William C. Canin.",
-                "ARGVUS is designed and developed by William C. Canin.",
-            )
-            .to_string(),
-        ),
-        Row::Link {
-            label: WILLIAM_CANIN_URL.to_string(),
-            url: WILLIAM_CANIN_URL.to_string(),
-        },
-        Row::Spacer,
-        Row::Section(tr(lang, "Projeto", "Project").to_string()),
-        Row::Link {
-            label: ARGVUS_URL.to_string(),
-            url: ARGVUS_URL.to_string(),
-        },
-        Row::Spacer,
-        Row::Section(tr(lang, "Contribuições", "Contributions").to_string()),
-        Row::Para(
-            tr(
-                lang,
-                "Agradecemos a toda a comunidade ARGVUS e a todos os colaboradores que contribuíram com código, traduções, relatórios de bug, documentação e ideias nos repositórios oficiais de cada módulo.",
-                "We thank the entire ARGVUS community and all contributors who helped with code, translations, bug reports, documentation and ideas in the official repositories of each module.",
-            )
-            .to_string(),
-        ),
-        Row::Spacer,
-        Row::Section(tr(lang, "Tecnologias", "Technologies").to_string()),
-        Row::Para(
-            tr(
-                lang,
-                "Construído sobre Hyprland, Wayland, Quickshell, Rust, Vala e as bibliotecas e ferramentas livres que tornam este desktop possível.",
-                "Built on Hyprland, Wayland, Quickshell, Rust, Vala and the free libraries and tools that make this desktop possible.",
-            )
-            .to_string(),
-        ),
-    ];
+    Row::Section(tr(lang, "control_center.lead_developer").to_string()),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.argvus_is_designed_and_developed_by_william_c_canin",
+      )
+      .to_string(),
+    ),
+    Row::Link {
+      label: WILLIAM_CANIN_URL.to_string(),
+      url: WILLIAM_CANIN_URL.to_string(),
+    },
+    Row::Spacer,
+    Row::Section(tr(lang, "control_center.project").to_string()),
+    Row::Link {
+      label: ARGVUS_URL.to_string(),
+      url: ARGVUS_URL.to_string(),
+    },
+    Row::Spacer,
+    Row::Section(tr(lang, "control_center.contributions").to_string()),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.we_thank_the_entire_argvus_community_and_all_contributors_who_helped_w",
+      )
+      .to_string(),
+    ),
+    Row::Spacer,
+    Row::Section(tr(lang, "control_center.technologies").to_string()),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.built_on_hyprland_wayland_quickshell_rust_vala_and_the_free_libraries_",
+      )
+      .to_string(),
+    ),
+  ];
 
   simple_doc(&rows, &app.theme, width, selected)
 }

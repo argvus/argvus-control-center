@@ -17,34 +17,28 @@ use crate::{
   i18n::{Lang, tr},
 };
 
-const FIREWALL_FIELDS: [(&str, &str, &str); 15] = [
-  ("INTERFACE_WAN", "Interface WAN", "WAN interface"),
-  ("INTERFACE_LAN", "Interface LAN", "LAN interface"),
-  ("MASQUERADE_ENABLE", "Mascaramento NAT", "NAT masquerading"),
-  ("PROTECTION_LEVEL", "Nível de proteção", "Protection level"),
-  ("ALLOW_SSH", "Permitir SSH", "Allow SSH"),
-  ("SSH_CLIENTS_IP", "Redes IPv4 SSH", "SSH IPv4 networks"),
-  ("SSH_PORT", "Porta SSH", "SSH port"),
-  ("ALLOW_SAMBA", "Permitir Samba", "Allow Samba"),
-  (
-    "SAMBA_CLIENTS_IP",
-    "Redes IPv4 Samba",
-    "Samba IPv4 networks",
-  ),
-  ("ALLOW_ICMP", "Permitir ICMP", "Allow ICMP"),
-  ("OPEN_PORTS_UDP", "Portas UDP", "UDP ports"),
+const FIREWALL_FIELDS: [(&str, &str); 15] = [
+  ("INTERFACE_WAN", "control_center.wan_interface"),
+  ("INTERFACE_LAN", "control_center.lan_interface"),
+  ("MASQUERADE_ENABLE", "control_center.nat_masquerading"),
+  ("PROTECTION_LEVEL", "control_center.protection_level"),
+  ("ALLOW_SSH", "control_center.allow_ssh"),
+  ("SSH_CLIENTS_IP", "control_center.ssh_ipv4_networks"),
+  ("SSH_PORT", "control_center.ssh_port"),
+  ("ALLOW_SAMBA", "control_center.allow_samba"),
+  ("SAMBA_CLIENTS_IP", "control_center.samba_ipv4_networks"),
+  ("ALLOW_ICMP", "control_center.allow_icmp"),
+  ("OPEN_PORTS_UDP", "control_center.udp_ports"),
   (
     "SYN_FLOOD_PROTECTION",
-    "Proteção SYN flood",
-    "SYN flood protection",
+    "control_center.syn_flood_protection",
   ),
-  ("DDOS_PROTECTION", "Proteção DDoS", "DDoS protection"),
+  ("DDOS_PROTECTION", "control_center.ddos_protection"),
   (
     "PORT_SCAN_PROTECTION",
-    "Proteção contra varredura",
-    "Port scan protection",
+    "control_center.port_scan_protection",
   ),
-  ("ANTI_SPOOFING", "Antifalsificação de IP", "Anti-spoofing"),
+  ("ANTI_SPOOFING", "control_center.anti_spoofing"),
 ];
 
 pub fn is_page(page: Page) -> bool {
@@ -329,103 +323,75 @@ impl Administration {
     }
     match page {
       Page::User => vec![
+        Button::new(tr(lang, "control_center.save_changes"), ButtonKind::Primary),
         Button::new(
-          tr(lang, "Salvar alterações", "Save changes"),
-          ButtonKind::Primary,
-        ),
-        Button::new(
-          tr(lang, "Alterar senha", "Change password"),
+          tr(lang, "control_center.change_password"),
           ButtonKind::Secondary,
         ),
         Button::new(
-          tr(lang, "Bloquear senha", "Lock password"),
+          tr(lang, "control_center.lock_password"),
           ButtonKind::Secondary,
         ),
         Button::new(
-          tr(lang, "Desbloquear senha", "Unlock password"),
+          tr(lang, "control_center.unlock_password"),
           ButtonKind::Secondary,
         ),
         Button::new(
-          tr(
-            lang,
-            "Exigir nova senha no login",
-            "Require password change at login",
-          ),
+          tr(lang, "control_center.require_password_change_at_login"),
           ButtonKind::Secondary,
         ),
         Button::new(
-          tr(lang, "Imagem do avatar", "Avatar image"),
+          tr(lang, "control_center.avatar_image"),
           ButtonKind::Secondary,
         ),
+        Button::new(tr(lang, "control_center.remove_avatar"), ButtonKind::Danger),
         Button::new(
-          tr(lang, "Remover avatar", "Remove avatar"),
+          tr(lang, "control_center.delete_user_keep_home"),
           ButtonKind::Danger,
         ),
         Button::new(
-          tr(
-            lang,
-            "Excluir usuário (manter home)",
-            "Delete user (keep home)",
-          ),
-          ButtonKind::Danger,
-        ),
-        Button::new(
-          tr(lang, "Excluir usuário e home", "Delete user and home"),
+          tr(lang, "control_center.delete_user_and_home"),
           ButtonKind::Danger,
         ),
       ],
       Page::CreateUser => vec![Button::new(
         if self.passwords[1].is_empty() {
-          tr(
-            lang,
-            "Criar conta (senha bloqueada)",
-            "Create account (password locked)",
-          )
+          tr(lang, "control_center.create_account_password_locked")
         } else {
-          tr(
-            lang,
-            "Criar conta com senha",
-            "Create account with password",
-          )
+          tr(lang, "control_center.create_account_with_password")
         },
         ButtonKind::Primary,
       )],
       Page::CreateGroup => vec![Button::new(
-        tr(lang, "Criar grupo", "Create group"),
+        tr(lang, "control_center.create_group"),
         ButtonKind::Primary,
       )],
       Page::UserList | Page::SystemUsers => vec![Button::new(
-        tr(lang, "Recarregar", "Reload"),
+        tr(lang, "control_center.reload"),
         ButtonKind::Secondary,
       )],
       Page::Group => vec![
+        Button::new(tr(lang, "control_center.save_changes"), ButtonKind::Primary),
         Button::new(
-          tr(lang, "Salvar alterações", "Save changes"),
-          ButtonKind::Primary,
-        ),
-        Button::new(
-          tr(lang, "Alterar membros", "Edit members"),
+          tr(lang, "control_center.edit_members"),
           ButtonKind::Secondary,
         ),
-        Button::new(
-          tr(lang, "Excluir grupo", "Delete group"),
-          ButtonKind::Danger,
-        ),
+        Button::new(tr(lang, "control_center.delete_group"), ButtonKind::Danger),
       ],
       Page::Firewall => vec![
         Button::new(
-          tr(lang, "Salvar Configuração", "Save configuration"),
+          tr(lang, "control_center.save_configuration"),
           ButtonKind::Primary,
         ),
         Button::new(
-          tr(lang, "Adicionar Regras IPTables", "Add IPTables rules"),
+          tr(lang, "control_center.add_iptables_rules"),
           ButtonKind::Secondary,
         ),
         Button::new(
-          tr(lang, "Aplicar regras salvas", "Apply saved rules"),
+          tr(lang, "control_center.apply_saved_rules"),
           ButtonKind::Secondary,
         ),
-        Button::new(tr(lang, "Cancelar", "Cancel"), ButtonKind::Danger),
+        Button::new(tr(lang, "control_center.cancel"), ButtonKind::Danger),
       ],
       _ => Vec::new(),
     }
@@ -434,30 +400,26 @@ impl Administration {
   pub fn rows(&self, page: Page, lang: Lang) -> Vec<Row> {
     if self.busy() {
       return vec![row(
-        tr(
-          lang,
-          "Aguardando backend / autenticação",
-          "Waiting for backend / authentication",
-        ),
+        tr(lang, "control_center.waiting_for_backend_authentication"),
         "",
       )];
     }
     match page {
       Page::Firewall => {
         if self.firewall.is_null() {
-          return vec![row(tr(lang, "Recarregar", "Reload"), "")];
+          return vec![row(tr(lang, "control_center.reload"), "")];
         }
         let mut rows = vec![
           row(
-            tr(lang, "Serviço", "Service"),
+            tr(lang, "control_center.service"),
             if self.firewall["active"] == true {
-              tr(lang, "Ativo", "Active")
+              tr(lang, "control_center.active_095d39")
             } else {
-              tr(lang, "Parado", "Stopped")
+              tr(lang, "control_center.stopped_c2dfd3")
             },
           ),
           row(
-            tr(lang, "Iniciar no boot", "Start at boot"),
+            tr(lang, "control_center.start_at_boot"),
             if self.firewall["enabled"] == true {
               "[x]"
             } else {
@@ -465,10 +427,10 @@ impl Administration {
             },
           ),
         ];
-        rows.extend(FIREWALL_FIELDS.iter().map(|(key, pt, en)| {
+        rows.extend(FIREWALL_FIELDS.iter().map(|(key, label)| {
           let value = text(&self.config, key);
           row(
-            tr(lang, pt, en),
+            tr(lang, label),
             match value.as_str() {
               "y" => "[x]".into(),
               "n" => "[ ]".into(),
@@ -480,9 +442,9 @@ impl Administration {
       }
       Page::Users => {
         vec![
-          plain(tr(lang, "Criar", "Create")),
-          plain(tr(lang, "Listar", "List")),
-          plain(tr(lang, "Contas do sistema", "System accounts")),
+          plain(tr(lang, "control_center.create")),
+          plain(tr(lang, "control_center.list")),
+          plain(tr(lang, "control_center.system_accounts")),
         ]
       }
       Page::UserList | Page::SystemUsers => {
@@ -494,44 +456,50 @@ impl Administration {
           .collect()
       }
       Page::CreateUser => vec![
-        section(tr(lang, "Conta", "Account")),
-        row(tr(lang, "Usuário", "Username"), text(&self.user, "user")),
+        section(tr(lang, "control_center.account")),
         row(
-          tr(lang, "Nome completo", "Full name"),
+          tr(lang, "control_center.username"),
+          text(&self.user, "user"),
+        ),
+        row(
+          tr(lang, "control_center.full_name"),
           text(&self.user, "name"),
         ),
         row("Shell", text(&self.user, "shell")),
         row(
-          tr(lang, "Grupos suplementares", "Supplementary groups"),
+          tr(lang, "control_center.supplementary_groups"),
           strings(&self.user["groups"]).join(", "),
         ),
         row(
-          tr(lang, "Nova senha", "New password"),
+          tr(lang, "control_center.new_password"),
           "*".repeat(argvus_tui::text::display_width(&self.passwords[1])),
         ),
         row(
-          tr(lang, "Confirmar senha", "Confirm password"),
+          tr(lang, "control_center.confirm_password"),
           "*".repeat(argvus_tui::text::display_width(&self.passwords[2])),
         ),
       ],
       Page::User => vec![
-        section(tr(lang, "Conta", "Account")),
-        row(tr(lang, "Usuário", "Username"), text(&self.user, "user")),
+        section(tr(lang, "control_center.account")),
         row(
-          tr(lang, "Nome completo", "Full name"),
+          tr(lang, "control_center.username"),
+          text(&self.user, "user"),
+        ),
+        row(
+          tr(lang, "control_center.full_name"),
           text(&self.user, "name"),
         ),
         row("Shell", text(&self.user, "shell")),
         row(
-          tr(lang, "Grupos suplementares", "Supplementary groups"),
+          tr(lang, "control_center.supplementary_groups"),
           strings(&self.user["groups"]).join(", "),
         ),
-        section(tr(lang, "Identidade", "Identity")),
+        section(tr(lang, "control_center.identity")),
         row(
-          tr(lang, "Grupo primário", "Primary group"),
+          tr(lang, "control_center.primary_group"),
           text(&self.user, "primary_group"),
         ),
-        section(tr(lang, "Informações", "Information")),
+        section(tr(lang, "control_center.information")),
         row(
           "UID / GID",
           format!("{} / {}", self.user["uid"], self.user["gid"]),
@@ -539,11 +507,11 @@ impl Administration {
         row("Home", text(&self.user, "home")),
       ],
       Page::Groups => vec![
-        plain(tr(lang, "Criar", "Create")),
-        plain(tr(lang, "Listar", "List")),
+        plain(tr(lang, "control_center.create")),
+        plain(tr(lang, "control_center.list")),
       ],
       Page::GroupList | Page::SystemGroups => {
-        let mut rows = vec![plain(tr(lang, "Recarregar", "Reload"))];
+        let mut rows = vec![plain(tr(lang, "control_center.reload"))];
         rows.extend(self.groups(true).iter().map(|group| {
           let members = strings(&group["members"]);
           row(
@@ -558,19 +526,22 @@ impl Administration {
         rows
       }
       Page::CreateGroup => vec![
-        section(tr(lang, "Grupo", "Group")),
+        section(tr(lang, "control_center.group")),
         row(
-          tr(lang, "Nome do grupo", "Group name"),
+          tr(lang, "control_center.group_name"),
           text(&self.group, "name"),
         ),
       ],
       Page::Group => vec![
-        section(tr(lang, "Grupo", "Group")),
-        row(tr(lang, "Nome", "Name"), text(&self.group, "name")),
-        row("GID", self.group["gid"].to_string()),
-        section(tr(lang, "Membros", "Members")),
+        section(tr(lang, "control_center.group")),
         row(
-          tr(lang, "Usuários", "Users"),
+          tr(lang, "control_center.name_8d6abd"),
+          text(&self.group, "name"),
+        ),
+        row("GID", self.group["gid"].to_string()),
+        section(tr(lang, "control_center.members")),
+        row(
+          tr(lang, "control_center.users"),
           strings(&self.group["members"]).join(", "),
         ),
       ],
@@ -626,22 +597,18 @@ impl Administration {
         .collect(),
       Page::UserPassword => vec![
         row(
-          tr(
-            lang,
-            "Senha atual (própria conta)",
-            "Current password (own account)",
-          ),
+          tr(lang, "control_center.current_password_own_account"),
           "*".repeat(argvus_tui::text::display_width(&self.passwords[0])),
         ),
         row(
-          tr(lang, "Nova senha", "New password"),
+          tr(lang, "control_center.new_password"),
           "*".repeat(argvus_tui::text::display_width(&self.passwords[1])),
         ),
         row(
-          tr(lang, "Confirmar senha", "Confirm password"),
+          tr(lang, "control_center.confirm_password"),
           "*".repeat(argvus_tui::text::display_width(&self.passwords[2])),
         ),
-        row(tr(lang, "Salvar senha", "Save password"), ""),
+        row(tr(lang, "control_center.save_password"), ""),
       ],
       _ => Vec::new(),
     }
@@ -782,7 +749,15 @@ impl App {
           }
           _ => return,
         };
-        self.admin_confirm(true, value, tr(self.lang, "Alterar o firewall? A conexão de rede pode ser interrompida. Salvar não aplica as regras.", "Change the firewall? Network connectivity may be interrupted. Saving does not apply rules.").into());
+        self.admin_confirm(
+          true,
+          value,
+          tr(
+            self.lang,
+            "control_center.change_the_firewall_network_connectivity_may_be_interrupted_saving_doe",
+          )
+          .into(),
+        );
       }
       Page::Users => match selected {
         0 => {
@@ -953,8 +928,7 @@ impl App {
             self.error_modal = Some(
               tr(
                 self.lang,
-                "A nova senha deve ser preenchida e coincidir com a confirmação.",
-                "The new password must be nonempty and match its confirmation.",
+                "control_center.the_new_password_must_be_nonempty_and_match_its_confirmation",
               )
               .into(),
             );
@@ -1038,8 +1012,7 @@ impl App {
           self.error_modal = Some(
             tr(
               self.lang,
-              "A nova senha deve ser preenchida e coincidir com a confirmação.",
-              "The new password must be nonempty and match its confirmation.",
+              "control_center.the_new_password_must_be_nonempty_and_match_its_confirmation",
             )
             .into(),
           );
@@ -1130,8 +1103,7 @@ impl App {
           json!({"action":"save-rules", "original":self.admin.firewall["rules"], "rules":value}),
           tr(
             self.lang,
-            "Salvar rules.fw? Este script será executado como root ao aplicar o firewall.",
-            "Save rules.fw? This script will run as root when applying the firewall.",
+            "control_center.save_rules_fw_this_script_will_run_as_root_when_applying_the_firewall",
           )
           .into(),
         ),
@@ -1143,7 +1115,7 @@ impl App {
         EditTarget::Avatar => self.admin_confirm(
           false,
           json!({"action":"avatar", "user":self.admin.user["user"], "path":value}),
-          tr(self.lang, "Alterar avatar?", "Change avatar?").into(),
+          tr(self.lang, "control_center.change_avatar").into(),
         ),
       }
     } else {
@@ -1264,11 +1236,7 @@ impl Editor {
     frame.render_widget(Clear, area);
     let block = Block::bordered()
       .title(self.title.as_str())
-      .title_bottom(tr(
-        app.lang,
-        " Enter / Ctrl+S: salvar | Esc: cancelar ",
-        " Enter / Ctrl+S: save | Esc: cancel ",
-      ))
+      .title_bottom(tr(app.lang, "control_center.enter_ctrl_s_save_esc_cancel"))
       .style(
         Style::new()
           .fg(app.theme.foreground)
@@ -1308,7 +1276,11 @@ mod tests {
   use super::*;
 
   fn app(page: Page) -> App {
-    let mut app = App::new(Page::Main);
+    let mut app = App::with_context(
+      Page::Main,
+      Lang::for_locale("en-US"),
+      crate::theme::Theme::load(),
+    );
     app.error_modal = None;
     app.navigation.push(page);
     app.admin.accounts = json!({"actor_uid":1000, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel", "audio"], "group_details":[
@@ -1328,7 +1300,7 @@ mod tests {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({"active":false,"enabled":false});
     app.admin.config = json!({});
-    for (index, (key, _, _)) in FIREWALL_FIELDS.iter().enumerate() {
+    for (index, (key, _)) in FIREWALL_FIELDS.iter().enumerate() {
       app.admin.config[*key] = json!(if *key == "PROTECTION_LEVEL" {
         "high"
       } else {
@@ -1430,13 +1402,13 @@ mod tests {
       .into_iter()
       .map(|row| row.label)
       .collect::<Vec<_>>();
-    assert_eq!(labels, vec!["Criar", "Listar", "Contas do sistema"]);
+    assert_eq!(labels, vec!["Create", "List", "System accounts"]);
     app.navigation.current_mut().selected = 1;
     app.admin_open();
     assert_eq!(app.page(), Page::UserList);
     assert_eq!(app.rows()[0].label, "alice");
     assert!(app.rows().iter().any(|row| row.label == "alice"));
-    let buttons = app.admin.buttons(Page::UserList, Lang::En);
+    let buttons = app.admin.buttons(Page::UserList, Lang::for_locale("en-US"));
     assert_eq!(buttons.len(), 1);
     assert_eq!(buttons[0].label, "Reload");
     app.admin_button(0);
@@ -1455,13 +1427,13 @@ mod tests {
     assert_eq!(
       labels,
       vec![
-        "-- Conta",
-        "Usuário",
-        "Nome completo",
+        "-- Account",
+        "Username",
+        "Full name",
         "Shell",
-        "Grupos suplementares",
-        "Nova senha",
-        "Confirmar senha",
+        "Supplementary groups",
+        "New password",
+        "Confirm password",
       ]
     );
     assert!(app.row_selectable(5));
@@ -1478,13 +1450,19 @@ mod tests {
   fn create_user_button_is_dynamic_and_validates_passwords() {
     let mut app = app(Page::CreateUser);
     assert_eq!(
-      app.admin.buttons(Page::CreateUser, Lang::Pt)[0].label,
+      app
+        .admin
+        .buttons(Page::CreateUser, Lang::for_locale("pt-BR"))[0]
+        .label,
       "Criar conta (senha bloqueada)"
     );
     app.admin.passwords[1] = "segredo".into();
     app.admin.passwords[2] = "segredo".into();
     assert_eq!(
-      app.admin.buttons(Page::CreateUser, Lang::Pt)[0].label,
+      app
+        .admin
+        .buttons(Page::CreateUser, Lang::for_locale("pt-BR"))[0]
+        .label,
       "Criar conta com senha"
     );
     app.admin_button(0);
@@ -1537,9 +1515,9 @@ mod tests {
   #[test]
   fn group_actions_are_buttons_outside_the_field_list() {
     let app = app(Page::Group);
-    let rows = app.admin.rows(Page::Group, Lang::Pt);
+    let rows = app.admin.rows(Page::Group, Lang::for_locale("pt-BR"));
     assert!(rows.iter().all(|row| !row.label.contains("Excluir grupo")));
-    let buttons = app.admin.buttons(Page::Group, Lang::Pt);
+    let buttons = app.admin.buttons(Page::Group, Lang::for_locale("pt-BR"));
     assert_eq!(buttons.len(), 3);
     assert_eq!(buttons[0].label, "Salvar alterações");
     assert_eq!(buttons[2].kind, ButtonKind::Danger);
@@ -1585,14 +1563,14 @@ mod tests {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({"active":false,"enabled":false});
     app.admin.config = json!({});
-    let rows = app.admin.rows(Page::Firewall, Lang::Pt);
+    let rows = app.admin.rows(Page::Firewall, Lang::for_locale("pt-BR"));
     assert_eq!(rows.len(), 2 + FIREWALL_FIELDS.len());
     assert!(
       rows
         .iter()
         .all(|row| !row.label.contains("Editar rules.fw"))
     );
-    let buttons = app.admin.buttons(Page::Firewall, Lang::Pt);
+    let buttons = app.admin.buttons(Page::Firewall, Lang::for_locale("pt-BR"));
     assert_eq!(buttons.len(), 4);
     assert_eq!(buttons[0].label, "Salvar Configuração");
     assert_eq!(buttons[3].label, "Cancelar");
@@ -1624,13 +1602,13 @@ mod tests {
   #[test]
   fn user_actions_are_buttons_outside_the_field_list() {
     let app = app(Page::User);
-    let rows = app.admin.rows(Page::User, Lang::Pt);
+    let rows = app.admin.rows(Page::User, Lang::for_locale("pt-BR"));
     assert!(
       rows
         .iter()
         .all(|row| !row.label.contains("Excluir usuário"))
     );
-    let buttons = app.admin.buttons(Page::User, Lang::Pt);
+    let buttons = app.admin.buttons(Page::User, Lang::for_locale("pt-BR"));
     assert_eq!(buttons.len(), 9);
     assert_eq!(buttons[0].label, "Salvar alterações");
     assert_eq!(buttons[7].label, "Excluir usuário (manter home)");
@@ -1784,7 +1762,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect();
-          assert!(rendered.contains("Excluir usuário (manter home)"));
+          assert!(rendered.contains("Delete user (keep home)"));
           assert!(!rendered.contains("-- Segurança"));
         }
         app.admin.editor = Some(Editor::new(

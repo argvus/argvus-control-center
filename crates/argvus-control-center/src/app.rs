@@ -979,92 +979,88 @@ impl App {
     #[cfg(feature = "locale")]
     rows.push(HomeRow::Header(tr(
       self.lang,
-      "Idioma e Região",
-      "Language & Region",
+      "control_center.language_region",
     )));
     #[cfg(feature = "locale")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Locale e Região", "Locale & Region"),
+      label: tr(self.lang, "control_center.locale_region"),
       action: 2,
     });
-    rows.push(HomeRow::Header(tr(self.lang, "Aparência", "Appearance")));
+    rows.push(HomeRow::Header(tr(self.lang, "control_center.appearance")));
     #[cfg(feature = "fonts")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Fontes", "Fonts"),
+      label: tr(self.lang, "control_center.fonts"),
       action: 1,
     });
     #[cfg(feature = "appearance")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Aparência", "Appearance"),
+      label: tr(self.lang, "control_center.appearance"),
       action: 19,
     });
     rows.push(HomeRow::Header(tr(
       self.lang,
-      "Aplicativos",
-      "Applications",
+      "control_center.applications",
     )));
     #[cfg(feature = "apps")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Apps Padrão", "Default Apps"),
+      label: tr(self.lang, "control_center.default_apps"),
       action: 0,
     });
     #[cfg(any(feature = "hardware", feature = "displays"))]
-    rows.push(HomeRow::Header(tr(self.lang, "Hardware", "Hardware")));
+    rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Hardware", "Hardware"),
+      label: tr(self.lang, "control_center.hardware"),
       action: 4,
     });
     #[cfg(feature = "displays")]
     if self.capabilities.has_hyprctl {
       rows.push(HomeRow::Item {
-        label: tr(self.lang, "Monitores", "Displays"),
+        label: tr(self.lang, "control_center.displays"),
         action: 18,
       });
     }
     #[cfg(any(feature = "power", feature = "session"))]
     rows.push(HomeRow::Header(tr(
       self.lang,
-      "Energia e Sessão",
-      "Power & Session",
+      "control_center.power_session",
     )));
     #[cfg(feature = "power")]
     if self.capabilities.has_loginctl {
       rows.push(HomeRow::Item {
-        label: tr(self.lang, "Energia", "Power"),
+        label: tr(self.lang, "control_center.power"),
         action: 16,
       });
     }
     #[cfg(feature = "session")]
     if self.capabilities.has_sessionctl {
       rows.push(HomeRow::Item {
-        label: tr(self.lang, "Sessão", "Session"),
+        label: tr(self.lang, "control_center.session"),
         action: 17,
       });
     }
     #[cfg(any(feature = "network", feature = "bluetooth"))]
     rows.push(HomeRow::Header(tr(
       self.lang,
-      "Conectividade",
-      "Connectivity",
+      "control_center.connectivity",
     )));
     #[cfg(feature = "network")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Rede", "Network"),
+      label: tr(self.lang, "control_center.network"),
       action: 5,
     });
     #[cfg(feature = "bluetooth")]
     if self.capabilities.has_bluetooth {
       rows.push(HomeRow::Item {
-        label: tr(self.lang, "Bluetooth", "Bluetooth"),
+        label: tr(self.lang, "control_center.bluetooth"),
         action: 7,
       });
     }
     #[cfg(feature = "audio")]
     {
-      rows.push(HomeRow::Header(tr(self.lang, "Áudio", "Audio")));
+      rows.push(HomeRow::Header(tr(self.lang, "control_center.audio")));
       rows.push(HomeRow::Item {
-        label: tr(self.lang, "Áudio", "Audio"),
+        label: tr(self.lang, "control_center.audio"),
         action: 6,
       });
     }
@@ -1076,54 +1072,50 @@ impl App {
       feature = "diagnostics",
       feature = "system"
     ))]
-    rows.push(HomeRow::Header(tr(self.lang, "Sistema", "System")));
+    rows.push(HomeRow::Header(tr(self.lang, "control_center.system")));
     #[cfg(feature = "boot")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Boot", "Boot"),
+      label: tr(self.lang, "control_center.boot"),
       action: 8,
     });
     #[cfg(feature = "packages")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Pacotes", "Packages"),
+      label: tr(self.lang, "control_center.packages"),
       action: 9,
     });
     #[cfg(feature = "services")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Serviços", "Services"),
+      label: tr(self.lang, "control_center.services"),
       action: 10,
     });
     #[cfg(feature = "storage")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Armazenamento", "Storage"),
+      label: tr(self.lang, "control_center.storage"),
       action: 12,
     });
     #[cfg(feature = "diagnostics")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Diagnóstico", "Diagnostics"),
+      label: tr(self.lang, "control_center.diagnostics"),
       action: 13,
     });
     #[cfg(feature = "system")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Sistema", "System"),
+      label: tr(self.lang, "control_center.system"),
       action: 11,
     });
     #[cfg(feature = "about")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "About", "About"),
+      label: tr(self.lang, "control_center.about_4cf69b"),
       action: 14,
     });
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "Preferências",
-      "Preferences",
-    )));
+    rows.push(HomeRow::Header(tr(self.lang, "control_center.preferences")));
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Configuração", "Configuration"),
+      label: tr(self.lang, "control_center.configuration"),
       action: 15,
     });
     #[cfg(feature = "language")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "Idioma", "Language"),
+      label: tr(self.lang, "control_center.language"),
       action: 3,
     });
     rows
@@ -1343,67 +1335,43 @@ impl App {
 
   pub fn help_lines(&self) -> Vec<String> {
     let mut lines: Vec<&str> = vec![
-      tr(self.lang, "Global", "Global"),
-      tr(self.lang, "q             Sair", "q             Quit"),
-      tr(self.lang, "Esc           Voltar", "Esc           Back"),
-      tr(
-        self.lang,
-        "?             Fechar ajuda",
-        "?             Close help",
-      ),
+      tr(self.lang, "control_center.global"),
+      tr(self.lang, "control_center.q_quit"),
+      tr(self.lang, "control_center.esc_back"),
+      tr(self.lang, "control_center.close_help"),
       "",
     ];
     if self.route == Route::Home {
       lines.extend([
-        tr(self.lang, "Menu", "Menu"),
-        tr(self.lang, "↑/↓           Navegar", "↑/↓           Navigate"),
-        tr(self.lang, "→/Enter       Abrir", "→/Enter       Open"),
-        tr(
-          self.lang,
-          "s             Configuração",
-          "s             Configuration",
-        ),
+        tr(self.lang, "control_center.menu"),
+        tr(self.lang, "control_center.navigate"),
+        tr(self.lang, "control_center.enter_open"),
+        tr(self.lang, "control_center.s_configuration"),
       ]);
     }
     if self.route == Route::Config {
       lines.extend([
-        tr(self.lang, "Configuração", "Configuration"),
-        tr(
-          self.lang,
-          "Enter/Space    Alternar",
-          "Enter/Space    Toggle",
-        ),
-        tr(self.lang, "←/Esc          Voltar", "←/Esc          Back"),
+        tr(self.lang, "control_center.configuration"),
+        tr(self.lang, "control_center.enter_space_toggle"),
+        tr(self.lang, "control_center.esc_back_1dce0e"),
       ]);
     }
     if self.route == Route::Settings {
       lines.extend([
-        tr(self.lang, "Listas", "Lists"),
-        tr(self.lang, "↑/↓           Navegar", "↑/↓           Navigate"),
-        tr(
-          self.lang,
-          "Enter         Abrir/aplicar",
-          "Enter         Open/apply",
-        ),
-        tr(self.lang, "/             Buscar", "/             Search"),
+        tr(self.lang, "control_center.lists"),
+        tr(self.lang, "control_center.navigate"),
+        tr(self.lang, "control_center.enter_open_apply"),
+        tr(self.lang, "control_center.search"),
       ]);
     }
     #[cfg(feature = "about")]
     if self.route == Route::About {
       lines.extend([
-        tr(self.lang, "About", "About"),
-        tr(self.lang, "←/→           Abas", "←/→           Tabs"),
-        tr(
-          self.lang,
-          "↑/↓           Navegar/rolar",
-          "↑/↓           Navigate/scroll",
-        ),
-        tr(self.lang, "PgUp/PgDn    Rolar", "PgUp/PgDn    Scroll"),
-        tr(
-          self.lang,
-          "Enter         Abrir ação",
-          "Enter         Open action",
-        ),
+        tr(self.lang, "control_center.about_4cf69b"),
+        tr(self.lang, "control_center.tabs"),
+        tr(self.lang, "control_center.navigate_scroll"),
+        tr(self.lang, "control_center.pgup_pgdn_scroll"),
+        tr(self.lang, "control_center.enter_open_action"),
       ]);
     }
     #[cfg(any(
@@ -1472,14 +1440,10 @@ impl App {
       }
       if domain {
         lines.extend([
-          tr(self.lang, "↑/↓           Navegar", "↑/↓           Navigate"),
-          tr(self.lang, "→/Enter       Abrir", "→/Enter       Open"),
-          tr(self.lang, "←/Esc         Voltar", "←/Esc         Back"),
-          tr(
-            self.lang,
-            "r             Atualizar",
-            "r             Refresh",
-          ),
+          tr(self.lang, "control_center.navigate"),
+          tr(self.lang, "control_center.enter_open"),
+          tr(self.lang, "control_center.esc_back_bd56d7"),
+          tr(self.lang, "control_center.r_refresh"),
         ]);
       }
     }

@@ -80,40 +80,6 @@ impl Category {
     }
   }
 
-  /// Short human title used by the GUI (English).
-  pub fn title(self) -> &'static str {
-    match self {
-      Category::Terminal => "Terminal",
-      Category::FileManager => "File Manager",
-      Category::TextEditor => "Text Editor",
-      Category::TerminalEditor => "Terminal Editor",
-      Category::Browser => "Browser",
-      Category::ImageViewer => "Image Viewer",
-      Category::PdfViewer => "PDF Viewer",
-      Category::VideoPlayer => "Video Player",
-      Category::AudioPlayer => "Audio Player",
-      Category::Archive => "Archive",
-      Category::Launcher => "Launcher",
-    }
-  }
-
-  /// Portuguese title used by the GUI.
-  pub fn title_pt(self) -> &'static str {
-    match self {
-      Category::Terminal => "Terminal",
-      Category::FileManager => "Gerenciador de arquivos",
-      Category::TextEditor => "Editor de texto",
-      Category::TerminalEditor => "Editor no terminal",
-      Category::Browser => "Navegador",
-      Category::ImageViewer => "Visualizador de imagens",
-      Category::PdfViewer => "Visualizador de PDF",
-      Category::VideoPlayer => "Reprodutor de v\u{ed}deo",
-      Category::AudioPlayer => "Reprodutor de \u{e1}udio",
-      Category::Archive => "Arquivos compactados",
-      Category::Launcher => "Lan\u{e7}ador",
-    }
-  }
-
   /// Argvus fallback when `defaults.json` has no value for this category.
   pub fn fallback(self) -> &'static str {
     match self {

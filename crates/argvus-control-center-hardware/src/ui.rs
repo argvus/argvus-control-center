@@ -92,7 +92,7 @@ impl HardwareApp {
     self.job = Some(self.manager.spawn(move |_| Ok(backend::collect(&cap))));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Carregando hardware...", "Loading hardware...").into(),
+      text: tr(self.lang, "control_center.loading_hardware").into(),
     });
   }
 
@@ -129,7 +129,7 @@ impl HardwareApp {
           self.normalize();
           self.status = Some(StatusMessage {
             kind: StatusKind::Success,
-            text: tr(self.lang, "Hardware atualizado", "Hardware refreshed").into(),
+            text: tr(self.lang, "control_center.hardware_refreshed").into(),
           });
         }
         Err(error) => {
@@ -308,7 +308,7 @@ impl HardwareApp {
       HardwareAction::SetGovernor(gov) => {
         self.status = Some(StatusMessage {
           kind: StatusKind::Info,
-          text: tr(self.lang, "Alterando governor...", "Changing governor...").into(),
+          text: tr(self.lang, "control_center.changing_governor").into(),
         });
         if cap.has_power_profiles_daemon {
           let profile = match gov.as_str() {
@@ -324,7 +324,7 @@ impl HardwareApp {
       HardwareAction::SetProfile(prof) => {
         self.status = Some(StatusMessage {
           kind: StatusKind::Info,
-          text: tr(self.lang, "Alterando perfil...", "Changing profile...").into(),
+          text: tr(self.lang, "control_center.changing_profile").into(),
         });
         self.action = Some(self.manager.spawn(move |_| run_profile(&prof)));
       }
@@ -353,14 +353,14 @@ impl HardwareApp {
       HardwarePage::Cpu if !self.snapshot.cpu.governors.is_empty() => vec![(
         ActionButton::ApplyGovernor,
         Button::new(
-          tr(self.lang, "Aplicar Governor", "Apply Governor"),
+          tr(self.lang, "control_center.apply_governor"),
           ButtonKind::Primary,
         ),
       )],
       HardwarePage::Power if !self.snapshot.energy.profiles.is_empty() => vec![(
         ActionButton::ApplyProfile,
         Button::new(
-          tr(self.lang, "Aplicar Perfil", "Apply Profile"),
+          tr(self.lang, "control_center.apply_profile"),
           ButtonKind::Primary,
         ),
       )],
@@ -369,7 +369,7 @@ impl HardwareApp {
   }
 
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Hardware", "Hardware");
+    let root = tr(self.lang, "control_center.hardware");
     if self.page == HardwarePage::Home {
       root.into()
     } else {
@@ -379,15 +379,15 @@ impl HardwareApp {
 
   fn label(&self, page: HardwarePage) -> &'static str {
     match page {
-      HardwarePage::Summary => tr(self.lang, "Resumo", "Summary"),
-      HardwarePage::Cpu => "CPU",
-      HardwarePage::Gpu => "GPU",
-      HardwarePage::Memory => tr(self.lang, "Memória", "Memory"),
-      HardwarePage::Power => tr(self.lang, "Energia", "Power"),
-      HardwarePage::Devices => tr(self.lang, "Dispositivos", "Devices"),
-      HardwarePage::Home => "Hardware",
-      HardwarePage::DeviceDetail(_) => tr(self.lang, "Detalhes", "Details"),
-      HardwarePage::GpuDetail(_) => tr(self.lang, "GPU > Detalhes", "GPU > Details"),
+      HardwarePage::Summary => tr(self.lang, "control_center.summary"),
+      HardwarePage::Cpu => tr(self.lang, "control_center.hardware_cpu"),
+      HardwarePage::Gpu => tr(self.lang, "control_center.hardware_gpu"),
+      HardwarePage::Memory => tr(self.lang, "control_center.memory"),
+      HardwarePage::Power => tr(self.lang, "control_center.power"),
+      HardwarePage::Devices => tr(self.lang, "control_center.devices"),
+      HardwarePage::Home => tr(self.lang, "control_center.hardware"),
+      HardwarePage::DeviceDetail(_) => tr(self.lang, "control_center.details"),
+      HardwarePage::GpuDetail(_) => tr(self.lang, "control_center.gpu_details"),
     }
   }
 
@@ -396,8 +396,7 @@ impl HardwareApp {
     let hints = if self.on_buttons {
       tr(
         self.lang,
-        "←/→ Selecionar botão   Enter Confirmar   Tab Alternar foco   Esc Voltar",
-        "←/→ Select button   Enter Confirm   Tab Switch focus   Esc Back",
+        "control_center.select_button_enter_confirm_tab_switch_focus_esc_back",
       )
     } else if matches!(
       self.page,
@@ -406,28 +405,21 @@ impl HardwareApp {
         | HardwarePage::GpuDetail(_)
         | HardwarePage::DeviceDetail(_)
     ) {
-      tr(
-        self.lang,
-        "↑/↓ Rolar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Scroll   r Refresh   ←/Esc Back   ? Help",
-      )
+      tr(self.lang, "control_center.scroll_r_refresh_esc_back_help")
     } else if matches!(self.page, HardwarePage::Cpu) {
       tr(
         self.lang,
-        "↑/↓ Navegar   Enter/g Aplicar   Tab Foco nos botões   ←/Esc Voltar   r Atualizar",
-        "↑/↓ Navigate   Enter/g Apply   Tab Focus buttons   ←/Esc Back   r Refresh",
+        "control_center.navigate_enter_g_apply_tab_focus_buttons_esc_back_r_refresh",
       )
     } else if matches!(self.page, HardwarePage::Power) {
       tr(
         self.lang,
-        "↑/↓ Navegar   Enter/e Aplicar   Tab Foco nos botões   ←/Esc Voltar   r Atualizar",
-        "↑/↓ Navigate   Enter/e Apply   Tab Focus buttons   ←/Esc Back   r Refresh",
+        "control_center.navigate_enter_e_apply_tab_focus_buttons_esc_back_r_refresh",
       )
     } else {
       tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   r Atualizar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   ←/Esc Back   r Refresh   ? Help",
+        "control_center.navigate_enter_open_esc_back_r_refresh_help",
       )
     };
 
@@ -474,20 +466,12 @@ impl HardwareApp {
       let message = match action {
         HardwareAction::SetGovernor(gov) => format!(
           "{}: {}",
-          tr(
-            self.lang,
-            "Confirmar alteração de Governor da CPU para",
-            "Confirm CPU Governor change to"
-          ),
+          tr(self.lang, "control_center.confirm_cpu_governor_change_to"),
           gov
         ),
         HardwareAction::SetProfile(prof) => format!(
           "{}: {}",
-          tr(
-            self.lang,
-            "Confirmar alteração de Perfil de Energia para",
-            "Confirm Power Profile change to"
-          ),
+          tr(self.lang, "control_center.confirm_power_profile_change_to"),
           prof
         ),
       };
@@ -496,14 +480,10 @@ impl HardwareApp {
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(
-            self.lang,
-            "Confirmar operação de hardware",
-            "Confirm hardware operation",
-          ),
+          title: tr(self.lang, "control_center.confirm_hardware_operation"),
           message: &message,
-          confirm_label: tr(self.lang, "Continuar", "Continue"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.continue"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       );
@@ -524,7 +504,7 @@ impl HardwareApp {
         .iter()
         .map(|gov| {
           let badge = if self.snapshot.cpu.governor.as_deref() == Some(gov) {
-            format!("   ★ {}", tr(self.lang, "Ativo", "Active"))
+            format!("   ★ {}", tr(self.lang, "control_center.active"))
           } else {
             String::new()
           };
@@ -542,11 +522,11 @@ impl HardwareApp {
             gpu
               .model
               .as_deref()
-              .unwrap_or(tr(self.lang, "Não disponível", "Unavailable")),
+              .unwrap_or(tr(self.lang, "control_center.unavailable_6a8fc3")),
             gpu
               .driver
               .as_deref()
-              .unwrap_or(tr(self.lang, "sem driver", "no driver")),
+              .unwrap_or(tr(self.lang, "control_center.no_driver")),
           )
         })
         .collect(),
@@ -557,7 +537,7 @@ impl HardwareApp {
         .iter()
         .map(|prof| {
           let badge = if self.snapshot.energy.profile.as_deref() == Some(prof) {
-            format!("   ★ {}", tr(self.lang, "Ativo", "Active"))
+            format!("   ★ {}", tr(self.lang, "control_center.active"))
           } else {
             String::new()
           };
@@ -575,12 +555,12 @@ impl HardwareApp {
   }
 
   fn home_rows(&self) -> Vec<String> {
-    let summary_label = tr(self.lang, "Resumo", "Summary");
+    let summary_label = tr(self.lang, "control_center.summary");
     let cpu_label = "CPU";
     let gpu_label = "GPU";
-    let memory_label = tr(self.lang, "Memória", "Memory");
-    let power_label = tr(self.lang, "Energia", "Power");
-    let devices_label = tr(self.lang, "Dispositivos", "Devices");
+    let memory_label = tr(self.lang, "control_center.memory");
+    let power_label = tr(self.lang, "control_center.power");
+    let devices_label = tr(self.lang, "control_center.devices");
 
     let cpu_str = self
       .snapshot
@@ -590,7 +570,7 @@ impl HardwareApp {
       .unwrap_or_else(|| na(self.lang));
 
     let gpu_str = if self.snapshot.gpus.is_empty() {
-      tr(self.lang, "Nenhuma GPU", "No GPU").into()
+      tr(self.lang, "control_center.no_gpu").into()
     } else {
       format!("{} GPU(s)", self.snapshot.gpus.len())
     };
@@ -602,12 +582,12 @@ impl HardwareApp {
       .energy
       .profile
       .clone()
-      .unwrap_or_else(|| tr(self.lang, "Padrão", "Default").into());
+      .unwrap_or_else(|| tr(self.lang, "control_center.default").into());
 
     let dev_str = format!(
       "{} {}",
       self.snapshot.devices.len(),
-      tr(self.lang, "dispositivos", "devices")
+      tr(self.lang, "control_center.devices_a41e65")
     );
 
     vec![
@@ -695,14 +675,14 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
         "Virtualization",
         s.virtualization
           .clone()
-          .unwrap_or_else(|| tr(app.lang, "Nenhuma detectada", "None detected").into()),
+          .unwrap_or_else(|| tr(app.lang, "control_center.none_detected").into()),
       );
       add(
         "Battery",
         if s.battery.is_some() {
-          tr(app.lang, "Presente", "Present").into()
+          tr(app.lang, "control_center.present").into()
         } else {
-          tr(app.lang, "Nenhuma detectada", "None detected").into()
+          tr(app.lang, "control_center.none_detected").into()
         },
       );
     }
@@ -801,8 +781,7 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
           "Note",
           tr(
             app.lang,
-            "vmwgfx detectado em máquina virtual.",
-            "vmwgfx detected in virtual machine.",
+            "control_center.vmwgfx_detected_in_virtual_machine",
           )
           .into(),
         );
@@ -810,9 +789,9 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
       add(
         "OpenGL software",
         if s.software_rendering {
-          tr(app.lang, "ativa", "active").into()
+          tr(app.lang, "control_center.active_fb4e81").into()
         } else {
-          tr(app.lang, "inativa", "inactive").into()
+          tr(app.lang, "control_center.inactive").into()
         },
       );
     }
@@ -835,12 +814,7 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
       if s.energy.profiles.is_empty() {
         add(
           "Profiles",
-          tr(
-            app.lang,
-            "Nenhum perfil disponível.",
-            "No profile available.",
-          )
-          .into(),
+          tr(app.lang, "control_center.no_profile_available").into(),
         );
       }
       if let Some(battery) = &s.battery {
@@ -873,21 +847,16 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
           add(
             "AC",
             if ac {
-              tr(app.lang, "Conectada", "Connected").into()
+              tr(app.lang, "control_center.connected_cbc626").into()
             } else {
-              tr(app.lang, "Desconectada", "Disconnected").into()
+              tr(app.lang, "control_center.disconnected_53344a").into()
             },
           );
         }
       } else {
         add(
           "Battery",
-          tr(
-            app.lang,
-            "Nenhuma bateria detectada.",
-            "No battery detected.",
-          )
-          .into(),
+          tr(app.lang, "control_center.no_battery_detected").into(),
         );
       }
     }
@@ -898,12 +867,7 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
       if s.devices.is_empty() {
         add(
           "Devices",
-          tr(
-            app.lang,
-            "Nenhum dispositivo detectado.",
-            "No device detected.",
-          )
-          .into(),
+          tr(app.lang, "control_center.no_device_detected").into(),
         );
       }
     }
@@ -947,59 +911,59 @@ fn run_governor(value: &str) -> Result<String, String> {
 }
 
 fn field_label(lang: Lang, key: &str) -> String {
-  let (pt, en) = match key {
-    "Manufacturer" => ("Fabricante", "Manufacturer"),
-    "Model" => ("Modelo", "Model"),
-    "Chassis" => ("Chassis", "Chassis"),
-    "Architecture" => ("Arquitetura", "Architecture"),
-    "Kernel" => ("Kernel", "Kernel"),
-    "CPU" => ("CPU", "CPU"),
-    "Threads" => ("Threads", "Threads"),
-    "GPU(s)" => ("GPU(s)", "GPU(s)"),
-    "RAM" => ("RAM", "RAM"),
-    "Boot" => ("Boot", "Boot"),
-    "Virtualization" => ("Virtualização", "Virtualization"),
-    "Battery" => ("Bateria", "Battery"),
-    "Firmware" => ("Firmware", "Firmware"),
-    "AC" => ("Energia AC", "AC power"),
-    "Management" => ("Gerenciamento", "Management"),
-    "Vendor" => ("Fabricante", "Vendor"),
-    "Current" => ("Atual", "Current"),
-    "Min/Max" => ("Mín/Máx", "Min/Max"),
-    "Governor" => ("Governor", "Governor"),
-    "Available" => ("Disponíveis", "Available"),
-    "Scaling driver" => ("Driver de escala", "Scaling driver"),
-    "Vendor ID" => ("ID do fabricante", "Vendor ID"),
-    "Device ID" => ("ID do dispositivo", "Device ID"),
-    "Driver" => ("Driver", "Driver"),
-    "DRM" => ("DRM", "DRM"),
-    "Render" => ("Render", "Render"),
-    "OpenGL software" => ("OpenGL por software", "OpenGL software"),
-    "Total" => ("Total", "Total"),
-    "Used" => ("Usada", "Used"),
-    "Swap total" => ("Swap total", "Swap total"),
-    "Swap free" => ("Swap livre", "Swap free"),
-    "Backend" => ("Backend", "Backend"),
-    "Profile" => ("Perfil", "Profile"),
-    "Profiles" => ("Perfis", "Profiles"),
-    "Status" => ("Estado", "Status"),
-    "Capacity" => ("Capacidade", "Capacity"),
-    "Health" => ("Saúde", "Health"),
-    "Name" => ("Nome", "Name"),
-    "Type" => ("Tipo", "Type"),
-    "Product" => ("Produto", "Product"),
-    "Bus" => ("Barramento", "Bus"),
-    "Path" => ("Caminho", "Path"),
-    "Module" => ("Módulo", "Module"),
-    "Driver status" => ("Estado do driver", "Driver status"),
-    "Devices" => ("Dispositivos", "Devices"),
-    _ => (key, key),
+  let label = match key {
+    "Manufacturer" => "control_center.hardware_manufacturer",
+    "Model" => "control_center.hardware_model",
+    "Chassis" => "control_center.hardware_chassis",
+    "Architecture" => "control_center.hardware_architecture",
+    "Kernel" => "control_center.hardware_kernel",
+    "CPU" => "control_center.hardware_cpu",
+    "Threads" => "control_center.hardware_threads",
+    "GPU(s)" => "control_center.hardware_gpu_s",
+    "RAM" => "control_center.hardware_ram",
+    "Boot" => "control_center.hardware_boot",
+    "Virtualization" => "control_center.hardware_virtualization",
+    "Battery" => "control_center.hardware_battery",
+    "Firmware" => "control_center.hardware_firmware",
+    "AC" => "control_center.hardware_ac_power",
+    "Management" => "control_center.hardware_management",
+    "Vendor" => "control_center.hardware_vendor",
+    "Current" => "control_center.hardware_current",
+    "Min/Max" => "control_center.hardware_min_max",
+    "Governor" => "control_center.hardware_governor",
+    "Available" => "control_center.hardware_available",
+    "Scaling driver" => "control_center.hardware_scaling_driver",
+    "Vendor ID" => "control_center.hardware_vendor_id",
+    "Device ID" => "control_center.hardware_device_id",
+    "Driver" => "control_center.hardware_driver",
+    "DRM" => "control_center.hardware_drm",
+    "Render" => "control_center.hardware_render",
+    "OpenGL software" => "control_center.hardware_opengl_software",
+    "Total" => "control_center.hardware_total",
+    "Used" => "control_center.hardware_used",
+    "Swap total" => "control_center.hardware_swap_total",
+    "Swap free" => "control_center.hardware_swap_free",
+    "Backend" => "control_center.hardware_backend",
+    "Profile" => "control_center.hardware_profile",
+    "Profiles" => "control_center.hardware_profiles",
+    "Status" => "control_center.hardware_status",
+    "Capacity" => "control_center.hardware_capacity",
+    "Health" => "control_center.hardware_health",
+    "Name" => "control_center.hardware_name",
+    "Type" => "control_center.hardware_type",
+    "Product" => "control_center.hardware_product",
+    "Bus" => "control_center.hardware_bus",
+    "Path" => "control_center.hardware_path",
+    "Module" => "control_center.hardware_module",
+    "Driver status" => "control_center.hardware_driver_status",
+    "Devices" => "control_center.hardware_devices",
+    _ => key,
   };
-  tr(lang, pt, en).into()
+  tr(lang, label).into()
 }
 
 fn na(lang: Lang) -> String {
-  tr(lang, "Não disponível", "Unavailable").into()
+  tr(lang, "control_center.unavailable_6a8fc3").into()
 }
 
 fn run_profile(value: &str) -> Result<String, String> {
@@ -1023,7 +987,11 @@ mod tests {
 
   #[test]
   fn home_selection_opens_cpu_without_render_time_probe() {
-    let mut app = HardwareApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = HardwareApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.job = None;
     app.handle(KeyCode::Down);
     app.handle(KeyCode::Enter);
@@ -1032,7 +1000,11 @@ mod tests {
 
   #[test]
   fn cpu_governor_selection_is_bounded() {
-    let mut app = HardwareApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = HardwareApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.job = None;
     app.snapshot.cpu.governors = vec!["schedutil".into(), "performance".into()];
     app.page = HardwarePage::Cpu;
@@ -1048,7 +1020,7 @@ mod tests {
       has_power_profiles_daemon: true,
       ..Capabilities::default()
     };
-    let mut app = HardwareApp::new(Lang::En, Theme::load(), cap);
+    let mut app = HardwareApp::new(Lang::for_locale("en-US"), Theme::load(), cap);
     app.job = None;
     app.action = None;
     app.snapshot.cpu.governors = vec!["performance".into(), "powersave".into()];
@@ -1062,7 +1034,11 @@ mod tests {
 
   #[test]
   fn cpu_governor_enter_does_not_dispatch_when_no_governors() {
-    let mut app = HardwareApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = HardwareApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.job = None;
     app.action = None;
     app.page = HardwarePage::Cpu;

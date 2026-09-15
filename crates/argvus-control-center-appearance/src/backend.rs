@@ -118,9 +118,11 @@ fn default_app(category: &str) -> Option<Vec<String>> {
 /// that dropped a dispatcher (e.g. `window not found`) still exit 0, logging a
 /// `warning:`/`error:` on stderr, so only stderr-clean runs count as success.
 fn hyprctl_lua_dispatch(expression: &str) -> bool {
-  let Ok(output) =
-    SystemProcessRunner.run(&ProcessRequest::new("hyprctl").arg("dispatch").arg(expression))
-  else {
+  let Ok(output) = SystemProcessRunner.run(
+    &ProcessRequest::new("hyprctl")
+      .arg("dispatch")
+      .arg(expression),
+  ) else {
     return false;
   };
   if output.timed_out || output.status != Some(0) {

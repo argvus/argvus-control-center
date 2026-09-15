@@ -120,7 +120,7 @@ impl SessionApp {
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Carregando sessão...", "Loading session...").into(),
+      text: tr(self.lang, "control_center.loading_session").into(),
     });
   }
 
@@ -249,7 +249,7 @@ impl SessionApp {
           let pending = self.pending.take().unwrap();
           self.status = Some(StatusMessage {
             kind: StatusKind::Info,
-            text: tr(self.lang, "Aplicando...", "Applying...").into(),
+            text: tr(self.lang, "control_center.applying").into(),
           });
           let lang = self.lang;
           self.action = Some(self.manager.spawn(move |_| match pending {
@@ -257,7 +257,7 @@ impl SessionApp {
               backend::restart_component(&id)?;
               Ok(JobData::Action(format!(
                 "{} '{id}'",
-                tr(lang, "Reiniciado", "Restarted")
+                tr(lang, "control_center.restarted")
               )))
             }
             Pending::ToggleAutostart(id, enabled) => {
@@ -265,9 +265,9 @@ impl SessionApp {
               Ok(JobData::Action(format!(
                 "{} '{id}'",
                 if enabled {
-                  tr(lang, "Ativado", "Enabled")
+                  tr(lang, "control_center.enabled")
                 } else {
-                  tr(lang, "Desativado", "Disabled")
+                  tr(lang, "control_center.disabled")
                 }
               )))
             }
@@ -429,25 +429,25 @@ impl SessionApp {
       SessionPage::Components => vec![
         (
           SessionButton::Restart,
-          Button::new(tr(self.lang, "Reiniciar", "Restart"), primary),
+          Button::new(tr(self.lang, "control_center.restart"), primary),
         ),
         (
           SessionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), secondary),
+          Button::new(tr(self.lang, "control_center.refresh"), secondary),
         ),
       ],
       SessionPage::Autostart => vec![
         (
           SessionButton::Enable,
-          Button::new(tr(self.lang, "Ativar", "Enable"), primary),
+          Button::new(tr(self.lang, "control_center.enable_8adac7"), primary),
         ),
         (
           SessionButton::Disable,
-          Button::new(tr(self.lang, "Desativar", "Disable"), secondary),
+          Button::new(tr(self.lang, "control_center.disable_5de12e"), secondary),
         ),
         (
           SessionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), secondary),
+          Button::new(tr(self.lang, "control_center.refresh"), secondary),
         ),
       ],
       SessionPage::Logs => vec![
@@ -456,7 +456,7 @@ impl SessionApp {
           Button::new(
             format!(
               "{}: {}",
-              tr(self.lang, "Serviço", "Service"),
+              tr(self.lang, "control_center.service"),
               self.log_filter.as_deref().unwrap_or("—")
             ),
             secondary,
@@ -464,7 +464,7 @@ impl SessionApp {
         ),
         (
           SessionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), secondary),
+          Button::new(tr(self.lang, "control_center.refresh"), secondary),
         ),
       ],
       SessionPage::Home | SessionPage::Diagnostics | SessionPage::LogDetail(_) => Vec::new(),
@@ -475,24 +475,18 @@ impl SessionApp {
     match self.page {
       SessionPage::Home | SessionPage::Diagnostics => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_r_refresh_esc_back_help",
       ),
-      SessionPage::LogDetail(_) => tr(
-        self.lang,
-        "↑/↓ Rolar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Scroll   ←/Esc Back   ? Help",
-      ),
+      SessionPage::LogDetail(_) => tr(self.lang, "control_center.scroll_esc_back_help"),
       _ => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   →/Enter Ativar   ←/→ Mover   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   →/Enter Activate   ←/→ Move   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_enter_activate_move_r_refresh_esc_back_help",
       ),
     }
   }
 
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Sessão", "Session");
+    let root = tr(self.lang, "control_center.session");
     if self.page == SessionPage::Home {
       root.into()
     } else {
@@ -502,12 +496,12 @@ impl SessionApp {
 
   fn page_label(&self) -> String {
     match self.page {
-      SessionPage::Home => tr(self.lang, "Sessão", "Session").into(),
-      SessionPage::Components => tr(self.lang, "Componentes", "Components").into(),
-      SessionPage::Autostart => tr(self.lang, "Autostart", "Autostart").into(),
-      SessionPage::Diagnostics => tr(self.lang, "Diagnóstico", "Diagnostics").into(),
-      SessionPage::Logs => tr(self.lang, "Logs", "Logs").into(),
-      SessionPage::LogDetail(_) => tr(self.lang, "Logs > Detalhes", "Logs > Details").into(),
+      SessionPage::Home => tr(self.lang, "control_center.session").into(),
+      SessionPage::Components => tr(self.lang, "control_center.components").into(),
+      SessionPage::Autostart => tr(self.lang, "control_center.autostart").into(),
+      SessionPage::Diagnostics => tr(self.lang, "control_center.diagnostics").into(),
+      SessionPage::Logs => tr(self.lang, "control_center.logs").into(),
+      SessionPage::LogDetail(_) => tr(self.lang, "control_center.logs_details").into(),
     }
   }
 
@@ -527,42 +521,35 @@ impl SessionApp {
       format!(
         "{} {}  ·  {} {}",
         AppConfig::icon("🧩"),
-        tr(self.lang, "Componentes", "Components"),
+        tr(self.lang, "control_center.components"),
         running,
-        tr(self.lang, "ativos", "active"),
+        tr(self.lang, "control_center.active_ae7190"),
       ),
       format!(
         "{} {}  ·  {} {}",
         AppConfig::icon("🚀"),
-        tr(self.lang, "Autostart", "Autostart"),
+        tr(self.lang, "control_center.autostart"),
         autostart_enabled,
-        tr(self.lang, "ativados", "enabled"),
+        tr(self.lang, "control_center.enabled_72aa06"),
       ),
       format!(
         "{} {}  ·  {} {}",
         AppConfig::icon("🩺"),
-        tr(self.lang, "Diagnóstico", "Diagnostics"),
+        tr(self.lang, "control_center.diagnostics"),
         failed,
-        tr(self.lang, "com falha", "failed"),
+        tr(self.lang, "control_center.failed_cc0486"),
       ),
       format!(
         "{} {}",
         AppConfig::icon("📜"),
-        tr(self.lang, "Logs", "Logs")
+        tr(self.lang, "control_center.logs")
       ),
     ]
   }
 
   fn diagnostics_rows(&self) -> Vec<String> {
     if self.job.is_some() && self.diagnostics.is_empty() {
-      return vec![
-        tr(
-          self.lang,
-          "Carregando diagnóstico...",
-          "Loading diagnostics...",
-        )
-        .into(),
-      ];
+      return vec![tr(self.lang, "control_center.loading_diagnostics").into()];
     }
     self
       .diagnostics
@@ -602,21 +589,17 @@ impl SessionApp {
 
   fn log_detail_lines(&self, index: usize) -> Vec<Line<'static>> {
     let Some(entry) = self.logs.get(index) else {
-      return vec![Line::from(tr(
-        self.lang,
-        "Log não encontrado",
-        "Log not found",
-      ))];
+      return vec![Line::from(tr(self.lang, "control_center.log_not_found"))];
     };
     vec![
       Line::from(format!(
         "{}: {}",
-        tr(self.lang, "Horário", "Timestamp"),
+        tr(self.lang, "control_center.timestamp"),
         entry.rendered_timestamp()
       )),
       Line::from(format!(
         "{}: {}",
-        tr(self.lang, "Unidade", "Unit"),
+        tr(self.lang, "control_center.unit"),
         entry.unit.as_deref().unwrap_or("—")
       )),
       Line::from(format!("PID: {}", entry.pid.as_deref().unwrap_or("—"))),
@@ -682,20 +665,20 @@ impl SessionApp {
   fn draw_pending(&self, frame: &mut Frame, area: Rect, pending: &Pending) {
     let (title, message) = match pending {
       Pending::Restart(id) => (
-        tr(self.lang, "Confirmar reinício", "Confirm restart"),
+        tr(self.lang, "control_center.confirm_restart"),
         format!(
           "{} {id}?",
-          tr(self.lang, "Reiniciar componente", "Restart component")
+          tr(self.lang, "control_center.restart_component")
         ),
       ),
       Pending::ToggleAutostart(id, enabled) => (
-        tr(self.lang, "Confirmar autostart", "Confirm autostart"),
+        tr(self.lang, "control_center.confirm_autostart"),
         format!(
           "{} {id}?",
           if *enabled {
-            tr(self.lang, "Ativar", "Enable")
+            tr(self.lang, "control_center.enable_8adac7")
           } else {
-            tr(self.lang, "Desativar", "Disable")
+            tr(self.lang, "control_center.disable_5de12e")
           }
         ),
       ),
@@ -707,8 +690,8 @@ impl SessionApp {
       ConfirmationDialog {
         title,
         message: &message,
-        confirm_label: tr(self.lang, "Continuar", "Continue"),
-        cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+        confirm_label: tr(self.lang, "control_center.continue"),
+        cancel_label: tr(self.lang, "control_center.cancel"),
         confirm_selected: self.confirmation.confirm_selected,
       },
     )
@@ -732,14 +715,14 @@ fn merge_component_order(components: Vec<Component>) -> Vec<Component> {
 
 fn component_row(lang: Lang, component: &Component) -> String {
   let (symbol, label) = match component.status {
-    ComponentStatus::Running => ("●", tr(lang, "Ativo", "Active")),
-    ComponentStatus::Stopped => ("○", tr(lang, "Parado", "Stopped")),
-    ComponentStatus::Failed => ("✕", tr(lang, "Falho", "Failed")),
+    ComponentStatus::Running => ("●", tr(lang, "control_center.active_095d39")),
+    ComponentStatus::Stopped => ("○", tr(lang, "control_center.stopped_c2dfd3")),
+    ComponentStatus::Failed => ("✕", tr(lang, "control_center.failed_b852d2")),
   };
   let role = if component.essential {
-    tr(lang, "essencial", "essential")
+    tr(lang, "control_center.essential")
   } else {
-    tr(lang, "opcional", "optional")
+    tr(lang, "control_center.optional")
   };
   let pid = component
     .pid
@@ -754,20 +737,20 @@ fn component_row(lang: Lang, component: &Component) -> String {
 fn autostart_row(lang: Lang, entry: &AutostartEntry) -> String {
   let symbol = if entry.enabled { "●" } else { "○" };
   let state = if entry.enabled {
-    tr(lang, "Ativado", "Enabled")
+    tr(lang, "control_center.enabled")
   } else {
-    tr(lang, "Desativado", "Disabled")
+    tr(lang, "control_center.disabled")
   };
   let origin = if entry.from_system {
-    tr(lang, "sistema", "system")
+    tr(lang, "control_center.system_8fb556")
   } else {
-    tr(lang, "usuário", "user")
+    tr(lang, "control_center.user_e7acba")
   };
   format!(
     "{}  {symbol} {} · {}: {} · {}",
     entry.name,
     state,
-    tr(lang, "origem", "source"),
+    tr(lang, "control_center.source"),
     origin,
     entry.command
   )
@@ -802,7 +785,7 @@ mod tests {
 
   #[test]
   fn home_rows_act_as_dashboard() {
-    let mut app = SessionApp::new(Lang::En, Theme::load());
+    let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.components = vec![
       component("a", ComponentStatus::Running),
       component("b", ComponentStatus::Running),
@@ -830,7 +813,7 @@ mod tests {
       component("b", ComponentStatus::Failed),
     ]
     .iter()
-    .map(|component| component_row(Lang::En, component))
+    .map(|component| component_row(Lang::for_locale("en-US"), component))
     .collect::<Vec<_>>();
     assert!(rows[0].contains("●") && rows[0].contains("Active"));
     assert!(rows[1].contains("✕") && rows[1].contains("Failed"));
@@ -846,7 +829,7 @@ mod tests {
       enabled: false,
       path: "/etc/xdg/autostart/sys.desktop".into(),
     };
-    let row = autostart_row(Lang::En, &entry);
+    let row = autostart_row(Lang::for_locale("en-US"), &entry);
     assert!(row.contains("Disabled"));
     assert!(row.contains("system"));
   }
@@ -862,7 +845,7 @@ mod tests {
 
   #[test]
   fn session_app_navigates_and_opens_pages() {
-    let mut app = SessionApp::new(Lang::En, Theme::load());
+    let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.handle(KeyCode::Down);
     app.handle(KeyCode::Enter);
     assert_eq!(app.page, SessionPage::Autostart);
@@ -872,7 +855,7 @@ mod tests {
 
   #[test]
   fn session_app_renders_components_page() {
-    let mut app = SessionApp::new(Lang::En, Theme::load());
+    let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = SessionPage::Components;
     app.components = vec![
       component("waybar", ComponentStatus::Running),
@@ -892,14 +875,14 @@ mod tests {
 
   #[test]
   fn session_app_renders_home() {
-    let mut app = SessionApp::new(Lang::En, Theme::load());
+    let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(110, 25)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
   }
 
   #[test]
   fn diagnostics_rows_render_symbols() {
-    let mut app = SessionApp::new(Lang::En, Theme::load());
+    let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.diagnostics = vec![
       DiagnosticsEntry::good("A", "ok"),
       DiagnosticsEntry::warning("B", "warn"),

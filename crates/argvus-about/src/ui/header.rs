@@ -8,7 +8,7 @@ use crate::i18n::tr;
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
   let title = format!(
     "{} > {}",
-    tr(app.lang, "ARGVUS Control Center", "ARGVUS Control Center",),
+    tr(app.lang, "control_center.argvus_control_center"),
     app.active_tab.label(app.lang),
   );
   draw_header(
@@ -18,7 +18,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     Header {
       title: &title,
       version: Some(&app.argvus_version),
-      version_label: tr(app.lang, "versão", "version"),
+      version_label: tr(app.lang, "control_center.version"),
     },
   );
 }

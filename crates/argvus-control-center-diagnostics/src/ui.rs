@@ -48,14 +48,15 @@ impl DiagnosticsApp {
       return;
     }
     let cap = self.cap.clone();
+    let lang = self.lang;
     self.job = Some(
       self
         .jobs
-        .spawn(move |_| Ok::<_, String>(backend::evaluate(&backend::collect(&cap), &cap))),
+        .spawn(move |_| Ok::<_, String>(backend::evaluate(lang, &backend::collect(&cap), &cap))),
     );
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Executando verificações...", "Running checks...").into(),
+      text: tr(self.lang, "control_center.running_checks").into(),
     });
   }
   pub fn poll(&mut self) -> bool {
@@ -192,11 +193,11 @@ impl DiagnosticsApp {
     }
   }
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Diagnóstico", "Diagnostics");
+    let root = tr(self.lang, "control_center.diagnostics");
     match self.page {
       DiagnosticPage::Home => root.into(),
       DiagnosticPage::Summary => {
-        format!("{root} > {}", tr(self.lang, "Resumo", "Summary"))
+        format!("{root} > {}", tr(self.lang, "control_center.summary"))
       }
       DiagnosticPage::Detail(index) => format!(
         "{root} > {}",
@@ -204,7 +205,7 @@ impl DiagnosticsApp {
           .checks
           .get(index)
           .map(|check| category_label(self.lang, &check.category))
-          .unwrap_or_else(|| tr(self.lang, "Detalhes", "Details"))
+          .unwrap_or_else(|| tr(self.lang, "control_center.details"))
       ),
       _ => format!("{root} > {}", category_label(self.lang, self.category())),
     }
@@ -213,18 +214,14 @@ impl DiagnosticsApp {
     match self.page {
       DiagnosticPage::Home => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_r_refresh_esc_back_help",
       ),
-      DiagnosticPage::Summary | DiagnosticPage::Detail(_) => tr(
-        self.lang,
-        "r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "r Refresh   ←/Esc Back   ? Help",
-      ),
+      DiagnosticPage::Summary | DiagnosticPage::Detail(_) => {
+        tr(self.lang, "control_center.r_refresh_esc_back_help")
+      }
       _ => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Detalhes   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Details   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_details_r_refresh_esc_back_help",
       ),
     }
   }
@@ -233,24 +230,20 @@ impl DiagnosticsApp {
     let summary = format!(
       "{} {}  ·  {}",
       AppConfig::icon("💻"),
-      tr(self.lang, "Resumo", "Summary"),
+      tr(self.lang, "control_center.summary"),
       self.entry_status(&all)
     );
     vec![
       summary,
-      self.dashboard_entry("services", "⚙️", tr(self.lang, "Serviços", "Services")),
-      self.dashboard_entry(
-        "boot",
-        "🧠",
-        tr(self.lang, "Kernel & Boot", "Kernel & Boot"),
-      ),
-      self.dashboard_entry("graphics", "🎮", tr(self.lang, "Gráficos", "Graphics")),
-      self.dashboard_entry("network", "🌐", tr(self.lang, "Rede", "Network")),
-      self.dashboard_entry("audio", "🔊", tr(self.lang, "Áudio", "Audio")),
-      self.dashboard_entry("bluetooth", "🔗", tr(self.lang, "Bluetooth", "Bluetooth")),
-      self.dashboard_entry("storage", "💽", tr(self.lang, "Armazenamento", "Storage")),
-      self.dashboard_entry("packages", "📦", tr(self.lang, "Pacotes", "Packages")),
-      self.dashboard_entry("argvus", "⭐", tr(self.lang, "ARGVUS", "ARGVUS")),
+      self.dashboard_entry("services", "⚙️", tr(self.lang, "control_center.services")),
+      self.dashboard_entry("boot", "🧠", tr(self.lang, "control_center.kernel_boot")),
+      self.dashboard_entry("graphics", "🎮", tr(self.lang, "control_center.graphics")),
+      self.dashboard_entry("network", "🌐", tr(self.lang, "control_center.network")),
+      self.dashboard_entry("audio", "🔊", tr(self.lang, "control_center.audio")),
+      self.dashboard_entry("bluetooth", "🔗", tr(self.lang, "control_center.bluetooth")),
+      self.dashboard_entry("storage", "💽", tr(self.lang, "control_center.storage")),
+      self.dashboard_entry("packages", "📦", tr(self.lang, "control_center.packages")),
+      self.dashboard_entry("argvus", "⭐", tr(self.lang, "control_center.argvus")),
     ]
   }
   fn dashboard_entry(&self, category: &str, icon: &str, label: &'static str) -> String {
@@ -268,13 +261,13 @@ impl DiagnosticsApp {
   }
   fn entry_status(&self, checks: &[&DiagnosticCheck]) -> String {
     if checks.is_empty() {
-      tr(self.lang, "Sem dados", "No data").into()
+      tr(self.lang, "control_center.no_data").into()
     } else {
       format!(
         "{} · {} {}",
         self.preview(checks),
         checks.len(),
-        tr(self.lang, "verificações", "checks")
+        tr(self.lang, "control_center.checks")
       )
     }
   }
@@ -288,13 +281,13 @@ impl DiagnosticsApp {
       .filter(|check| check.severity == Severity::Warning)
       .count();
     if checks.is_empty() {
-      tr(self.lang, "Sem dados", "No data").into()
+      tr(self.lang, "control_center.no_data").into()
     } else if errors > 0 {
-      format!("{} {}", errors, tr(self.lang, "erro(s)", "error(s)"))
+      format!("{} {}", errors, tr(self.lang, "control_center.error_s"))
     } else if warnings > 0 {
-      format!("{} {}", warnings, tr(self.lang, "aviso(s)", "warning(s)"))
+      format!("{} {}", warnings, tr(self.lang, "control_center.warning_s"))
     } else {
-      tr(self.lang, "OK", "OK").into()
+      tr(self.lang, "control_center.ok").into()
     }
   }
   fn category_rows(&self) -> Vec<String> {
@@ -330,22 +323,26 @@ impl DiagnosticsApp {
       format!(
         " {} {}",
         AppConfig::icon("💻"),
-        tr(self.lang, "DIAGNÓSTICO", "DIAGNOSTICS")
+        tr(self.lang, "control_center.diagnostics_cc02b3")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Verificações:", "Checks:"),
+        tr(self.lang, "control_center.checks_75a9fc"),
         self.checks.len()
       ),
-      format!("   {:<14} {}", tr(self.lang, "Erros:", "Errors:"), errors),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Avisos:", "Warnings:"),
+        tr(self.lang, "control_center.errors"),
+        errors
+      ),
+      format!(
+        "   {:<14} {}",
+        tr(self.lang, "control_center.warnings"),
         warnings
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Indefinidos:", "Unknown:"),
+        tr(self.lang, "control_center.unknown_5951be"),
         unknown
       ),
     ];
@@ -359,7 +356,7 @@ impl DiagnosticsApp {
       rows.push(format!(
         " {} {}",
         AppConfig::icon("⚙️"),
-        tr(self.lang, "SISTEMA", "SYSTEM")
+        tr(self.lang, "control_center.system_1af4b7")
       ));
       rows.extend(system.into_iter().map(|check| {
         format!(
@@ -374,7 +371,7 @@ impl DiagnosticsApp {
   }
   fn detail_rows(&self, index: usize) -> Vec<String> {
     let Some(check) = self.checks.get(index) else {
-      return vec![tr(self.lang, "Verificação não encontrada", "Check not found").into()];
+      return vec![tr(self.lang, "control_center.check_not_found").into()];
     };
     vec![
       format!(
@@ -384,39 +381,38 @@ impl DiagnosticsApp {
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Categoria:", "Category:"),
+        tr(self.lang, "control_center.category"),
         category_label(self.lang, &check.category)
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Severidade:", "Severity:"),
+        tr(self.lang, "control_center.severity"),
         severity_label(self.lang, check.severity)
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Título:", "Title:"),
+        tr(self.lang, "control_center.title"),
         check.title
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Resumo:", "Summary:"),
+        tr(self.lang, "control_center.summary_1543d0"),
         check.summary
       ),
       String::new(),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Detalhes:", "Details:"),
+        tr(self.lang, "control_center.details_1bae81"),
         check.details
       ),
       String::new(),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Recomendação:", "Remediation:"),
-        check.remediation_hint.as_deref().unwrap_or_else(|| tr(
-          self.lang,
-          "Nenhuma ação automática",
-          "No automatic action"
-        ))
+        tr(self.lang, "control_center.remediation"),
+        check
+          .remediation_hint
+          .as_deref()
+          .unwrap_or_else(|| tr(self.lang, "control_center.no_automatic_action"))
       ),
     ]
   }
@@ -497,25 +493,25 @@ fn severity_glyph(severity: Severity) -> &'static str {
 }
 fn severity_label(lang: Lang, severity: Severity) -> &'static str {
   match severity {
-    Severity::Error => tr(lang, "Erro", "Error"),
-    Severity::Warning => tr(lang, "Aviso", "Warning"),
-    Severity::Unknown => tr(lang, "Indefinido", "Unknown"),
-    Severity::Info => tr(lang, "Info", "Info"),
-    Severity::Ok => tr(lang, "OK", "OK"),
+    Severity::Error => tr(lang, "control_center.error"),
+    Severity::Warning => tr(lang, "control_center.warning"),
+    Severity::Unknown => tr(lang, "control_center.unknown_f9ac0c"),
+    Severity::Info => tr(lang, "control_center.info"),
+    Severity::Ok => tr(lang, "control_center.ok"),
   }
 }
 fn category_label(lang: Lang, category: &str) -> &'static str {
   match category {
-    "services" => tr(lang, "Serviços", "Services"),
-    "boot" => tr(lang, "Kernel & Boot", "Kernel & Boot"),
-    "graphics" => tr(lang, "Gráficos", "Graphics"),
-    "network" => tr(lang, "Rede", "Network"),
-    "audio" => tr(lang, "Áudio", "Audio"),
-    "bluetooth" => tr(lang, "Bluetooth", "Bluetooth"),
-    "storage" => tr(lang, "Armazenamento", "Storage"),
-    "packages" => tr(lang, "Pacotes", "Packages"),
-    "argvus" => tr(lang, "ARGVUS", "ARGVUS"),
-    _ => tr(lang, "Sistema", "System"),
+    "services" => tr(lang, "control_center.services"),
+    "boot" => tr(lang, "control_center.kernel_boot"),
+    "graphics" => tr(lang, "control_center.graphics"),
+    "network" => tr(lang, "control_center.network"),
+    "audio" => tr(lang, "control_center.audio"),
+    "bluetooth" => tr(lang, "control_center.bluetooth"),
+    "storage" => tr(lang, "control_center.storage"),
+    "packages" => tr(lang, "control_center.packages"),
+    "argvus" => tr(lang, "control_center.argvus"),
+    _ => tr(lang, "control_center.system"),
   }
 }
 fn category_icon(category: &str) -> &'static str {
@@ -544,11 +540,7 @@ fn completion_status(lang: Lang, checks: &[DiagnosticCheck]) -> StatusMessage {
   if errors > 0 {
     StatusMessage {
       kind: StatusKind::Error,
-      text: format!(
-        "{} {}",
-        errors,
-        tr(lang, "erro(s) encontrado(s)", "error(s) found")
-      ),
+      text: format!("{} {}", errors, tr(lang, "control_center.error_s_found")),
     }
   } else if warnings > 0 {
     StatusMessage {
@@ -556,18 +548,13 @@ fn completion_status(lang: Lang, checks: &[DiagnosticCheck]) -> StatusMessage {
       text: format!(
         "{} {}",
         warnings,
-        tr(lang, "aviso(s) encontrado(s)", "warning(s) found")
+        tr(lang, "control_center.warning_s_found")
       ),
     }
   } else {
     StatusMessage {
       kind: StatusKind::Success,
-      text: tr(
-        lang,
-        "Diagnóstico concluído: todos os sistemas estão OK",
-        "Diagnostics completed: all systems OK",
-      )
-      .into(),
+      text: tr(lang, "control_center.diagnostics_completed_all_systems_ok").into(),
     }
   }
 }
@@ -578,7 +565,11 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   fn app() -> DiagnosticsApp {
-    let mut app = DiagnosticsApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = DiagnosticsApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.job = None;
     app.checks = vec![
       DiagnosticCheck {
@@ -736,7 +727,10 @@ mod tests {
 
   #[test]
   fn completion_status_reflects_worst_severity() {
-    assert_eq!(completion_status(Lang::En, &[]).kind, StatusKind::Success);
+    assert_eq!(
+      completion_status(Lang::for_locale("en-US"), &[]).kind,
+      StatusKind::Success
+    );
     let mut checks = app();
     checks.checks = vec![DiagnosticCheck {
       id: "storage.usage./".into(),
@@ -745,7 +739,7 @@ mod tests {
       ..Default::default()
     }];
     assert_eq!(
-      completion_status(Lang::En, &checks.checks).kind,
+      completion_status(Lang::for_locale("en-US"), &checks.checks).kind,
       StatusKind::Error
     );
     let mut warnings = app();
@@ -756,7 +750,7 @@ mod tests {
       ..Default::default()
     }];
     assert_eq!(
-      completion_status(Lang::En, &warnings.checks).kind,
+      completion_status(Lang::for_locale("en-US"), &warnings.checks).kind,
       StatusKind::Warning
     );
   }

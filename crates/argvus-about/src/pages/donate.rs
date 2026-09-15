@@ -6,30 +6,22 @@ use super::{DONATE_URL, Doc, Row, simple_doc};
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let rows = vec![
-        Row::Section(tr(lang, "Apoie o desenvolvimento", "Support the development").to_string()),
-        Row::Para(
-            tr(
-                lang,
-                "O ARGVUS é um projeto de software livre e gratuito. Se você gosta do desktop, considere apoiar o desenvolvimento com uma doação. Todo o apoio ajuda a manter o projeto vivo, com novas funcionalidades, correções e melhorias.",
-                "ARGVUS is a free and open source project. If you like the desktop, consider supporting development with a donation. Every bit of support helps keep the project alive with new features, fixes and improvements.",
-            )
-            .to_string(),
-        ),
-        Row::Spacer,
-        Row::Link {
-            label: DONATE_URL.to_string(),
-            url: DONATE_URL.to_string(),
-        },
-        Row::Spacer,
-        Row::Para(
-            tr(
-                lang,
-                "Obrigado pelo carinho e pelo apoio!",
-                "Thank you for your care and support!",
-            )
-            .to_string(),
-        ),
-    ];
+    Row::Section(tr(lang, "control_center.support_the_development").to_string()),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.argvus_is_a_free_and_open_source_project_if_you_like_the_desktop_consi",
+      )
+      .to_string(),
+    ),
+    Row::Spacer,
+    Row::Link {
+      label: DONATE_URL.to_string(),
+      url: DONATE_URL.to_string(),
+    },
+    Row::Spacer,
+    Row::Para(tr(lang, "control_center.thank_you_for_your_care_and_support").to_string()),
+  ];
 
   simple_doc(&rows, &app.theme, width, selected)
 }

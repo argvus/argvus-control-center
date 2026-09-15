@@ -57,9 +57,7 @@ pub fn list_monitors() -> Result<Vec<Monitor>, String> {
         .arg("monitors")
         .arg("all"),
     )
-    .or_else(|_| {
-      SystemProcessRunner.run(&ProcessRequest::new("hyprctl").arg("-j").arg("monitors"))
-    })
+    .or_else(|_| SystemProcessRunner.run(&ProcessRequest::new("hyprctl").arg("-j").arg("monitors")))
     .map_err(|error| error.to_string())?;
   if out.status.is_none_or(|status| status != 0) {
     return Err(
@@ -69,7 +67,9 @@ pub fn list_monitors() -> Result<Vec<Monitor>, String> {
     );
   }
   let value: Value = serde_json::from_slice(&out.stdout).map_err(|error| error.to_string())?;
-  let rows = value.as_array().ok_or("hyprctl monitors JSON was not an array")?;
+  let rows = value
+    .as_array()
+    .ok_or("hyprctl monitors JSON was not an array")?;
   rows
     .iter()
     .map(monitor_from)
@@ -216,7 +216,8 @@ fn mode_from(mode: &Value) -> Option<Mode> {
     bit_depth: mode
       .get("bitDepth")
       .or_else(|| mode.get("bit_depth"))
-      .and_then(Value::as_u64).unwrap_or(8) as u32,
+      .and_then(Value::as_u64)
+      .unwrap_or(8) as u32,
   })
 }
 
@@ -249,7 +250,9 @@ fn run_hyprctl(arguments: &[&str]) -> Result<(), String> {
   for argument in arguments {
     request = request.arg(*argument);
   }
-  let out = SystemProcessRunner.run(&request).map_err(|error| error.to_string())?;
+  let out = SystemProcessRunner
+    .run(&request)
+    .map_err(|error| error.to_string())?;
   if out.status.is_none_or(|status| status != 0) {
     let stderr = terminal_text(&String::from_utf8_lossy(&out.stderr))
       .trim()
@@ -367,7 +370,11 @@ fn parse_generated(content: &str) -> PersistedConfig {
 
 fn parse_monitor_block(block: &str) -> Option<(String, PersistedMonitor)> {
   let fields = entry_fields(block);
-  let name = fields.iter().find(|(key, _)| *key == "output")?.1.to_string();
+  let name = fields
+    .iter()
+    .find(|(key, _)| *key == "output")?
+    .1
+    .to_string();
   if name.is_empty() {
     return None;
   }
@@ -652,8 +659,8 @@ pub fn load_state() -> DisplayState {
 
 pub fn save_state(state: &DisplayState) -> Result<(), String> {
   let path = state_path();
-  let content = toml::to_string_pretty(&StoredState::from_model(state))
-    .map_err(|error| error.to_string())?;
+  let content =
+    toml::to_string_pretty(&StoredState::from_model(state)).map_err(|error| error.to_string())?;
   if let Some(parent) = path.parent()
     && !parent.exists()
   {
@@ -783,7 +790,11 @@ impl StoredState {
     DisplayState {
       primary_monitor: self.primary_monitor,
       active_profile: self.active_profile,
-      profiles: self.profiles.into_iter().map(StoredProfile::into_model).collect(),
+      profiles: self
+        .profiles
+        .into_iter()
+        .map(StoredProfile::into_model)
+        .collect(),
     }
   }
 }
@@ -823,7 +834,9 @@ impl StoredProfile {
       workspaces: Vec::new(),
     };
     for monitor in self.monitors {
-      config.monitors.push((monitor.name.clone(), stored_to_persisted(&monitor)));
+      config
+        .monitors
+        .push((monitor.name.clone(), stored_to_persisted(&monitor)));
     }
     config.monitors.sort_by(|left, right| left.0.cmp(&right.0));
     for workspace in self.workspaces {
@@ -930,7 +943,11 @@ mod tests {
     assert!(text.contains("hl.monitor({ output = \"eDP-1\""), "{text}");
     assert!(text.contains("supports_hdr = 1"), "{text}");
     assert!(text.contains("disabled = true"), "{text}");
-    assert!(text.contains("hl.workspace_rule({ workspace = \"1\", monitor = \"eDP-1\", default = true })"), "{text}");
+    assert!(
+      text
+        .contains("hl.workspace_rule({ workspace = \"1\", monitor = \"eDP-1\", default = true })"),
+      "{text}"
+    );
     let parsed = parse_generated(&text);
     assert_eq!(parsed.primary_monitor.as_deref(), Some("eDP-1"));
     assert_eq!(parsed.monitors.len(), 2);
@@ -973,7 +990,9 @@ hl.workspace_rule({
 
   #[test]
   fn legacy_configs_still_parse() {
-    let config = parse_legacy("-- old\nreturn {\n  primary_monitor = \"eDP-1\"\n  monitors = { { name = \"eDP-1\", mode = \"1920x1080@60\", pos = \"0x0\", scale = 1.25, hdr = 1 } }\n}\n");
+    let config = parse_legacy(
+      "-- old\nreturn {\n  primary_monitor = \"eDP-1\"\n  monitors = { { name = \"eDP-1\", mode = \"1920x1080@60\", pos = \"0x0\", scale = 1.25, hdr = 1 } }\n}\n",
+    );
     assert_eq!(config.primary_monitor.as_deref(), Some("eDP-1"));
     assert_eq!(config.monitors.len(), 1);
     assert_eq!(config.monitors[0].1.hdr, Some(1));
@@ -1047,7 +1066,10 @@ hl.workspace_rule({
     assert!(profile.apply_wallpapers);
     assert_eq!(profile.config.workspaces_of("eDP-1"), vec![1, 2, 3]);
     assert_eq!(profile.config.persisted("eDP-1").vrr, Some(2));
-    assert_eq!(profile.config.persisted("eDP-1").mirror.as_deref(), Some("DP-1"));
+    assert_eq!(
+      profile.config.persisted("eDP-1").mirror.as_deref(),
+      Some("DP-1")
+    );
   }
 
   #[test]

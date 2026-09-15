@@ -142,7 +142,7 @@ impl BootApp {
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Carregando boot...", "Loading boot...").into(),
+      text: tr(self.lang, "control_center.loading_boot").into(),
     });
   }
   pub fn poll(&mut self) -> bool {
@@ -155,7 +155,7 @@ impl BootApp {
         Ok(Ok(snapshot)) => {
           self.snapshot = snapshot;
           self.normalize();
-          self.success(tr(self.lang, "Boot atualizado", "Boot refreshed"));
+          self.success(tr(self.lang, "control_center.boot_refreshed"));
         }
         Ok(Err(error)) | Err(error) => self.error(error),
       }
@@ -180,8 +180,7 @@ impl BootApp {
         Ok((outcome, _)) => match outcome {
           ActionResult::Success => self.success(tr(
             self.lang,
-            "Operação concluída. A alteração será usada no próximo boot.",
-            "Operation completed. The change will be used on the next boot.",
+            "control_center.operation_completed_the_change_will_be_used_on_the_next_boot",
           )),
         },
         Err(error) => self.error(error),
@@ -428,8 +427,7 @@ impl BootApp {
     } else {
       self.error(tr(
         self.lang,
-        "Não foi possível mapear uma entrada de boot com segurança.",
-        "A boot entry could not be mapped safely.",
+        "control_center.a_boot_entry_could_not_be_mapped_safely",
       ));
     }
   }
@@ -451,14 +449,13 @@ impl BootApp {
   fn apply_timeout_input(&mut self) {
     let value = self.timeout_input.take().unwrap_or_default();
     let Ok(seconds) = value.parse::<u32>() else {
-      self.error(tr(self.lang, "Timeout inválido.", "Invalid timeout."));
+      self.error(tr(self.lang, "control_center.invalid_timeout"));
       return;
     };
     if seconds > 60 {
       self.error(tr(
         self.lang,
-        "O timeout deve estar entre 0 e 60 segundos.",
-        "Timeout must be between 0 and 60 seconds.",
+        "control_center.timeout_must_be_between_0_and_60_seconds",
       ));
       return;
     }
@@ -468,8 +465,7 @@ impl BootApp {
       BootloaderKind::Unknown => {
         self.error(tr(
           self.lang,
-          "Bootloader indeterminado; nenhuma alteração foi feita.",
-          "Bootloader is undetermined; no change was made.",
+          "control_center.bootloader_is_undetermined_no_change_was_made",
         ));
         return;
       }
@@ -485,11 +481,7 @@ impl BootApp {
           .chars()
           .any(|character| character.is_control() || matches!(character, '"' | '\\'))
       {
-        self.error(tr(
-          self.lang,
-          "Linha de kernel inválida.",
-          "Invalid kernel command line.",
-        ));
+        self.error(tr(self.lang, "control_center.invalid_kernel_command_line"));
       } else {
         self.pending = Some(Pending::Action(BootAction::GrubCmdline(value)));
       }
@@ -518,12 +510,7 @@ impl BootApp {
     };
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Aplicando alteração de boot...",
-        "Applying boot change...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.applying_boot_change").into(),
     });
     let live = LiveProcess::new();
     self.transaction_live = Some(live.clone());
@@ -591,35 +578,38 @@ impl BootApp {
     match self.page {
       BootPage::Kernel if !self.snapshot.kernels.is_empty() => vec![(
         ActionButton::SetDefault,
-        Button::new(tr(self.lang, "Padrão", "Default"), ButtonKind::Primary),
+        Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
       )],
       BootPage::KernelDetail(_) => vec![(
         ActionButton::SetDefault,
-        Button::new(tr(self.lang, "Padrão", "Default"), ButtonKind::Primary),
+        Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
       )],
       BootPage::Bootloader | BootPage::BootloaderDetail(_) => {
         let mut buttons = vec![
           (
             ActionButton::SetDefault,
-            Button::new(tr(self.lang, "Padrão", "Default"), ButtonKind::Primary),
+            Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
           ),
           (
             ActionButton::Timeout,
-            Button::new(tr(self.lang, "Timeout", "Timeout"), ButtonKind::Secondary),
+            Button::new(
+              tr(self.lang, "control_center.timeout"),
+              ButtonKind::Secondary,
+            ),
           ),
         ];
         if self.snapshot.bootloader == BootloaderKind::Grub {
           buttons.push((
             ActionButton::GrubCmdline,
             Button::new(
-              tr(self.lang, "Linha do kernel", "Kernel command line"),
+              tr(self.lang, "control_center.kernel_command_line"),
               ButtonKind::Secondary,
             ),
           ));
           buttons.push((
             ActionButton::Regenerate,
             Button::new(
-              tr(self.lang, "Regenerar", "Regenerate"),
+              tr(self.lang, "control_center.regenerate"),
               ButtonKind::Secondary,
             ),
           ));
@@ -629,14 +619,14 @@ impl BootApp {
       BootPage::Initramfs | BootPage::InitramfsDetail(_) => vec![(
         ActionButton::Regenerate,
         Button::new(
-          tr(self.lang, "Regenerar", "Regenerate"),
+          tr(self.lang, "control_center.regenerate"),
           ButtonKind::Primary,
         ),
       )],
       BootPage::Plymouth if !self.snapshot.plymouth.themes.is_empty() => vec![(
         ActionButton::ApplyTheme,
         Button::new(
-          tr(self.lang, "Aplicar tema", "Apply theme"),
+          tr(self.lang, "control_center.apply_theme"),
           ButtonKind::Primary,
         ),
       )],
@@ -646,18 +636,12 @@ impl BootApp {
   fn footer_hints(&self) -> &'static str {
     let action = tr(
       self.lang,
-      "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   r Refresh   ←/Esc Back   ? Help",
+      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
     );
-    let readonly = tr(
-      self.lang,
-      "r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "r Refresh   ←/Esc Back   ? Help",
-    );
+    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
     let home = tr(
       self.lang,
-      "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   r Atualizar   ? Ajuda",
-      "↑/↓ Navigate   →/Enter Open   ←/Esc Back   r Refresh   ? Help",
+      "control_center.navigate_enter_open_esc_back_r_refresh_help",
     );
     if self.page == BootPage::Home {
       home
@@ -717,30 +701,18 @@ impl BootApp {
       frame.render_widget(
         Paragraph::new(vec![
           Line::from(if self.input_mode == Some(InputMode::GrubCmdline) {
-            tr(
-              self.lang,
-              "Nova linha de kernel:",
-              "New kernel command line:",
-            )
+            tr(self.lang, "control_center.new_kernel_command_line")
           } else {
-            tr(
-              self.lang,
-              "Novo timeout em segundos:",
-              "New timeout in seconds:",
-            )
+            tr(self.lang, "control_center.new_timeout_in_seconds")
           }),
           Line::from(format!("{input}_")),
-          Line::from(tr(
-            self.lang,
-            "Enter aplicar   Esc cancelar",
-            "Enter apply   Esc cancel",
-          )),
+          Line::from(tr(self.lang, "control_center.enter_apply_esc_cancel")),
         ])
         .block(Block::bordered().title(
           if self.input_mode == Some(InputMode::GrubCmdline) {
-            tr(self.lang, "Linha do kernel", "Kernel command line")
+            tr(self.lang, "control_center.kernel_command_line")
           } else {
-            tr(self.lang, "Timeout", "Timeout")
+            tr(self.lang, "control_center.timeout")
           },
         )),
         popup,
@@ -753,14 +725,10 @@ impl BootApp {
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(
-            self.lang,
-            "Confirmar operação de boot",
-            "Confirm boot operation",
-          ),
+          title: tr(self.lang, "control_center.confirm_boot_operation"),
           message: &message,
-          confirm_label: tr(self.lang, "Continuar", "Continue"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.continue"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       );
@@ -788,10 +756,10 @@ impl BootApp {
               .title(Line::styled(
                 format!(
                   " {} · {} {} {} {} ",
-                  tr(self.lang, "Processo", "Process"),
-                  tr(self.lang, "linha", "line"),
+                  tr(self.lang, "control_center.process"),
+                  tr(self.lang, "control_center.line"),
                   current,
-                  tr(self.lang, "de", "of"),
+                  tr(self.lang, "control_center.of"),
                   shown_total,
                 ),
                 Style::new().fg(self.theme.accent),
@@ -800,8 +768,7 @@ impl BootApp {
               .style(Style::new().bg(self.theme.background))
               .title_bottom(Line::from(tr(
                 self.lang,
-                "↑↓ rolar · PgUp/PgDn · Home/End · Esc fechar",
-                "↑↓ scroll · PgUp/PgDn · Home/End · Esc close",
+                "control_center.scroll_pgup_pgdn_home_end_esc_close",
               ))),
           )
           .scroll((self.transaction_scroll, 0))
@@ -819,12 +786,12 @@ impl BootApp {
           .bootloader_info
           .timeout
           .map(|t| format!("{} s", t))
-          .unwrap_or_else(|| tr(self.lang, "Padrão", "Default").into());
+          .unwrap_or_else(|| tr(self.lang, "control_center.default").into());
         let secure_boot = self
           .snapshot
           .secure_boot
           .map(|v| yes_no(self.lang, v))
-          .unwrap_or_else(|| tr(self.lang, "Indisponível", "Unavailable").into());
+          .unwrap_or_else(|| tr(self.lang, "control_center.unavailable").into());
         let default_entry = self
           .snapshot
           .bootloader_info
@@ -845,7 +812,7 @@ impl BootApp {
           format!(
             " {} {}",
             AppConfig::icon("💻"),
-            tr(self.lang, "SISTEMA BASE", "BASE SYSTEM")
+            tr(self.lang, "control_center.base_system")
           ),
           format!("   Firmware:    {}", self.snapshot.firmware),
           format!("   Secure Boot: {}", secure_boot),
@@ -854,7 +821,7 @@ impl BootApp {
           format!(
             " {} {}",
             AppConfig::icon("💿"),
-            tr(self.lang, "BOOTLOADER", "BOOTLOADER")
+            tr(self.lang, "control_center.bootloader")
           ),
           format!("   Gerenciador: {}", self.loader_label()),
           format!("   Padrão:      {}", default_entry),
@@ -871,7 +838,7 @@ impl BootApp {
           format!(
             " {} {}",
             AppConfig::icon("📦"),
-            tr(self.lang, "COMPONENTES", "COMPONENTS")
+            tr(self.lang, "control_center.components")
           ),
           format!("   Kernels:     {}", self.snapshot.kernels.len()),
           format!(
@@ -893,11 +860,11 @@ impl BootApp {
           let badges = match (k.current, k.default) {
             (true, true) => format!(
               "   ★ {} · ● {}",
-              tr(self.lang, "Atual", "Current"),
-              tr(self.lang, "Padrão", "Default")
+              tr(self.lang, "control_center.current"),
+              tr(self.lang, "control_center.default")
             ),
-            (true, false) => format!("   ★ {}", tr(self.lang, "Atual", "Current")),
-            (false, true) => format!("   ● {}", tr(self.lang, "Padrão", "Default")),
+            (true, false) => format!("   ★ {}", tr(self.lang, "control_center.current")),
+            (false, true) => format!("   ● {}", tr(self.lang, "control_center.default")),
             (false, false) => String::new(),
           };
           if badges.is_empty() {
@@ -915,7 +882,7 @@ impl BootApp {
         .iter()
         .map(|e| {
           let badge = if e.is_default {
-            format!("   ● {}", tr(self.lang, "Padrão", "Default"))
+            format!("   ● {}", tr(self.lang, "control_center.default"))
           } else {
             String::new()
           };
@@ -925,14 +892,7 @@ impl BootApp {
       BootPage::BootloaderDetail(index) => self.bootloader_detail(index),
       BootPage::Initramfs => {
         let mut rows = self.snapshot.initramfs.presets.clone();
-        rows.push(
-          tr(
-            self.lang,
-            "Regenerar todos os initramfs",
-            "Regenerate all initramfs images",
-          )
-          .into(),
-        );
+        rows.push(tr(self.lang, "control_center.regenerate_all_initramfs_images").into());
         rows
       }
       BootPage::InitramfsDetail(index) => self.initramfs_detail(index),
@@ -943,7 +903,7 @@ impl BootApp {
         .iter()
         .map(|theme| {
           let current = if self.snapshot.plymouth.current_theme.as_deref() == Some(theme) {
-            format!("   ★ {}", tr(self.lang, "Atual", "Current"))
+            format!("   ★ {}", tr(self.lang, "control_center.current"))
           } else {
             String::new()
           };
@@ -956,21 +916,21 @@ impl BootApp {
     let secure = match self.snapshot.secure_boot {
       Some(value) => format!(
         "{}: {}",
-        tr(self.lang, "Secure Boot", "Secure Boot"),
+        tr(self.lang, "control_center.secure_boot"),
         yes_no(self.lang, value)
       ),
-      None => tr(self.lang, "Secure Boot: N/D", "Secure Boot: N/A").into(),
+      None => tr(self.lang, "control_center.secure_boot_n_a").into(),
     };
     let timeout = self
       .snapshot
       .bootloader_info
       .timeout
-      .map(|t| format!("{}: {} s", tr(self.lang, "Timeout", "Timeout"), t))
-      .unwrap_or_else(|| tr(self.lang, "Timeout: Padrão", "Timeout: Default").into());
+      .map(|t| format!("{}: {} s", tr(self.lang, "control_center.timeout"), t))
+      .unwrap_or_else(|| tr(self.lang, "control_center.timeout_default").into());
     let loader = match self.snapshot.bootloader {
       BootloaderKind::SystemdBoot => "systemd-boot",
       BootloaderKind::Grub => "GRUB",
-      BootloaderKind::Unknown => tr(self.lang, "Indeterminado", "Unknown"),
+      BootloaderKind::Unknown => tr(self.lang, "control_center.unknown"),
     };
     let initramfs = if self.snapshot.initramfs.available {
       format!(
@@ -979,18 +939,18 @@ impl BootApp {
         self.snapshot.initramfs.presets.len()
       )
     } else {
-      tr(self.lang, "Não instalado", "Not installed").into()
+      tr(self.lang, "control_center.not_installed").into()
     };
     let plymouth = match &self.snapshot.plymouth.current_theme {
       Some(theme) => theme.clone(),
-      None if self.snapshot.plymouth.installed => tr(self.lang, "Instalado", "Installed").into(),
-      None => tr(self.lang, "Não instalado", "Not installed").into(),
+      None if self.snapshot.plymouth.installed => tr(self.lang, "control_center.installed").into(),
+      None => tr(self.lang, "control_center.not_installed").into(),
     };
-    let summary = tr(self.lang, "Resumo", "Summary");
-    let kernel_label = tr(self.lang, "Kernels", "Kernels");
-    let bootloader_label = tr(self.lang, "Bootloader", "Bootloader");
-    let initramfs_label = tr(self.lang, "Initramfs", "Initramfs");
-    let plymouth_label = tr(self.lang, "Plymouth", "Plymouth");
+    let summary = tr(self.lang, "control_center.summary");
+    let kernel_label = tr(self.lang, "control_center.kernels");
+    let bootloader_label = tr(self.lang, "control_center.bootloader_f1a3c5");
+    let initramfs_label = tr(self.lang, "control_center.initramfs");
+    let plymouth_label = tr(self.lang, "control_center.plymouth");
     vec![
       format!(
         "{} {}  ·  {} · {}",
@@ -1029,91 +989,95 @@ impl BootApp {
   }
   fn kernel_detail(&self, index: usize) -> Vec<String> {
     let Some(k) = self.snapshot.kernels.get(index) else {
-      return vec![tr(self.lang, "Kernel não encontrado", "Kernel not found").into()];
+      return vec![tr(self.lang, "control_center.kernel_not_found").into()];
     };
     let status = match (k.current, k.default) {
       (true, true) => format!(
         "★ {}  ·  ● {}",
-        tr(self.lang, "Atual", "Current"),
-        tr(self.lang, "Padrão", "Default")
+        tr(self.lang, "control_center.current"),
+        tr(self.lang, "control_center.default")
       ),
-      (true, false) => format!("★ {}", tr(self.lang, "Atual", "Current")),
-      (false, true) => format!("● {}", tr(self.lang, "Padrão", "Default")),
+      (true, false) => format!("★ {}", tr(self.lang, "control_center.current")),
+      (false, true) => format!("● {}", tr(self.lang, "control_center.default")),
       (false, false) => "—".into(),
     };
     vec![
       format!(
         " {} {}",
         AppConfig::icon("🧠"),
-        tr(self.lang, "KERNEL", "KERNEL")
+        tr(self.lang, "control_center.kernel_620593")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Pacote:", "Package:"),
+        tr(self.lang, "control_center.package"),
         k.package
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Versão:", "Version:"),
+        tr(self.lang, "control_center.version_20bc85"),
         k.version
       ),
-      format!("   {:<12} {}", tr(self.lang, "Status:", "Status:"), status),
+      format!(
+        "   {:<12} {}",
+        tr(self.lang, "control_center.status"),
+        status
+      ),
       "".into(),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Imagem:", "Image:"),
+        tr(self.lang, "control_center.image"),
         k.image.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Initramfs:", "Initramfs:"),
+        tr(self.lang, "control_center.initramfs_6d7381"),
         k.initramfs.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Fallback:", "Fallback:"),
+        tr(self.lang, "control_center.fallback"),
         k.fallback.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Headers:", "Headers:"),
+        tr(self.lang, "control_center.headers"),
         yes_no(self.lang, k.headers)
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Preset:", "Preset:"),
+        tr(self.lang, "control_center.preset"),
         k.preset.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "UKI:", "UKI:"),
+        tr(self.lang, "control_center.uki"),
         k.uki.as_deref().unwrap_or("—")
       ),
       "".into(),
       tr(
         self.lang,
-        "   [ d ] Definir como padrão no próximo boot",
-        "   [ d ] Set as default for the next boot",
+        "control_center.d_set_as_default_for_the_next_boot",
       )
       .into(),
     ]
   }
   fn bootloader_detail(&self, index: usize) -> Vec<String> {
     let Some(e) = self.snapshot.bootloader_info.entries.get(index) else {
-      return vec![tr(self.lang, "Entrada não encontrada", "Entry not found").into()];
+      return vec![tr(self.lang, "control_center.entry_not_found").into()];
     };
     vec![
-      format!(
-        " 💿 {}",
-        tr(self.lang, "ENTRADA DO BOOTLOADER", "BOOTLOADER ENTRY")
-      ),
-      format!("   {:<12} {}", tr(self.lang, "Título:", "Title:"), e.title),
-      format!("   {:<12} {}", tr(self.lang, "ID:", "ID:"), e.id),
+      format!(" 💿 {}", tr(self.lang, "control_center.bootloader_entry")),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Status:", "Status:"),
+        tr(self.lang, "control_center.title"),
+        e.title
+      ),
+      format!("   {:<12} {}", tr(self.lang, "control_center.id"), e.id),
+      format!(
+        "   {:<12} {}",
+        tr(self.lang, "control_center.status"),
         if e.is_default {
-          format!("● {}", tr(self.lang, "Padrão", "Default"))
+          format!("● {}", tr(self.lang, "control_center.default"))
         } else {
           "—".into()
         }
@@ -1121,26 +1085,21 @@ impl BootApp {
       "".into(),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Linux/EFI:", "Linux/EFI:"),
+        tr(self.lang, "control_center.linux_efi"),
         e.linux.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Initrd:", "Initrd:"),
+        tr(self.lang, "control_center.initrd"),
         e.initrd.join(" ")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "Options:", "Options:"),
+        tr(self.lang, "control_center.options"),
         e.options.as_deref().unwrap_or("—")
       ),
       "".into(),
-      tr(
-        self.lang,
-        "   [ d ] Definir padrão     [ t ] Alterar timeout",
-        "   [ d ] Set default        [ t ] Change timeout",
-      )
-      .into(),
+      tr(self.lang, "control_center.d_set_default_t_change_timeout").into(),
     ]
   }
   fn initramfs_detail(&self, index: usize) -> Vec<String> {
@@ -1161,36 +1120,43 @@ impl BootApp {
       format!(
         " {} {}",
         AppConfig::icon("📦"),
-        tr(self.lang, "INITRAMFS", "INITRAMFS")
+        tr(self.lang, "control_center.initramfs_fc455d")
       ),
-      format!("   {:<12} {}", tr(self.lang, "Preset:", "Preset:"), preset),
-      format!("   {:<12} {}", tr(self.lang, "Config:", "Config:"), config),
+      format!(
+        "   {:<12} {}",
+        tr(self.lang, "control_center.preset"),
+        preset
+      ),
+      format!(
+        "   {:<12} {}",
+        tr(self.lang, "control_center.config"),
+        config
+      ),
       "".into(),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "MODULES:", "MODULES:"),
+        tr(self.lang, "control_center.modules"),
         self.snapshot.initramfs.modules.join(" ")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "BINARIES:", "BINARIES:"),
+        tr(self.lang, "control_center.binaries"),
         self.snapshot.initramfs.binaries.join(" ")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "FILES:", "FILES:"),
+        tr(self.lang, "control_center.files"),
         self.snapshot.initramfs.files.join(" ")
       ),
       format!(
         "   {:<12} {}",
-        tr(self.lang, "HOOKS:", "HOOKS:"),
+        tr(self.lang, "control_center.hooks"),
         self.snapshot.initramfs.hooks.join(" ")
       ),
       "".into(),
       tr(
         self.lang,
-        "   [ g ] Regenerar todos os initramfs",
-        "   [ g ] Regenerate all initramfs images",
+        "control_center.g_regenerate_all_initramfs_images",
       )
       .into(),
     ]
@@ -1199,11 +1165,11 @@ impl BootApp {
     match self.snapshot.bootloader {
       BootloaderKind::SystemdBoot => "systemd-boot",
       BootloaderKind::Grub => "GRUB",
-      BootloaderKind::Unknown => "Indeterminado",
+      BootloaderKind::Unknown => tr(self.lang, "control_center.unknown"),
     }
   }
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Boot", "Boot");
+    let root = tr(self.lang, "control_center.boot");
     if self.page == BootPage::Home {
       root.into()
     } else {
@@ -1212,14 +1178,16 @@ impl BootApp {
   }
   fn page_label(&self) -> &'static str {
     match self.page {
-      BootPage::Summary => tr(self.lang, "Resumo", "Summary"),
-      BootPage::Kernel | BootPage::KernelDetail(_) => tr(self.lang, "Kernel", "Kernel"),
+      BootPage::Summary => tr(self.lang, "control_center.summary"),
+      BootPage::Kernel | BootPage::KernelDetail(_) => tr(self.lang, "control_center.kernel"),
       BootPage::Bootloader | BootPage::BootloaderDetail(_) => {
-        tr(self.lang, "Bootloader", "Bootloader")
+        tr(self.lang, "control_center.bootloader_f1a3c5")
       }
-      BootPage::Initramfs | BootPage::InitramfsDetail(_) => tr(self.lang, "Initramfs", "Initramfs"),
-      BootPage::Plymouth => tr(self.lang, "Plymouth", "Plymouth"),
-      BootPage::Home => tr(self.lang, "Boot", "Boot"),
+      BootPage::Initramfs | BootPage::InitramfsDetail(_) => {
+        tr(self.lang, "control_center.initramfs")
+      }
+      BootPage::Plymouth => tr(self.lang, "control_center.plymouth"),
+      BootPage::Home => tr(self.lang, "control_center.boot"),
     }
   }
 }
@@ -1227,8 +1195,11 @@ impl BootApp {
 fn yes_no(lang: Lang, value: bool) -> String {
   tr(
     lang,
-    if value { "Sim" } else { "Não" },
-    if value { "Yes" } else { "No" },
+    if value {
+      "control_center.yes"
+    } else {
+      "control_center.no"
+    },
   )
   .into()
 }
@@ -1236,45 +1207,29 @@ fn action_message(lang: Lang, action: &BootAction) -> String {
   match action {
     BootAction::SystemdDefault(id) => format!(
       "{} '{}' {}",
-      tr(lang, "Definir entrada", "Set entry"),
+      tr(lang, "control_center.set_entry"),
       id,
-      tr(
-        lang,
-        "como padrão no próximo boot?",
-        "as default for the next boot?"
-      )
+      tr(lang, "control_center.as_default_for_the_next_boot")
     ),
-    BootAction::SystemdTimeout(v) | BootAction::GrubTimeout(v) => format!(
-      "{} {} s?",
-      tr(lang, "Alterar timeout para", "Change timeout to"),
-      v
-    ),
+    BootAction::SystemdTimeout(v) | BootAction::GrubTimeout(v) => {
+      format!("{} {} s?", tr(lang, "control_center.change_timeout_to"), v)
+    }
     BootAction::GrubCmdline(value) => format!(
       "{} '{}' ?",
-      tr(lang, "Aplicar linha de kernel", "Apply kernel command line"),
+      tr(lang, "control_center.apply_kernel_command_line"),
       value
     ),
-    BootAction::GrubRegenerate => tr(
-      lang,
-      "Regenerar a configuração do GRUB?",
-      "Regenerate GRUB configuration?",
-    )
-    .into(),
+    BootAction::GrubRegenerate => tr(lang, "control_center.regenerate_grub_configuration").into(),
     BootAction::Initramfs => tr(
       lang,
-      "Regenerar todos os initramfs? Uma configuração inválida pode afetar o próximo boot.",
-      "Regenerate all initramfs images? An invalid configuration may affect the next boot.",
+      "control_center.regenerate_all_initramfs_images_an_invalid_configuration_may_affect_th",
     )
     .into(),
     BootAction::Plymouth(theme) => format!(
       "{} '{}' {}",
-      tr(lang, "Aplicar tema Plymouth", "Apply Plymouth theme"),
+      tr(lang, "control_center.apply_plymouth_theme"),
       theme,
-      tr(
-        lang,
-        "e regenerar o initramfs?",
-        "and regenerate initramfs?"
-      )
+      tr(lang, "control_center.and_regenerate_initramfs")
     ),
   }
 }
@@ -1345,7 +1300,11 @@ mod tests {
 
   #[test]
   fn boot_home_rows_act_as_a_status_dashboard() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.firmware = "UEFI".into();
     app.snapshot.current_kernel = "linux-lts 6.18".into();
     app.snapshot.secure_boot = Some(false);
@@ -1366,7 +1325,11 @@ mod tests {
 
   #[test]
   fn boot_kernel_rows_render_clean_current_and_default_badges() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.kernels = vec![
       KernelInfo {
         package: "linux".into(),
@@ -1398,7 +1361,11 @@ mod tests {
 
   #[test]
   fn boot_detail_pages_render_section_headers_and_aligned_rows() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.kernels = vec![KernelInfo {
       package: "linux".into(),
       version: "6.1".into(),
@@ -1416,7 +1383,11 @@ mod tests {
 
   #[test]
   fn boot_home_and_details_are_keyboard_navigable() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.kernels = vec![KernelInfo {
       package: "linux".into(),
       version: "6.1".into(),
@@ -1436,7 +1407,11 @@ mod tests {
 
   #[test]
   fn systemd_entry_default_requires_a_real_entry() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.bootloader = BootloaderKind::SystemdBoot;
     app.snapshot.bootloader_info.entries = vec![BootEntry {
       id: "arch.conf".into(),
@@ -1465,7 +1440,11 @@ mod tests {
 
   #[test]
   fn timeout_input_is_bounded_and_cancelable() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.bootloader = BootloaderKind::SystemdBoot;
     app.page = BootPage::Bootloader;
     app.handle(KeyCode::Tab);
@@ -1487,7 +1466,11 @@ mod tests {
 
   #[test]
   fn boot_uses_shared_chrome_and_contextual_footer() {
-    let app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
     let text = terminal
@@ -1506,8 +1489,16 @@ mod tests {
 
   #[test]
   fn boot_detail_and_info_pages_expose_buttons() {
-    let app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
-    let mut detail = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
+    let mut detail = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     detail.snapshot.bootloader = BootloaderKind::Grub;
     detail.page = BootPage::BootloaderDetail(0);
     assert_eq!(app.buttons().len(), 0);
@@ -1516,7 +1507,11 @@ mod tests {
 
   #[test]
   fn boot_tab_cycles_between_list_and_buttons() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.bootloader = BootloaderKind::Grub;
     app.page = BootPage::Bootloader;
     app.selected.index = 2;
@@ -1535,7 +1530,11 @@ mod tests {
 
   #[test]
   fn boot_left_right_move_buttons_while_focused_and_no_back_out() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.bootloader = BootloaderKind::Grub;
     app.page = BootPage::Bootloader;
     app.selected.index = 2;
@@ -1558,7 +1557,11 @@ mod tests {
 
   #[test]
   fn boot_renders_button_bar_only_on_action_pages() {
-    let mut list = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut list = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     list.snapshot.bootloader = BootloaderKind::Grub;
     list.page = BootPage::Bootloader;
     let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
@@ -1573,7 +1576,11 @@ mod tests {
     assert!(text.contains("[ Default ]") || text.contains("[ Padrão ]"));
     assert!(text.contains("Actions") || text.contains("Ações"));
 
-    let mut summary = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut summary = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     summary.page = BootPage::Summary;
     terminal.draw(|frame| summary.draw(frame)).unwrap();
     let info_text = terminal
@@ -1588,7 +1595,11 @@ mod tests {
 
   #[test]
   fn boot_start_pending_opens_the_process_window_immediately() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.pending = Some(Pending::Action(BootAction::Initramfs));
     app.start_pending();
     assert!(
@@ -1604,7 +1615,11 @@ mod tests {
 
   #[test]
   fn boot_transaction_window_scrolls_and_closes() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     let live = LiveProcess::new();
     for _ in 0..40 {
       live.push_line("line");
@@ -1632,7 +1647,11 @@ mod tests {
 
   #[test]
   fn boot_transaction_window_renders_process_title_and_output() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     let live = LiveProcess::new();
     live.push_line("$ plymouth-set-default-theme -R argvus");
     live.push_line("==> Building image");
@@ -1654,7 +1673,11 @@ mod tests {
 
   #[test]
   fn boot_home_dashboard_uses_theme_and_falls_back_to_installed_flag() {
-    let mut app = BootApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.plymouth.installed = true;
     app.snapshot.plymouth.current_theme = None;
     let rows = app.rows();

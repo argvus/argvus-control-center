@@ -140,7 +140,9 @@ impl DisplaysApp {
       job: None,
       action: None,
       hotplug: None,
-      last_hotplug: Instant::now().checked_sub(HOTPLUG_INTERVAL * 6).unwrap_or(Instant::now()),
+      last_hotplug: Instant::now()
+        .checked_sub(HOTPLUG_INTERVAL * 6)
+        .unwrap_or(Instant::now()),
       revert: None,
       confirm_profile: None,
       prompt_buffer: String::new(),
@@ -171,7 +173,7 @@ impl DisplaysApp {
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(lang, "Carregando monitores...", "Loading monitors...").into(),
+      text: tr(lang, "control_center.loading_monitors").into(),
     });
   }
 
@@ -196,10 +198,12 @@ impl DisplaysApp {
           self.status = None;
         }
         Ok(JobData::Hotplug(_)) | Ok(JobData::Action(_)) => {}
-        Err(e) => self.status = Some(StatusMessage {
-          kind: StatusKind::Error,
-          text: e,
-        }),
+        Err(e) => {
+          self.status = Some(StatusMessage {
+            kind: StatusKind::Error,
+            text: e,
+          })
+        }
       };
       self.last_hotplug = Instant::now();
       changed = true;
@@ -233,7 +237,7 @@ impl DisplaysApp {
         previous_config,
         format!(
           "{} {}",
-          tr(self.lang, "Revertido", "Reverted"),
+          tr(self.lang, "control_center.reverted"),
           revert.previous.name
         ),
       );
@@ -257,12 +261,7 @@ impl DisplaysApp {
           }
           self.status = Some(StatusMessage {
             kind: StatusKind::Info,
-            text: tr(
-              self.lang,
-              "Monitores alterados (hotplug)",
-              "Monitors changed (hotplug)",
-            )
-            .into(),
+            text: tr(self.lang, "control_center.monitors_changed_hotplug").into(),
           });
           changed = true;
         }
@@ -292,14 +291,16 @@ impl DisplaysApp {
           self.delete_profile(index);
           self.status = Some(StatusMessage {
             kind: StatusKind::Success,
-            text: tr(self.lang, "Perfil excluído", "Profile deleted").into(),
+            text: tr(self.lang, "control_center.profile_deleted").into(),
           });
-          self.selected = self.selected.min(self.state.profiles.len().saturating_sub(1));
+          self.selected = self
+            .selected
+            .min(self.state.profiles.len().saturating_sub(1));
         }
         ConfirmationOutcome::Cancelled => {
           self.status = Some(StatusMessage {
             kind: StatusKind::Info,
-            text: tr(self.lang, "Exclusão cancelada", "Deletion cancelled").into(),
+            text: tr(self.lang, "control_center.deletion_cancelled").into(),
           });
         }
         ConfirmationOutcome::Pending => {
@@ -317,7 +318,7 @@ impl DisplaysApp {
               kind: StatusKind::Success,
               text: format!(
                 "{} · {name}",
-                tr(self.lang, "Configuração mantida", "Configuration kept")
+                tr(self.lang, "control_center.configuration_kept")
               ),
             });
           }
@@ -330,7 +331,7 @@ impl DisplaysApp {
               revert.previous_config,
               format!(
                 "{} {name}",
-                tr(self.lang, "Revertido", "Reverted"),
+                tr(self.lang, "control_center.reverted"),
                 name = revert.previous.name
               ),
             );
@@ -431,8 +432,9 @@ impl DisplaysApp {
         KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
         KeyCode::Home => self.selected = 0,
         KeyCode::End => self.selected = self.selection_len().saturating_sub(1),
-        KeyCode::Enter
-          if self.selected == self.state.profiles.len() => self.open_prompt(PromptGoal::ProfileCreate),
+        KeyCode::Enter if self.selected == self.state.profiles.len() => {
+          self.open_prompt(PromptGoal::ProfileCreate)
+        }
         _ => {}
       },
       DisplayPage::Picker { .. } => match key {
@@ -500,8 +502,7 @@ impl DisplaysApp {
           self.prompt_error = Some(
             tr(
               self.lang,
-              "Posição inválida — use o formato X,Y (ex.: 1920,0)",
-              "Invalid position — use X,Y (e.g. 1920,0)",
+              "control_center.invalid_position_use_x_y_e_g_1920_0",
             )
             .into(),
           );
@@ -525,7 +526,7 @@ impl DisplaysApp {
         });
         let message = format!(
           "{} · {name} ({x}, {y})",
-          tr(self.lang, "Posição", "Position")
+          tr(self.lang, "control_center.position")
         );
         self.page = DisplayPage::Detail(index);
         self.selected = 0;
@@ -537,8 +538,7 @@ impl DisplaysApp {
           self.prompt_error = Some(
             tr(
               self.lang,
-              "Valor inválido — use um número (ex.: 1.25)",
-              "Invalid value — use a number (e.g. 1.25)",
+              "control_center.invalid_value_use_a_number_e_g_1_25",
             )
             .into(),
           );
@@ -552,10 +552,10 @@ impl DisplaysApp {
         let mut persisted = config.persisted(&name);
         persisted.scale = Some(value);
         config.set_monitor(&name, persisted);
-self.config = config.clone();
+        self.config = config.clone();
         let message = format!(
           "{} · {name}: {value}",
-          tr(self.lang, "Escala", "Scale")
+          tr(self.lang, "control_center.scale")
         );
         self.page = DisplayPage::Detail(index);
         self.selected = 0;
@@ -564,44 +564,37 @@ self.config = config.clone();
       }
       PromptGoal::SdrBrightness(index) => {
         let Some(value) = parse_number(&buffer) else {
-          self.prompt_error = Some(
-            tr(
-              self.lang,
-              "Valor inválido — use 0.0 a 1.0",
-              "Invalid value — use 0.0 to 1.0",
-            )
-            .into(),
-          );
+          self.prompt_error =
+            Some(tr(self.lang, "control_center.invalid_value_use_0_0_to_1_0").into());
           return;
         };
-        self.apply_sdr(index, |persisted| persisted.sdr_brightness = Some(value.clamp(0.0, 1.0)));
+        self.apply_sdr(index, |persisted| {
+          persisted.sdr_brightness = Some(value.clamp(0.0, 1.0))
+        });
       }
       PromptGoal::SdrSaturation(index) => {
         let Some(value) = parse_number(&buffer) else {
-          self.prompt_error = Some(
-            tr(
-              self.lang,
-              "Valor inválido — use 0.0 a 2.0",
-              "Invalid value — use 0.0 to 2.0",
-            )
-            .into(),
-          );
+          self.prompt_error =
+            Some(tr(self.lang, "control_center.invalid_value_use_0_0_to_2_0").into());
           return;
         };
-        self.apply_sdr(index, |saturation| saturation.sdr_saturation = Some(value.clamp(0.0, 2.0)));
+        self.apply_sdr(index, |saturation| {
+          saturation.sdr_saturation = Some(value.clamp(0.0, 2.0))
+        });
       }
       PromptGoal::ProfileCreate => {
         if buffer.trim().is_empty() {
-          self.prompt_error = Some(
-            tr(self.lang, "O nome do perfil não pode ser vazio", "Profile name cannot be empty")
-              .into(),
-          );
+          self.prompt_error =
+            Some(tr(self.lang, "control_center.profile_name_cannot_be_empty").into());
           return;
         }
-        if self.state.profile_index(buffer.trim()) .is_some() {
+        if self.state.profile_index(buffer.trim()).is_some() {
           self.prompt_error = Some(
-            tr(self.lang, "Um perfil com esse nome já existe", "A profile with this name already exists")
-              .into(),
+            tr(
+              self.lang,
+              "control_center.a_profile_with_this_name_already_exists",
+            )
+            .into(),
           );
           return;
         }
@@ -613,7 +606,14 @@ self.config = config.clone();
         self.state.profiles.push(profile);
         self.state.active_profile = None;
         let state = self.state.clone();
-        self.spawn_save_state(state, format!("{} · {}", tr(self.lang, "Perfil criado", "Profile created"), buffer.trim()));
+        self.spawn_save_state(
+          state,
+          format!(
+            "{} · {}",
+            tr(self.lang, "control_center.profile_created"),
+            buffer.trim()
+          ),
+        );
         self.page = DisplayPage::Profiles;
         self.selected = self.state.profiles.len().saturating_sub(1);
         self.prompt_buffer.clear();
@@ -623,17 +623,22 @@ self.config = config.clone();
       }
       PromptGoal::ProfileRename(index) => {
         if buffer.trim().is_empty() {
-          self.prompt_error = Some(
-            tr(self.lang, "O nome do perfil não pode ser vazio", "Profile name cannot be empty")
-              .into(),
-          );
+          self.prompt_error =
+            Some(tr(self.lang, "control_center.profile_name_cannot_be_empty").into());
           return;
         }
         if let Some(profile) = self.state.profiles.get_mut(index) {
           profile.name = buffer.trim().to_string();
         }
         let state = self.state.clone();
-        self.spawn_save_state(state, format!("{} · {}", tr(self.lang, "Perfil renomeado", "Profile renamed"), buffer.trim()));
+        self.spawn_save_state(
+          state,
+          format!(
+            "{} · {}",
+            tr(self.lang, "control_center.profile_renamed"),
+            buffer.trim()
+          ),
+        );
         self.page = DisplayPage::Profiles;
         self.selected = index;
         self.prompt_buffer.clear();
@@ -654,7 +659,7 @@ self.config = config.clone();
     mutate(&mut persisted);
     config.set_monitor(&name, persisted.clone());
     self.config = config.clone();
-    let message = format!("{} · {name}", tr(self.lang, "SDR", "SDR"));
+    let message = format!("{} · {name}", tr(self.lang, "control_center.sdr"));
     self.page = DisplayPage::Detail(index);
     self.selected = 0;
     self.on_buttons = false;
@@ -814,14 +819,14 @@ self.config = config.clone();
       return vec![format!(
         " {} {} {name}",
         AppConfig::icon("🔌"),
-        tr(self.lang, "Monitor desconectado", "Monitor disconnected")
+        tr(self.lang, "control_center.monitor_disconnected")
       )];
     };
     if !monitor.connected {
       return vec![format!(
         " {} {}",
         AppConfig::icon("🔌"),
-        tr(self.lang, "Monitor desconectado", "Monitor disconnected")
+        tr(self.lang, "control_center.monitor_disconnected")
       )];
     }
     let persisted = self.config.persisted(&monitor.name);
@@ -848,89 +853,90 @@ self.config = config.clone();
       .mirror
       .clone()
       .or_else(|| monitor.info.mirror_of.clone())
-      .unwrap_or_else(|| tr(self.lang, "nenhum", "none").into());
+      .unwrap_or_else(|| tr(self.lang, "control_center.none").into());
     let mut rows = vec![
       format!(
         " {}  {}  ·  {mode}",
-        tr(self.lang, "Resolução", "Resolution"),
+        tr(self.lang, "control_center.resolution"),
         monitor.name
       ),
       format!(
         " {}  ·  {:.3} Hz",
-        tr(self.lang, "Taxa de atualização", "Refresh rate"),
+        tr(self.lang, "control_center.refresh_rate"),
         rate
       ),
-      format!(" {}  ·  {}", tr(self.lang, "Escala", "Scale"), scale),
-      format!(" {}  ·  {}", tr(self.lang, "Posição", "Position"), position),
+      format!(" {}  ·  {}", tr(self.lang, "control_center.scale"), scale),
       format!(
         " {}  ·  {}",
-        tr(self.lang, "Orientação", "Orientation"),
+        tr(self.lang, "control_center.position"),
+        position
+      ),
+      format!(
+        " {}  ·  {}",
+        tr(self.lang, "control_center.orientation"),
         transform_label(self.lang, transform)
       ),
       format!(
         " {}  ·  {}",
-        tr(self.lang, "Monitor ligado", "Monitor enabled"),
+        tr(self.lang, "control_center.monitor_enabled"),
         on_off(self.lang, persisted.disabled != Some(true))
       ),
-      format!(
-        " {}  ·  {mirror}",
-        tr(self.lang, "Espelhamento", "Mirror")
-      ),
+      format!(" {}  ·  {mirror}", tr(self.lang, "control_center.mirror")),
       format!(
         " {}  ·  {}",
-        tr(self.lang, "Profundidade de cor", "Color depth"),
+        tr(self.lang, "control_center.color_depth"),
         self.bitdepth_label(monitor, &persisted)
       ),
     ];
     if self.vrr_supported() {
       rows.push(format!(
         " {}  ·  {}",
-        tr(self.lang, "VRR", "VRR"),
+        tr(self.lang, "control_center.vrr"),
         vrr_label(self.lang, vrr)
       ));
     }
     if self.hdr_supported() && monitor.has_10bit() {
       rows.push(format!(
         " {}  ·  {}",
-        tr(self.lang, "HDR", "HDR"),
+        tr(self.lang, "control_center.hdr"),
         hdr_label(self.lang, hdr)
       ));
     }
     rows.push(format!(
       " {}  ·  {}",
-      tr(self.lang, "DPMS", "DPMS"),
+      tr(self.lang, "control_center.dpms"),
       if monitor.dpms_status == "off" {
-        tr(self.lang, "desligado", "off")
+        tr(self.lang, "control_center.off")
       } else {
-        tr(self.lang, "ligado", "on")
+        tr(self.lang, "control_center.on")
       }
     ));
     if self.hdr_supported() && monitor.has_10bit() {
       rows.push(format!(
         " {}  ·  {}",
-        tr(self.lang, "Brilho SDR", "SDR brightness"),
+        tr(self.lang, "control_center.sdr_brightness"),
         persisted
           .sdr_brightness
           .or(monitor.info.sdr_brightness)
           .map(|value| format!("{value:.2}"))
-          .unwrap_or_else(|| tr(self.lang, "automático", "auto").into())
+          .unwrap_or_else(|| tr(self.lang, "control_center.auto").into())
       ));
       rows.push(format!(
         " {}  ·  {}",
-        tr(self.lang, "Saturação SDR", "SDR saturation"),
+        tr(self.lang, "control_center.sdr_saturation"),
         persisted
           .sdr_saturation
           .or(monitor.info.sdr_saturation)
           .map(|value| format!("{value:.2}"))
-          .unwrap_or_else(|| tr(self.lang, "automático", "auto").into())
+          .unwrap_or_else(|| tr(self.lang, "control_center.auto").into())
       ));
     }
     let workspaces = self.config.workspaces_of(&monitor.name);
     rows.push(format!(
       " {}  ·  {}",
-      tr(self.lang, "Workspaces", "Workspaces"),
+      tr(self.lang, "control_center.workspaces"),
       if workspaces.is_empty() {
-        tr(self.lang, "sem vínculo", "unbound").into()
+        tr(self.lang, "control_center.unbound").into()
       } else {
         workspaces
           .iter()
@@ -941,7 +947,7 @@ self.config = config.clone();
     ));
     rows.push(format!(
       " {}  ·  {}",
-      tr(self.lang, "Monitor primário", "Primary monitor"),
+      tr(self.lang, "control_center.primary_monitor"),
       on_off(self.lang, primary)
     ));
     rows
@@ -949,7 +955,7 @@ self.config = config.clone();
 
   fn bitdepth_label(&self, monitor: &Monitor, persisted: &PersistedMonitor) -> String {
     if !monitor.has_10bit() {
-      return tr(self.lang, "não suportado", "unsupported").into();
+      return tr(self.lang, "control_center.unsupported").into();
     }
     match persisted.bitdepth {
       Some(10) => "10".into(),
@@ -972,10 +978,7 @@ self.config = config.clone();
       MonitorSetting::Scale => {
         let mut options = scale_options(monitor);
         options.push(PickerOption {
-          label: format!(
-            "✎ {}",
-            tr(self.lang, "Personalizar...", "Custom...")
-          ),
+          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::Scale(monitor_index)),
@@ -985,10 +988,7 @@ self.config = config.clone();
       MonitorSetting::Position => {
         let mut options = self.position_options(monitor_index);
         options.push(PickerOption {
-          label: format!(
-            "✎ {}",
-            tr(self.lang, "Personalizar...", "Custom...")
-          ),
+          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::Position(monitor_index)),
@@ -1008,10 +1008,7 @@ self.config = config.clone();
       MonitorSetting::SdrBrightness if self.hdr_supported() && monitor.has_10bit() => {
         let mut options = sdr_brightness_options(self.lang, monitor);
         options.push(PickerOption {
-          label: format!(
-            "✎ {}",
-            tr(self.lang, "Personalizar...", "Custom...")
-          ),
+          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::SdrBrightness(monitor_index)),
@@ -1021,10 +1018,7 @@ self.config = config.clone();
       MonitorSetting::SdrSaturation if self.hdr_supported() && monitor.has_10bit() => {
         let mut options = sdr_saturation_options(self.lang, monitor);
         options.push(PickerOption {
-          label: format!(
-            "✎ {}",
-            tr(self.lang, "Personalizar...", "Custom...")
-          ),
+          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::SdrSaturation(monitor_index)),
@@ -1033,19 +1027,19 @@ self.config = config.clone();
       }
       MonitorSetting::Workspaces => self.workspace_options(monitor_index),
       MonitorSetting::BitDepth => vec![PickerOption {
-        label: tr(self.lang, "Não suportado", "Unsupported").into(),
+        label: tr(self.lang, "control_center.unsupported_7c5d5f").into(),
         args: String::new(),
         persist: PersistChange::None,
         prompt: None,
       }],
       MonitorSetting::Vrr | MonitorSetting::Hdr => vec![PickerOption {
-        label: tr(self.lang, "Não suportado", "Unsupported").into(),
+        label: tr(self.lang, "control_center.unsupported_7c5d5f").into(),
         args: String::new(),
         persist: PersistChange::None,
         prompt: None,
       }],
       MonitorSetting::SdrBrightness | MonitorSetting::SdrSaturation => vec![PickerOption {
-        label: tr(self.lang, "Não suportado", "Unsupported").into(),
+        label: tr(self.lang, "control_center.unsupported_7c5d5f").into(),
         args: String::new(),
         persist: PersistChange::None,
         prompt: None,
@@ -1065,7 +1059,7 @@ self.config = config.clone();
             "{} {}",
             monitor.name,
             if is_primary {
-              tr(self.lang, "· primário", "· primary").to_string()
+              tr(self.lang, "control_center.primary").to_string()
             } else {
               String::new()
             }
@@ -1097,12 +1091,20 @@ self.config = config.clone();
         format!(
           "{}  ·  {}",
           workspace,
-          tr(self.lang, "este monitor", "this monitor")
+          tr(self.lang, "control_center.this_monitor")
         )
       } else if bound_elsewhere {
-        format!("{}  ·  {}", workspace, tr(self.lang, "outro monitor", "another monitor"))
+        format!(
+          "{}  ·  {}",
+          workspace,
+          tr(self.lang, "control_center.another_monitor")
+        )
       } else {
-        format!("{}  ·  {}", workspace, tr(self.lang, "sem vínculo", "unbound"))
+        format!(
+          "{}  ·  {}",
+          workspace,
+          tr(self.lang, "control_center.unbound")
+        )
       };
       let persist = if bound_here {
         PersistChange::Workspace(workspace, None)
@@ -1124,12 +1126,7 @@ self.config = config.clone();
       return vec![];
     };
     let mut options = vec![PickerOption {
-      label: tr(
-        self.lang,
-        "Canto superior esquerdo (0, 0)",
-        "Top-left corner (0, 0)",
-      )
-      .into(),
+      label: tr(self.lang, "control_center.top_left_corner_0_0").into(),
       args: monitor.position_args(0, 0),
       persist: PersistChange::Position(0, 0),
       prompt: None,
@@ -1140,22 +1137,22 @@ self.config = config.clone();
       }
       let placements = [
         (
-          tr(self.lang, "À direita de", "To the right of"),
+          tr(self.lang, "control_center.to_the_right_of"),
           other.x + other.width as i32,
           other.y,
         ),
         (
-          tr(self.lang, "À esquerda de", "To the left of"),
+          tr(self.lang, "control_center.to_the_left_of"),
           other.x - monitor.width as i32,
           other.y,
         ),
         (
-          tr(self.lang, "Abaixo de", "Below"),
+          tr(self.lang, "control_center.below"),
           other.x,
           other.y + other.height as i32,
         ),
         (
-          tr(self.lang, "Acima de", "Above"),
+          tr(self.lang, "control_center.above"),
           other.x,
           other.y - monitor.height as i32,
         ),
@@ -1192,7 +1189,10 @@ self.config = config.clone();
         self.state.primary_monitor = Some(name.clone());
         let config = self.config.clone();
         let state = self.state.clone();
-        let message = format!("{}: {name}", tr(self.lang, "Monitor primário", "Primary monitor"));
+        let message = format!(
+          "{}: {name}",
+          tr(self.lang, "control_center.primary_monitor")
+        );
         self.action = Some(self.manager.spawn(move |_| {
           backend::save_config(&config)?;
           backend::save_state(&state)?;
@@ -1284,14 +1284,17 @@ self.config = config.clone();
   fn monitor_ctx(&self) -> Option<(usize, MonitorSetting)> {
     match self.page {
       DisplayPage::Picker { monitor, setting } => Some((monitor, setting)),
-      DisplayPage::Detail(_) | DisplayPage::Home | DisplayPage::Profiles | DisplayPage::Prompt { .. } => None,
+      DisplayPage::Detail(_)
+      | DisplayPage::Home
+      | DisplayPage::Profiles
+      | DisplayPage::Prompt { .. } => None,
     }
   }
 
   fn spawn_revert(&mut self, config: PersistedConfig, message: String) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Revertendo...", "Reverting...").into(),
+      text: tr(self.lang, "control_center.reverting").into(),
     });
     self.action = Some(self.manager.spawn(move |_| {
       backend::apply_all(&config)?;
@@ -1302,12 +1305,7 @@ self.config = config.clone();
   fn spawn_apply_with_config(&mut self, config: PersistedConfig, message: String) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Aplicando ao monitor...",
-        "Applying to monitor...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.applying_to_monitor").into(),
     });
     self.action = Some(self.manager.spawn(move |_| {
       backend::apply_all(&config)?;
@@ -1351,16 +1349,16 @@ self.config = config.clone();
         HomeEntry::Live(index) => {
           let monitor = &self.monitors[index];
           let primary = if self.config.primary_monitor.as_deref() == Some(monitor.name.as_str()) {
-            tr(self.lang, "primário", "primary")
+            tr(self.lang, "control_center.primary_ead365")
           } else if monitor.focused {
-            tr(self.lang, "focado", "focused")
+            tr(self.lang, "control_center.focused")
           } else {
             ""
           };
           let dpms = if monitor.disabled || monitor.dpms_status == "off" {
-            tr(self.lang, "desligado", "off")
+            tr(self.lang, "control_center.off")
           } else {
-            tr(self.lang, "ligado", "on")
+            tr(self.lang, "control_center.on")
           };
           rows.push(format!(
             "{} {}  ·  {}x{} @ {:.3} Hz  ·  {}x{}  ·  escala {}  ·  {} {}",
@@ -1381,18 +1379,18 @@ self.config = config.clone();
             "{} {}  ·  {}  ·  {}",
             AppConfig::icon("🔌"),
             name,
-            tr(self.lang, "desconectado", "disconnected"),
+            tr(self.lang, "control_center.disconnected"),
             persisted
               .mode
               .as_deref()
-              .unwrap_or(tr(self.lang, "configurado", "configured")),
+              .unwrap_or(tr(self.lang, "control_center.configured")),
           ));
         }
         HomeEntry::Profiles => {
           rows.push(format!(
             " {} {} ({})",
             AppConfig::icon("🗂️"),
-            tr(self.lang, "Perfis", "Profiles"),
+            tr(self.lang, "control_center.profiles"),
             self.state.profiles.len()
           ));
         }
@@ -1402,8 +1400,7 @@ self.config = config.clone();
       rows.push(
         tr(
           self.lang,
-          "Nenhum monitor encontrado — o Hyprland está em execução?",
-          "No monitors found — is Hyprland running?",
+          "control_center.no_monitors_found_is_hyprland_running",
         )
         .into(),
       );
@@ -1421,10 +1418,7 @@ self.config = config.clone();
       };
       rows.push(format!(" {marker} {}", profile.name));
     }
-    rows.push(format!(
-      "+ {}",
-      tr(self.lang, "Novo perfil", "New profile")
-    ));
+    rows.push(format!("+ {}", tr(self.lang, "control_center.new_profile")));
     rows
   }
 
@@ -1441,12 +1435,7 @@ self.config = config.clone();
     let Some(index) = self.selected_profile_index() else {
       self.status = Some(StatusMessage {
         kind: StatusKind::Warning,
-        text: tr(
-          self.lang,
-          "Selecione um perfil para aplicar",
-          "Select a profile to apply",
-        )
-        .into(),
+        text: tr(self.lang, "control_center.select_a_profile_to_apply").into(),
       });
       return;
     };
@@ -1470,7 +1459,7 @@ self.config = config.clone();
       .flat_map(|(monitor, ids)| ids.iter().map(|id| (*id, monitor.clone())))
       .collect();
     let lang = self.lang;
-    let profile_applied = tr(lang, "Perfil aplicado", "Profile applied").to_string();
+    let profile_applied = tr(lang, "control_center.profile_applied").to_string();
     self.action = Some(self.manager.spawn(move |_| {
       for rule in &rules {
         backend::apply_keyword(rule)?;
@@ -1583,60 +1572,54 @@ self.config = config.clone();
       DisplayPage::Home => vec![
         (
           DisplayButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), secondary),
+          Button::new(tr(self.lang, "control_center.refresh"), secondary),
         ),
         (
           DisplayButton::Profiles,
-          Button::new(tr(self.lang, "Perfis", "Profiles"), secondary),
+          Button::new(tr(self.lang, "control_center.profiles"), secondary),
         ),
       ],
       DisplayPage::Detail(index) => {
         let Some(monitor) = self.monitors.get(index) else {
           return vec![(
             DisplayButton::Remove,
-            Button::new(
-              tr(self.lang, "Remover configuração", "Remove config"),
-              secondary,
-            ),
+            Button::new(tr(self.lang, "control_center.remove_config"), secondary),
           )];
         };
         if monitor.connected {
           vec![
             (
               DisplayButton::Apply,
-              Button::new(tr(self.lang, "Aplicar", "Apply"), primary),
+              Button::new(tr(self.lang, "control_center.apply"), primary),
             ),
             (
               DisplayButton::Reset,
-              Button::new(tr(self.lang, "Padrão", "Default"), secondary),
+              Button::new(tr(self.lang, "control_center.default"), secondary),
             ),
           ]
         } else {
           vec![(
             DisplayButton::Remove,
-            Button::new(
-              tr(self.lang, "Remover configuração", "Remove config"),
-              secondary,
-            ),
+            Button::new(tr(self.lang, "control_center.remove_config"), secondary),
           )]
         }
       }
       DisplayPage::Profiles => vec![
         (
           DisplayButton::ProfileNew,
-          Button::new(tr(self.lang, "Novo", "New"), primary),
+          Button::new(tr(self.lang, "control_center.new"), primary),
         ),
         (
           DisplayButton::ProfileApply,
-          Button::new(tr(self.lang, "Aplicar", "Apply"), secondary),
+          Button::new(tr(self.lang, "control_center.apply"), secondary),
         ),
         (
           DisplayButton::ProfileRename,
-          Button::new(tr(self.lang, "Renomear", "Rename"), secondary),
+          Button::new(tr(self.lang, "control_center.rename"), secondary),
         ),
         (
           DisplayButton::ProfileDelete,
-          Button::new(tr(self.lang, "Excluir", "Delete"), ButtonKind::Danger),
+          Button::new(tr(self.lang, "control_center.delete"), ButtonKind::Danger),
         ),
       ],
       DisplayPage::Picker { .. } | DisplayPage::Prompt { .. } => Vec::new(),
@@ -1733,7 +1716,7 @@ self.config = config.clone();
     let config = self.config.clone();
     let state = self.state.clone();
     let lang = self.lang;
-    let removed = tr(lang, "Configuração removida", "Config removed").to_string();
+    let removed = tr(lang, "control_center.config_removed").to_string();
     self.action = Some(self.manager.spawn(move |_| {
       backend::save_config(&config)?;
       backend::save_state(&state)?;
@@ -1759,7 +1742,10 @@ self.config = config.clone();
     let config = self.config.clone();
     self.spawn_apply_with_config(
       config,
-      format!("{} · {name}", tr(self.lang, "Padrão aplicado", "Default applied")),
+      format!(
+        "{} · {name}",
+        tr(self.lang, "control_center.default_applied")
+      ),
     );
   }
 
@@ -1782,7 +1768,7 @@ self.config = config.clone();
     });
     self.spawn_apply_with_config(
       self.config.clone(),
-      format!("{} · {name}", tr(self.lang, "Aplicado", "Applied")),
+      format!("{} · {name}", tr(self.lang, "control_center.applied")),
     );
   }
 
@@ -1790,39 +1776,34 @@ self.config = config.clone();
     match self.page {
       DisplayPage::Picker { .. } => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Aplicar   r Cancelar   ? Ajuda",
-        "↑/↓ Navigate   Enter Apply   r Cancel   ? Help",
+        "control_center.navigate_enter_apply_r_cancel_help",
       )
       .into(),
       DisplayPage::Prompt { .. } => tr(
         self.lang,
-        "Digite o valor   Enter Confirmar   Esc Cancelar",
-        "Type value   Enter Confirm   Esc Cancel",
+        "control_center.type_value_enter_confirm_esc_cancel",
       )
       .into(),
       DisplayPage::Profiles => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   Enter Novo   r Recarregar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   Enter New   r Reload   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_enter_new_r_reload_esc_back_help",
       )
       .into(),
       DisplayPage::Detail(_) => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_enter_open_r_refresh_esc_back_help",
       )
       .into(),
       DisplayPage::Home => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_r_refresh_esc_back_help",
       )
       .into(),
     }
   }
 
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Monitores", "Displays");
+    let root = tr(self.lang, "control_center.displays");
     match self.page {
       DisplayPage::Home => root.into(),
       DisplayPage::Detail(index) => {
@@ -1831,22 +1812,22 @@ self.config = config.clone();
           .get(index)
           .map(|monitor| monitor.name.clone())
           .or_else(|| self.stale_name(index))
-          .unwrap_or_else(|| tr(self.lang, "Monitor", "Monitor").into());
+          .unwrap_or_else(|| tr(self.lang, "control_center.monitor").into());
         format!("{root} > {name}")
       }
       DisplayPage::Picker { setting, .. } => {
         format!("{root} > {}", setting_label(self.lang, setting))
       }
-      DisplayPage::Profiles => format!("{root} > {}", tr(self.lang, "Perfis", "Profiles")),
+      DisplayPage::Profiles => format!("{root} > {}", tr(self.lang, "control_center.profiles")),
       DisplayPage::Prompt { goal } => format!(
         "{root} > {}",
         match goal {
-          PromptGoal::Position(_) => tr(self.lang, "Posição", "Position"),
-          PromptGoal::Scale(_) => tr(self.lang, "Escala", "Scale"),
-          PromptGoal::SdrBrightness(_) => tr(self.lang, "Brilho SDR", "SDR brightness"),
-          PromptGoal::SdrSaturation(_) => tr(self.lang, "Saturação SDR", "SDR saturation"),
-          PromptGoal::ProfileCreate => tr(self.lang, "Novo perfil", "New profile"),
-          PromptGoal::ProfileRename(_) => tr(self.lang, "Renomear perfil", "Rename profile"),
+          PromptGoal::Position(_) => tr(self.lang, "control_center.position"),
+          PromptGoal::Scale(_) => tr(self.lang, "control_center.scale"),
+          PromptGoal::SdrBrightness(_) => tr(self.lang, "control_center.sdr_brightness"),
+          PromptGoal::SdrSaturation(_) => tr(self.lang, "control_center.sdr_saturation"),
+          PromptGoal::ProfileCreate => tr(self.lang, "control_center.new_profile"),
+          PromptGoal::ProfileRename(_) => tr(self.lang, "control_center.rename_profile"),
         }
       ),
     }
@@ -1873,7 +1854,7 @@ self.config = config.clone();
       let options = self.picker_options();
       let options: Vec<String> = options.into_iter().map(|option| option.label).collect();
       let options = if options.is_empty() {
-        vec![tr(self.lang, "Sem opções disponíveis", "No options available").into()]
+        vec![tr(self.lang, "control_center.no_options_available").into()]
       } else {
         options
       };
@@ -1932,7 +1913,8 @@ self.config = config.clone();
       (info.len() as u16).min(rest.height.saturating_sub(2))
     };
     let (info_area, list_area) = if info_height > 0 {
-      let split = Layout::vertical([Constraint::Length(info_height), Constraint::Min(1)]).split(rest);
+      let split =
+        Layout::vertical([Constraint::Length(info_height), Constraint::Min(1)]).split(rest);
       (split[0], split[1])
     } else {
       (Rect::new(rest.x, rest.y, rest.width, 0), rest)
@@ -1941,10 +1923,7 @@ self.config = config.clone();
       let lines: Vec<Line> = std::iter::once(Line::from(""))
         .chain(info.iter().map(|(label, value)| {
           Line::from(vec![
-            Span::styled(
-              format!(" {label}"),
-              Style::new().fg(self.theme.muted),
-            ),
+            Span::styled(format!(" {label}"), Style::new().fg(self.theme.muted)),
             Span::raw("  ·  "),
             Span::styled(value.clone(), Style::new().fg(self.theme.foreground)),
           ])
@@ -1971,12 +1950,12 @@ self.config = config.clone();
     let box_area = Rect::new(x, y, width, height);
     frame.render_widget(Clear, box_area);
     let title = match goal {
-      PromptGoal::Position(_) => tr(self.lang, "Posição (X,Y)", "Position (X,Y)"),
-      PromptGoal::Scale(_) => tr(self.lang, "Escala", "Scale"),
-      PromptGoal::SdrBrightness(_) => tr(self.lang, "Brilho SDR", "SDR brightness"),
-      PromptGoal::SdrSaturation(_) => tr(self.lang, "Saturação SDR", "SDR saturation"),
-      PromptGoal::ProfileCreate => tr(self.lang, "Novo perfil", "New profile"),
-      PromptGoal::ProfileRename(_) => tr(self.lang, "Renomear perfil", "Rename profile"),
+      PromptGoal::Position(_) => tr(self.lang, "control_center.position_x_y"),
+      PromptGoal::Scale(_) => tr(self.lang, "control_center.scale"),
+      PromptGoal::SdrBrightness(_) => tr(self.lang, "control_center.sdr_brightness"),
+      PromptGoal::SdrSaturation(_) => tr(self.lang, "control_center.sdr_saturation"),
+      PromptGoal::ProfileCreate => tr(self.lang, "control_center.new_profile"),
+      PromptGoal::ProfileRename(_) => tr(self.lang, "control_center.rename_profile"),
     };
     let display = if self.prompt_buffer.is_empty() {
       " ".into()
@@ -1986,7 +1965,12 @@ self.config = config.clone();
     let mut lines = vec![Line::from("")];
     lines.push(Line::from(vec![
       Span::styled("> ", Style::new().fg(self.theme.accent)),
-      Span::styled(display, Style::new().fg(self.theme.foreground).add_modifier(Modifier::BOLD)),
+      Span::styled(
+        display,
+        Style::new()
+          .fg(self.theme.foreground)
+          .add_modifier(Modifier::BOLD),
+      ),
     ]));
     lines.push(Line::from(""));
     if let Some(error) = &self.prompt_error {
@@ -2022,11 +2006,7 @@ self.config = config.clone();
         .unwrap_or("");
       let message = format!(
         "{}\n{}",
-        tr(
-          self.lang,
-          "Excluir este perfil?",
-          "Delete this profile?"
-        ),
+        tr(self.lang, "control_center.delete_this_profile"),
         name,
       );
       argvus_tui::components::draw_confirmation(
@@ -2034,10 +2014,10 @@ self.config = config.clone();
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(self.lang, "Excluir perfil", "Delete profile"),
+          title: tr(self.lang, "control_center.delete_profile"),
           message: &message,
-          confirm_label: tr(self.lang, "Excluir", "Delete"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.delete"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: confirm.confirm_selected,
         },
       );
@@ -2049,11 +2029,7 @@ self.config = config.clone();
   }
 }
 
-fn split_buttons(
-  frame: &mut Frame,
-  body: Rect,
-  raw_buttons: &[Button],
-) -> (Rect, Option<Rect>) {
+fn split_buttons(frame: &mut Frame, body: Rect, raw_buttons: &[Button]) -> (Rect, Option<Rect>) {
   let _ = frame;
   if raw_buttons.is_empty() {
     return (body, None);
@@ -2087,16 +2063,11 @@ fn draw_revert(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, revert:
     .as_secs();
   let message = format!(
     "{} ({}s) · {} {}",
-    tr(
-      lang,
-      "Manter esta configuração? [Enter] = manter",
-      "Keep this configuration? [Enter] = keep"
-    ),
+    tr(lang, "control_center.keep_this_configuration_enter_keep"),
     remaining,
     tr(
       lang,
-      "revertendo ao automático se nenhuma tecla for pressionada",
-      "reverting automatically if no key is pressed"
+      "control_center.reverting_automatically_if_no_key_is_pressed"
     ),
     revert.name,
   );
@@ -2180,13 +2151,13 @@ fn scale_options(monitor: &Monitor) -> Vec<PickerOption> {
 fn enabled_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   vec![
     PickerOption {
-      label: tr(lang, "Ligar", "Enable").into(),
+      label: tr(lang, "control_center.enable").into(),
       args: monitor.enabled_with_current_args(),
       persist: PersistChange::Disabled(false),
       prompt: None,
     },
     PickerOption {
-      label: tr(lang, "Desligar", "Disable").into(),
+      label: tr(lang, "control_center.disable").into(),
       args: monitor.disabled_args(),
       persist: PersistChange::Disabled(true),
       prompt: None,
@@ -2207,7 +2178,7 @@ fn orientation_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
 
 fn mirror_options(monitor: &Monitor, monitors: &[Monitor], lang: Lang) -> Vec<PickerOption> {
   let mut options = vec![PickerOption {
-    label: tr(lang, "Sem espelhamento", "No mirror").into(),
+    label: tr(lang, "control_center.no_mirror").into(),
     args: monitor.mirror_args(""),
     persist: PersistChange::Mirror(String::new()),
     prompt: None,
@@ -2268,9 +2239,9 @@ fn dpms_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
     PickerOption {
       label: format!(
         "{}  {}",
-        tr(lang, "Ligar", "On"),
+        tr(lang, "control_center.on_5ddab3"),
         if current_on {
-          tr(lang, "· atual", "· current").into()
+          tr(lang, "control_center.current_4cdf18").into()
         } else {
           String::new()
         }
@@ -2282,9 +2253,9 @@ fn dpms_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
     PickerOption {
       label: format!(
         "{}  {}",
-        tr(lang, "Desligar", "Off"),
+        tr(lang, "control_center.off_688c4e"),
         if !current_on {
-          tr(lang, "· atual", "· current").into()
+          tr(lang, "control_center.current_4cdf18").into()
         } else {
           String::new()
         }
@@ -2323,7 +2294,11 @@ fn sdr_saturation_options(_lang: Lang, _monitor: &Monitor) -> Vec<PickerOption> 
 fn option_is_risky(persist: &PersistChange) -> bool {
   matches!(
     persist,
-    PersistChange::Mode(_) | PersistChange::Position(_, _) | PersistChange::Mirror(_) | PersistChange::Disabled(true) | PersistChange::BitDepth(_)
+    PersistChange::Mode(_)
+      | PersistChange::Position(_, _)
+      | PersistChange::Mirror(_)
+      | PersistChange::Disabled(true)
+      | PersistChange::BitDepth(_)
   )
 }
 
@@ -2408,82 +2383,88 @@ fn parse_position(buffer: &str) -> Option<(i32, i32)> {
 }
 
 fn parse_number(buffer: &str) -> Option<f64> {
-  buffer.trim().parse::<f64>().ok().filter(|value| value.is_finite())
+  buffer
+    .trim()
+    .parse::<f64>()
+    .ok()
+    .filter(|value| value.is_finite())
 }
 
 fn prompt_allowed(goal: PromptGoal, character: char) -> bool {
   match goal {
-    PromptGoal::Position(_) => character.is_ascii_digit() || character == 'x' || character == ',' || character == '-',
-    PromptGoal::Scale(_)
-    | PromptGoal::SdrBrightness(_)
-    | PromptGoal::SdrSaturation(_) => character.is_ascii_digit() || character == '.',
+    PromptGoal::Position(_) => {
+      character.is_ascii_digit() || character == 'x' || character == ',' || character == '-'
+    }
+    PromptGoal::Scale(_) | PromptGoal::SdrBrightness(_) | PromptGoal::SdrSaturation(_) => {
+      character.is_ascii_digit() || character == '.'
+    }
     PromptGoal::ProfileCreate | PromptGoal::ProfileRename(_) => !character.is_control(),
   }
 }
 
 fn setting_label(lang: Lang, setting: MonitorSetting) -> String {
   match setting {
-    MonitorSetting::Resolution => tr(lang, "Resolução", "Resolution").into(),
-    MonitorSetting::RefreshRate => tr(lang, "Taxa de atualização", "Refresh rate").into(),
-    MonitorSetting::Scale => tr(lang, "Escala", "Scale").into(),
-    MonitorSetting::Position => tr(lang, "Posição", "Position").into(),
-    MonitorSetting::Primary => tr(lang, "Monitor primário", "Primary monitor").into(),
-    MonitorSetting::Enabled => tr(lang, "Monitor ligado", "Monitor enabled").into(),
-    MonitorSetting::Mirror => tr(lang, "Espelhamento", "Mirror").into(),
-    MonitorSetting::BitDepth => tr(lang, "Profundidade de cor", "Color depth").into(),
-    MonitorSetting::Vrr => tr(lang, "VRR", "VRR").into(),
-    MonitorSetting::Hdr => tr(lang, "HDR", "HDR").into(),
+    MonitorSetting::Resolution => tr(lang, "control_center.resolution").into(),
+    MonitorSetting::RefreshRate => tr(lang, "control_center.refresh_rate").into(),
+    MonitorSetting::Scale => tr(lang, "control_center.scale").into(),
+    MonitorSetting::Position => tr(lang, "control_center.position").into(),
+    MonitorSetting::Primary => tr(lang, "control_center.primary_monitor").into(),
+    MonitorSetting::Enabled => tr(lang, "control_center.monitor_enabled").into(),
+    MonitorSetting::Mirror => tr(lang, "control_center.mirror").into(),
+    MonitorSetting::BitDepth => tr(lang, "control_center.color_depth").into(),
+    MonitorSetting::Vrr => tr(lang, "control_center.vrr").into(),
+    MonitorSetting::Hdr => tr(lang, "control_center.hdr").into(),
     MonitorSetting::Dpms => "DPMS".into(),
-    MonitorSetting::SdrBrightness => tr(lang, "Brilho SDR", "SDR brightness").into(),
-    MonitorSetting::SdrSaturation => tr(lang, "Saturação SDR", "SDR saturation").into(),
-    MonitorSetting::Workspaces => tr(lang, "Workspaces", "Workspaces").into(),
-    MonitorSetting::Orientation => tr(lang, "Orientação", "Orientation").into(),
+    MonitorSetting::SdrBrightness => tr(lang, "control_center.sdr_brightness").into(),
+    MonitorSetting::SdrSaturation => tr(lang, "control_center.sdr_saturation").into(),
+    MonitorSetting::Workspaces => tr(lang, "control_center.workspaces").into(),
+    MonitorSetting::Orientation => tr(lang, "control_center.orientation").into(),
   }
 }
 
 fn transform_label(lang: Lang, transform: i32) -> String {
   match transform {
-    0 => tr(lang, "Normal", "Normal").into(),
-    1 => tr(lang, "90°", "90°").into(),
-    2 => tr(lang, "180°", "180°").into(),
-    3 => tr(lang, "270°", "270°").into(),
-    4 => tr(lang, "Espelhado", "Flipped").into(),
-    5 => tr(lang, "Espelhado 90°", "Flipped 90°").into(),
-    6 => tr(lang, "Espelhado 180°", "Flipped 180°").into(),
-    7 => tr(lang, "Espelhado 270°", "Flipped 270°").into(),
+    0 => tr(lang, "control_center.normal").into(),
+    1 => tr(lang, "control_center.90").into(),
+    2 => tr(lang, "control_center.180").into(),
+    3 => tr(lang, "control_center.270").into(),
+    4 => tr(lang, "control_center.flipped").into(),
+    5 => tr(lang, "control_center.flipped_90").into(),
+    6 => tr(lang, "control_center.flipped_180").into(),
+    7 => tr(lang, "control_center.flipped_270").into(),
     _ => format!("{transform}"),
   }
 }
 
 fn vrr_label(lang: Lang, vrr: i32) -> String {
   match vrr {
-    0 => tr(lang, "Desativado", "Disabled").into(),
-    1 => tr(lang, "Ativado", "Enabled").into(),
-    2 => tr(lang, "Somente em tela cheia", "Fullscreen only").into(),
+    0 => tr(lang, "control_center.disabled").into(),
+    1 => tr(lang, "control_center.enabled").into(),
+    2 => tr(lang, "control_center.fullscreen_only").into(),
     _ => format!("{vrr}"),
   }
 }
 
 fn hdr_label(lang: Lang, hdr: i32) -> String {
   if hdr != 0 {
-    tr(lang, "Forçado", "Forced").into()
+    tr(lang, "control_center.forced").into()
   } else {
-    tr(lang, "Automático", "Auto").into()
+    tr(lang, "control_center.auto_d2c2e5").into()
   }
 }
 
 fn on_off(lang: Lang, on: bool) -> String {
   if on {
-    tr(lang, "Sim", "Yes").into()
+    tr(lang, "control_center.yes").into()
   } else {
-    tr(lang, "Não", "No").into()
+    tr(lang, "control_center.no").into()
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::model::{Mode};
+  use crate::model::Mode;
 
   fn monitor(name: &str) -> Monitor {
     Monitor {
@@ -2523,7 +2504,7 @@ mod tests {
   }
 
   fn app_with(job: bool) -> DisplaysApp {
-    let mut app = DisplaysApp::new(Lang::En, Theme::load());
+    let mut app = DisplaysApp::new(Lang::for_locale("en-US"), Theme::load());
     if !job {
       app.job = None;
       app.action = None;
@@ -2580,7 +2561,11 @@ mod tests {
     let mut config = PersistedConfig::default();
     config.set_workspaces("eDP-1", vec![1, 2]);
     config.set_workspaces("DP-1", vec![3]);
-    DisplaysApp::apply_persist(&mut config, "DP-1", &PersistChange::Workspace(2, Some("DP-1".into())));
+    DisplaysApp::apply_persist(
+      &mut config,
+      "DP-1",
+      &PersistChange::Workspace(2, Some("DP-1".into())),
+    );
     assert_eq!(config.workspaces_of("eDP-1"), vec![1]);
     assert_eq!(config.workspaces_of("DP-1"), vec![2, 3]);
     DisplaysApp::apply_persist(&mut config, "DP-1", &PersistChange::Workspace(2, None));
@@ -2601,7 +2586,10 @@ mod tests {
       ..Default::default()
     };
     let rule = rule_from_persisted("eDP-1", &persisted);
-    assert!(rule.starts_with("eDP-1, 1920x1080@144, 0x0, 1.25, transform, 1"), "{rule}");
+    assert!(
+      rule.starts_with("eDP-1, 1920x1080@144, 0x0, 1.25, transform, 1"),
+      "{rule}"
+    );
     assert!(rule.contains("vrr, 1"), "{rule}");
     assert!(rule.contains("bitdepth, 10"), "{rule}");
     assert!(rule.contains("supports_hdr, 1"), "{rule}");
@@ -2641,7 +2629,11 @@ mod tests {
     });
     let options = app.primary_options();
     assert_eq!(options.len(), 2);
-    assert!(options.iter().all(|option| option.persist == PersistChange::Primary));
+    assert!(
+      options
+        .iter()
+        .all(|option| option.persist == PersistChange::Primary)
+    );
   }
 
   #[test]
@@ -2656,9 +2648,21 @@ mod tests {
     app.config.set_workspaces("eDP-1", vec![1, 2]);
     app.config.set_workspaces("DP-1", vec![3]);
     let options = app.workspace_options(0);
-    assert!(options[0].label.contains("this monitor"), "{:?}", options[0].label);
-    assert!(options[2].label.contains("another monitor"), "{:?}", options[2].label);
-    assert!(options[4].label.contains("unbound"), "{:?}", options[4].label);
+    assert!(
+      options[0].label.contains("this monitor"),
+      "{:?}",
+      options[0].label
+    );
+    assert!(
+      options[2].label.contains("another monitor"),
+      "{:?}",
+      options[2].label
+    );
+    assert!(
+      options[4].label.contains("unbound"),
+      "{:?}",
+      options[4].label
+    );
   }
 
   #[test]

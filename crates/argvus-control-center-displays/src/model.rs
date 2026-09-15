@@ -263,8 +263,7 @@ impl Monitor {
   }
 
   pub fn has_10bit(&self) -> bool {
-    self.modes.iter().any(|mode| mode.bit_depth >= 10)
-      || self.info.current_format.contains("10")
+    self.modes.iter().any(|mode| mode.bit_depth >= 10) || self.info.current_format.contains("10")
   }
 
   pub fn info_rows(&self) -> Vec<(String, String)> {
@@ -401,7 +400,10 @@ impl DisplayState {
   }
 
   pub fn profile_index(&self, name: &str) -> Option<usize> {
-    self.profiles.iter().position(|profile| profile.name == name)
+    self
+      .profiles
+      .iter()
+      .position(|profile| profile.name == name)
   }
 }
 
@@ -577,7 +579,7 @@ mod tests {
 
   #[test]
   fn picker_rows_cover_the_documented_settings() {
-    let rows = MonitorSetting::picker_rows(argvus_i18n::Lang::Pt);
+    let rows = MonitorSetting::picker_rows(argvus_i18n::Lang::for_locale("pt-BR"));
     assert!(rows.contains(&MonitorSetting::Workspaces));
     assert!(rows.contains(&MonitorSetting::SdrBrightness));
     assert!(rows.len() >= 14);

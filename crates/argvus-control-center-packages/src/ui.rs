@@ -187,16 +187,8 @@ impl PackagesApp {
       self.status = Some(StatusMessage {
         kind: StatusKind::Info,
         text: match self.page {
-          PackagesPage::Aur => tr(
-            self.lang,
-            "Digite / para buscar no AUR.",
-            "Press / to search the AUR.",
-          ),
-          _ => tr(
-            self.lang,
-            "Digite / para buscar pacotes.",
-            "Press / to search packages.",
-          ),
+          PackagesPage::Aur => tr(self.lang, "control_center.press_to_search_the_aur"),
+          _ => tr(self.lang, "control_center.press_to_search_packages"),
         }
         .into(),
       });
@@ -230,7 +222,7 @@ impl PackagesApp {
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Carregando pacotes...", "Loading packages...").into(),
+      text: tr(self.lang, "control_center.loading_packages").into(),
     });
   }
   pub fn poll(&mut self) -> bool {
@@ -260,7 +252,7 @@ impl PackagesApp {
         }
         JobState::Finished(Ok(Ok(d))) => {
           if !self.apply(d) {
-            self.success(tr(self.lang, "Pacotes atualizados", "Packages refreshed"));
+            self.success(tr(self.lang, "control_center.packages_refreshed"));
           }
           return true;
         }
@@ -294,8 +286,7 @@ impl PackagesApp {
         self.action = None;
         self.success(tr(
           self.lang,
-          "Operação concluída; atualizando pacotes.",
-          "Operation completed; refreshing packages.",
+          "control_center.operation_completed_refreshing_packages",
         ));
         self.reload();
         true
@@ -620,14 +611,9 @@ impl PackagesApp {
           self.error(tr(
             self.lang,
             if self.page == PackagesPage::Aur {
-              "A busca no AUR requer pelo menos 2 caracteres."
+              "control_center.aur_search_requires_at_least_2_characters"
             } else {
-              "Digite uma busca não vazia."
-            },
-            if self.page == PackagesPage::Aur {
-              "AUR search requires at least 2 characters."
-            } else {
-              "Enter a non-empty search query."
+              "control_center.enter_a_non_empty_search_query"
             },
           ));
         } else {
@@ -732,11 +718,7 @@ impl PackagesApp {
         self.spawn_country_list();
       }
     } else {
-      self.error(tr(
-        self.lang,
-        "reflector não está disponível.",
-        "reflector is unavailable.",
-      ));
+      self.error(tr(self.lang, "control_center.reflector_is_unavailable"));
     }
   }
   fn spawn_country_list(&mut self) {
@@ -793,12 +775,7 @@ impl PackagesApp {
     let caps = self.capabilities.clone();
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Gerando preview de mirrors...",
-        "Generating mirror preview...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.generating_mirror_preview").into(),
     });
     self.job = Some(
       self
@@ -832,15 +809,10 @@ impl PackagesApp {
           self.error(if self.page == PackagesPage::Aur {
             tr(
               self.lang,
-              "A busca no AUR requer pelo menos 2 caracteres.",
-              "AUR search requires at least 2 characters.",
+              "control_center.aur_search_requires_at_least_2_characters",
             )
           } else {
-            tr(
-              self.lang,
-              "Digite uma busca não vazia.",
-              "Enter a non-empty search query.",
-            )
+            tr(self.lang, "control_center.enter_a_non_empty_search_query")
           });
           return false;
         }
@@ -858,7 +830,7 @@ impl PackagesApp {
     self.preview = None;
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Executando operação...", "Running operation...").into(),
+      text: tr(self.lang, "control_center.running_operation").into(),
     });
     let live = LiveProcess::new();
     self.transaction_live = Some(live.clone());
@@ -874,12 +846,7 @@ impl PackagesApp {
     let caps = self.capabilities.clone();
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Planejando transação...",
-        "Planning transaction...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.planning_transaction").into(),
     });
     self.plan = Some(self.jobs.spawn(move |_| {
       let backend = PackageBackend::new(SystemProcessRunner, caps);
@@ -915,7 +882,7 @@ impl PackagesApp {
                 p.name,
                 p.version,
                 if p.installed {
-                  format!("   ● {}", tr(self.lang, "Instalado", "Installed"))
+                  format!("   ● {}", tr(self.lang, "control_center.installed"))
                 } else {
                   String::new()
                 }
@@ -939,7 +906,7 @@ impl PackagesApp {
               }
             });
           let badge = if p.installed {
-            format!("   ● {}", tr(self.lang, "Instalado", "Installed"))
+            format!("   ● {}", tr(self.lang, "control_center.installed"))
           } else {
             String::new()
           };
@@ -995,14 +962,9 @@ impl PackagesApp {
           format!("{}  {}  {}{}", p.timestamp, p.action, p.package, versions)
         })
         .collect(),
-      PackagesPage::Mirrors => vec![
-        tr(
-          self.lang,
-          "Gerar mirrors com Reflector",
-          "Generate mirrors with Reflector",
-        )
-        .into(),
-      ],
+      PackagesPage::Mirrors => {
+        vec![tr(self.lang, "control_center.generate_mirrors_with_reflector").into()]
+      }
       PackagesPage::Details(_) => self
         .details
         .as_ref()
@@ -1014,18 +976,18 @@ impl PackagesApp {
     format!(
       "{} {}: {}_",
       AppConfig::icon("🔍"),
-      tr(self.lang, "Buscar", "Search"),
+      tr(self.lang, "control_center.search_2c43ee"),
       self.query
     )
   }
   fn home_rows(&self) -> Vec<String> {
     let dashboard = &self.dashboard;
-    let pending = tr(self.lang, "pendentes", "pending");
-    let packages = tr(self.lang, "pacotes", "packages");
-    let files = tr(self.lang, "arquivos", "files");
-    let entries = tr(self.lang, "registros", "entries");
-    let versions = tr(self.lang, "versões", "versions");
-    let active = tr(self.lang, "ativos", "active");
+    let pending = tr(self.lang, "control_center.pending");
+    let packages = tr(self.lang, "control_center.packages_c945db");
+    let files = tr(self.lang, "control_center.files_7093b3");
+    let entries = tr(self.lang, "control_center.entries");
+    let versions = tr(self.lang, "control_center.versions");
+    let active = tr(self.lang, "control_center.active_ae7190");
     self
       .home_pages()
       .into_iter()
@@ -1033,41 +995,41 @@ impl PackagesApp {
         PackagesPage::Search => format!(
           "{} {}  ·  {} {}",
           AppConfig::icon("🔍"),
-          tr(self.lang, "Instalar / Official", "Install / Official"),
+          tr(self.lang, "control_center.install_official"),
           dashboard.available_count,
           packages
         ),
         PackagesPage::Aur => format!(
           "{} {}  ·  {}",
           AppConfig::icon("⭐"),
-          tr(self.lang, "Instalar / AUR", "Install / AUR"),
+          tr(self.lang, "control_center.install_aur"),
           dashboard.aur_helper.as_deref().unwrap_or("—")
         ),
         PackagesPage::Installed => format!(
           "{} {}  ·  {} {}",
           AppConfig::icon("📦"),
-          tr(self.lang, "Instalados / Official", "Installed / Official"),
+          tr(self.lang, "control_center.installed_official"),
           dashboard.installed_count,
           packages
         ),
         PackagesPage::Orphans => format!(
           "{} {}  ·  {} {}",
           AppConfig::icon("🧹"),
-          tr(self.lang, "Instalados / Órfãos", "Installed / Orphans"),
+          tr(self.lang, "control_center.installed_orphans"),
           dashboard.orphan_count,
-          tr(self.lang, "órfãos", "orphans")
+          tr(self.lang, "control_center.orphans")
         ),
         PackagesPage::Updates => format!(
           "{} {}  ·  {} {}",
           AppConfig::icon("🔄"),
-          tr(self.lang, "Atualizações / Official", "Updates / Official"),
+          tr(self.lang, "control_center.updates_official"),
           dashboard.update_count,
           pending
         ),
         PackagesPage::Cache => format!(
           "{} {}  ·  {} {} · {}",
           AppConfig::icon("💾"),
-          tr(self.lang, "Cache", "Cache"),
+          tr(self.lang, "control_center.cache"),
           dashboard.cache_count,
           files,
           human_bytes(dashboard.cache_bytes)
@@ -1075,21 +1037,21 @@ impl PackagesApp {
         PackagesPage::History => format!(
           "{} {}  ·  {} {}",
           AppConfig::icon("📜"),
-          tr(self.lang, "Histórico", "History"),
+          tr(self.lang, "control_center.history"),
           dashboard.history_count,
           entries
         ),
         PackagesPage::Downgrade => format!(
           "{} {}  ·  {} {}",
           AppConfig::icon("⏪"),
-          tr(self.lang, "Downgrade", "Downgrade"),
+          tr(self.lang, "control_center.downgrade"),
           dashboard.cache_count,
           versions
         ),
         PackagesPage::Mirrors => format!(
           "{} {}  ·  {}/{} {}",
           AppConfig::icon("🌐"),
-          tr(self.lang, "Mirrors", "Mirrors"),
+          tr(self.lang, "control_center.mirrors"),
           dashboard.mirrors_enabled,
           dashboard.mirrors_total,
           active
@@ -1165,18 +1127,14 @@ impl PackagesApp {
       f.render_widget(
         Paragraph::new(vec![
           Line::from(if self.input_search {
-            tr(self.lang, "Buscar pacotes:", "Search packages:")
+            tr(self.lang, "control_center.search_packages")
           } else {
-            tr(self.lang, "Entrada:", "Input:")
+            tr(self.lang, "control_center.input_5ca63b")
           }),
           Line::from(format!("{input}_")),
-          Line::from(tr(
-            self.lang,
-            "Enter aplicar   Esc cancelar",
-            "Enter apply   Esc cancel",
-          )),
+          Line::from(tr(self.lang, "control_center.enter_apply_esc_cancel")),
         ])
-        .block(Block::bordered().title(tr(self.lang, "Buscar", "Search"))),
+        .block(Block::bordered().title(tr(self.lang, "control_center.search_2c43ee"))),
         popup,
       );
     }
@@ -1184,7 +1142,7 @@ impl PackagesApp {
       let popup = argvus_tui::chrome::centered(f.area(), 60, 15);
       f.render_widget(Clear, popup);
       f.render_widget(
-        Block::bordered().title(tr(self.lang, "Mirrors", "Mirrors")),
+        Block::bordered().title(tr(self.lang, "control_center.mirrors")),
         popup,
       );
       let country = editor
@@ -1192,30 +1150,30 @@ impl PackagesApp {
         .countries
         .first()
         .map(String::as_str)
-        .unwrap_or(tr(self.lang, "Todos", "All"));
+        .unwrap_or(tr(self.lang, "control_center.all"));
       let fields = vec![
-        format!("{}: {country}", tr(self.lang, "País", "Country")),
+        format!("{}: {country}", tr(self.lang, "control_center.country")),
         format!(
           "{}: {}",
-          tr(self.lang, "Protocolo", "Protocol"),
+          tr(self.lang, "control_center.protocol"),
           editor.options.protocols.join(",")
         ),
         format!(
           "{}: {} h",
-          tr(self.lang, "Idade máxima", "Maximum age"),
+          tr(self.lang, "control_center.maximum_age"),
           editor.options.age_hours
         ),
         format!(
           "{}: {}",
-          tr(self.lang, "Quantidade", "Count"),
+          tr(self.lang, "control_center.count"),
           editor.options.count
         ),
         format!(
           "{}: {}",
-          tr(self.lang, "Ordenação", "Sort"),
+          tr(self.lang, "control_center.sort"),
           editor.options.sort
         ),
-        tr(self.lang, "Gerar preview", "Generate preview").into(),
+        tr(self.lang, "control_center.generate_preview").into(),
       ];
       list(
         f,
@@ -1240,10 +1198,10 @@ impl PackagesApp {
         f.area(),
         &self.theme,
         ConfirmationDialog {
-          title: tr(self.lang, "Confirmar transação", "Confirm transaction"),
+          title: tr(self.lang, "control_center.confirm_transaction"),
           message: &message,
-          confirm_label: tr(self.lang, "Aplicar", "Apply"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.apply"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       )
@@ -1267,10 +1225,10 @@ impl PackagesApp {
               .title(Line::styled(
                 format!(
                   " {} · {} {} {} {} ",
-                  tr(self.lang, "Processo da transação", "Transaction output"),
-                  tr(self.lang, "linha", "line"),
+                  tr(self.lang, "control_center.transaction_output"),
+                  tr(self.lang, "control_center.line"),
                   current,
-                  tr(self.lang, "de", "of"),
+                  tr(self.lang, "control_center.of"),
                   shown_total,
                 ),
                 Style::new().fg(self.theme.accent),
@@ -1279,8 +1237,7 @@ impl PackagesApp {
               .style(Style::new().bg(self.theme.background))
               .title_bottom(Line::from(tr(
                 self.lang,
-                "↑↓ rolar · PgUp/PgDn · Home/End · Esc fechar",
-                "↑↓ scroll · PgUp/PgDn · Home/End · Esc close",
+                "control_center.scroll_pgup_pgdn_home_end_esc_close",
               ))),
           )
           .scroll((self.transaction_scroll, 0))
@@ -1291,29 +1248,31 @@ impl PackagesApp {
   }
   fn breadcrumb(&self) -> String {
     if self.page == PackagesPage::Home {
-      tr(self.lang, "Pacotes", "Packages").into()
+      tr(self.lang, "control_center.packages").into()
     } else {
       format!(
         "{} > {}",
-        tr(self.lang, "Pacotes", "Packages"),
+        tr(self.lang, "control_center.packages"),
         self.page_label()
       )
     }
   }
   fn page_label(&self) -> &'static str {
     match self.page {
-      PackagesPage::Search | PackagesPage::Details(_) => tr(self.lang, "Buscar", "Search"),
-      PackagesPage::Installed => tr(self.lang, "Instalados", "Installed"),
-      PackagesPage::Updates => tr(self.lang, "Atualizações", "Updates"),
-      PackagesPage::Orphans => tr(self.lang, "Órfãos", "Orphans"),
-      PackagesPage::Cache => tr(self.lang, "Cache", "Cache"),
-      PackagesPage::Aur => tr(self.lang, "AUR", "AUR"),
-      PackagesPage::History | PackagesPage::HistoryDetails(_) => {
-        tr(self.lang, "Histórico", "History")
+      PackagesPage::Search | PackagesPage::Details(_) => {
+        tr(self.lang, "control_center.search_2c43ee")
       }
-      PackagesPage::Downgrade => tr(self.lang, "Downgrade", "Downgrade"),
-      PackagesPage::Mirrors => tr(self.lang, "Mirrors", "Mirrors"),
-      PackagesPage::Home => tr(self.lang, "Pacotes", "Packages"),
+      PackagesPage::Installed => tr(self.lang, "control_center.installed_e91b6d"),
+      PackagesPage::Updates => tr(self.lang, "control_center.updates"),
+      PackagesPage::Orphans => tr(self.lang, "control_center.orphans_29aae8"),
+      PackagesPage::Cache => tr(self.lang, "control_center.cache"),
+      PackagesPage::Aur => tr(self.lang, "control_center.aur"),
+      PackagesPage::History | PackagesPage::HistoryDetails(_) => {
+        tr(self.lang, "control_center.history")
+      }
+      PackagesPage::Downgrade => tr(self.lang, "control_center.downgrade"),
+      PackagesPage::Mirrors => tr(self.lang, "control_center.mirrors"),
+      PackagesPage::Home => tr(self.lang, "control_center.packages"),
     }
   }
   fn toggle_multi(&mut self) {
@@ -1421,12 +1380,12 @@ impl PackagesApp {
     }
   }
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
-    let install = Button::new(tr(self.lang, "Instalar", "Install"), ButtonKind::Primary);
+    let install = Button::new(tr(self.lang, "control_center.install"), ButtonKind::Primary);
     let reinstall = Button::new(
-      tr(self.lang, "Reinstalar", "Reinstall"),
+      tr(self.lang, "control_center.reinstall"),
       ButtonKind::Primary,
     );
-    let remove = Button::new(tr(self.lang, "Remover", "Remove"), ButtonKind::Danger);
+    let remove = Button::new(tr(self.lang, "control_center.remove"), ButtonKind::Danger);
     match self.page {
       PackagesPage::Home
       | PackagesPage::History
@@ -1450,7 +1409,7 @@ impl PackagesApp {
         let mut buttons = vec![(
           ActionButton::RefreshDatabase,
           Button::new(
-            tr(self.lang, "Atualizar banco", "Refresh database"),
+            tr(self.lang, "control_center.refresh_database"),
             ButtonKind::Secondary,
           ),
         )];
@@ -1459,7 +1418,7 @@ impl PackagesApp {
             0,
             (
               ActionButton::Update,
-              Button::new(tr(self.lang, "Atualizar", "Update"), ButtonKind::Primary),
+              Button::new(tr(self.lang, "control_center.update"), ButtonKind::Primary),
             ),
           );
           buttons.insert(
@@ -1467,7 +1426,7 @@ impl PackagesApp {
             (
               ActionButton::Upgrade,
               Button::new(
-                tr(self.lang, "Atualizar tudo", "Upgrade all"),
+                tr(self.lang, "control_center.upgrade_all"),
                 ButtonKind::Secondary,
               ),
             ),
@@ -1478,7 +1437,10 @@ impl PackagesApp {
       PackagesPage::Orphans if !self.packages.is_empty() => vec![
         (
           ActionButton::ToggleMulti,
-          Button::new(tr(self.lang, "Marcar", "Select"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.select"),
+            ButtonKind::Secondary,
+          ),
         ),
         (ActionButton::Remove, remove),
       ],
@@ -1486,25 +1448,31 @@ impl PackagesApp {
         (
           ActionButton::CleanKeepThree,
           Button::new(
-            tr(self.lang, "Limpar cache", "Clean cache"),
+            tr(self.lang, "control_center.clean_cache"),
             ButtonKind::Primary,
           ),
         ),
         (
           ActionButton::CleanKeepOne,
-          Button::new(tr(self.lang, "Manter 1", "Keep one"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.keep_one"),
+            ButtonKind::Secondary,
+          ),
         ),
         (
           ActionButton::CleanUninstalled,
           Button::new(
-            tr(self.lang, "Não instalados", "Uninstalled"),
+            tr(self.lang, "control_center.uninstalled"),
             ButtonKind::Secondary,
           ),
         ),
       ],
       PackagesPage::Downgrade if self.cache.get(self.selected.index).is_some() => vec![(
         ActionButton::Downgrade,
-        Button::new(tr(self.lang, "Rebaixar", "Downgrade"), ButtonKind::Primary),
+        Button::new(
+          tr(self.lang, "control_center.downgrade_c6e26f"),
+          ButtonKind::Primary,
+        ),
       )],
       _ => Vec::new(),
     }
@@ -1512,19 +1480,13 @@ impl PackagesApp {
   fn footer_hints(&self) -> &'static str {
     let home = tr(
       self.lang,
-      "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   r Atualizar   ? Ajuda",
-      "↑/↓ Navigate   →/Enter Open   ←/Esc Back   r Refresh   ? Help",
+      "control_center.navigate_enter_open_esc_back_r_refresh_help",
     );
     let action = tr(
       self.lang,
-      "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   r Refresh   ←/Esc Back   ? Help",
+      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
     );
-    let readonly = tr(
-      self.lang,
-      "r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "r Refresh   ←/Esc Back   ? Help",
-    );
+    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
     match self.page {
       PackagesPage::Home => home,
       PackagesPage::History | PackagesPage::HistoryDetails(_) => readonly,
@@ -1540,9 +1502,9 @@ impl PackagesApp {
 }
 fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
   let status = if d.package.installed {
-    format!("● {}", tr(lang, "Instalado", "Installed"))
+    format!("● {}", tr(lang, "control_center.installed"))
   } else {
-    tr(lang, "Não instalado", "Not installed").into()
+    tr(lang, "control_center.not_installed").into()
   };
   let installed_size = d
     .installed_size
@@ -1556,110 +1518,109 @@ fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
     format!(
       " {} {}",
       AppConfig::icon("📦"),
-      tr(lang, "PACOTE", "PACKAGE")
+      tr(lang, "control_center.package_b3ef4b")
     ),
-    format!("   {:<18} {}", tr(lang, "Nome:", "Name:"), d.package.name),
     format!(
       "   {:<18} {}",
-      tr(lang, "Versão:", "Version:"),
+      tr(lang, "control_center.name"),
+      d.package.name
+    ),
+    format!(
+      "   {:<18} {}",
+      tr(lang, "control_center.version_20bc85"),
       d.package.version
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Repositório:", "Repository:"),
+      tr(lang, "control_center.repository"),
       d.package.repository.as_deref().unwrap_or("—")
     ),
-    format!("   {:<18} {}", tr(lang, "Status:", "Status:"), status),
+    format!("   {:<18} {}", tr(lang, "control_center.status"), status),
     "".into(),
     format!(
       "   {:<18} {}",
-      tr(lang, "Descrição:", "Description:"),
+      tr(lang, "control_center.description"),
       d.package.description
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Tamanho instalado:", "Installed size:"),
+      tr(lang, "control_center.installed_size"),
       installed_size
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Download:", "Download:"),
+      tr(lang, "control_center.download"),
       download_size
     ),
     "".into(),
     format!(
       " {} {}",
       AppConfig::icon("🔗"),
-      tr(lang, "ORIGEM", "SOURCE")
+      tr(lang, "control_center.source_70835f")
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Arquitetura:", "Architecture:"),
+      tr(lang, "control_center.architecture"),
       d.architecture.as_deref().unwrap_or("—")
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "URL:", "URL:"),
+      tr(lang, "control_center.url"),
       d.url.as_deref().unwrap_or("—")
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Licenças:", "Licenses:"),
+      tr(lang, "control_center.licenses"),
       join_or_dash(&d.licenses)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Grupos:", "Groups:"),
+      tr(lang, "control_center.groups"),
       join_or_dash(&d.groups)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Instalado em:", "Install date:"),
+      tr(lang, "control_center.install_date"),
       d.install_date.as_deref().unwrap_or("—")
     ),
     "".into(),
     format!(
       " {} {}",
       AppConfig::icon("⚙"),
-      tr(lang, "DEPENDÊNCIAS", "DEPENDENCIES")
+      tr(lang, "control_center.dependencies")
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Depende de:", "Depends on:"),
+      tr(lang, "control_center.depends_on"),
       join_or_dash(&d.dependencies)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Opcionais:", "Optional:"),
+      tr(lang, "control_center.optional"),
       join_or_dash(&d.optional_dependencies)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Necessário p/:", "Required by:"),
+      tr(lang, "control_center.required_by"),
       join_or_dash(&d.required_by)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Provê:", "Provides:"),
+      tr(lang, "control_center.provides"),
       join_or_dash(&d.provides)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Conflita com:", "Conflicts:"),
+      tr(lang, "control_center.conflicts"),
       join_or_dash(&d.conflicts)
     ),
     format!(
       "   {:<18} {}",
-      tr(lang, "Substitui:", "Replaces:"),
+      tr(lang, "control_center.replaces"),
       join_or_dash(&d.replaces)
     ),
     "".into(),
-    tr(
-      lang,
-      "   [ Tab ] Ações     [ r ] Atualizar",
-      "   [ Tab ] Actions  [ r ] Refresh",
-    )
-    .into(),
+    tr(lang, "control_center.tab_actions_r_refresh").into(),
   ]
 }
 fn join_or_dash(values: &[String]) -> String {
@@ -1710,36 +1671,25 @@ fn human_bytes(bytes: u64) -> String {
 }
 fn action_message(lang: Lang, a: &Action) -> String {
   match a {
-    Action::Install(v) => format!("{}: {}", tr(lang, "Instalar", "Install"), v.join(", ")),
-    Action::Remove(v) => format!("{}: {}", tr(lang, "Remover", "Remove"), v.join(", ")),
-    Action::Reinstall(v) => format!("{}: {v}", tr(lang, "Reinstalar", "Reinstall")),
-    Action::Upgrade => tr(
-      lang,
-      "Atualizar o sistema completamente?",
-      "Perform a full system upgrade?",
-    )
-    .into(),
-    Action::UpgradePackage(v) => format!("{}: {v}", tr(lang, "Atualizar pacote", "Update package")),
-    Action::RefreshDatabase => tr(
-      lang,
-      "Atualizar banco de dados dos pacotes?",
-      "Refresh package database?",
-    )
-    .into(),
-    Action::CleanCache(v) => format!("{} ({v})?", tr(lang, "Limpar cache", "Clean cache")),
-    Action::Downgrade(v) => format!("{}: {v}", tr(lang, "Fazer downgrade", "Downgrade")),
+    Action::Install(v) => format!("{}: {}", tr(lang, "control_center.install"), v.join(", ")),
+    Action::Remove(v) => format!("{}: {}", tr(lang, "control_center.remove"), v.join(", ")),
+    Action::Reinstall(v) => format!("{}: {v}", tr(lang, "control_center.reinstall")),
+    Action::Upgrade => tr(lang, "control_center.perform_a_full_system_upgrade").into(),
+    Action::UpgradePackage(v) => format!("{}: {v}", tr(lang, "control_center.update_package")),
+    Action::RefreshDatabase => tr(lang, "control_center.refresh_package_database").into(),
+    Action::CleanCache(v) => format!("{} ({v})?", tr(lang, "control_center.clean_cache")),
+    Action::Downgrade(v) => format!("{}: {v}", tr(lang, "control_center.downgrade_a3e71b")),
     Action::AurInstall(v) => format!(
       "{} AUR: {v}? {}",
-      tr(lang, "Instalar", "Install"),
+      tr(lang, "control_center.install"),
       tr(
         lang,
-        "Os PKGBUILDs executam instruções de build como usuário normal.",
-        "PKGBUILDs execute build instructions as the normal user.",
+        "control_center.pkgbuilds_execute_build_instructions_as_the_normal_user"
       )
     ),
     Action::ApplyMirrors(content) => format!(
       "{}\n{}",
-      tr(lang, "Aplicar estes mirrors?", "Apply these mirrors?"),
+      tr(lang, "control_center.apply_these_mirrors"),
       mirror_preview_summary(content)
     ),
   }
@@ -1747,11 +1697,11 @@ fn action_message(lang: Lang, a: &Action) -> String {
 fn preview_message(lang: Lang, plan: &TransactionPlan) -> String {
   format!(
     "\n\n{}: {}\n{}: {}\n{}: {}",
-    tr(lang, "Instalar", "Install"),
+    tr(lang, "control_center.install"),
     plan.install.len(),
-    tr(lang, "Remover", "Remove"),
+    tr(lang, "control_center.remove"),
     plan.remove.len(),
-    tr(lang, "Download bytes", "Download bytes"),
+    tr(lang, "control_center.download_bytes"),
     plan.download_bytes
   )
 }
@@ -1958,7 +1908,11 @@ mod tests {
 
   #[test]
   fn package_home_rows_act_as_a_status_dashboard() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.dashboard = PackageDashboard {
       installed_count: 1200,
       update_count: 7,
@@ -1999,7 +1953,11 @@ mod tests {
 
   #[test]
   fn package_detail_pages_render_section_headers_and_aligned_rows() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.details = Some(PackageDetails {
       package: Package {
         name: "firefox".into(),
@@ -2027,7 +1985,11 @@ mod tests {
 
   #[test]
   fn cache_rows_strip_package_suffixes_and_humanize_bytes() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Cache;
     app.cache = vec![CachePackage {
       name: "firefox-155.0.1-1-x86_64.pkg.tar.zst".into(),
@@ -2040,7 +2002,11 @@ mod tests {
 
   #[test]
   fn package_home_is_navigable_and_uses_shared_chrome() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.handle(KeyCode::Down);
     app.handle(KeyCode::Enter);
     assert_eq!(app.page, PackagesPage::Installed);
@@ -2064,7 +2030,11 @@ mod tests {
 
   #[test]
   fn empty_selection_does_not_create_package_action() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Search;
     app.handle(KeyCode::Tab);
     assert!(!app.on_buttons);
@@ -2077,7 +2047,11 @@ mod tests {
 
   #[test]
   fn enter_opens_selected_package_details() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Search;
     app.packages.push(Package {
       name: "firefox".into(),
@@ -2090,7 +2064,11 @@ mod tests {
 
   #[test]
   fn search_pages_do_not_spawn_until_a_valid_query_is_confirmed() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Search;
     app.reload();
     assert!(app.job.is_none());
@@ -2106,7 +2084,11 @@ mod tests {
 
   #[test]
   fn cancelling_package_search_clears_the_query() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Search;
     app.query = "firefox".into();
     app.input = Some(app.query.clone());
@@ -2118,7 +2100,11 @@ mod tests {
 
   #[test]
   fn opening_package_details_keeps_the_selected_name_until_metadata_arrives() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Search;
     app.packages.push(Package {
       name: "firefox".into(),
@@ -2132,7 +2118,11 @@ mod tests {
 
   #[test]
   fn package_confirmation_cancel_does_not_start_an_operation() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.pending = Some(Action::Upgrade);
     app.handle(KeyCode::Enter);
     assert!(app.pending.is_none());
@@ -2145,7 +2135,7 @@ mod tests {
       has_reflector: true,
       ..Default::default()
     };
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), caps);
+    let mut app = PackagesApp::new(Lang::for_locale("en-US"), Theme::load(), caps);
     app.mirror_countries = Some(vec!["Brazil".into(), "Argentina".into()]);
     app.page = PackagesPage::Mirrors;
     app.handle(KeyCode::Tab);
@@ -2186,33 +2176,57 @@ mod tests {
 
   #[test]
   fn packages_expose_action_buttons_per_page_and_none_on_history() {
-    let app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     assert_eq!(app.buttons().len(), 0);
-    let mut search = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut search = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     search.page = PackagesPage::Search;
     search.packages.push(Package {
       name: "firefox".into(),
       ..Default::default()
     });
     assert_eq!(search.buttons().len(), 2);
-    let mut orphans = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut orphans = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     orphans.page = PackagesPage::Orphans;
     orphans.packages.push(Package {
       name: "orphan".into(),
       ..Default::default()
     });
     assert_eq!(orphans.buttons().len(), 2);
-    let mut cache = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut cache = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     cache.page = PackagesPage::Cache;
     assert_eq!(cache.buttons().len(), 3);
-    let mut history = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut history = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     history.page = PackagesPage::History;
     assert_eq!(history.buttons().len(), 0);
   }
 
   #[test]
   fn stale_details_do_not_block_removal_on_list_pages() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Orphans;
     app.packages.push(Package {
       name: "orphan".into(),
@@ -2236,7 +2250,11 @@ mod tests {
 
   #[test]
   fn install_selected_follows_list_state_not_stale_details() {
-    let mut installed_list = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut installed_list = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     installed_list.page = PackagesPage::Installed;
     installed_list.packages.push(Package {
       name: "firefox".into(),
@@ -2257,7 +2275,11 @@ mod tests {
       "installed list entry should trigger a plan (reinstall)"
     );
 
-    let mut not_installed = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut not_installed = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     not_installed.page = PackagesPage::Search;
     not_installed.packages.push(Package {
       name: "firefox".into(),
@@ -2281,7 +2303,11 @@ mod tests {
 
   #[test]
   fn transaction_window_scrolls_closes_and_generates_action_plans() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     let live = LiveProcess::new();
     for _ in 0..40 {
       live.push_line("line");
@@ -2310,7 +2336,11 @@ mod tests {
 
   #[test]
   fn start_pending_opens_the_process_window_immediately() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.pending = Some(Action::RefreshDatabase);
     app.start_pending();
     assert!(
@@ -2326,7 +2356,11 @@ mod tests {
 
   #[test]
   fn transaction_bottom_offset_is_zero_for_short_output() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     let live = LiveProcess::new();
     live.push_line("done.");
     app.transaction_live = Some(live);
@@ -2339,7 +2373,11 @@ mod tests {
   #[test]
   fn transaction_window_uses_theme_background_and_border() {
     let theme = Theme::load();
-    let mut app = PackagesApp::new(Lang::En, theme.clone(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      theme.clone(),
+      Capabilities::default(),
+    );
     let live = LiveProcess::new();
     live.push_line("ok");
     app.transaction_live = Some(live);
@@ -2358,7 +2396,11 @@ mod tests {
 
   #[test]
   fn packages_tab_cycles_between_list_and_buttons_and_backtab_lands_last() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Cache;
     app.handle(KeyCode::Tab);
     assert!(app.on_buttons);
@@ -2373,7 +2415,11 @@ mod tests {
 
   #[test]
   fn packages_renders_button_bar_on_action_pages() {
-    let mut app = PackagesApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = PackagesApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.page = PackagesPage::Updates;
     app.updates.push(Update {
       name: "linux".into(),

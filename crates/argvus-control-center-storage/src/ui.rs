@@ -55,12 +55,7 @@ impl StorageApp {
     );
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Carregando armazenamento...",
-        "Loading storage...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.loading_storage").into(),
     });
   }
   pub fn poll(&mut self) -> bool {
@@ -74,7 +69,7 @@ impl StorageApp {
           self.snapshot = snapshot;
           self.status = Some(StatusMessage {
             kind: StatusKind::Success,
-            text: tr(self.lang, "Armazenamento atualizado", "Storage refreshed").into(),
+            text: tr(self.lang, "control_center.storage_refreshed").into(),
           });
         }
         Err(e) => {
@@ -167,7 +162,7 @@ impl StorageApp {
     false
   }
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Armazenamento", "Storage");
+    let root = tr(self.lang, "control_center.storage");
     if self.page == StoragePage::Home {
       root.into()
     } else {
@@ -176,20 +171,20 @@ impl StorageApp {
   }
   fn label(&self) -> &'static str {
     match self.page {
-      StoragePage::Summary => tr(self.lang, "Resumo", "Summary"),
-      StoragePage::Disks | StoragePage::DiskDetails(_) => tr(self.lang, "Discos", "Disks"),
+      StoragePage::Summary => tr(self.lang, "control_center.summary"),
+      StoragePage::Disks | StoragePage::DiskDetails(_) => tr(self.lang, "control_center.disks"),
       StoragePage::Partitions | StoragePage::PartitionDetails(_) => {
-        tr(self.lang, "Partições", "Partitions")
+        tr(self.lang, "control_center.partitions")
       }
       StoragePage::Filesystems | StoragePage::FilesystemDetails(_) => {
-        tr(self.lang, "Sistemas de arquivos", "Filesystems")
+        tr(self.lang, "control_center.filesystems")
       }
       StoragePage::Mounts | StoragePage::MountDetails(_) => {
-        tr(self.lang, "Pontos de montagem", "Mount points")
+        tr(self.lang, "control_center.mount_points")
       }
       StoragePage::Smart | StoragePage::SmartDetails(_) => "SMART",
-      StoragePage::Usage => tr(self.lang, "Uso de disco", "Disk usage"),
-      _ => tr(self.lang, "Resumo", "Summary"),
+      StoragePage::Usage => tr(self.lang, "control_center.disk_usage"),
+      _ => tr(self.lang, "control_center.summary"),
     }
   }
   fn rows(&self) -> Vec<String> {
@@ -220,7 +215,7 @@ impl StorageApp {
             m.fstype,
             m.source,
             if m.readonly {
-              format!("  [{}]", tr(self.lang, "ro", "ro"))
+              format!("  [{}]", tr(self.lang, "control_center.ro"))
             } else {
               String::new()
             }
@@ -248,19 +243,19 @@ impl StorageApp {
       .map(|(total, available)| percentage(total, available))
       .unwrap_or(0);
     let smart = self.smart_rows().first().cloned().unwrap_or_default();
-    let summary = tr(self.lang, "Resumo", "Summary");
-    let disks_label = tr(self.lang, "Discos", "Disks");
-    let partitions_label = tr(self.lang, "Partições", "Partitions");
-    let filesystems_label = tr(self.lang, "Sistemas de arquivos", "Filesystems");
-    let mounts_label = tr(self.lang, "Pontos de montagem", "Mount points");
-    let usage_label = tr(self.lang, "Uso de disco", "Disk usage");
+    let summary = tr(self.lang, "control_center.summary");
+    let disks_label = tr(self.lang, "control_center.disks");
+    let partitions_label = tr(self.lang, "control_center.partitions");
+    let filesystems_label = tr(self.lang, "control_center.filesystems");
+    let mounts_label = tr(self.lang, "control_center.mount_points");
+    let usage_label = tr(self.lang, "control_center.disk_usage");
     vec![
       format!(
         "{} {}  ·  {} {} · {}",
         AppConfig::icon("📊"),
         summary,
         disks.len(),
-        tr(self.lang, "discos", "disks"),
+        tr(self.lang, "control_center.disks_5d5d98"),
         human_bytes(total)
       ),
       format!(
@@ -308,12 +303,12 @@ impl StorageApp {
     let total: u64 = disks.iter().map(|d| d.size_bytes.unwrap_or(0)).sum();
     let smart_available = if self.snapshot.smart.is_empty() {
       if self.snapshot.smart_available {
-        tr(self.lang, "Nenhum dado coletado", "No data collected").to_string()
+        tr(self.lang, "control_center.no_data_collected").to_string()
       } else {
-        tr(self.lang, "Indisponível", "Unavailable").to_string()
+        tr(self.lang, "control_center.unavailable").to_string()
       }
     } else {
-      tr(self.lang, "Disponível", "Available").to_string()
+      tr(self.lang, "control_center.available").to_string()
     };
     let swap = self
       .snapshot
@@ -325,7 +320,7 @@ impl StorageApp {
           s.source,
           human_bytes(s.total_bytes),
           human_bytes(s.used_bytes),
-          tr(self.lang, "usado", "used")
+          tr(self.lang, "control_center.used")
         )
       })
       .unwrap_or_else(|| "—".into());
@@ -333,58 +328,50 @@ impl StorageApp {
       format!(
         " {} {}",
         AppConfig::icon("📊"),
-        tr(self.lang, "RESUMO DO ARMAZENAMENTO", "STORAGE SUMMARY")
+        tr(self.lang, "control_center.storage_summary")
       ),
       format!(
         "   {:<16} {}",
-        tr(self.lang, "Discos:", "Disks:"),
+        tr(self.lang, "control_center.disks_0a36a0"),
         disks.len()
       ),
       format!(
         "   {:<16} {}",
-        tr(self.lang, "Tamanho total:", "Total size:"),
+        tr(self.lang, "control_center.total_size"),
         human_bytes(total)
       ),
       format!(
         "   {:<16} {}",
-        tr(self.lang, "Partições:", "Partitions:"),
+        tr(self.lang, "control_center.partitions_2d5f30"),
         self.partitions().len()
       ),
       format!(
         "   {:<16} {}",
-        tr(self.lang, "Sistemas de arquivos:", "Filesystems:"),
+        tr(self.lang, "control_center.filesystems_602f7b"),
         self.snapshot.filesystems.len()
       ),
       format!(
         "   {:<16} {}",
-        tr(self.lang, "Pontos de montagem:", "Mount points:"),
+        tr(self.lang, "control_center.mount_points_78b940"),
         self.snapshot.mounts.len()
       ),
-      format!("   {:<16} {}", tr(self.lang, "Swap:", "Swap:"), swap),
+      format!("   {:<16} {}", tr(self.lang, "control_center.swap"), swap),
       format!(
         "   {:<16} {}",
-        tr(self.lang, "SMART:", "SMART:"),
+        tr(self.lang, "control_center.smart"),
         smart_available
       ),
       "".into(),
       format!(
         " {} {}",
         AppConfig::icon("💾"),
-        tr(
-          self.lang,
-          "USO POR SISTEMA DE ARQUIVOS",
-          "USAGE BY FILESYSTEM"
-        )
+        tr(self.lang, "control_center.usage_by_filesystem")
       ),
     ];
     if self.snapshot.filesystems.is_empty() {
       rows.push(format!(
         "   {}",
-        tr(
-          self.lang,
-          "Nenhum sistema de arquivos encontrado",
-          "No filesystems found"
-        )
+        tr(self.lang, "control_center.no_filesystems_found")
       ));
     }
     for f in &self.snapshot.filesystems {
@@ -395,19 +382,9 @@ impl StorageApp {
   fn smart_rows(&self) -> Vec<String> {
     if self.snapshot.smart.is_empty() {
       return vec![if self.snapshot.smart_available {
-        tr(
-          self.lang,
-          "Nenhum dado SMART disponível",
-          "No SMART data available",
-        )
-        .into()
+        tr(self.lang, "control_center.no_smart_data_available").into()
       } else {
-        tr(
-          self.lang,
-          "smartctl não está instalado",
-          "smartctl is not installed",
-        )
-        .into()
+        tr(self.lang, "control_center.smartctl_is_not_installed").into()
       }];
     }
     self
@@ -421,7 +398,7 @@ impl StorageApp {
           .unwrap_or_default();
         let level = match s.health {
           SmartHealth::Failed => {
-            format!("  [{}]", tr(self.lang, "Falhou", "Failed"))
+            format!("  [{}]", tr(self.lang, "control_center.failed"))
           }
           _ => String::new(),
         };
@@ -446,7 +423,7 @@ impl StorageApp {
       rows.push(format!(
         "{} {} {}  ·  {} / {}",
         AppConfig::icon("🔄"),
-        tr(self.lang, "Swap", "Swap"),
+        tr(self.lang, "control_center.swap_0b62a3"),
         swap.source,
         human_bytes(swap.used_bytes),
         human_bytes(swap.total_bytes)
@@ -456,125 +433,122 @@ impl StorageApp {
   }
   fn disk_detail(&self, index: usize) -> Vec<String> {
     let Some(d) = self.snapshot.devices.get(index) else {
-      return vec![tr(self.lang, "Disco não encontrado", "Disk not found").into()];
+      return vec![tr(self.lang, "control_center.disk_not_found").into()];
     };
     vec![
       format!(
         " {} {}",
         AppConfig::icon("💽"),
-        tr(self.lang, "DISCO", "DISK")
+        tr(self.lang, "control_center.disk")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Dispositivo:", "Device:"),
+        tr(self.lang, "control_center.device_945796"),
         d.name
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Modelo:", "Model:"),
+        tr(self.lang, "control_center.model"),
         d.model.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Fabricante:", "Vendor:"),
+        tr(self.lang, "control_center.vendor"),
         d.vendor.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Serial:", "Serial:"),
+        tr(self.lang, "control_center.serial"),
         d.serial.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Tamanho:", "Size:"),
+        tr(self.lang, "control_center.size"),
         human_bytes(d.size_bytes.unwrap_or(0))
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Transporte:", "Transport:"),
+        tr(self.lang, "control_center.transport"),
         d.transport.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Rotacional:", "Rotational:"),
+        tr(self.lang, "control_center.rotational"),
         bool_label(self.lang, d.rotational)
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Removível:", "Removable:"),
+        tr(self.lang, "control_center.removable"),
         bool_label(self.lang, d.removable)
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "UUID:", "UUID:"),
+        tr(self.lang, "control_center.uuid"),
         d.uuid.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Partições:", "Partitions:"),
+        tr(self.lang, "control_center.partitions_2d5f30"),
         d.children.len()
       ),
     ]
   }
   fn partition_detail(&self, index: usize) -> Vec<String> {
     let Some(p) = self.partitions().get(index).copied() else {
-      return vec![tr(self.lang, "Partição não encontrada", "Partition not found").into()];
+      return vec![tr(self.lang, "control_center.partition_not_found").into()];
     };
     let parent = p.parent.as_deref().unwrap_or("—");
     vec![
       format!(
         " {} {}",
         AppConfig::icon("🔖"),
-        tr(self.lang, "PARTIÇÃO", "PARTITION")
+        tr(self.lang, "control_center.partition")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Dispositivo:", "Device:"),
+        tr(self.lang, "control_center.device_945796"),
         p.name
       ),
-      format!("   {:<14} {}", tr(self.lang, "Disco:", "Disk:"), parent),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Sistema:", "Filesystem:"),
+        tr(self.lang, "control_center.disk_ea4ba6"),
+        parent
+      ),
+      format!(
+        "   {:<14} {}",
+        tr(self.lang, "control_center.filesystem"),
         p.fstype.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Tamanho:", "Size:"),
+        tr(self.lang, "control_center.size"),
         human_bytes(p.size_bytes.unwrap_or(0))
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Montado em:", "Mounted at:"),
+        tr(self.lang, "control_center.mounted_at"),
         p.mountpoint.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Rótulo:", "Label:"),
+        tr(self.lang, "control_center.label"),
         p.label.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "UUID:", "UUID:"),
+        tr(self.lang, "control_center.uuid"),
         p.uuid.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Somente leitura:", "Read-only:"),
+        tr(self.lang, "control_center.read_only"),
         bool_label(self.lang, p.readonly)
       ),
     ]
   }
   fn filesystem_detail(&self, index: usize) -> Vec<String> {
     let Some(f) = self.snapshot.filesystems.get(index) else {
-      return vec![
-        tr(
-          self.lang,
-          "Sistema de arquivos não encontrado",
-          "Filesystem not found",
-        )
-        .into(),
-      ];
+      return vec![tr(self.lang, "control_center.filesystem_not_found").into()];
     };
     let (used, total, available, pct) = match (f.total_bytes, f.used_bytes) {
       (Some(total), Some(used)) => {
@@ -590,30 +564,34 @@ impl StorageApp {
     };
     let level = usage_level(used.unwrap_or(0), available.unwrap_or(0));
     let level_label = match level {
-      UsageLevel::Ok => tr(self.lang, "OK", "OK"),
-      UsageLevel::Warning => tr(self.lang, "Atenção", "Warning"),
-      UsageLevel::Critical => tr(self.lang, "Crítico", "Critical"),
+      UsageLevel::Ok => tr(self.lang, "control_center.ok"),
+      UsageLevel::Warning => tr(self.lang, "control_center.warning_34c524"),
+      UsageLevel::Critical => tr(self.lang, "control_center.critical"),
     };
     let mut rows = vec![
       format!(
         " {} {}",
         AppConfig::icon("📁"),
-        tr(self.lang, "SISTEMA DE ARQUIVOS", "FILESYSTEM")
+        tr(self.lang, "control_center.filesystem_6effc4")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Origem:", "Source:"),
+        tr(self.lang, "control_center.source"),
         f.source
       ),
-      format!("   {:<14} {}", tr(self.lang, "Tipo:", "Type:"), f.fstype),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Montado em:", "Mounted at:"),
+        tr(self.lang, "control_center.type"),
+        f.fstype
+      ),
+      format!(
+        "   {:<14} {}",
+        tr(self.lang, "control_center.mounted_at"),
         f.mountpoint.as_deref().unwrap_or("—")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Somente leitura:", "Read-only:"),
+        tr(self.lang, "control_center.read_only"),
         yes_no(self.lang, f.readonly)
       ),
       "".into(),
@@ -621,22 +599,22 @@ impl StorageApp {
     if let (Some(total), Some(used), Some(available)) = (total, used, available) {
       rows.push(format!(
         "   {:<14} {}",
-        tr(self.lang, "Tamanho:", "Size:"),
+        tr(self.lang, "control_center.size"),
         human_bytes(total)
       ));
       rows.push(format!(
         "   {:<14} {}",
-        tr(self.lang, "Usado:", "Used:"),
+        tr(self.lang, "control_center.used_b284db"),
         human_bytes(used)
       ));
       rows.push(format!(
         "   {:<14} {}",
-        tr(self.lang, "Disponível:", "Available:"),
+        tr(self.lang, "control_center.available_93698a"),
         human_bytes(available)
       ));
       rows.push(format!(
         "   {:<14} {} · {}  {}",
-        tr(self.lang, "Uso:", "Usage:"),
+        tr(self.lang, "control_center.usage"),
         pct,
         "%",
         level_label
@@ -647,43 +625,44 @@ impl StorageApp {
   }
   fn mount_detail(&self, index: usize) -> Vec<String> {
     let Some(m) = self.snapshot.mounts.get(index) else {
-      return vec![
-        tr(
-          self.lang,
-          "Ponto de montagem não encontrado",
-          "Mount point not found",
-        )
-        .into(),
-      ];
+      return vec![tr(self.lang, "control_center.mount_point_not_found").into()];
     };
     vec![
       format!(
         " {} {}",
         AppConfig::icon("📌"),
-        tr(self.lang, "PONTO DE MONTAGEM", "MOUNT POINT")
+        tr(self.lang, "control_center.mount_point")
       ),
-      format!("   {:<14} {}", tr(self.lang, "Alvo:", "Target:"), m.target),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Origem:", "Source:"),
+        tr(self.lang, "control_center.target"),
+        m.target
+      ),
+      format!(
+        "   {:<14} {}",
+        tr(self.lang, "control_center.source"),
         m.source
       ),
-      format!("   {:<14} {}", tr(self.lang, "Tipo:", "Type:"), m.fstype),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Opções:", "Options:"),
+        tr(self.lang, "control_center.type"),
+        m.fstype
+      ),
+      format!(
+        "   {:<14} {}",
+        tr(self.lang, "control_center.options_4dbf67"),
         m.options.join(" ")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Somente leitura:", "Read-only:"),
+        tr(self.lang, "control_center.read_only"),
         yes_no(self.lang, m.readonly)
       ),
     ]
   }
   fn smart_detail(&self, index: usize) -> Vec<String> {
     let Some(s) = self.snapshot.smart.get(index) else {
-      return vec![tr(self.lang, "SMART indisponível", "SMART unavailable").into()];
+      return vec![tr(self.lang, "control_center.smart_unavailable").into()];
     };
     let health = smart_health_label(self.lang, s.health);
     let temp = s
@@ -694,45 +673,49 @@ impl StorageApp {
       format!(
         " {} {}",
         AppConfig::icon("🛡️"),
-        tr(self.lang, "SMART", "SMART")
+        tr(self.lang, "control_center.smart_eb1ea9")
       ),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Dispositivo:", "Device:"),
+        tr(self.lang, "control_center.device_945796"),
         s.device
       ),
-      format!("   {:<14} {}", tr(self.lang, "Saúde:", "Health:"), health),
       format!(
         "   {:<14} {}",
-        tr(self.lang, "Temperatura:", "Temperature:"),
+        tr(self.lang, "control_center.health"),
+        health
+      ),
+      format!(
+        "   {:<14} {}",
+        tr(self.lang, "control_center.temperature"),
         temp
       ),
     ];
     if let Some(hours) = s.power_on_hours {
       rows.push(format!(
         "   {:<14} {} h",
-        tr(self.lang, "Tempo ligado:", "Power on:"),
+        tr(self.lang, "control_center.power_on"),
         hours
       ));
     }
     if let Some(cycles) = s.power_cycles {
       rows.push(format!(
         "   {:<14} {}",
-        tr(self.lang, "Ciclos:", "Cycles:"),
+        tr(self.lang, "control_center.cycles"),
         cycles
       ));
     }
     if let Some(percent) = s.percentage_used {
       rows.push(format!(
         "   {:<14} {}%",
-        tr(self.lang, "Uso:", "Used:"),
+        tr(self.lang, "control_center.used_5b1256"),
         percent
       ));
     }
     if let Some(warning) = s.critical_warning {
       rows.push(format!(
         "   {:<14} {}",
-        tr(self.lang, "Aviso crítico:", "Critical warning:"),
+        tr(self.lang, "control_center.critical_warning"),
         warning
       ));
     }
@@ -745,17 +728,9 @@ impl StorageApp {
       &self.theme,
       &self.breadcrumb(),
       if self.len() > 0 {
-        tr(
-          self.lang,
-          "↑/↓ Rolar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-          "↑/↓ Scroll   r Refresh   ←/Esc Back   ? Help",
-        )
+        tr(self.lang, "control_center.scroll_r_refresh_esc_back_help")
       } else {
-        tr(
-          self.lang,
-          "r Atualizar   ←/Esc Voltar   ? Ajuda",
-          "r Refresh   ←/Esc Back   ? Help",
-        )
+        tr(self.lang, "control_center.r_refresh_esc_back_help")
       },
     );
     let rows = self.rows();
@@ -837,7 +812,7 @@ fn disk_row(lang: Lang, device: &StorageDevice) -> String {
     format!(
       "  ·  {} {}",
       device.children.len(),
-      tr(lang, "partições", "partitions")
+      tr(lang, "control_center.partitions_10c74c")
     )
   };
   format!(
@@ -916,18 +891,18 @@ fn usage_bar(percent: u64, width: usize) -> String {
 }
 fn usage_label(lang: Lang, level: UsageLevel) -> String {
   match level {
-    UsageLevel::Ok => tr(lang, "OK", "OK").into(),
-    UsageLevel::Warning => tr(lang, "Atenção", "Warning").into(),
-    UsageLevel::Critical => tr(lang, "Crítico", "Critical").into(),
+    UsageLevel::Ok => tr(lang, "control_center.ok").into(),
+    UsageLevel::Warning => tr(lang, "control_center.warning_34c524").into(),
+    UsageLevel::Critical => tr(lang, "control_center.critical").into(),
   }
 }
 fn smart_health_label(lang: Lang, health: SmartHealth) -> String {
   match health {
-    SmartHealth::Passed => tr(lang, "Aprovado", "Passed").into(),
-    SmartHealth::Warning => tr(lang, "Atenção", "Warning").into(),
-    SmartHealth::Failed => tr(lang, "Falhou", "Failed").into(),
-    SmartHealth::Unsupported => tr(lang, "Indisponível", "Unavailable").into(),
-    SmartHealth::Unknown => tr(lang, "Desconhecido", "Unknown").into(),
+    SmartHealth::Passed => tr(lang, "control_center.passed").into(),
+    SmartHealth::Warning => tr(lang, "control_center.warning_34c524").into(),
+    SmartHealth::Failed => tr(lang, "control_center.failed").into(),
+    SmartHealth::Unsupported => tr(lang, "control_center.unavailable").into(),
+    SmartHealth::Unknown => tr(lang, "control_center.unknown_b75709").into(),
   }
 }
 fn bool_label(lang: Lang, value: Option<bool>) -> String {
@@ -939,8 +914,11 @@ fn bool_label(lang: Lang, value: Option<bool>) -> String {
 fn yes_no(lang: Lang, value: bool) -> String {
   tr(
     lang,
-    if value { "Sim" } else { "Não" },
-    if value { "Yes" } else { "No" },
+    if value {
+      "control_center.yes"
+    } else {
+      "control_center.no"
+    },
   )
   .into()
 }
@@ -969,7 +947,11 @@ mod tests {
   use argvus_theme::Theme;
 
   fn test_app(snapshot: StorageSnapshot) -> StorageApp {
-    let mut app = StorageApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = StorageApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot = snapshot;
     app.job = None;
     app

@@ -6,7 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-argvus-i18n = { path = "../argvus-i18n" }
+argvus-i18n.workspace = true
 argvus-theme = { path = "../argvus-theme" }
 argvus-tui = { path = "../argvus-tui" }
 argvus-control-center-apps = { path = "../argvus-control-center-apps" }

@@ -13,7 +13,7 @@ pub fn draw_error(frame: &mut Frame, area: Rect, app: &App, message: &str) {
   let height = 7.min(area.height);
   let popup = super::layout::centered(area, width, height);
   frame.render_widget(Clear, popup);
-  let title = tr(app.lang, " Erro ", " Error ");
+  let title = tr(app.lang, "control_center.error_32d0ef");
   let content = vec![
     Line::from(""),
     Line::from(Span::styled(
@@ -22,7 +22,7 @@ pub fn draw_error(frame: &mut Frame, area: Rect, app: &App, message: &str) {
     )),
     Line::from(""),
     Line::from(Span::styled(
-      tr(app.lang, "Enter  OK", "Enter  OK"),
+      tr(app.lang, "control_center.enter_ok"),
       Style::new()
         .fg(app.theme.accent)
         .add_modifier(Modifier::BOLD),
@@ -69,9 +69,9 @@ pub fn draw_confirm(frame: &mut Frame, area: Rect, app: &App, action: &PendingAc
     Line::from(Span::styled(body, Style::new().fg(app.theme.foreground))),
     Line::from(""),
     Line::from(vec![
-      Span::styled(tr(app.lang, "[ Aplicar ]", "[ Apply ]"), apply_style),
+      Span::styled(tr(app.lang, "control_center.apply"), apply_style),
       Span::raw("  "),
-      Span::styled(tr(app.lang, "[ Cancelar ]", "[ Cancel ]"), cancel_style),
+      Span::styled(tr(app.lang, "control_center.cancel_f8378f"), cancel_style),
     ]),
   ];
   frame.render_widget(
@@ -93,15 +93,11 @@ pub fn draw_hostname_input(frame: &mut Frame, area: Rect, app: &App) {
   let height = 7.min(area.height);
   let popup = super::layout::centered(area, width, height);
   frame.render_widget(Clear, popup);
-  let title = tr(app.lang, "Hostname", "Hostname");
+  let title = tr(app.lang, "control_center.hostname");
   let content = vec![
-    Line::from(tr(app.lang, "Novo hostname:", "New hostname:")),
+    Line::from(tr(app.lang, "control_center.new_hostname")),
     Line::from(format!("{}_", app.hostname_input)),
-    Line::from(tr(
-      app.lang,
-      "Enter aplicar   Esc cancelar",
-      "Enter apply   Esc cancel",
-    )),
+    Line::from(tr(app.lang, "control_center.enter_apply_esc_cancel")),
   ];
   frame.render_widget(
     Paragraph::new(content).block(

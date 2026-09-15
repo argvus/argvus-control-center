@@ -38,7 +38,7 @@ pub fn run(args: &[String]) -> ExitCode {
     unknown => {
       eprintln!(
         "{PROG}: {} '{unknown}'",
-        label("comando desconhecido", "unknown command")
+        label("control_center.apps_unknown_command")
       );
       usage(false);
       ExitCode::from(2)
@@ -49,8 +49,8 @@ pub fn run(args: &[String]) -> ExitCode {
 fn bad_category(key: &str) -> ExitCode {
   eprintln!(
     "{PROG}: {} '{key}' ({}: {CATEGORY_KEYS})",
-    label("categoria desconhecida", "unknown category"),
-    label("válidas", "valid")
+    label("control_center.apps_unknown_category"),
+    label("control_center.apps_valid")
   );
   ExitCode::from(2)
 }
@@ -70,13 +70,17 @@ fn cmd_list(args: &[String]) -> ExitCode {
     let current = state.effective(*cat);
     let apps = detect::installed_apps(*cat, &desktops);
     let title = if !current.is_empty() {
-      format!("{} ({})", cat.key(), label("atual", "current"))
+      format!("{} ({})", cat.key(), label("control_center.apps_current"))
     } else {
-      format!("{} ({})", cat.key(), label("sem padrão", "no default"))
+      format!(
+        "{} ({})",
+        cat.key(),
+        label("control_center.apps_no_default")
+      )
     };
     println!("[{title}]");
     if apps.is_empty() {
-      println!("  ({})", label("nenhum detectado", "none detected"));
+      println!("  ({})", label("control_center.apps_none_detected"));
       continue;
     }
     for app in &apps {
@@ -113,8 +117,8 @@ fn cmd_get(args: &[String]) -> ExitCode {
         if value.is_empty() {
           eprintln!(
             "{PROG}: {} '{key}' ({})",
-            label("nenhum padrão definido para", "no default set for"),
-            label("usa o padrão do sistema", "falls back to xdg")
+            label("control_center.apps_no_default_set_for"),
+            label("control_center.apps_falls_back_to_xdg")
           );
           ExitCode::from(1)
         } else {
@@ -131,9 +135,9 @@ fn cmd_set(args: &[String]) -> ExitCode {
   if args.len() < 2 {
     eprintln!(
       "{}: {PROG} set <{}> <{}>",
-      label("Uso", "Usage"),
-      label("categoria", "category"),
-      label("app", "app")
+      label("control_center.apps_usage"),
+      label("control_center.apps_category"),
+      label("control_center.apps_app")
     );
     return ExitCode::from(2);
   }
@@ -154,11 +158,11 @@ fn cmd_set(args: &[String]) -> ExitCode {
     return match state.save() {
       Ok(()) => {
         let reloaded = apply::refresh_argvus();
-        println!("{}={}", cat.key(), label("padrão", "default"));
+        println!("{}={}", cat.key(), label("control_center.apps_default"));
         if reloaded {
           println!(
             "  ARGVUS: {}",
-            label("hyprctl reload solicitado", "hyprctl reload requested")
+            label("control_center.apps_hyprctl_reload_requested")
           );
         }
         ExitCode::SUCCESS
@@ -166,7 +170,7 @@ fn cmd_set(args: &[String]) -> ExitCode {
       Err(e) => {
         eprintln!(
           "{PROG}: {} {}: {e}",
-          label("não foi possível escrever", "could not write"),
+          label("control_center.apps_could_not_write"),
           paths::defaults_file().display()
         );
         ExitCode::from(1)
@@ -178,13 +182,10 @@ fn cmd_set(args: &[String]) -> ExitCode {
     eprintln!(
       "{PROG}: '{}' {} '{}'",
       binary,
-      label(
-        "não está instalado na categoria",
-        "is not installed in category"
-      ),
+      label("control_center.apps_is_not_installed_in_category"),
       cat.key()
     );
-    eprintln!("{}:", label("Opções instaladas", "Installed options"));
+    eprintln!("{}:", label("control_center.apps_installed_options"));
     for app in detect::installed_apps(cat, &desktops) {
       eprintln!("  {} ({})", app.binary, app.display);
     }
@@ -196,7 +197,7 @@ fn cmd_set(args: &[String]) -> ExitCode {
   if let Err(e) = state.save() {
     eprintln!(
       "{PROG}: {} {}: {e}",
-      label("não foi possível escrever", "could not write"),
+      label("control_center.apps_could_not_write"),
       paths::defaults_file().display()
     );
     return ExitCode::from(1);
@@ -208,26 +209,26 @@ fn cmd_set(args: &[String]) -> ExitCode {
       if let Some(id) = report.desktop_id {
         println!(
           "  {}: {id}",
-          label(".desktop registrado", "registered .desktop")
+          label("control_center.apps_registered_desktop")
         );
       }
       if let Some(path) = report.mimeapps_updated {
         println!(
           "  {}: {}",
-          label("mimeapps atualizado", "updated mimeapps"),
+          label("control_center.apps_updated_mimeapps"),
           path.display()
         );
       }
       if report.xdg_settings {
         println!(
           "  xdg-settings: {}",
-          label("navegador padrão definido", "default-web-browser set")
+          label("control_center.apps_default_web_browser_set")
         );
       }
       if report.hyprctl_reloaded {
         println!(
           "  ARGVUS: {}",
-          label("hyprctl reload solicitado", "hyprctl reload requested")
+          label("control_center.apps_hyprctl_reload_requested")
         );
       }
       ExitCode::SUCCESS
@@ -248,37 +249,13 @@ fn as_list(state: &AppState) -> Vec<(Category, Option<String>)> {
 }
 
 fn usage(verbose: bool) {
-  if argvus_control_center_core::i18n::is_pt() {
-    println!(
-      "{PROG} - selecione e alterne os aplicativos padrão do ARGVUS\n\
-       \n\
-       Uso:\n\
-         {PROG} list [categoria]\n\
-         {PROG} get [categoria]\n\
-         {PROG} set <categoria> <app>\n\
-         {PROG} categories\n\
-         {PROG} help\n\
-         {PROG} version"
-    );
-  } else {
-    println!(
-      "{PROG} - pick and switch the ARGVUS default applications\n\
-       \n\
-       Usage:\n\
-         {PROG} list [category]\n\
-         {PROG} get [category]\n\
-         {PROG} set <category> <app>\n\
-         {PROG} categories\n\
-         {PROG} help\n\
-         {PROG} version"
-    );
-  }
+  println!("{}", label("control_center.apps_usage"));
 
   if verbose {
     println!(
       "\n{}:\n  {CATEGORY_KEYS}\n\n{}: {}",
-      label("Categorias", "Categories"),
-      label("Estado", "State"),
+      label("control_center.apps_categories"),
+      label("control_center.apps_state"),
       paths::defaults_file().display()
     );
   }

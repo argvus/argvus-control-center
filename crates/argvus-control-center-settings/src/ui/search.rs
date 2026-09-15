@@ -12,7 +12,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
   let line = if app.searching || !app.search.is_empty() {
     Line::from(vec![
       Span::styled(
-        format!("{}: ", tr(app.lang, "Buscar", "Search")),
+        format!("{}: ", tr(app.lang, "control_center.search")),
         Style::new().fg(app.theme.accent),
       ),
       Span::styled(
@@ -28,7 +28,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     Line::from(Span::styled(&status.text, Style::new().fg(color)))
   } else if let Page::FontSelector(_) = app.page() {
     Line::from(Span::styled(
-      format!("{}: {}", tr(app.lang, "Tamanho", "Size"), app.pending_size),
+      format!(
+        "{}: {}",
+        tr(app.lang, "control_center.size"),
+        app.pending_size
+      ),
       Style::new().fg(app.theme.muted),
     ))
   } else {

@@ -66,19 +66,18 @@ impl ConfigApp {
     vec![format!(
       "[{}] {}",
       if self.icons { "✓" } else { " " },
-      tr(self.lang, "Icones", "Icons")
+      tr(self.lang, "control_center.icons")
     )]
   }
 
   pub fn breadcrumb(&self) -> String {
-    tr(self.lang, "Configuração", "Configuration").into()
+    tr(self.lang, "control_center.configuration").into()
   }
 
   pub fn footer_hints(&self) -> &'static str {
     tr(
       self.lang,
-      "↑/↓ Navegar   Enter/Space Alternar   ←/Esc Voltar   ? Ajuda",
-      "↑/↓ Navigate   Enter/Space Toggle   ←/Esc Back   ? Help",
+      "control_center.navigate_enter_space_toggle_esc_back_help",
     )
   }
 
@@ -117,12 +116,7 @@ impl ConfigApp {
     AppConfig::set_session_icons(self.icons);
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Salvando configuração...",
-        "Saving configuration...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.saving_configuration").into(),
     });
     let operation = Arc::clone(&self.operation);
     let enabled = self.icons.to_string();
@@ -133,8 +127,7 @@ impl ConfigApp {
           "{}: {error}",
           tr(
             self.lang,
-            "Aplicado nesta sessão, mas não foi possível gravar a configuração",
-            "Applied this session, but the configuration could not be saved"
+            "control_center.applied_this_session_but_the_configuration_could_not_be_saved"
           )
         ));
         return;
@@ -170,9 +163,9 @@ impl ConfigApp {
           self.status = Some(StatusMessage {
             kind: StatusKind::Success,
             text: if self.icons {
-              tr(self.lang, "Icones ativados", "Icons enabled").into()
+              tr(self.lang, "control_center.icons_enabled").into()
             } else {
-              tr(self.lang, "Icones desativados", "Icons disabled").into()
+              tr(self.lang, "control_center.icons_disabled").into()
             },
           });
         }
@@ -181,8 +174,7 @@ impl ConfigApp {
             "{}: {error}",
             tr(
               self.lang,
-              "Aplicado nesta sessão, mas não foi possível gravar a configuração",
-              "Applied this session, but the configuration could not be saved"
+              "control_center.applied_this_session_but_the_configuration_could_not_be_saved"
             )
           ));
         }
@@ -208,7 +200,7 @@ impl ConfigApp {
       &self.theme,
       &[Line::from(format!(
         "  {}",
-        tr(self.lang, "Aparência", "Appearance")
+        tr(self.lang, "control_center.appearance")
       ))],
     );
     let rows = self.rows();
@@ -298,7 +290,7 @@ mod tests {
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
     let recorder = Arc::new(RecordingOperation::default());
     let mut app = ConfigApp::with_operation(
-      Lang::Pt,
+      Lang::for_locale("pt-BR"),
       Theme::load(),
       Arc::clone(&recorder) as ConfigOperation,
     );
@@ -327,7 +319,11 @@ mod tests {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let mut app = ConfigApp::with_operation(Lang::Pt, Theme::load(), Arc::new(FailingOperation));
+    let mut app = ConfigApp::with_operation(
+      Lang::for_locale("pt-BR"),
+      Theme::load(),
+      Arc::new(FailingOperation),
+    );
     app.toggle();
     assert!(!app.icons);
     drain_poll(&mut app);
@@ -345,7 +341,7 @@ mod tests {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let app = ConfigApp::new(Lang::Pt, Theme::load());
+    let app = ConfigApp::new(Lang::for_locale("pt-BR"), Theme::load());
     let row = app.rows().into_iter().next().unwrap();
     assert!(row.starts_with("[✓] Icones"), "{row}");
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
@@ -358,7 +354,7 @@ mod tests {
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
     let mut app = ConfigApp::with_operation(
-      Lang::Pt,
+      Lang::for_locale("pt-BR"),
       Theme::load(),
       Arc::new(RecordingOperation::default()),
     );
@@ -374,7 +370,7 @@ mod tests {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let app = ConfigApp::new(Lang::Pt, Theme::load());
+    let app = ConfigApp::new(Lang::for_locale("pt-BR"), Theme::load());
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 24)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
     let text = terminal

@@ -5,6 +5,7 @@ use argvus_control_center_core::{
   sanitize::terminal_text,
 };
 use argvus_control_center_storage::model::{SmartHealth, UsageLevel, usage_level};
+use argvus_i18n::{Lang, tr};
 use std::{fs, time::Duration};
 
 pub fn collect(cap: &Capabilities) -> DiagnosticFacts {
@@ -86,28 +87,33 @@ fn run_status(program: &str, args: &[&str]) -> bool {
     .is_ok_and(|output| output.status == Some(0) && !output.timed_out)
 }
 
-pub fn evaluate(facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCheck> {
+pub fn evaluate(lang: Lang, facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCheck> {
   let mut checks = Vec::new();
   match facts.failed_system_units {
     Some(0) => checks.push(ok(
+      lang,
       "services.system",
-      "System services",
-      "No failed system units",
+      tr(lang, "control_center.system_services"),
+      tr(lang, "control_center.no_failed_system_units"),
     )),
     Some(n) => checks.push(DiagnosticCheck {
       id: "system.failed_units".into(),
       category: "services".into(),
       severity: Severity::Warning,
-      title: "Failed system units".into(),
-      summary: format!("{n} system unit(s) failed"),
-      details: "The system manager reports failed units.".into(),
-      remediation_hint: Some("Open Services > Failed".into()),
+      title: tr(lang, "control_center.failed_system_units").into(),
+      summary: lang.tr_args(
+        "control_center.system_unit_failure_summary",
+        [("count", n.to_string())],
+      ),
+      details: tr(lang, "control_center.system_manager_failed_units").into(),
+      remediation_hint: Some(tr(lang, "control_center.open_services_failed").into()),
       route: Some("services/failed".into()),
     }),
     None => checks.push(unknown(
+      lang,
       "services.system",
-      "System services",
-      "Service state unavailable",
+      tr(lang, "control_center.system_services"),
+      tr(lang, "control_center.service_state_unavailable"),
     )),
   }
   if facts.failed_user_units.is_some_and(|n| n > 0) {
@@ -115,38 +121,39 @@ pub fn evaluate(facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCh
       id: "user.failed_units".into(),
       category: "services".into(),
       severity: Severity::Warning,
-      title: "Failed user units".into(),
-      summary: format!("{} user unit(s) failed", facts.failed_user_units.unwrap()),
-      details: "The user system manager reports failed units.".into(),
-      remediation_hint: Some("Open Services > User".into()),
+      title: tr(lang, "control_center.failed_user_units").into(),
+      summary: lang.tr_args(
+        "control_center.user_unit_failure_summary",
+        [("count", facts.failed_user_units.unwrap().to_string())],
+      ),
+      details: tr(lang, "control_center.user_manager_failed_units").into(),
+      remediation_hint: Some(tr(lang, "control_center.open_services_user").into()),
       route: Some("services/user".into()),
     });
   }
   if facts.nvidia_present == Some(true) {
     match facts.nvidia_module_loaded {
       Some(true) => checks.push(ok(
+        lang,
         "graphics.nvidia",
-        "NVIDIA driver",
-        "NVIDIA hardware and kernel module are available",
+        tr(lang, "control_center.nvidia_driver"),
+        tr(lang, "control_center.nvidia_available"),
       )),
-      Some(false) => {
-        checks.push(DiagnosticCheck {
-          id: "graphics.nvidia".into(),
-          category: "graphics".into(),
-          severity: Severity::Warning,
-          title: "NVIDIA driver".into(),
-          summary: "NVIDIA hardware found, but the kernel module is not loaded".into(),
-          details:
-            "Applications may fall back to another renderer until the NVIDIA module is loaded."
-              .into(),
-          remediation_hint: Some("Check Hardware > GPU and the installed NVIDIA driver.".into()),
-          route: Some("hardware/gpu".into()),
-        })
-      }
+      Some(false) => checks.push(DiagnosticCheck {
+        id: "graphics.nvidia".into(),
+        category: "graphics".into(),
+        severity: Severity::Warning,
+        title: tr(lang, "control_center.nvidia_driver").into(),
+        summary: tr(lang, "control_center.nvidia_module_missing").into(),
+        details: tr(lang, "control_center.nvidia_module_missing").into(),
+        remediation_hint: Some(tr(lang, "control_center.check_hardware_gpu").into()),
+        route: Some("hardware/gpu".into()),
+      }),
       None => checks.push(unknown(
+        lang,
         "graphics.nvidia",
-        "NVIDIA driver",
-        "NVIDIA hardware found; module state unavailable",
+        tr(lang, "control_center.nvidia_driver"),
+        tr(lang, "control_center.nvidia_module_unavailable"),
       )),
     }
   }
@@ -163,29 +170,34 @@ pub fn evaluate(facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCh
       } else {
         Severity::Ok
       },
-      title: "OpenGL renderer".into(),
+      title: tr(lang, "control_center.opengl_renderer").into(),
       summary: renderer.into(),
       details: if software {
-        "OpenGL is using software rendering instead of a hardware GPU.".into()
+        tr(lang, "control_center.opengl_software_rendering").into()
       } else {
-        "OpenGL reports a hardware renderer.".into()
+        tr(lang, "control_center.opengl_hardware_rendering").into()
       },
-      remediation_hint: software.then(|| "Check Hardware > GPU and graphics drivers.".into()),
+      remediation_hint: software.then(|| tr(lang, "control_center.check_hardware_gpu").into()),
       route: Some("hardware/gpu".into()),
     });
   }
   if let Some(available) = facts.vulkan_available {
     checks.push(if available {
-      ok("graphics.vulkan", "Vulkan", "Vulkan is available")
+      ok(
+        lang,
+        "graphics.vulkan",
+        tr(lang, "control_center.vulkan"),
+        tr(lang, "control_center.vulkan_available"),
+      )
     } else {
       DiagnosticCheck {
         id: "graphics.vulkan".into(),
         category: "graphics".into(),
         severity: Severity::Warning,
-        title: "Vulkan".into(),
-        summary: "Vulkan is not available".into(),
-        details: "vulkaninfo could not initialize a Vulkan device.".into(),
-        remediation_hint: Some("Check the installed graphics driver and Vulkan packages.".into()),
+        title: tr(lang, "control_center.vulkan").into(),
+        summary: tr(lang, "control_center.vulkan_unavailable").into(),
+        details: tr(lang, "control_center.vulkan_init_failed").into(),
+        remediation_hint: Some(tr(lang, "control_center.check_graphics_driver").into()),
         route: Some("hardware/gpu".into()),
       }
     });
@@ -209,13 +221,22 @@ pub fn evaluate(facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCh
           UsageLevel::Warning => Severity::Warning,
           UsageLevel::Critical => Severity::Error,
         },
-        title: format!("Filesystem {}", fs.mountpoint.as_deref().unwrap_or("?")),
-        summary: format!(
-          "{}% used",
-          total.saturating_sub(available).saturating_mul(100) / total.max(1)
+        title: lang.tr_args(
+          "control_center.filesystem_usage",
+          [("path", fs.mountpoint.as_deref().unwrap_or("?"))],
         ),
-        details: format!("{} bytes available", available),
-        remediation_hint: Some("Open Storage > Disk usage".into()),
+        summary: lang.tr_args(
+          "control_center.percent_used",
+          [(
+            "percent",
+            (total.saturating_sub(available).saturating_mul(100) / total.max(1)).to_string(),
+          )],
+        ),
+        details: lang.tr_args(
+          "control_center.bytes_available",
+          [("bytes", available.to_string())],
+        ),
+        remediation_hint: Some(tr(lang, "control_center.open_storage_disk_usage").into()),
         route: Some("storage/usage".into()),
       });
     }
@@ -233,24 +254,32 @@ pub fn evaluate(facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCh
         id: format!("storage.smart.{}", smart.device),
         category: "storage".into(),
         severity,
-        title: format!("SMART {}", smart.device),
+        title: lang.tr_args(
+          "control_center.smart_device",
+          [("device", smart.device.as_str())],
+        ),
         summary: format!("{:?}", smart.health),
-        details: "Read-only SMART evidence from the device.".into(),
+        details: tr(lang, "control_center.smart_evidence").into(),
         remediation_hint: None,
         route: Some("storage/smart".into()),
       });
     }
   } else {
-    checks.push(info("storage.smart", "SMART", "smartctl is unavailable"));
+    checks.push(info(
+      lang,
+      "storage.smart",
+      "SMART",
+      "smartctl is unavailable",
+    ));
   }
   if facts.package_lock {
     checks.push(DiagnosticCheck {
       id: "packages.lock".into(),
       category: "packages".into(),
       severity: Severity::Warning,
-      title: "Package database lock".into(),
-      summary: "A package operation may be active".into(),
-      details: "The lock is reported as evidence only and is never removed automatically.".into(),
+      title: tr(lang, "control_center.package_database_lock").into(),
+      summary: tr(lang, "control_center.package_operation_active").into(),
+      details: tr(lang, "control_center.package_lock_evidence").into(),
       remediation_hint: None,
       route: Some("packages".into()),
     });
@@ -260,30 +289,35 @@ pub fn evaluate(facts: &DiagnosticFacts, cap: &Capabilities) -> Vec<DiagnosticCh
       id: "packages.updates".into(),
       category: "packages".into(),
       severity: if n == 0 { Severity::Ok } else { Severity::Info },
-      title: "Package updates".into(),
-      summary: format!("{n} update(s) available"),
-      details: "Package status is consumed from the existing package backend.".into(),
+      title: tr(lang, "control_center.package_updates").into(),
+      summary: lang.tr_args(
+        "control_center.updates_available",
+        [("count", n.to_string())],
+      ),
+      details: tr(lang, "control_center.package_backend_status").into(),
       remediation_hint: None,
       route: Some("packages/updates".into()),
     });
   }
   checks.push(if cap.is_virtual_machine {
     info(
+      lang,
       "graphics.virtual-machine",
-      "Graphics environment",
-      "Virtual machine detected",
+      tr(lang, "control_center.graphics_environment"),
+      tr(lang, "control_center.virtual_machine_detected"),
     )
   } else {
     info(
+      lang,
       "graphics.environment",
-      "Graphics environment",
-      "Hardware graphics checks are provided by Hardware",
+      tr(lang, "control_center.graphics_environment"),
+      tr(lang, "control_center.hardware_graphics_checks"),
     )
   });
   checks.sort_by_key(|c| c.severity);
   checks
 }
-fn info(id: &str, title: &str, summary: &str) -> DiagnosticCheck {
+fn info(_lang: Lang, id: &str, title: &str, summary: &str) -> DiagnosticCheck {
   DiagnosticCheck {
     id: id.into(),
     category: "system".into(),
@@ -294,16 +328,16 @@ fn info(id: &str, title: &str, summary: &str) -> DiagnosticCheck {
     ..Default::default()
   }
 }
-fn unknown(id: &str, title: &str, summary: &str) -> DiagnosticCheck {
+fn unknown(lang: Lang, id: &str, title: &str, summary: &str) -> DiagnosticCheck {
   DiagnosticCheck {
     severity: Severity::Unknown,
-    ..info(id, title, summary)
+    ..info(lang, id, title, summary)
   }
 }
-fn ok(id: &str, title: &str, summary: &str) -> DiagnosticCheck {
+fn ok(lang: Lang, id: &str, title: &str, summary: &str) -> DiagnosticCheck {
   DiagnosticCheck {
     severity: Severity::Ok,
-    ..info(id, title, summary)
+    ..info(lang, id, title, summary)
   }
 }
 
@@ -320,7 +354,7 @@ mod tests {
       available_bytes: Some(3),
       ..Default::default()
     });
-    let c = evaluate(&f, &Capabilities::default());
+    let c = evaluate(Lang::for_locale("en-US"), &f, &Capabilities::default());
     assert!(
       c.iter()
         .any(|v| v.severity == Severity::Error && v.id == "storage.usage./")
@@ -328,7 +362,11 @@ mod tests {
   }
   #[test]
   fn unavailable_smart_is_info() {
-    let c = evaluate(&DiagnosticFacts::default(), &Capabilities::default());
+    let c = evaluate(
+      Lang::for_locale("en-US"),
+      &DiagnosticFacts::default(),
+      &Capabilities::default(),
+    );
     assert!(
       c.iter()
         .any(|v| v.id == "storage.smart" && v.severity == Severity::Info)
@@ -342,7 +380,7 @@ mod tests {
       opengl_renderer: Some("llvmpipe (LLVM 20.0.0, 256 bits)".into()),
       ..Default::default()
     };
-    let checks = evaluate(&facts, &Capabilities::default());
+    let checks = evaluate(Lang::for_locale("en-US"), &facts, &Capabilities::default());
     assert!(
       checks
         .iter()
@@ -362,7 +400,7 @@ mod tests {
       nvidia_module_loaded: Some(false),
       ..Default::default()
     };
-    let checks = evaluate(&facts, &Capabilities::default());
+    let checks = evaluate(Lang::for_locale("en-US"), &facts, &Capabilities::default());
     let check = checks
       .iter()
       .find(|check| check.id == "graphics.nvidia")

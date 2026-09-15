@@ -4,7 +4,6 @@ members = [
   "crates/argvus-control-center",
   "crates/argvus-tui",
   "crates/argvus-theme",
-  "crates/argvus-i18n",
   "crates/argvus-control-center-settings",
   "crates/argvus-control-center-apps",
   "crates/argvus-control-center-core",
@@ -45,6 +44,7 @@ unicode-width = "0.2"
 zbus = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+argvus-i18n = { path = "../argvus-i18n" }
 
 [profile.release]
 lto = true

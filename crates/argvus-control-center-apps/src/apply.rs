@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 use crate::catalog::{Category, find_app};
 use crate::detect::{self, DesktopFile};
-use argvus_control_center_core::paths;
+use argvus_control_center_core::{i18n::label, paths};
 
 /// What `apply` did, so the CLI/GUI can report useful feedback.
 #[derive(Debug, Default)]
@@ -54,7 +54,20 @@ pub fn apply(cat: Category, binary: &str, desktops: &[DesktopFile]) -> Result<Ap
   }
 
   report.hyprctl_reloaded = refresh_argvus();
-  report.notified = notify_user(&format!("{} → {binary}", cat.title()));
+  let category_label = match cat {
+    Category::Terminal => "control_center.terminal",
+    Category::FileManager => "control_center.file_manager",
+    Category::TextEditor => "control_center.text_editor",
+    Category::TerminalEditor => "control_center.terminal_editor",
+    Category::Browser => "control_center.browser",
+    Category::ImageViewer => "control_center.image_viewer",
+    Category::PdfViewer => "control_center.pdf_viewer",
+    Category::VideoPlayer => "control_center.video_player",
+    Category::AudioPlayer => "control_center.audio_player",
+    Category::Archive => "control_center.archive",
+    Category::Launcher => "control_center.launcher",
+  };
+  report.notified = notify_user(&format!("{} → {binary}", label(category_label)));
 
   Ok(report)
 }

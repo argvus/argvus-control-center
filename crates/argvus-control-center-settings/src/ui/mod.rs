@@ -98,10 +98,10 @@ fn draw_task_window(app: &App, frame: &mut Frame, area: Rect) {
           .title(Line::styled(
             format!(
               " {} · {} {} {} {} ",
-              tr(app.lang, "Processo", "Process",),
-              tr(app.lang, "linha", "line"),
+              tr(app.lang, "control_center.process"),
+              tr(app.lang, "control_center.line"),
               current,
-              tr(app.lang, "de", "of"),
+              tr(app.lang, "control_center.of"),
               shown_total,
             ),
             Style::new().fg(app.theme.accent),
@@ -114,8 +114,7 @@ fn draw_task_window(app: &App, frame: &mut Frame, area: Rect) {
           )
           .title_bottom(Line::from(tr(
             app.lang,
-            "↑↓ rolar · PgUp/PgDn · Home/End · Esc fechar",
-            "↑↓ scroll · PgUp/PgDn · Home/End · Esc close",
+            "control_center.scroll_pgup_pgdn_home_end_esc_close",
           ))),
       )
       .scroll((app.task_scroll, 0))
@@ -131,13 +130,9 @@ fn draw_too_small(app: &App, frame: &mut Frame, area: Rect) {
   frame.render_widget(Clear, popup);
   let text = format!(
     "{}\n\n{}: {MIN_WIDTH}x{MIN_HEIGHT}\n{}: {}x{}",
-    tr(
-      app.lang,
-      "A janela do terminal é pequena demais.",
-      "Terminal window is too small."
-    ),
-    tr(app.lang, "Tamanho mínimo", "Minimum size"),
-    tr(app.lang, "Tamanho atual", "Current size"),
+    tr(app.lang, "control_center.terminal_window_is_too_small"),
+    tr(app.lang, "control_center.minimum_size"),
+    tr(app.lang, "control_center.current_size"),
     area.width,
     area.height
   );
@@ -164,7 +159,11 @@ mod tests {
   use serde_json::json;
 
   fn user_app() -> App {
-    let mut app = App::new(Page::Main);
+    let mut app = App::with_context(
+      Page::Main,
+      crate::i18n::Lang::for_locale("en-US"),
+      crate::theme::Theme::load(),
+    );
     app.error_modal = None;
     app.navigation.push(Page::User);
     app.admin.accounts = json!({"actor_uid":1000, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel"],
@@ -213,23 +212,17 @@ mod tests {
     assert_eq!(app.navigation.current().selected, 2);
     let selected_bg = app.theme.selected_background;
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_ne!(button_bg(&terminal, "Salvar alterações"), selected_bg);
-    assert_ne!(
-      button_bg(&terminal, "Excluir usuário (manter home)"),
-      selected_bg
-    );
+    assert_ne!(button_bg(&terminal, "Save changes"), selected_bg);
+    assert_ne!(button_bg(&terminal, "Delete user (keep home)"), selected_bg);
 
     app.navigation.current_mut().selected = 10;
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_eq!(button_bg(&terminal, "Salvar alterações"), selected_bg);
+    assert_eq!(button_bg(&terminal, "Save changes"), selected_bg);
 
     app.navigation.current_mut().selected = 17;
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_ne!(button_bg(&terminal, "Salvar alterações"), selected_bg);
-    assert_eq!(
-      button_bg(&terminal, "Excluir usuário (manter home)"),
-      selected_bg
-    );
+    assert_ne!(button_bg(&terminal, "Save changes"), selected_bg);
+    assert_eq!(button_bg(&terminal, "Delete user (keep home)"), selected_bg);
   }
 
   #[test]

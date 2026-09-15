@@ -91,12 +91,12 @@ impl UnitFilter {
   }
   fn label(self, lang: Lang) -> &'static str {
     match self {
-      Self::All => tr(lang, "Todos", "All"),
-      Self::Running => tr(lang, "Ativos", "Running"),
-      Self::Stopped => tr(lang, "Parados", "Stopped"),
-      Self::Failed => tr(lang, "Falhos", "Failed"),
-      Self::Enabled => tr(lang, "Habilitados", "Enabled"),
-      Self::Disabled => tr(lang, "Desabilitados", "Disabled"),
+      Self::All => tr(lang, "control_center.all"),
+      Self::Running => tr(lang, "control_center.running"),
+      Self::Stopped => tr(lang, "control_center.stopped"),
+      Self::Failed => tr(lang, "control_center.failed"),
+      Self::Enabled => tr(lang, "control_center.enabled_a41f69"),
+      Self::Disabled => tr(lang, "control_center.disabled_2301f9"),
     }
   }
 }
@@ -164,7 +164,7 @@ impl ServicesApp {
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Carregando serviços...", "Loading services...").into(),
+      text: tr(self.lang, "control_center.loading_services").into(),
     });
   }
   pub fn poll(&mut self) -> bool {
@@ -284,7 +284,7 @@ impl ServicesApp {
               .any(|unit| unit.name == u && unit.scope == "user");
           self.status = Some(StatusMessage {
             kind: StatusKind::Info,
-            text: tr(self.lang, "Aplicando ação...", "Applying action...").into(),
+            text: tr(self.lang, "control_center.applying_action").into(),
           });
           self.action = Some(self.manager.spawn(move |_| run_action(user, &a, &u)));
         }
@@ -509,7 +509,7 @@ impl ServicesApp {
     self.refresh();
   }
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Serviços", "Services");
+    let root = tr(self.lang, "control_center.services");
     if self.page == ServicePage::Home {
       root.into()
     } else {
@@ -518,13 +518,13 @@ impl ServicesApp {
   }
   fn label(&self, p: ServicePage) -> &'static str {
     match p {
-      ServicePage::System => tr(self.lang, "Sistema", "System"),
-      ServicePage::User => tr(self.lang, "Usuário", "User"),
-      ServicePage::Failed => tr(self.lang, "Falhos", "Failed"),
-      ServicePage::Logs => tr(self.lang, "Logs", "Logs"),
-      ServicePage::Detail => tr(self.lang, "Detalhes", "Details"),
-      ServicePage::LogDetail(_) => tr(self.lang, "Logs > Detalhes", "Logs > Details"),
-      ServicePage::Home => tr(self.lang, "Serviços", "Services"),
+      ServicePage::System => tr(self.lang, "control_center.system"),
+      ServicePage::User => tr(self.lang, "control_center.user"),
+      ServicePage::Failed => tr(self.lang, "control_center.failed"),
+      ServicePage::Logs => tr(self.lang, "control_center.logs"),
+      ServicePage::Detail => tr(self.lang, "control_center.details"),
+      ServicePage::LogDetail(_) => tr(self.lang, "control_center.logs_details"),
+      ServicePage::Home => tr(self.lang, "control_center.services"),
     }
   }
   fn cycle_filter(&mut self) {
@@ -590,22 +590,22 @@ impl ServicesApp {
       ServicePage::System | ServicePage::User | ServicePage::Failed => vec![
         (
           ActionButton::Start,
-          Button::new(tr(self.lang, "Iniciar", "Start"), primary),
+          Button::new(tr(self.lang, "control_center.start"), primary),
         ),
         (
           ActionButton::Stop,
-          Button::new(tr(self.lang, "Parar", "Stop"), secondary),
+          Button::new(tr(self.lang, "control_center.stop"), secondary),
         ),
         (
           ActionButton::Restart,
-          Button::new(tr(self.lang, "Reiniciar", "Restart"), secondary),
+          Button::new(tr(self.lang, "control_center.restart"), secondary),
         ),
         (
           ActionButton::Filter,
           Button::new(
             format!(
               "{}: {}",
-              tr(self.lang, "Filtro", "Filter"),
+              tr(self.lang, "control_center.filter"),
               self.filter.label(self.lang)
             ),
             secondary,
@@ -618,11 +618,11 @@ impl ServicesApp {
           Button::new(
             format!(
               "{}: {}",
-              tr(self.lang, "Boot", "Boot"),
+              tr(self.lang, "control_center.boot"),
               if self.previous_boot {
-                tr(self.lang, "Anterior", "Previous")
+                tr(self.lang, "control_center.previous")
               } else {
-                tr(self.lang, "Atual", "Current")
+                tr(self.lang, "control_center.current_c42247")
               }
             ),
             secondary,
@@ -633,7 +633,7 @@ impl ServicesApp {
           Button::new(
             format!(
               "{}: {}",
-              tr(self.lang, "Serviço", "Service"),
+              tr(self.lang, "control_center.service"),
               self.logs_unit.as_deref().unwrap_or("—")
             ),
             secondary,
@@ -644,7 +644,7 @@ impl ServicesApp {
           Button::new(
             format!(
               "{}: {}",
-              tr(self.lang, "Prioridade", "Priority"),
+              tr(self.lang, "control_center.priority"),
               self.priority.as_deref().unwrap_or("0-7")
             ),
             secondary,
@@ -658,23 +658,16 @@ impl ServicesApp {
     match self.page {
       ServicePage::Detail => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Executar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Enter Run   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_run_r_refresh_esc_back_help",
       ),
-      ServicePage::LogDetail(_) => tr(
-        self.lang,
-        "↑/↓ Rolar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Scroll   ←/Esc Back   ? Help",
-      ),
+      ServicePage::LogDetail(_) => tr(self.lang, "control_center.scroll_esc_back_help"),
       ServicePage::Home => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_r_refresh_esc_back_help",
       ),
       _ => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   →/Enter Ativar   ←/→ Mover   / Buscar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   →/Enter Activate   ←/→ Move   / Search   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_enter_activate_move_search_r_refresh_esc_back_hel",
       ),
     }
   }
@@ -728,7 +721,7 @@ impl ServicesApp {
     } else if self.page == ServicePage::Failed && self.filtered().is_empty() {
       vec![format!(
         "[OK] {}",
-        tr(self.lang, "Nenhuma unidade com falha.", "No failed units.")
+        tr(self.lang, "control_center.no_failed_units")
       )]
     } else {
       self.unit_rows()
@@ -739,7 +732,11 @@ impl ServicesApp {
     if self.searching {
       lines.insert(
         0,
-        format!("{}: {}_", tr(self.lang, "Buscar", "Search"), self.search),
+        format!(
+          "{}: {}_",
+          tr(self.lang, "control_center.search"),
+          self.search
+        ),
       )
     }
     let visual_offset = usize::from(self.page == ServicePage::Logs) + usize::from(self.searching);
@@ -783,10 +780,10 @@ impl ServicesApp {
       area,
       &self.theme,
       ConfirmationDialog {
-        title: tr(self.lang, "Confirmar ação", "Confirm action"),
+        title: tr(self.lang, "control_center.confirm_action"),
         message: &format!("{} {}?", action_label(self.lang, action), unit),
-        confirm_label: tr(self.lang, "Continuar", "Continue"),
-        cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+        confirm_label: tr(self.lang, "control_center.continue"),
+        cancel_label: tr(self.lang, "control_center.cancel"),
         confirm_selected: self.confirmation.confirm_selected,
       },
     )
@@ -796,43 +793,43 @@ impl ServicesApp {
     let (user_active, user_enabled) = self.counts("user");
     let failed = self.units.iter().filter(|unit| unit.failed()).count();
     let boot = if self.previous_boot {
-      tr(self.lang, "Anterior", "Previous")
+      tr(self.lang, "control_center.previous")
     } else {
-      tr(self.lang, "Atual", "Current")
+      tr(self.lang, "control_center.current_c42247")
     };
     vec![
       format!(
         "{} {}  ·  {} {} · {} {}",
         AppConfig::icon("⚙️"),
-        tr(self.lang, "Sistema", "System"),
+        tr(self.lang, "control_center.system"),
         system_active,
-        tr(self.lang, "ativos", "active"),
+        tr(self.lang, "control_center.active_ae7190"),
         system_enabled,
-        tr(self.lang, "habilitados", "enabled"),
+        tr(self.lang, "control_center.enabled_26a3ab"),
       ),
       format!(
         "{} {}  ·  {} {} · {} {}",
         AppConfig::icon("👤"),
-        tr(self.lang, "Usuário", "User"),
+        tr(self.lang, "control_center.user"),
         user_active,
-        tr(self.lang, "ativos", "active"),
+        tr(self.lang, "control_center.active_ae7190"),
         user_enabled,
-        tr(self.lang, "habilitados", "enabled"),
+        tr(self.lang, "control_center.enabled_26a3ab"),
       ),
       format!(
         "{} {}  ·  {} {}",
         AppConfig::icon("⚠️"),
-        tr(self.lang, "Falhos", "Failed"),
+        tr(self.lang, "control_center.failed"),
         failed,
-        tr(self.lang, "com falha", "failed"),
+        tr(self.lang, "control_center.failed_cc0486"),
       ),
       format!(
         "{} {}  ·  {} {} · {} {}",
         AppConfig::icon("📜"),
-        tr(self.lang, "Logs", "Logs"),
-        tr(self.lang, "Boot", "Boot"),
+        tr(self.lang, "control_center.logs"),
+        tr(self.lang, "control_center.boot"),
         boot,
-        tr(self.lang, "Prioridade", "Priority"),
+        tr(self.lang, "control_center.priority"),
         self.priority.as_deref().unwrap_or("0-7"),
       ),
     ]
@@ -854,19 +851,19 @@ impl ServicesApp {
   }
   fn logs_header(&self) -> String {
     let boot = if self.previous_boot {
-      tr(self.lang, "Anterior", "Previous")
+      tr(self.lang, "control_center.previous")
     } else {
-      tr(self.lang, "Atual", "Current")
+      tr(self.lang, "control_center.current_c42247")
     };
     format!(
       "{} {}  ·  {} {} · {} {} · {} {}",
       AppConfig::icon("📜"),
-      tr(self.lang, "Logs", "Logs"),
-      tr(self.lang, "Boot", "Boot"),
+      tr(self.lang, "control_center.logs"),
+      tr(self.lang, "control_center.boot"),
       boot,
-      tr(self.lang, "Prioridade", "Priority"),
+      tr(self.lang, "control_center.priority"),
       self.priority.as_deref().unwrap_or("0-7"),
-      tr(self.lang, "Serviço", "Service"),
+      tr(self.lang, "control_center.service"),
       self.logs_unit.as_deref().unwrap_or("—"),
     )
   }
@@ -884,18 +881,21 @@ impl ServicesApp {
     }
     row.push_str(&self.file_badge(u));
     if self.page == ServicePage::Failed && u.scope == "user" {
-      row.push_str(&format!("   [{}]", tr(self.lang, "usuário", "user")));
+      row.push_str(&format!(
+        "   [{}]",
+        tr(self.lang, "control_center.user_e7acba")
+      ));
     }
     row
   }
   fn active_badge(&self, u: &Unit) -> Option<String> {
     let (symbol, label) = match u.active.as_str() {
-      "active" => ("●", tr(self.lang, "Ativo", "Active")),
-      "inactive" => ("○", tr(self.lang, "Inativo", "Inactive")),
-      "failed" => ("✕", tr(self.lang, "Falho", "Failed")),
-      "activating" => ("◌", tr(self.lang, "Ativando", "Activating")),
-      "deactivating" => ("◌", tr(self.lang, "Desativando", "Deactivating")),
-      "reloading" => ("◌", tr(self.lang, "Recarregando", "Reloading")),
+      "active" => ("●", tr(self.lang, "control_center.active_095d39")),
+      "inactive" => ("○", tr(self.lang, "control_center.inactive_6eb764")),
+      "failed" => ("✕", tr(self.lang, "control_center.failed_b852d2")),
+      "activating" => ("◌", tr(self.lang, "control_center.activating")),
+      "deactivating" => ("◌", tr(self.lang, "control_center.deactivating")),
+      "reloading" => ("◌", tr(self.lang, "control_center.reloading")),
       _ => return None,
     };
     Some(format!("   {symbol} {label}"))
@@ -903,10 +903,10 @@ impl ServicesApp {
   fn file_badge(&self, u: &Unit) -> String {
     match u.file_state.as_str() {
       "enabled" | "static" | "indirect" => {
-        format!("   ● {}", tr(self.lang, "Habilitado", "Enabled"))
+        format!("   ● {}", tr(self.lang, "control_center.enabled_78438d"))
       }
       "disabled" | "masked" => {
-        format!("   ○ {}", tr(self.lang, "Desabilitado", "Disabled"))
+        format!("   ○ {}", tr(self.lang, "control_center.disabled_483392"))
       }
       _ => String::new(),
     }
@@ -921,46 +921,45 @@ impl ServicesApp {
     else {
       return vec![Line::from(tr(
         self.lang,
-        "Serviço não encontrado",
-        "Service not found",
+        "control_center.service_not_found",
       ))];
     };
     let rows = vec![
       Line::from(format!(
         " {} {}",
         AppConfig::icon("⚙️"),
-        tr(self.lang, "SERVIÇO", "SERVICE")
+        tr(self.lang, "control_center.service_bfe08e")
       )),
       Line::from(format!(
         "   {:<12} {}",
-        tr(self.lang, "Nome:", "Name:"),
+        tr(self.lang, "control_center.name"),
         u.name
       )),
       Line::from(format!(
         "   {:<12} {}",
-        tr(self.lang, "Descrição:", "Description:"),
+        tr(self.lang, "control_center.description"),
         u.description
       )),
       Line::from(format!(
         "   {:<12} {}",
-        tr(self.lang, "Estado:", "State:"),
+        tr(self.lang, "control_center.state"),
         state_value(u)
       )),
       Line::from(format!(
         "   {:<12} {}",
-        tr(self.lang, "Boot:", "Boot:"),
+        tr(self.lang, "control_center.boot_f0640d"),
         file_state_label(self.lang, &u.file_state)
       )),
       Line::from(format!(
         "   {:<12} {}",
-        tr(self.lang, "PID:", "Main PID:"),
+        tr(self.lang, "control_center.main_pid"),
         u.main_pid
           .map(|v| v.to_string())
           .unwrap_or_else(|| "—".into())
       )),
       Line::from(format!(
         "   {:<12} {}",
-        tr(self.lang, "Arquivo:", "Unit file:"),
+        tr(self.lang, "control_center.unit_file"),
         u.fragment.as_deref().unwrap_or("—")
       )),
     ];
@@ -983,7 +982,7 @@ impl ServicesApp {
     .filter(|action| can_action(action, unit))
     .map(|action| (action, action_label(self.lang, action)))
     .collect::<Vec<_>>();
-    actions.push(("logs", tr(self.lang, "Logs", "Logs").into()));
+    actions.push(("logs", tr(self.lang, "control_center.logs").into()));
     actions
   }
   fn detail_or_selected_unit(&self) -> Option<&Unit> {
@@ -996,11 +995,7 @@ impl ServicesApp {
   fn log_detail_lines(&self, index: usize) -> Vec<Line<'static>> {
     let filtered = self.filtered_logs();
     let Some(entry) = filtered.get(index) else {
-      return vec![Line::from(tr(
-        self.lang,
-        "Log não encontrado",
-        "Log not found",
-      ))];
+      return vec![Line::from(tr(self.lang, "control_center.log_not_found"))];
     };
     let timestamp = entry.timestamp.clone().unwrap_or_else(|| "—".into());
     let unit = entry.unit.clone().unwrap_or_else(|| "kernel".into());
@@ -1012,22 +1007,30 @@ impl ServicesApp {
     vec![
       Line::from(format!(
         "{}: {}",
-        tr(self.lang, "Horário", "Timestamp"),
+        tr(self.lang, "control_center.timestamp"),
         timestamp
       )),
-      Line::from(format!("{}: {}", tr(self.lang, "Unidade", "Unit"), unit)),
       Line::from(format!(
         "{}: {}",
-        tr(self.lang, "Prioridade", "Priority"),
+        tr(self.lang, "control_center.unit"),
+        unit
+      )),
+      Line::from(format!(
+        "{}: {}",
+        tr(self.lang, "control_center.priority"),
         priority
       )),
       Line::from(format!("PID: {}", pid)),
       Line::from(format!(
         "{}: {}",
-        tr(self.lang, "Executável", "Executable"),
+        tr(self.lang, "control_center.executable"),
         executable
       )),
-      Line::from(format!("{}: {}", tr(self.lang, "Boot", "Boot"), boot)),
+      Line::from(format!(
+        "{}: {}",
+        tr(self.lang, "control_center.boot"),
+        boot
+      )),
       Line::from(""),
       Line::from(message),
     ]
@@ -1047,13 +1050,13 @@ fn can_action(action: &str, unit: &Unit) -> bool {
 }
 fn action_label(lang: Lang, action: &str) -> String {
   match action {
-    "start" => tr(lang, "Iniciar", "Start"),
-    "stop" => tr(lang, "Parar", "Stop"),
-    "restart" => tr(lang, "Reiniciar", "Restart"),
-    "enable" => tr(lang, "Habilitar", "Enable"),
-    "disable" => tr(lang, "Desabilitar", "Disable"),
-    "enable-now" => tr(lang, "Habilitar e iniciar", "Enable and start"),
-    "disable-now" => tr(lang, "Desabilitar e parar", "Disable and stop"),
+    "start" => tr(lang, "control_center.start"),
+    "stop" => tr(lang, "control_center.stop"),
+    "restart" => tr(lang, "control_center.restart"),
+    "enable" => tr(lang, "control_center.enable"),
+    "disable" => tr(lang, "control_center.disable"),
+    "enable-now" => tr(lang, "control_center.enable_and_start"),
+    "disable-now" => tr(lang, "control_center.disable_and_stop"),
     other => other,
   }
   .into()
@@ -1063,8 +1066,8 @@ fn state_value(u: &Unit) -> String {
 }
 fn file_state_label(lang: Lang, state: &str) -> String {
   match state {
-    "enabled" | "static" | "indirect" => tr(lang, "Habilitado", "Enabled").into(),
-    "disabled" | "masked" => tr(lang, "Desabilitado", "Disabled").into(),
+    "enabled" | "static" | "indirect" => tr(lang, "control_center.enabled_78438d").into(),
+    "disabled" | "masked" => tr(lang, "control_center.disabled_483392").into(),
     _ => state.into(),
   }
 }
@@ -1122,7 +1125,7 @@ mod tests {
   use super::*;
   #[test]
   fn failed_filter_is_explicit() {
-    let mut a = ServicesApp::new(Lang::En, Theme::load());
+    let mut a = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     a.page = ServicePage::Failed;
     a.units = vec![
       Unit {
@@ -1150,7 +1153,7 @@ mod tests {
 
   #[test]
   fn service_list_filter_and_selection_stay_bounded() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     app.units = vec![Unit {
       name: "demo.service".into(),
@@ -1180,7 +1183,7 @@ mod tests {
 
   #[test]
   fn service_details_expose_actions_and_confirmation_defaults_to_cancel() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::Detail;
     app.detail_parent = ServicePage::System;
     app.detail_unit = Some("demo.service".into());
@@ -1218,19 +1221,19 @@ mod tests {
 
   #[test]
   fn services_expose_action_buttons_on_lists_but_not_home_or_detail() {
-    let home = ServicesApp::new(Lang::En, Theme::load());
+    let home = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(home.buttons().len(), 0);
-    let mut system = ServicesApp::new(Lang::En, Theme::load());
+    let mut system = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     system.page = ServicePage::System;
     assert_eq!(system.buttons().len(), 4);
-    let mut logs = ServicesApp::new(Lang::En, Theme::load());
+    let mut logs = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     logs.page = ServicePage::Logs;
     assert_eq!(logs.buttons().len(), 3);
   }
 
   #[test]
   fn services_tab_cycles_between_list_and_buttons_and_backtab_lands_last() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     app.units = (0..4)
       .map(|i| Unit {
@@ -1250,7 +1253,7 @@ mod tests {
 
   #[test]
   fn services_renders_button_bar_on_list_pages() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 25)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
@@ -1267,7 +1270,7 @@ mod tests {
 
   #[test]
   fn services_home_rows_act_as_a_status_dashboard() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.units = vec![
       Unit {
         name: "a.service".into(),
@@ -1301,7 +1304,7 @@ mod tests {
 
   #[test]
   fn services_unit_rows_render_state_badges() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     app.units = vec![
       Unit {
@@ -1333,7 +1336,7 @@ mod tests {
 
   #[test]
   fn services_detail_lines_use_section_header_and_aligned_rows() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::Detail;
     app.detail_parent = ServicePage::System;
     app.detail_unit = Some("demo.service".into());
@@ -1361,11 +1364,11 @@ mod tests {
 
   #[test]
   fn loading_status_is_cleared_once_units_arrive() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     app.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(app.lang, "Carregando serviços...", "Loading services...").into(),
+      text: tr(app.lang, "control_center.loading_services").into(),
     });
     app.job = Some(
       app
@@ -1386,7 +1389,7 @@ mod tests {
 
   #[test]
   fn arrows_are_blocked_while_services_are_loading() {
-    let mut app = ServicesApp::new(Lang::En, Theme::load());
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     app.selected = 3;
     app.job = Some(app.manager.spawn(|_| {

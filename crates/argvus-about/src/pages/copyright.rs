@@ -8,46 +8,40 @@ const LICENSE_TEXT: &str = include_str!("../../../../LICENSE");
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let rows = vec![
-        Row::Section(
-            tr(lang, "Direitos autorais", "Copyright").to_string(),
-        ),
-        Row::Para(
-            tr(
-                lang,
-                "Copyright © 2025 William C. Canin. O ARGVUS e seus módulos são distribuídos sob a Licença Pública Geral GNU, versão 3 (GPLv3), conforme descrito abaixo.",
-                "Copyright © 2025 William C. Canin. ARGVUS and its modules are distributed under the GNU General Public License, version 3 (GPLv3), as described below.",
-            )
-            .to_string(),
-        ),
-        Row::Spacer,
-        Row::Para(
-            tr(
-                lang,
-                "Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob os termos da GPL, conforme publicado pela Free Software Foundation, seja a versão 3 da licença, ou (a seu critério) qualquer versão posterior.",
-                "This program is free software: you can redistribute it and/or modify it under the terms of the GPL as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.",
-            )
-            .to_string(),
-        ),
-        Row::Para(
-            tr(
-                lang,
-                "Este programa é distribuído na esperança de que seja útil, mas SEM NENHUMA GARANTIA; sem sequer a garantia implícita de COMERCIABILIDADE ou ADEQUAÇÃO A UM DETERMINADO FIM. Veja a GNU General Public License para mais detalhes.",
-                "This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.",
-            )
-            .to_string(),
-        ),
-        Row::Para(
-            tr(
-                lang,
-                "Você deve ter recebido uma cópia da GNU General Public License junto com este programa. Se não, veja <https://www.gnu.org/licenses/>.",
-                "You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.",
-            )
-            .to_string(),
-        ),
-        Row::Spacer,
-        Row::Section(tr(lang, "Texto completo da licença", "Full license text").to_string()),
-        Row::Para(LICENSE_TEXT.to_string()),
-    ];
+    Row::Section(tr(lang, "control_center.copyright").to_string()),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.copyright_2025_william_c_canin_argvus_and_its_modules_are_distributed_",
+      )
+      .to_string(),
+    ),
+    Row::Spacer,
+    Row::Para(
+      tr(
+        lang,
+        "control_center.this_program_is_free_software_you_can_redistribute_it_and_or_modify_it",
+      )
+      .to_string(),
+    ),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.this_program_is_distributed_in_the_hope_that_it_will_be_useful_but_wit",
+      )
+      .to_string(),
+    ),
+    Row::Para(
+      tr(
+        lang,
+        "control_center.you_should_have_received_a_copy_of_the_gnu_general_public_license_alon",
+      )
+      .to_string(),
+    ),
+    Row::Spacer,
+    Row::Section(tr(lang, "control_center.full_license_text").to_string()),
+    Row::Para(LICENSE_TEXT.to_string()),
+  ];
 
   simple_doc(&rows, &app.theme, width, selected)
 }

@@ -17,13 +17,9 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
       frame,
       area,
       &app.theme,
-      tr(
-        app.lang,
-        "A janela do terminal é pequena demais.",
-        "Terminal window is too small.",
-      ),
-      tr(app.lang, "Tamanho mínimo", "Minimum size"),
-      tr(app.lang, "Tamanho atual", "Current size"),
+      tr(app.lang, "control_center.terminal_window_is_too_small"),
+      tr(app.lang, "control_center.minimum_size"),
+      tr(app.lang, "control_center.current_size"),
     );
     return;
   }
@@ -66,7 +62,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
       frame,
       area,
       &app.theme,
-      tr(app.lang, "Ajuda", "Help"),
+      tr(app.lang, "control_center.help"),
       &app.help_lines(),
     );
   }
@@ -91,7 +87,7 @@ fn draw_home(app: &App, frame: &mut Frame) {
     rows[0],
     &app.theme,
     Header {
-      title: tr(app.lang, "ARGVUS Control Center", "ARGVUS Control Center"),
+      title: tr(app.lang, "control_center.argvus_control_center"),
       version: None,
       version_label: "",
     },
@@ -137,8 +133,7 @@ fn draw_home(app: &App, frame: &mut Frame) {
     None,
     tr(
       app.lang,
-      "↑/↓ Navegar   →/Enter Abrir   s Configuração   ? Ajuda   q Sair",
-      "↑/↓ Navigate   →/Enter Open   s Configuration   ? Help   q Quit",
+      "control_center.navigate_enter_open_s_configuration_help_q_quit",
     ),
   );
 }

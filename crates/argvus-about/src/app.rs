@@ -50,11 +50,11 @@ impl Tab {
 
   pub fn label(self, lang: Lang) -> &'static str {
     match self {
-      Tab::System => tr(lang, "Sistema", "System"),
-      Tab::About => tr(lang, "Sobre", "About"),
-      Tab::Donate => tr(lang, "Donate", "Donate"),
-      Tab::Credits => tr(lang, "Créditos", "Credits"),
-      Tab::Copyright => tr(lang, "Direitos autorais", "Copyright"),
+      Tab::System => tr(lang, "control_center.system"),
+      Tab::About => tr(lang, "control_center.about"),
+      Tab::Donate => tr(lang, "control_center.donate"),
+      Tab::Credits => tr(lang, "control_center.credits"),
+      Tab::Copyright => tr(lang, "control_center.copyright"),
     }
   }
 }
@@ -107,7 +107,7 @@ impl App {
   pub fn with_context(initial_tab: Tab, lang: Lang, theme: Theme) -> Self {
     let missing = na(lang);
     let status = Status {
-      text: tr(lang, "Bem-vindo ao ARGVUS", "Welcome to ARGVUS").to_string(),
+      text: tr(lang, "control_center.welcome_to_argvus").to_string(),
       kind: StatusKind::Info,
     };
     Self {
@@ -132,7 +132,7 @@ impl App {
 
   #[cfg(test)]
   pub fn test() -> Self {
-    let lang = Lang::Pt;
+    let lang = Lang::for_locale("pt-BR");
     let theme = Theme::load();
     Self {
       lang,
@@ -260,7 +260,7 @@ impl App {
     let doc = self.current_doc();
     let Some(action) = doc.actions.get(self.selected) else {
       self.status = Some(Status {
-        text: tr(self.lang, "Nenhum link aqui", "No link here").to_string(),
+        text: tr(self.lang, "control_center.no_link_here").to_string(),
         kind: StatusKind::Info,
       });
       return;
@@ -268,18 +268,13 @@ impl App {
     match open_url(&action.url) {
       Ok(()) => {
         self.status = Some(Status {
-          text: tr(self.lang, "Abrindo link…", "Opening link…").to_string(),
+          text: tr(self.lang, "control_center.opening_link").to_string(),
           kind: StatusKind::Success,
         });
       }
       Err(_) => {
         self.status = Some(Status {
-          text: tr(
-            self.lang,
-            "Falha ao abrir o link",
-            "Failed to open the link",
-          )
-          .to_string(),
+          text: tr(self.lang, "control_center.failed_to_open_the_link").to_string(),
           kind: StatusKind::Error,
         });
       }

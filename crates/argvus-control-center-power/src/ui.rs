@@ -131,12 +131,7 @@ impl PowerApp {
     );
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Carregando estado de energia...",
-        "Loading power state...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.loading_power_state").into(),
     });
   }
 
@@ -242,19 +237,27 @@ impl PowerApp {
           let pending = self.pending.take().unwrap();
           self.status = Some(StatusMessage {
             kind: StatusKind::Info,
-            text: tr(self.lang, "Executando...", "Running...").into(),
+            text: tr(self.lang, "control_center.running_3f0393").into(),
           });
           self.action = Some(self.manager.spawn(move |_| match pending {
             Pending::Suspend => {
               backend::suspend_now()?;
               Ok(JobData::Action(
-                tr(Lang::En, "Suspensão executada", "Suspension started").into(),
+                tr(
+                  Lang::for_locale("en-US"),
+                  "control_center.suspension_started",
+                )
+                .into(),
               ))
             }
             Pending::Hibernate => {
               backend::hibernate_now()?;
               Ok(JobData::Action(
-                tr(Lang::En, "Hibernação executada", "Hibernation started").into(),
+                tr(
+                  Lang::for_locale("en-US"),
+                  "control_center.hibernation_started",
+                )
+                .into(),
               ))
             }
           }));
@@ -286,12 +289,10 @@ impl PowerApp {
   }
 
   fn row_count(&self) -> usize {
-    let Some(state) = &self.state else { return 0; };
-    if state.is_laptop {
-      6
-    } else {
-      2
-    }
+    let Some(state) = &self.state else {
+      return 0;
+    };
+    if state.is_laptop { 6 } else { 2 }
   }
 
   fn handle_picker(&mut self, key: KeyCode) {
@@ -406,11 +407,11 @@ impl PowerApp {
   fn apply_lid(&mut self, context: LidContext, behavior: PowerBehavior) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Aplicando configuração...", "Applying...").into(),
+      text: tr(self.lang, "control_center.applying_6c556f").into(),
     });
     let description = format!(
       "{} · {}",
-      tr(self.lang, "Fechar tampa", "Lid close"),
+      tr(self.lang, "control_center.lid_close"),
       behavior_label(self.lang, behavior.value()),
     );
     self.action = Some(self.manager.spawn(move |_| {
@@ -422,11 +423,11 @@ impl PowerApp {
   fn apply_button(&mut self, behavior: PowerButtonBehavior) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Aplicando configuração...", "Applying...").into(),
+      text: tr(self.lang, "control_center.applying_6c556f").into(),
     });
     let description = format!(
       "{} · {}",
-      tr(self.lang, "Botão de energia", "Power button"),
+      tr(self.lang, "control_center.power_button"),
       behavior_label(self.lang, behavior.value()),
     );
     self.action = Some(self.manager.spawn(move |_| {
@@ -438,11 +439,11 @@ impl PowerApp {
   fn apply_idle(&mut self, minutes: u32) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Aplicando configuração...", "Applying...").into(),
+      text: tr(self.lang, "control_center.applying_6c556f").into(),
     });
     let description = format!(
       "{} · {}",
-      tr(self.lang, "Desligar tela após", "Screen off after"),
+      tr(self.lang, "control_center.screen_off_after"),
       idle_label(minutes),
     );
     self.action = Some(self.manager.spawn(move |_| {
@@ -454,11 +455,11 @@ impl PowerApp {
   fn apply_lock(&mut self, minutes: u32) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Aplicando configuração...", "Applying...").into(),
+      text: tr(self.lang, "control_center.applying_6c556f").into(),
     });
     let description = format!(
       "{} · {}",
-      tr(self.lang, "Bloquear tela após", "Lock screen after"),
+      tr(self.lang, "control_center.lock_screen_after"),
       idle_label(minutes),
     );
     self.action = Some(self.manager.spawn(move |_| {
@@ -469,7 +470,7 @@ impl PowerApp {
 
   fn rows(&self) -> Vec<String> {
     let Some(state) = &self.state else {
-      return vec![tr(self.lang, "Carregando...", "Loading...").into()];
+      return vec![tr(self.lang, "control_center.loading").into()];
     };
     let mut rows = Vec::new();
 
@@ -477,23 +478,19 @@ impl PowerApp {
       rows.push(format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("💻"),
-        tr(
-          self.lang,
-          "Ao fechar a tampa (bateria)",
-          "On lid close (battery)"
-        ),
+        tr(self.lang, "control_center.on_lid_close_battery"),
         behavior_label(self.lang, state.lid[0].value()),
       ));
       rows.push(format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("🔌"),
-        tr(self.lang, "Ao fechar a tampa (CA)", "On lid close (AC)"),
+        tr(self.lang, "control_center.on_lid_close_ac"),
         behavior_label(self.lang, state.lid[1].value()),
       ));
       rows.push(format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("⏻"),
-        tr(self.lang, "Botão de energia", "Power button"),
+        tr(self.lang, "control_center.power_button"),
         behavior_label(self.lang, state.power_button.value()),
       ));
     }
@@ -502,15 +499,15 @@ impl PowerApp {
       format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("🖥️"),
-        tr(self.lang, "Desligar tela após", "Screen off after"),
+        tr(self.lang, "control_center.screen_off_after"),
         idle_label(state.screen_off_minutes.unwrap_or(0)),
       )
     } else {
       format!(
         " {}  {}  ·  {}",
         AppConfig::icon("🖥️"),
-        tr(self.lang, "Desligar tela após", "Screen off after"),
-        tr(self.lang, "via ARGVUS hypridle", "via ARGVUS hypridle"),
+        tr(self.lang, "control_center.screen_off_after"),
+        tr(self.lang, "control_center.via_argvus_hypridle"),
       )
     });
 
@@ -518,15 +515,15 @@ impl PowerApp {
       format!(
         " {}  {}  ·  ▸ {}",
         AppConfig::icon("🔒"),
-        tr(self.lang, "Bloquear tela após", "Lock screen after"),
+        tr(self.lang, "control_center.lock_screen_after"),
         idle_label(state.lock_minutes.unwrap_or(0)),
       )
     } else {
       format!(
         " {}  {}  ·  {}",
         AppConfig::icon("🔒"),
-        tr(self.lang, "Bloquear tela após", "Lock screen after"),
-        tr(self.lang, "via ARGVUS hypridle", "via ARGVUS hypridle"),
+        tr(self.lang, "control_center.lock_screen_after"),
+        tr(self.lang, "control_center.via_argvus_hypridle"),
       )
     });
 
@@ -548,9 +545,9 @@ impl PowerApp {
     let hibernate_icon = if state.can_hibernate { "✓" } else { "✕" };
     format!(
       " 🔋 {}: {}   {}: {}",
-      tr(self.lang, "Suspender", "Suspend"),
+      tr(self.lang, "control_center.suspend"),
       suspend_icon,
-      tr(self.lang, "Hibernar", "Hibernate"),
+      tr(self.lang, "control_center.hibernate"),
       hibernate_icon,
     )
   }
@@ -564,18 +561,18 @@ impl PowerApp {
     if state.is_none_or(|s| s.can_suspend) {
       buttons.push((
         PowerButton::Suspend,
-        Button::new(tr(self.lang, "Suspender agora", "Suspend now"), primary),
+        Button::new(tr(self.lang, "control_center.suspend_now"), primary),
       ));
     }
     if state.is_none_or(|s| s.can_hibernate) {
       buttons.push((
         PowerButton::Hibernate,
-        Button::new(tr(self.lang, "Hibernar agora", "Hibernate now"), danger),
+        Button::new(tr(self.lang, "control_center.hibernate_now"), danger),
       ));
     }
     buttons.push((
       PowerButton::Refresh,
-      Button::new(tr(self.lang, "Atualizar", "Refresh"), secondary),
+      Button::new(tr(self.lang, "control_center.refresh"), secondary),
     ));
     buttons
   }
@@ -633,11 +630,10 @@ impl PowerApp {
       frame,
       area,
       &self.theme,
-      tr(self.lang, "Energia", "Power"),
+      tr(self.lang, "control_center.power"),
       tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   Enter Lista   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   Enter List   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_enter_list_r_refresh_esc_back_help",
       ),
     );
     let buttons = self.buttons();
@@ -670,22 +666,22 @@ impl PowerApp {
     }
     if let Some(pending) = &self.pending {
       let action = match pending {
-        Pending::Suspend => tr(self.lang, "Suspender", "Suspend"),
-        Pending::Hibernate => tr(self.lang, "Hibernar", "Hibernate"),
+        Pending::Suspend => tr(self.lang, "control_center.suspend"),
+        Pending::Hibernate => tr(self.lang, "control_center.hibernate"),
       };
       draw_confirmation(
         frame,
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(self.lang, "Confirmar ação", "Confirm action"),
+          title: tr(self.lang, "control_center.confirm_action"),
           message: &format!(
             "{} {}?",
-            tr(self.lang, "Deseja", "Do you want to"),
+            tr(self.lang, "control_center.do_you_want_to"),
             action.to_lowercase(),
           ),
-          confirm_label: tr(self.lang, "Continuar", "Continue"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.continue"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       )
@@ -698,14 +694,14 @@ impl PowerApp {
 
 fn behavior_label(lang: Lang, value: &str) -> String {
   match value {
-    "ignore" => tr(lang, "Ignorar", "Ignore").into(),
-    "poweroff" => tr(lang, "Desligar", "Power off").into(),
-    "reboot" => tr(lang, "Reiniciar", "Reboot").into(),
-    "halt" => tr(lang, "Parar", "Halt").into(),
-    "suspend" => tr(lang, "Suspender", "Suspend").into(),
-    "hibernate" => tr(lang, "Hibernar", "Hibernate").into(),
-    "suspend-then-hibernate" => tr(lang, "Suspender → hibernar", "Suspend → hibernate").into(),
-    "lock" => tr(lang, "Bloquear", "Lock").into(),
+    "ignore" => tr(lang, "control_center.ignore").into(),
+    "poweroff" => tr(lang, "control_center.power_off").into(),
+    "reboot" => tr(lang, "control_center.reboot").into(),
+    "halt" => tr(lang, "control_center.halt").into(),
+    "suspend" => tr(lang, "control_center.suspend").into(),
+    "hibernate" => tr(lang, "control_center.hibernate").into(),
+    "suspend-then-hibernate" => tr(lang, "control_center.suspend_hibernate").into(),
+    "lock" => tr(lang, "control_center.lock").into(),
     other => other.into(),
   }
 }
@@ -771,28 +767,28 @@ fn picker_options(target: PickerTarget, lang: Lang) -> Vec<String> {
       .iter()
       .map(|&behavior| behavior_label(lang, behavior.value()))
       .collect(),
-    PickerTarget::ScreenOff => IDLE_OPTIONS.iter().map(|&minutes| idle_label(minutes)).collect(),
-    PickerTarget::Lock => LOCK_OPTIONS.iter().map(|&minutes| idle_label(minutes)).collect(),
+    PickerTarget::ScreenOff => IDLE_OPTIONS
+      .iter()
+      .map(|&minutes| idle_label(minutes))
+      .collect(),
+    PickerTarget::Lock => LOCK_OPTIONS
+      .iter()
+      .map(|&minutes| idle_label(minutes))
+      .collect(),
   }
 }
 
 fn picker_title(lang: Lang, target: PickerTarget) -> String {
   match target {
-    PickerTarget::LidBattery => tr(lang, "Tampa (bateria)", "Lid close (battery)").into(),
-    PickerTarget::LidAc => tr(lang, "Tampa (CA)", "Lid close (AC)").into(),
-    PickerTarget::PowerButton => tr(lang, "Botão de energia", "Power button").into(),
-    PickerTarget::ScreenOff => tr(lang, "Desligar tela após", "Screen off after").into(),
-    PickerTarget::Lock => tr(lang, "Bloquear tela após", "Lock screen after").into(),
+    PickerTarget::LidBattery => tr(lang, "control_center.lid_close_battery").into(),
+    PickerTarget::LidAc => tr(lang, "control_center.lid_close_ac").into(),
+    PickerTarget::PowerButton => tr(lang, "control_center.power_button").into(),
+    PickerTarget::ScreenOff => tr(lang, "control_center.screen_off_after").into(),
+    PickerTarget::Lock => tr(lang, "control_center.lock_screen_after").into(),
   }
 }
 
-fn draw_picker(
-  frame: &mut Frame,
-  area: Rect,
-  theme: &Theme,
-  lang: Lang,
-  picker: &Picker,
-) {
+fn draw_picker(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, picker: &Picker) {
   let options = picker_options(picker.target, lang);
   let title = picker_title(lang, picker.target);
   let width = area.width.saturating_sub(8).clamp(28, 48);
@@ -819,13 +815,12 @@ fn draw_picker(
     })
     .collect();
   frame.render_widget(
-    Paragraph::new(lines)
-      .block(
-        Block::bordered()
-          .title(format!(" {title} "))
-          .border_style(Style::new().fg(theme.border_active))
-          .style(Style::new().bg(theme.background)),
-      ),
+    Paragraph::new(lines).block(
+      Block::bordered()
+        .title(format!(" {title} "))
+        .border_style(Style::new().fg(theme.border_active))
+        .style(Style::new().bg(theme.background)),
+    ),
     popup,
   );
 }
@@ -864,14 +859,14 @@ mod tests {
 
   #[test]
   fn energy_app_loads_in_the_background() {
-    let app = PowerApp::new(Lang::En, Theme::load());
+    let app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert!(app.job.is_some());
     assert!(app.status.is_some());
   }
 
   #[test]
   fn row_count_laptop() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(app.row_count(), 0);
     app.state = Some(laptop_state());
     assert_eq!(app.row_count(), 6);
@@ -879,7 +874,7 @@ mod tests {
 
   #[test]
   fn row_count_desktop() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(app.row_count(), 0);
     app.state = Some(desktop_state());
     assert_eq!(app.row_count(), 2);
@@ -887,7 +882,7 @@ mod tests {
 
   #[test]
   fn picker_opens_closes_and_applies_screen_off() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(desktop_state());
@@ -905,7 +900,7 @@ mod tests {
 
   #[test]
   fn picker_escape_cancels_without_change() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(desktop_state());
@@ -921,7 +916,7 @@ mod tests {
 
   #[test]
   fn picker_nunca_clears_screen_off() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(desktop_state());
@@ -937,7 +932,7 @@ mod tests {
 
   #[test]
   fn picker_navigation_is_bounded() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(desktop_state());
@@ -953,7 +948,7 @@ mod tests {
 
   #[test]
   fn lid_picker_applies_selected_behavior() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(laptop_state());
@@ -982,7 +977,7 @@ mod tests {
 
   #[test]
   fn lock_picker_opens_on_desktop_row_after_screen_off() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(desktop_state());
@@ -1002,7 +997,7 @@ mod tests {
 
   #[test]
   fn lock_picker_nunca_clears_lock() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(desktop_state());
@@ -1019,7 +1014,7 @@ mod tests {
 
   #[test]
   fn power_app_navigates_and_toggles_button_focus() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
     app.action = None;
     app.state = Some(laptop_state());
@@ -1043,7 +1038,7 @@ mod tests {
 
   #[test]
   fn power_app_renders_without_panic() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.state = Some(laptop_state());
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 20)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
@@ -1051,7 +1046,7 @@ mod tests {
 
   #[test]
   fn power_app_desktop_renders_without_panic() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.state = Some(desktop_state());
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 20)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
@@ -1059,7 +1054,7 @@ mod tests {
 
   #[test]
   fn power_app_renders_with_picker_open() {
-    let mut app = PowerApp::new(Lang::En, Theme::load());
+    let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.state = Some(desktop_state());
     app.picker = Some(Picker {
       target: PickerTarget::ScreenOff,

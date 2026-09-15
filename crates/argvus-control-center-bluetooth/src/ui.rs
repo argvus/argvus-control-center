@@ -203,12 +203,7 @@ impl BluetoothApp {
     }
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Aplicando Bluetooth...",
-        "Applying Bluetooth change...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.applying_bluetooth_change").into(),
     });
     let caps = self.capabilities.clone();
     self.action = Some(self.jobs.spawn(move |_| {
@@ -222,12 +217,7 @@ impl BluetoothApp {
   fn act_device(&mut self, action: &'static str) {
     if let Some(d) = self.selected_device() {
       let address = d.address.clone();
-      let msg = tr(
-        self.lang,
-        "Operação Bluetooth concluída.",
-        "Bluetooth operation completed.",
-      )
-      .into();
+      let msg = tr(self.lang, "control_center.bluetooth_operation_completed").into();
       self.start_action(move |b| b.action(&address, action), msg);
     }
   }
@@ -240,7 +230,7 @@ impl BluetoothApp {
     };
     let address = d.address.clone();
     let via_agent = self.agent_ready;
-    let msg = tr(self.lang, "Dispositivo pareado.", "Device paired.").into();
+    let msg = tr(self.lang, "control_center.device_paired").into();
     self.start_action(move |b| b.pair(&address, via_agent), msg);
   }
   fn open_agent(&mut self) {
@@ -274,12 +264,7 @@ impl BluetoothApp {
     self.scanning = true;
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Procurando dispositivos...",
-        "Scanning for devices...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.scanning_for_devices").into(),
     });
     let caps = self.capabilities.clone();
     self.action = Some(self.jobs.spawn(move |_| {
@@ -451,12 +436,7 @@ impl BluetoothApp {
           .unwrap_or(false);
         self.start_action(
           move |b| b.power(on),
-          tr(
-            self.lang,
-            "Estado do adaptador alterado.",
-            "Adapter state changed.",
-          )
-          .into(),
+          tr(self.lang, "control_center.adapter_state_changed").into(),
         );
       }
       ActionButton::Discoverable => {
@@ -468,12 +448,7 @@ impl BluetoothApp {
           .unwrap_or(false);
         self.start_action(
           move |b| b.discoverable(on),
-          tr(
-            self.lang,
-            "Visibilidade alterada.",
-            "Discoverability changed.",
-          )
-          .into(),
+          tr(self.lang, "control_center.discoverability_changed").into(),
         );
       }
       ActionButton::Pair => self.act_pair(),
@@ -496,14 +471,14 @@ impl BluetoothApp {
         (
           ActionButton::Power,
           Button::new(
-            tr(self.lang, "Ligar/Desligar", "Power"),
+            tr(self.lang, "control_center.power_f27008"),
             ButtonKind::Secondary,
           ),
         ),
         (
           ActionButton::Discoverable,
           Button::new(
-            tr(self.lang, "Visível", "Discoverable"),
+            tr(self.lang, "control_center.discoverable"),
             ButtonKind::Secondary,
           ),
         ),
@@ -511,47 +486,50 @@ impl BluetoothApp {
       BluetoothPage::Devices => vec![
         (
           ActionButton::Connect,
-          Button::new(tr(self.lang, "Conectar", "Connect"), ButtonKind::Primary),
+          Button::new(tr(self.lang, "control_center.connect"), ButtonKind::Primary),
         ),
         (
           ActionButton::Disconnect,
           Button::new(
-            tr(self.lang, "Desconectar", "Disconnect"),
+            tr(self.lang, "control_center.disconnect"),
             ButtonKind::Secondary,
           ),
         ),
         (
           ActionButton::Trust,
-          Button::new(tr(self.lang, "Confiar", "Trust"), ButtonKind::Secondary),
+          Button::new(tr(self.lang, "control_center.trust"), ButtonKind::Secondary),
         ),
         (
           ActionButton::Remove,
-          Button::new(tr(self.lang, "Remover", "Remove"), ButtonKind::Danger),
+          Button::new(tr(self.lang, "control_center.remove"), ButtonKind::Danger),
         ),
       ],
       BluetoothPage::Pair => vec![
         (
           ActionButton::Pair,
-          Button::new(tr(self.lang, "Parear", "Pair"), ButtonKind::Primary),
+          Button::new(tr(self.lang, "control_center.pair"), ButtonKind::Primary),
         ),
         (
           ActionButton::Connect,
-          Button::new(tr(self.lang, "Conectar", "Connect"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.connect"),
+            ButtonKind::Secondary,
+          ),
         ),
         (
           ActionButton::Disconnect,
           Button::new(
-            tr(self.lang, "Desconectar", "Disconnect"),
+            tr(self.lang, "control_center.disconnect"),
             ButtonKind::Secondary,
           ),
         ),
         (
           ActionButton::Trust,
-          Button::new(tr(self.lang, "Confiar", "Trust"), ButtonKind::Secondary),
+          Button::new(tr(self.lang, "control_center.trust"), ButtonKind::Secondary),
         ),
         (
           ActionButton::Remove,
-          Button::new(tr(self.lang, "Remover", "Remove"), ButtonKind::Danger),
+          Button::new(tr(self.lang, "control_center.remove"), ButtonKind::Danger),
         ),
       ],
       BluetoothPage::Home => Vec::new(),
@@ -561,22 +539,20 @@ impl BluetoothApp {
     match self.page {
       BluetoothPage::Home => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   r Atualizar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   ←/Esc Back   r Refresh   ? Help",
+        "control_center.navigate_enter_open_esc_back_r_refresh_help",
       ),
       BluetoothPage::State | BluetoothPage::Devices | BluetoothPage::Pair => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
       ),
     }
   }
   pub fn draw(&self, f: &mut Frame) {
     let breadcrumb = match self.page {
-      BluetoothPage::Home => tr(self.lang, "Bluetooth", "Bluetooth"),
-      BluetoothPage::State => tr(self.lang, "Bluetooth > Estado", "Bluetooth > State"),
-      BluetoothPage::Devices => tr(self.lang, "Bluetooth > Dispositivos", "Bluetooth > Devices"),
-      BluetoothPage::Pair => tr(self.lang, "Bluetooth > Parear", "Bluetooth > Pair"),
+      BluetoothPage::Home => tr(self.lang, "control_center.bluetooth"),
+      BluetoothPage::State => tr(self.lang, "control_center.bluetooth_state"),
+      BluetoothPage::Devices => tr(self.lang, "control_center.bluetooth_devices"),
+      BluetoothPage::Pair => tr(self.lang, "control_center.bluetooth_pair"),
     };
     let area = shell(f, f.area(), &self.theme, breadcrumb, self.footer_hints());
     let buttons = self.buttons();
@@ -591,23 +567,29 @@ impl BluetoothApp {
     };
     let rows: Vec<String> = match self.page {
       BluetoothPage::Home => vec![
-        tr(self.lang, "Estado", "State").into(),
-        tr(self.lang, "Dispositivos", "Devices").into(),
-        tr(self.lang, "Parear", "Pair").into(),
+        tr(self.lang, "control_center.state").into(),
+        tr(self.lang, "control_center.devices").into(),
+        tr(self.lang, "control_center.pair").into(),
       ],
       BluetoothPage::State => {
         let a = self.snapshot.adapter.as_ref();
         vec![
           format!(
             "{}  {}",
-            tr(self.lang, "Adaptador", "Adapter"),
+            tr(self.lang, "control_center.adapter"),
             a.map(|x| x.name.as_str()).unwrap_or("—")
           ),
           format!(
             "{}  {}   {}",
-            tr(self.lang, "Powered", "Powered"),
-            a.map(|x| if x.powered { "Sim" } else { "Não" })
-              .unwrap_or("—"),
+            tr(self.lang, "control_center.powered"),
+            a.map(|x| {
+              if x.powered {
+                tr(self.lang, "control_center.yes")
+              } else {
+                tr(self.lang, "control_center.no")
+              }
+            })
+            .unwrap_or("—"),
             if self.scanning { "[SCAN]" } else { "" }
           ),
         ]
@@ -618,21 +600,21 @@ impl BluetoothApp {
         .iter()
         .map(|d| {
           let state = if d.connected {
-            tr(self.lang, "[CONECTADO]", "[CONNECTED]")
+            tr(self.lang, "control_center.connected")
           } else if d.paired {
-            tr(self.lang, "[PAREADO]", "[PAIRED]")
+            tr(self.lang, "control_center.paired")
           } else {
-            tr(self.lang, "[CONHECIDO]", "[KNOWN]")
+            tr(self.lang, "control_center.known")
           };
           let trusted = if d.trusted {
-            tr(self.lang, " [CONFIÁVEL]", " [TRUSTED]")
+            tr(self.lang, "control_center.trusted")
           } else {
             ""
           };
           format!(
             "{}  {}  {}{}{}",
             if d.name.is_empty() {
-              tr(self.lang, "(sem nome)", "(unnamed)")
+              tr(self.lang, "control_center.unnamed")
             } else {
               &d.name
             },
@@ -678,14 +660,13 @@ impl BluetoothApp {
         f.area(),
         &self.theme,
         ConfirmationDialog {
-          title: tr(self.lang, "Remover dispositivo", "Remove device"),
+          title: tr(self.lang, "control_center.remove_device"),
           message: tr(
             self.lang,
-            "O dispositivo será removido da lista conhecida.",
-            "The device will be removed from known devices.",
+            "control_center.the_device_will_be_removed_from_known_devices",
           ),
-          confirm_label: tr(self.lang, "Remover", "Remove"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.remove"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       );
@@ -720,36 +701,31 @@ impl BluetoothApp {
       AgentPrompt::Pin { input, .. } => {
         lines.push(Line::from(tr(
           self.lang,
-          "Digite o PIN mostrado pelo dispositivo:",
-          "Enter the PIN shown by the device:",
+          "control_center.enter_the_pin_shown_by_the_device",
         )));
         lines.push(Line::from(""));
         lines.push(input_line("PIN:", input));
         lines.push(Line::from(""));
-        (
-          tr(self.lang, "PIN do dispositivo", "Device PIN").to_string(),
-          9,
-        )
+        (tr(self.lang, "control_center.device_pin").to_string(), 9)
       }
       AgentPrompt::Passkey { input, .. } => {
         lines.push(Line::from(tr(
           self.lang,
-          "Digite o código de verificação do dispositivo:",
-          "Enter the verification code from the device:",
+          "control_center.enter_the_verification_code_from_the_device",
         )));
         lines.push(Line::from(""));
         lines.push(input_line("Código:", input));
         lines.push(Line::from(""));
         (
-          tr(self.lang, "Código de verificação", "Verification code").to_string(),
+          tr(self.lang, "control_center.verification_code").to_string(),
           9,
         )
       }
       AgentPrompt::DisplayPasskey { passkey, .. } => {
-        lines.push(Line::from(match self.lang {
-          Lang::Pt => format!("Mostrando o número, confira em {device_name}:"),
-          Lang::En => format!("Showing the number, check it on {device_name}:"),
-        }));
+        lines.push(Line::from(self.lang.tr_args(
+          "control_center.showing_the_number_check_it_on",
+          [("name", device_name)],
+        )));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
           format!("{passkey:06}"),
@@ -759,20 +735,23 @@ impl BluetoothApp {
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-          selected(tr(self.lang, "Continuar", "Continue"), self.prompt_confirm),
+          selected(
+            tr(self.lang, "control_center.continue"),
+            self.prompt_confirm,
+          ),
           Span::raw("  "),
-          selected(tr(self.lang, "Cancelar", "Cancel"), !self.prompt_confirm),
+          selected(tr(self.lang, "control_center.cancel"), !self.prompt_confirm),
         ]));
         (
-          tr(self.lang, "Número de verificação", "Verification number").to_string(),
+          tr(self.lang, "control_center.verification_number").to_string(),
           9,
         )
       }
       AgentPrompt::Confirm { passkey, .. } => {
-        lines.push(Line::from(match self.lang {
-          Lang::Pt => format!("{device_name} exibe o número:"),
-          Lang::En => format!("{device_name} shows the number:"),
-        }));
+        lines.push(Line::from(self.lang.tr_args(
+          "control_center.device_shows_the_number",
+          [("name", device_name)],
+        )));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
           format!("{passkey:06}"),
@@ -782,36 +761,36 @@ impl BluetoothApp {
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-          selected(tr(self.lang, "Sim", "Yes"), self.prompt_confirm),
+          selected(tr(self.lang, "control_center.yes"), self.prompt_confirm),
           Span::raw("  "),
-          selected(tr(self.lang, "Não", "No"), !self.prompt_confirm),
+          selected(tr(self.lang, "control_center.no"), !self.prompt_confirm),
         ]));
         (
-          tr(self.lang, "Confirmar pareamento", "Confirm pairing").to_string(),
+          tr(self.lang, "control_center.confirm_pairing").to_string(),
           9,
         )
       }
       AgentPrompt::Authorize { .. } => {
-        lines.push(Line::from(match self.lang {
-          Lang::Pt => format!("Permitir que {device_name} seja pareado?"),
-          Lang::En => format!("Allow {device_name} to be paired?"),
-        }));
+        lines.push(Line::from(self.lang.tr_args(
+          "control_center.allow_device_to_be_paired",
+          [("name", device_name)],
+        )));
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-          selected(tr(self.lang, "Autorizar", "Allow"), self.prompt_confirm),
+          selected(tr(self.lang, "control_center.allow"), self.prompt_confirm),
           Span::raw("  "),
-          selected(tr(self.lang, "Cancelar", "Cancel"), !self.prompt_confirm),
+          selected(tr(self.lang, "control_center.cancel"), !self.prompt_confirm),
         ]));
         (
-          tr(self.lang, "Autorizar pareamento", "Authorize pairing").to_string(),
+          tr(self.lang, "control_center.authorize_pairing").to_string(),
           8,
         )
       }
       AgentPrompt::Service { uuid, .. } => {
-        lines.push(Line::from(match self.lang {
-          Lang::Pt => format!("{device_name} pede acesso ao serviço:"),
-          Lang::En => format!("{device_name} requests access to the service:"),
-        }));
+        lines.push(Line::from(self.lang.tr_args(
+          "control_center.device_requests_access_to_service",
+          [("name", device_name)],
+        )));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
           uuid,
@@ -819,20 +798,22 @@ impl BluetoothApp {
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-          selected(tr(self.lang, "Permitir", "Allow"), self.prompt_confirm),
+          selected(
+            tr(self.lang, "control_center.allow_d0cc72"),
+            self.prompt_confirm,
+          ),
           Span::raw("  "),
-          selected(tr(self.lang, "Negar", "Deny"), !self.prompt_confirm),
+          selected(tr(self.lang, "control_center.deny"), !self.prompt_confirm),
         ]));
         (
-          tr(self.lang, "Acesso ao serviço", "Service access").to_string(),
+          tr(self.lang, "control_center.service_access").to_string(),
           9,
         )
       }
     };
     lines.push(Line::from(tr(
       self.lang,
-      "Enter OK · Esc Cancelar",
-      "Enter OK · Esc Cancel",
+      "control_center.enter_ok_esc_cancel",
     )));
     let popup = centered(
       f.area(),

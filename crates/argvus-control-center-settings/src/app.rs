@@ -171,10 +171,10 @@ impl App {
     }
     match self.page() {
       Page::Main => vec![
-        Row::plain(tr(self.lang, "Apps Padrão", "Default Apps")),
-        Row::plain(tr(self.lang, "Fontes", "Fonts")),
-        Row::plain(tr(self.lang, "Locale e Região", "Locale & Region")),
-        Row::plain(tr(self.lang, "Sistema", "System")),
+        Row::plain(tr(self.lang, "control_center.default_apps")),
+        Row::plain(tr(self.lang, "control_center.fonts")),
+        Row::plain(tr(self.lang, "control_center.locale_region")),
+        Row::plain(tr(self.lang, "control_center.system")),
       ],
       Page::DefaultApps => Category::ORDER
         .into_iter()
@@ -250,7 +250,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🌍"),
-            tr(self.lang, "Fuso horário", "Time Zone")
+            tr(self.lang, "control_center.time_zone")
           ),
           detail: Some(non_empty(&self.datetime.time_zone)),
           current: false,
@@ -259,7 +259,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🕒"),
-            tr(self.lang, "Data e hora", "Date & Time")
+            tr(self.lang, "control_center.date_time")
           ),
           detail: Some(non_empty(&self.datetime.local_time)),
           current: false,
@@ -268,7 +268,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🌐"),
-            tr(self.lang, "Locale regional", "Regional Locale")
+            tr(self.lang, "control_center.regional_locale")
           ),
           detail: Some(locale::current_lang()),
           current: false,
@@ -277,7 +277,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🗂️"),
-            tr(self.lang, "Locales do sistema", "System Locales")
+            tr(self.lang, "control_center.system_locales")
           ),
           detail: Some(format!(
             "{} / {}",
@@ -290,7 +290,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("⌨️"),
-            tr(self.lang, "Teclado", "Keyboard")
+            tr(self.lang, "control_center.keyboard")
           ),
           detail: Some(format!(
             "{}  ·  {}",
@@ -315,7 +315,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🕒"),
-            tr(self.lang, "Data/hora local", "Local date/time")
+            tr(self.lang, "control_center.local_date_time")
           ),
           detail: Some(self.datetime.local_time.clone()),
           current: false,
@@ -324,7 +324,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🌍"),
-            tr(self.lang, "Fuso horário", "Time Zone")
+            tr(self.lang, "control_center.time_zone")
           ),
           detail: Some(self.datetime.time_zone.clone()),
           current: false,
@@ -333,11 +333,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🛰️"),
-            tr(
-              self.lang,
-              "Data e hora automáticas (NTP)",
-              "Automatic date & time (NTP)",
-            )
+            tr(self.lang, "control_center.automatic_date_time_ntp")
           ),
           detail: Some(enabled_label(self.lang, self.datetime.ntp.unwrap_or(false)).to_string()),
           current: false,
@@ -346,7 +342,7 @@ impl App {
           label: format!("{} RTC", AppConfig::icon("🔋")),
           detail: Some(
             if self.datetime.rtc_local.unwrap_or(false) {
-              tr(self.lang, "local", "local")
+              tr(self.lang, "control_center.local")
             } else {
               "UTC"
             }
@@ -359,12 +355,12 @@ impl App {
         let current = locale::current_lang();
         let mut rows = vec![
           Row {
-            label: tr(self.lang, "Locale atual", "Current locale").to_string(),
+            label: tr(self.lang, "control_center.current_locale").to_string(),
             detail: Some(non_empty(&current)),
             current: false,
           },
           Row {
-            label: tr(self.lang, "Codificação", "Encoding").to_string(),
+            label: tr(self.lang, "control_center.encoding").to_string(),
             detail: Some(non_empty(&locale::encoding_from_locale(&current))),
             current: false,
           },
@@ -408,7 +404,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("⌨️"),
-            tr(self.lang, "Layout", "Layout")
+            tr(self.lang, "control_center.layout")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_layout)),
           current: false,
@@ -417,7 +413,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🔠"),
-            tr(self.lang, "Variante", "Variant")
+            tr(self.lang, "control_center.variant")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_variant)),
           current: false,
@@ -426,7 +422,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🖮"),
-            tr(self.lang, "Modelo", "Model")
+            tr(self.lang, "control_center.model")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_model)),
           current: false,
@@ -435,7 +431,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("⚙️"),
-            tr(self.lang, "Opções", "Options")
+            tr(self.lang, "control_center.options")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_options)),
           current: false,
@@ -444,7 +440,7 @@ impl App {
           label: format!(
             "{} {}",
             AppConfig::icon("🖥️"),
-            tr(self.lang, "Keymap do console", "Console Keymap")
+            tr(self.lang, "control_center.console_keymap")
           ),
           detail: Some(non_empty(&self.keyboard_info.console_keymap)),
           current: false,
@@ -489,7 +485,7 @@ impl App {
         .filter(|variant| search_matches(&self.search, &[&variant.code, &variant.description]))
         .map(|variant| Row {
           label: if variant.code.is_empty() {
-            tr(self.lang, "Padrão", "Default").to_string()
+            tr(self.lang, "control_center.default").to_string()
           } else {
             variant.code.clone()
           },
@@ -526,7 +522,7 @@ impl App {
       | Page::GroupMembers
       | Page::CreateGroup => unreachable!(),
       Page::Hostname => vec![Row {
-        label: tr(self.lang, "Hostname atual", "Current hostname").to_string(),
+        label: tr(self.lang, "control_center.current_hostname").to_string(),
         detail: Some(self.hostname.clone()),
         current: false,
       }],
@@ -560,7 +556,7 @@ impl App {
         label: format!(
           "{} {}",
           AppConfig::icon("👤"),
-          tr(self.lang, "Usuários", "Users")
+          tr(self.lang, "control_center.users")
         ),
         detail: Some(users),
         current: false,
@@ -569,7 +565,7 @@ impl App {
         label: format!(
           "{} {}",
           AppConfig::icon("👥"),
-          tr(self.lang, "Grupos", "Groups")
+          tr(self.lang, "control_center.groups")
         ),
         detail: Some(groups),
         current: false,
@@ -579,31 +575,42 @@ impl App {
 
   fn language_rows(&self) -> Vec<Row> {
     let current_lang = locale::current_lang();
-    let current_language = match self.lang {
-      Lang::En => "English (US) · en_US",
-      Lang::Pt => "Português (Brasil) · pt_BR",
+    let current_language = if self.lang.locale() == "pt-BR" {
+      tr(self.lang, "control_center.language_portuguese_brazil")
+    } else {
+      tr(self.lang, "control_center.language_english_us")
     };
-    let in_use = tr(self.lang, "Em uso", "In use");
+    let in_use = tr(self.lang, "control_center.in_use");
     let mut rows = vec![
       Row {
-        label: tr(self.lang, "Idioma atual", "Current language").to_string(),
+        label: tr(self.lang, "control_center.current_language").to_string(),
         detail: Some(current_language.to_string()),
         current: false,
       },
       Row {
-        label: tr(self.lang, "Locale regional", "Regional locale").to_string(),
+        label: tr(self.lang, "control_center.regional_locale_90adc4").to_string(),
         detail: Some(non_empty(&current_lang)),
         current: false,
       },
       Row {
-        label: tr(self.lang, "Codificação", "Encoding").to_string(),
+        label: tr(self.lang, "control_center.encoding").to_string(),
         detail: Some(non_empty(&locale::encoding_from_locale(&current_lang))),
         current: false,
       },
     ];
-    for (lang, flag, name, detail) in [
-      (Lang::En, "🇺🇸", "English", "English (US) · en_US"),
-      (Lang::Pt, "🇧🇷", "Português", "Português (Brasil) · pt_BR"),
+    for (lang, flag, name_key, detail_key) in [
+      (
+        Lang::for_locale("en-US"),
+        "🇺🇸",
+        "control_center.language_english",
+        "control_center.language_english_us",
+      ),
+      (
+        Lang::for_locale("pt-BR"),
+        "🇧🇷",
+        "control_center.language_portuguese",
+        "control_center.language_portuguese_brazil",
+      ),
     ] {
       let badge = if self.lang == lang {
         format!(" · {in_use}")
@@ -611,8 +618,8 @@ impl App {
         String::new()
       };
       rows.push(Row {
-        label: format!("{}  {}", AppConfig::icon(flag), name),
-        detail: Some(format!("{detail}{badge}")),
+        label: format!("{}  {}", AppConfig::icon(flag), tr(self.lang, name_key)),
+        detail: Some(format!("{}{badge}", tr(self.lang, detail_key))),
         current: self.lang == lang,
       });
     }
@@ -620,91 +627,91 @@ impl App {
   }
 
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "ARGVUS Control Center", "ARGVUS Control Center");
+    let root = tr(self.lang, "control_center.argvus_control_center");
     match self.page() {
       Page::Main => root.to_string(),
-      Page::DefaultApps => format!("{root} > {}", tr(self.lang, "Apps Padrão", "Default Apps")),
+      Page::DefaultApps => format!("{root} > {}", tr(self.lang, "control_center.default_apps")),
       Page::AppSelector(category) => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Apps Padrão", "Default Apps"),
+        tr(self.lang, "control_center.default_apps"),
         category_label(self.lang, category)
       ),
-      Page::Fonts => format!("{root} > {}", tr(self.lang, "Fontes", "Fonts")),
+      Page::Fonts => format!("{root} > {}", tr(self.lang, "control_center.fonts")),
       Page::FontSelector(target) => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Fontes", "Fonts"),
+        tr(self.lang, "control_center.fonts"),
         font_target_label(self.lang, target)
       ),
       Page::SettingSelector(setting) => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Fontes", "Fonts"),
+        tr(self.lang, "control_center.fonts"),
         setting_label(self.lang, setting)
       ),
-      Page::LocaleRegion => format!(
-        "{root} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region")
-      ),
+      Page::LocaleRegion => format!("{root} > {}", tr(self.lang, "control_center.locale_region")),
       Page::TimeZone => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Fuso horário", "Time Zone")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.time_zone")
       ),
       Page::DateTime => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Data e hora", "Date & Time")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.date_time")
       ),
       Page::RegionalLocale => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Locale regional", "Regional Locale")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.regional_locale")
       ),
       Page::SystemLocales => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Locales do sistema", "System Locales")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.system_locales")
       ),
       Page::Keyboard => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Teclado", "Keyboard")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.keyboard")
       ),
       Page::KeyboardLayout => format!(
         "{root} > {} > {} > Layout",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Teclado", "Keyboard")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.keyboard")
       ),
       Page::KeyboardVariant => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Teclado", "Keyboard"),
-        tr(self.lang, "Variante", "Variant")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.keyboard"),
+        tr(self.lang, "control_center.variant")
       ),
       Page::ConsoleKeymap => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "Locale e Região", "Locale & Region"),
-        tr(self.lang, "Teclado", "Keyboard"),
-        tr(self.lang, "Keymap do console", "Console Keymap")
+        tr(self.lang, "control_center.locale_region"),
+        tr(self.lang, "control_center.keyboard"),
+        tr(self.lang, "control_center.console_keymap")
       ),
-      Page::Language => format!("{root} > {}", tr(self.lang, "Idioma", "Language")),
-      Page::System => format!("{root} > {}", tr(self.lang, "Sistema", "System")),
-      Page::Firewall => format!("{root} > {} > Firewall", tr(self.lang, "Rede", "Network")),
+      Page::Language => format!("{root} > {}", tr(self.lang, "control_center.language")),
+      Page::System => format!("{root} > {}", tr(self.lang, "control_center.system")),
+      Page::Firewall => format!(
+        "{root} > {} > Firewall",
+        tr(self.lang, "control_center.network")
+      ),
       Page::Users => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Usuários", "Users")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.users")
       ),
       Page::UserList => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Usuários", "Users"),
-        tr(self.lang, "Listar", "List")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.users"),
+        tr(self.lang, "control_center.list")
       ),
       Page::SystemUsers => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Usuários", "Users"),
-        tr(self.lang, "Contas do sistema", "System accounts")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.users"),
+        tr(self.lang, "control_center.system_accounts")
       ),
       Page::User
       | Page::CreateUser
@@ -713,80 +720,69 @@ impl App {
       | Page::UserShell
       | Page::UserPrimaryGroup => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Usuários", "Users")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.users")
       ),
       Page::Groups => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Grupos", "Groups")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.groups")
       ),
       Page::GroupList => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Grupos", "Groups"),
-        tr(self.lang, "Listar", "List")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.groups"),
+        tr(self.lang, "control_center.list")
       ),
       Page::SystemGroups => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Grupos", "Groups"),
-        tr(self.lang, "Contas do sistema", "System accounts")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.groups"),
+        tr(self.lang, "control_center.system_accounts")
       ),
       Page::Group | Page::GroupMembers | Page::CreateGroup => format!(
         "{root} > {} > {}",
-        tr(self.lang, "Sistema", "System"),
-        tr(self.lang, "Grupos", "Groups")
+        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.groups")
       ),
-      Page::Hostname => format!("{root} > {} > Hostname", tr(self.lang, "Sistema", "System")),
+      Page::Hostname => format!(
+        "{root} > {} > Hostname",
+        tr(self.lang, "control_center.system")
+      ),
     }
   }
 
   pub fn footer(&self) -> &'static str {
     if self.confirm.is_some() {
-      return tr(
-        self.lang,
-        "Enter Confirmar   Esc Cancelar",
-        "Enter Confirm   Esc Cancel",
-      );
+      return tr(self.lang, "control_center.enter_confirm_esc_cancel");
     }
     if self.searching {
       return tr(
         self.lang,
-        "Digite para buscar   Enter Aplicar   Esc Cancelar",
-        "Type to search   Enter Apply   Esc Cancel",
+        "control_center.type_to_search_enter_apply_esc_cancel",
       );
     }
     match self.page() {
-      Page::Main => tr(
-        self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   ? Ajuda   q Sair",
-        "↑/↓ Navigate   →/Enter Open   ? Help   q Quit",
-      ),
+      Page::Main => tr(self.lang, "control_center.navigate_enter_open_help_q_quit"),
       Page::DefaultApps => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   Tab Ações   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   Tab Actions   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_tab_actions_esc_back_help",
       ),
       Page::Fonts => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   Tab Ações   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   Tab Actions   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_tab_actions_esc_back_help",
       ),
       Page::AppSelector(_) => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   / Buscar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   / Search   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_move_enter_activate_search_esc_back_help",
       ),
       Page::FontSelector(_) => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Aplicar   +/- Tamanho   / Buscar   Tab Ações   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Enter Apply   +/- Size   / Search   Tab Actions   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_apply_size_search_tab_actions_esc_back_help",
       ),
       Page::SystemLocales => tr(
         self.lang,
-        "↑/↓ Navegar   Space Alternar   / Buscar   Enter Aplicar   ←/Esc Voltar",
-        "↑/↓ Navigate   Space Toggle   / Search   Enter Apply   ←/Esc Back",
+        "control_center.navigate_space_toggle_search_enter_apply_esc_back",
       ),
       Page::TimeZone
       | Page::RegionalLocale
@@ -794,43 +790,32 @@ impl App {
       | Page::KeyboardVariant
       | Page::ConsoleKeymap => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Aplicar   / Buscar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Enter Apply   / Search   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_apply_search_esc_back_help",
       ),
-      Page::Hostname => tr(
-        self.lang,
-        "Enter Editar   ←/Esc Voltar   ? Ajuda",
-        "Enter Edit   ←/Esc Back   ? Help",
-      ),
+      Page::Hostname => tr(self.lang, "control_center.enter_edit_esc_back_help"),
       Page::Language => tr(
         self.lang,
-        "↑/↓ Navegar   Enter Aplicar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Enter Apply   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_apply_esc_back_help",
       ),
       Page::System => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   r Atualizar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   r Refresh   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_r_refresh_esc_back_help",
       ),
       Page::SettingSelector(_) => tr(
         self.lang,
-        "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   ←/Esc Back   ? Help",
+        "control_center.navigate_tab_actions_move_enter_activate_esc_back_help",
       ),
       Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups => tr(
         self.lang,
-        "↑/↓ Navegar   / Buscar   →/Enter Abrir   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   / Search   →/Enter Open   ←/Esc Back   ? Help",
+        "control_center.navigate_search_enter_open_esc_back_help",
       ),
       Page::User | Page::CreateUser | Page::CreateGroup | Page::Group | Page::Firewall => tr(
         self.lang,
-        "↑/↓ Campos   Tab Alternar   ←/→ Ações   Enter Ativar   Esc Voltar   ? Ajuda",
-        "↑/↓ Fields   Tab Switch   ←/→ Actions   Enter Activate   Esc Back   ? Help",
+        "control_center.fields_tab_switch_actions_enter_activate_esc_back_help",
       ),
       _ => tr(
         self.lang,
-        "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   ? Ajuda",
-        "↑/↓ Navigate   →/Enter Open   ←/Esc Back   ? Help",
+        "control_center.navigate_enter_open_esc_back_help",
       ),
     }
   }
@@ -1024,7 +1009,7 @@ impl App {
       self.admin.buttons(page, self.lang)
     } else if self.reset_page() {
       vec![crate::administration::Button::new(
-        tr(self.lang, "Restaurar padrões", "Reset Defaults"),
+        tr(self.lang, "control_center.reset_defaults"),
         crate::administration::ButtonKind::Secondary,
       )]
     } else {
@@ -1087,7 +1072,7 @@ impl App {
       Page::DateTime => {
         if selected == 0 && !self.datetime.ntp.unwrap_or(false) {
           self.admin.editor = Some(crate::administration::Editor::new(
-            tr(self.lang, "Data/hora local", "Local date/time").into(),
+            tr(self.lang, "control_center.local_date_time").into(),
             self.datetime.local_time.clone(),
             crate::administration::EditTarget::DateTime,
             false,
@@ -1161,7 +1146,7 @@ impl App {
   pub fn refresh_system(&mut self) {
     self.hostname = host::current();
     self.admin.load(false);
-    self.success(tr(self.lang, "Dados atualizados", "Data updated").to_string());
+    self.success(tr(self.lang, "control_center.data_updated").to_string());
   }
 
   pub fn toggle_current(&mut self) {
@@ -1228,14 +1213,7 @@ impl App {
     match keyboard::set_x11_layouts(&default_layout, &selected, &self.keyboard_layouts) {
       Ok(()) => {
         self.refresh_keyboard();
-        self.success(
-          tr(
-            self.lang,
-            "Layouts de teclado atualizados",
-            "Keyboard layouts updated",
-          )
-          .to_string(),
-        );
+        self.success(tr(self.lang, "control_center.keyboard_layouts_updated").to_string());
       }
       Err(error) => self.fail(error),
     }
@@ -1251,40 +1229,28 @@ impl App {
     };
     match action {
       PendingAction::ResetApps => match self.apps.reset_all() {
-        Ok(()) => self.success(
-          tr(
-            self.lang,
-            "Aplicativos padrão restaurados",
-            "Default applications restored",
-          )
-          .to_string(),
-        ),
+        Ok(()) => {
+          self.success(tr(self.lang, "control_center.default_applications_restored").to_string())
+        }
         Err(error) => self.fail(error),
       },
       PendingAction::ResetApp(category) => match self.apps.reset_default(category) {
         Ok(()) => self.success(format!(
           "{} → {}",
           category_label(self.lang, category),
-          tr(self.lang, "padrão ARGVUS", "ARGVUS default")
+          tr(self.lang, "control_center.argvus_default")
         )),
         Err(error) => self.fail(error),
       },
       PendingAction::ResetFonts => match self.fonts.reset_all() {
-        Ok(()) => self.success(
-          tr(
-            self.lang,
-            "Configurações de fonte restauradas",
-            "Font settings restored",
-          )
-          .to_string(),
-        ),
+        Ok(()) => self.success(tr(self.lang, "control_center.font_settings_restored").to_string()),
         Err(error) => self.fail(error),
       },
       PendingAction::ResetFont(target) => match self.fonts.reset_font(target) {
         Ok(()) => self.success(format!(
           "{} → {}",
           font_target_label(self.lang, target),
-          tr(self.lang, "padrão ARGVUS", "ARGVUS default")
+          tr(self.lang, "control_center.argvus_default")
         )),
         Err(error) => self.fail(error),
       },
@@ -1292,7 +1258,7 @@ impl App {
         Ok(()) => self.success(format!(
           "{} → {}",
           setting_label(self.lang, setting),
-          tr(self.lang, "padrão ARGVUS", "ARGVUS default")
+          tr(self.lang, "control_center.argvus_default")
         )),
         Err(error) => self.fail(error),
       },
@@ -1301,14 +1267,7 @@ impl App {
       PendingAction::SetNtp(enabled) => match time::set_ntp(enabled) {
         Ok(()) => {
           self.refresh_time();
-          self.success(
-            tr(
-              self.lang,
-              "Configuração NTP aplicada",
-              "NTP setting applied",
-            )
-            .to_string(),
-          );
+          self.success(tr(self.lang, "control_center.ntp_setting_applied").to_string());
         }
         Err(error) => self.fail(error),
       },
@@ -1338,7 +1297,7 @@ impl App {
             self.hostname = host::current();
             self.success(format!(
               "{}: {value}",
-              tr(self.lang, "Hostname alterado", "Hostname changed")
+              tr(self.lang, "control_center.hostname_changed")
             ));
           }
           Err(error) => self.fail(error),
@@ -1438,7 +1397,7 @@ impl App {
             }
             _ => {}
           }
-          self.success(tr(self.lang, "Dados atualizados", "Data updated").into());
+          self.success(tr(self.lang, "control_center.data_updated").into());
         }
         Err(error) => self.fail(error),
       }
@@ -1475,14 +1434,7 @@ impl App {
           self.locale_gen_entries =
             locale::locale_gen_entries(std::path::Path::new("/etc/locale.gen")).unwrap_or_default();
           self.generated_locales = locale::generated_locales();
-          self.success(
-            tr(
-              self.lang,
-              "Locales gerados com sucesso",
-              "Locales generated successfully",
-            )
-            .to_string(),
-          );
+          self.success(tr(self.lang, "control_center.locales_generated_successfully").to_string());
           changed = true;
         }
         JobState::Finished(Ok(Err(error))) | JobState::Finished(Err(error)) => self.fail(error),
@@ -1502,8 +1454,7 @@ impl App {
         "{}: {name}",
         tr(
           self.lang,
-          "Backend de locales implementado apenas para Arch Linux",
-          "Locales backend is implemented only for Arch Linux"
+          "control_center.locales_backend_is_implemented_only_for_arch_linux"
         )
       ));
       return;
@@ -1529,11 +1480,7 @@ impl App {
       match self.apps.set_default(category, binary) {
         Ok(()) => self.success(format!(
           "{}: {display}",
-          tr(
-            self.lang,
-            "Aplicativo padrão alterado",
-            "Default application changed"
-          )
+          tr(self.lang, "control_center.default_application_changed")
         )),
         Err(error) => self.fail(error),
       }
@@ -1551,7 +1498,7 @@ impl App {
       match self.fonts.apply_font(target, font, self.pending_size) {
         Ok(()) => self.success(format!(
           "{}: {} {}",
-          tr(self.lang, "Fonte aplicada", "Font applied"),
+          tr(self.lang, "control_center.font_applied"),
           font.display_name(),
           self.pending_size
         )),
@@ -1564,9 +1511,7 @@ impl App {
     if let Some(row) = self.setting_options(setting).get(selected) {
       let value = row.detail.as_deref().unwrap_or(&row.label).to_string();
       match self.fonts.apply_setting(setting, &value) {
-        Ok(()) => {
-          self.success(tr(self.lang, "Configuração aplicada", "Setting applied").to_string())
-        }
+        Ok(()) => self.success(tr(self.lang, "control_center.setting_applied").to_string()),
         Err(error) => self.fail(error),
       }
     }
@@ -1585,7 +1530,7 @@ impl App {
           self.refresh_time();
           self.success(format!(
             "{}: {zone}",
-            tr(self.lang, "Fuso horário alterado", "Time zone changed")
+            tr(self.lang, "control_center.time_zone_changed")
           ));
         }
         Err(error) => self.fail(error),
@@ -1604,11 +1549,7 @@ impl App {
       match locale::set_lang(value, &self.generated_locales) {
         Ok(()) => self.success(format!(
           "{}: {value}",
-          tr(
-            self.lang,
-            "Locale regional alterado",
-            "Regional locale changed"
-          )
+          tr(self.lang, "control_center.regional_locale_changed")
         )),
         Err(error) => self.fail(error),
       }
@@ -1683,11 +1624,7 @@ impl App {
           self.refresh_keyboard();
           self.success(format!(
             "{}: {}",
-            tr(
-              self.lang,
-              "Layout de teclado alterado",
-              "Keyboard layout changed"
-            ),
+            tr(self.lang, "control_center.keyboard_layout_changed"),
             layout.code
           ));
         }
@@ -1710,7 +1647,7 @@ impl App {
           self.refresh_keyboard();
           self.success(format!(
             "{}: {}",
-            tr(self.lang, "Variante alterada", "Variant changed"),
+            tr(self.lang, "control_center.variant_changed"),
             variant.description
           ));
         }
@@ -1732,11 +1669,7 @@ impl App {
           self.refresh_keyboard();
           self.success(format!(
             "{}: {keymap}",
-            tr(
-              self.lang,
-              "Keymap do console alterado",
-              "Console keymap changed"
-            )
+            tr(self.lang, "control_center.console_keymap_changed")
           ));
         }
         Err(error) => self.fail(error),
@@ -1751,7 +1684,7 @@ impl App {
       self.fail(error);
       return;
     }
-    let value = if self.lang == Lang::Pt {
+    let value = if self.lang.locale() == "pt-BR" {
       "pt_BR"
     } else {
       "en_US"
@@ -1759,14 +1692,7 @@ impl App {
     if let Err(error) = std::fs::write(path, format!("{value}\n")) {
       self.fail(error);
     } else {
-      self.success(
-        tr(
-          self.lang,
-          "Idioma da interface aplicado",
-          "Interface language applied",
-        )
-        .to_string(),
-      );
+      self.success(tr(self.lang, "control_center.interface_language_applied").to_string());
     }
   }
 
@@ -1840,7 +1766,7 @@ impl App {
     if default {
       format!(
         "{value} [{}]",
-        tr(self.lang, "Padrão ARGVUS", "ARGVUS Default")
+        tr(self.lang, "control_center.argvus_default_5cdad7")
       )
     } else {
       value
@@ -1900,10 +1826,20 @@ pub fn category_icon(category: Category) -> &'static str {
 }
 
 pub fn category_label(lang: Lang, category: Category) -> &'static str {
-  match lang {
-    Lang::Pt => category.title_pt(),
-    Lang::En => category.title(),
-  }
+  let key = match category {
+    Category::Terminal => "control_center.terminal",
+    Category::FileManager => "control_center.file_manager",
+    Category::TextEditor => "control_center.text_editor",
+    Category::TerminalEditor => "control_center.terminal_editor",
+    Category::Browser => "control_center.browser",
+    Category::ImageViewer => "control_center.image_viewer",
+    Category::PdfViewer => "control_center.pdf_viewer",
+    Category::VideoPlayer => "control_center.video_player",
+    Category::AudioPlayer => "control_center.audio_player",
+    Category::Archive => "control_center.archive",
+    Category::Launcher => "control_center.launcher",
+  };
+  crate::i18n::tr(lang, key)
 }
 
 pub fn font_target_icon(target: FontTarget) -> &'static str {
@@ -1929,21 +1865,21 @@ pub fn setting_icon(setting: SettingKind) -> &'static str {
 
 pub fn font_target_label(lang: Lang, target: FontTarget) -> &'static str {
   match target {
-    FontTarget::Taskbar => tr(lang, "Fonte da Taskbar", "Taskbar Font"),
-    FontTarget::Sysinfo => tr(lang, "Fonte do Widget Telemetria", "Widget Telemetry Font"),
-    FontTarget::ControlPanel => tr(lang, "Fonte do Painel de Controle", "Control Panel Font"),
-    FontTarget::System => tr(lang, "Fonte do Sistema", "System Font"),
-    FontTarget::Apps => tr(lang, "Fonte dos Aplicativos", "Applications Font"),
-    FontTarget::Terminal => tr(lang, "Fonte do Terminal", "Terminal Font"),
-    FontTarget::Browser => tr(lang, "Fonte do Navegador", "Browser Font"),
+    FontTarget::Taskbar => tr(lang, "control_center.taskbar_font"),
+    FontTarget::Sysinfo => tr(lang, "control_center.widget_telemetry_font"),
+    FontTarget::ControlPanel => tr(lang, "control_center.control_panel_font"),
+    FontTarget::System => tr(lang, "control_center.system_font"),
+    FontTarget::Apps => tr(lang, "control_center.applications_font"),
+    FontTarget::Terminal => tr(lang, "control_center.terminal_font"),
+    FontTarget::Browser => tr(lang, "control_center.browser_font"),
   }
 }
 
 pub fn setting_label(lang: Lang, setting: SettingKind) -> &'static str {
   match setting {
-    SettingKind::Antialiasing => tr(lang, "Suavização", "Antialiasing"),
+    SettingKind::Antialiasing => tr(lang, "control_center.antialiasing"),
     SettingKind::Hinting => "Hinting",
-    SettingKind::Subpixel => tr(lang, "Ordem de subpixel", "Subpixel order"),
+    SettingKind::Subpixel => tr(lang, "control_center.subpixel_order"),
     SettingKind::Dpi => "DPI",
   }
 }
@@ -1951,82 +1887,47 @@ pub fn setting_label(lang: Lang, setting: SettingKind) -> &'static str {
 pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, String) {
   match action {
     PendingAction::Administration(body) => (
-      tr(
-        lang,
-        "Confirmar operação administrativa?",
-        "Confirm administrative operation?",
-      )
-      .into(),
+      tr(lang, "control_center.confirm_administrative_operation").into(),
       body.clone(),
     ),
     PendingAction::ResetApps => (
+      tr(lang, "control_center.reset_default_applications").to_string(),
       tr(
         lang,
-        "Redefinir aplicativos padrão?",
-        "Reset default applications?",
-      )
-      .to_string(),
-      tr(
-        lang,
-        "Isso restaurará as escolhas definidas pelo ARGVUS.",
-        "This will restore the application choices defined by ARGVUS.",
+        "control_center.this_will_restore_the_application_choices_defined_by_argvus",
       )
       .to_string(),
     ),
     PendingAction::ResetApp(category) => (
-      format!(
-        "{}?",
-        tr(
-          lang,
-          "Redefinir aplicativo padrão",
-          "Reset default application"
-        )
-      ),
+      format!("{}?", tr(lang, "control_center.reset_default_application")),
       category_label(lang, *category).to_string(),
     ),
     PendingAction::ResetFonts => (
+      tr(lang, "control_center.reset_font_settings").to_string(),
       tr(
         lang,
-        "Redefinir configurações de fonte?",
-        "Reset font settings?",
-      )
-      .to_string(),
-      tr(
-        lang,
-        "Isso restaurará as configurações de fonte definidas pelo ARGVUS.",
-        "This will restore the font settings defined by ARGVUS.",
+        "control_center.this_will_restore_the_font_settings_defined_by_argvus",
       )
       .to_string(),
     ),
     PendingAction::ResetFont(target) => (
-      format!("{}?", tr(lang, "Redefinir fonte", "Reset font")),
+      format!("{}?", tr(lang, "control_center.reset_font")),
       font_target_label(lang, *target).to_string(),
     ),
     PendingAction::ResetFontSetting(setting) => (
-      format!("{}?", tr(lang, "Redefinir configuração", "Reset setting")),
+      format!("{}?", tr(lang, "control_center.reset_setting")),
       setting_label(lang, *setting).to_string(),
     ),
     PendingAction::ApplySystemLocales => (
+      tr(lang, "control_center.apply_locale_changes").to_string(),
       tr(
         lang,
-        "Aplicar alterações de locale?",
-        "Apply locale changes?",
-      )
-      .to_string(),
-      tr(
-        lang,
-        "Isso atualizará /etc/locale.gen e executará locale-gen.",
-        "This will update /etc/locale.gen and run locale-gen.",
+        "control_center.this_will_update_etc_locale_gen_and_run_locale_gen",
       )
       .to_string(),
     ),
     PendingAction::SetNtp(enabled) => (
-      tr(
-        lang,
-        "Alterar data/hora automática?",
-        "Change automatic date & time?",
-      )
-      .to_string(),
+      tr(lang, "control_center.change_automatic_date_time").to_string(),
       enabled_label(lang, *enabled).to_string(),
     ),
   }
@@ -2034,22 +1935,22 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
 
 fn setting_value_label(lang: Lang, value: &str) -> String {
   match value {
-    "enabled" => tr(lang, "ativada", "enabled").to_string(),
-    "disabled" => tr(lang, "desativada", "disabled").to_string(),
-    "none" => tr(lang, "nenhum", "none").to_string(),
-    "slight" => tr(lang, "leve", "slight").to_string(),
-    "medium" => tr(lang, "médio", "medium").to_string(),
-    "full" => tr(lang, "completo", "full").to_string(),
-    "automatic" => tr(lang, "automático", "automatic").to_string(),
+    "enabled" => tr(lang, "control_center.enabled_16b283").to_string(),
+    "disabled" => tr(lang, "control_center.disabled_8ccfd8").to_string(),
+    "none" => tr(lang, "control_center.none").to_string(),
+    "slight" => tr(lang, "control_center.slight").to_string(),
+    "medium" => tr(lang, "control_center.medium").to_string(),
+    "full" => tr(lang, "control_center.full").to_string(),
+    "automatic" => tr(lang, "control_center.automatic_b0d36e").to_string(),
     _ => value.to_string(),
   }
 }
 
 fn enabled_label(lang: Lang, enabled: bool) -> &'static str {
   if enabled {
-    tr(lang, "Ativado", "Enabled")
+    tr(lang, "control_center.enabled")
   } else {
-    tr(lang, "Desativado", "Disabled")
+    tr(lang, "control_center.disabled")
   }
 }
 
@@ -2086,9 +1987,9 @@ pub(crate) fn task_bottom_offset(output: &str) -> u16 {
 
 fn language_from_selected(selected: usize) -> Lang {
   if selected.saturating_sub(LANGUAGE_INFO_ROWS) == 1 {
-    Lang::Pt
+    Lang::for_locale("pt-BR")
   } else {
-    Lang::En
+    Lang::for_locale("en-US")
   }
 }
 
@@ -2105,14 +2006,14 @@ mod tests {
   #[test]
   fn labels_cover_every_backend_category() {
     for category in Category::ORDER {
-      assert!(!category_label(Lang::En, category).is_empty());
-      assert!(!category_label(Lang::Pt, category).is_empty());
+      assert!(!category_label(Lang::for_locale("en-US"), category).is_empty());
+      assert!(!category_label(Lang::for_locale("pt-BR"), category).is_empty());
     }
   }
 
   #[test]
   fn language_page_shows_status_lines_and_selectable_choices() {
-    let app = App::with_context(Page::Language, Lang::En, Theme::load());
+    let app = App::with_context(Page::Language, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
     assert_eq!(rows.len(), 5);
     assert_eq!(rows[0].label, "Current language");
@@ -2134,14 +2035,20 @@ mod tests {
 
   #[test]
   fn language_selection_maps_to_languages() {
-    assert_eq!(language_from_selected(LANGUAGE_INFO_ROWS), Lang::En);
-    assert_eq!(language_from_selected(LANGUAGE_INFO_ROWS + 1), Lang::Pt);
-    assert_eq!(language_from_selected(0), Lang::En);
+    assert_eq!(
+      language_from_selected(LANGUAGE_INFO_ROWS),
+      Lang::for_locale("en-US")
+    );
+    assert_eq!(
+      language_from_selected(LANGUAGE_INFO_ROWS + 1),
+      Lang::for_locale("pt-BR")
+    );
+    assert_eq!(language_from_selected(0), Lang::for_locale("en-US"));
   }
 
   #[test]
   fn fonts_dashboard_uses_icons_and_status() {
-    let app = App::with_context(Page::Fonts, Lang::En, Theme::load());
+    let app = App::with_context(Page::Fonts, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
     assert_eq!(rows.len(), 11, "7 font targets + 4 settings");
     assert!(rows[0].label.contains("Taskbar"), "{}", rows[0].label);
@@ -2170,7 +2077,7 @@ mod tests {
 
   #[test]
   fn default_apps_dashboard_uses_icons_and_status() {
-    let app = App::with_context(Page::DefaultApps, Lang::En, Theme::load());
+    let app = App::with_context(Page::DefaultApps, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
     assert_eq!(rows.len(), Category::ORDER.len());
     assert!(rows[0].label.contains("Terminal"), "{}", rows[0].label);
@@ -2194,7 +2101,7 @@ mod tests {
 
   #[test]
   fn system_dashboard_uses_icons_and_live_state() {
-    let app = App::with_context(Page::System, Lang::En, Theme::load());
+    let app = App::with_context(Page::System, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
     assert_eq!(rows.len(), 3);
     assert!(rows[0].label.contains("Hostname"), "{}", rows[0].label);
@@ -2202,7 +2109,7 @@ mod tests {
     assert!(rows[0].detail.is_some(), "hostname should have detail");
     assert_eq!(rows[1].label, "👤 Users");
     assert_eq!(rows[1].detail.as_deref(), Some("N/A"));
-    assert_eq!(rows[2].label, "👥 Groups");
+    assert_eq!(rows[2].label, "👥 Groups:");
     assert_eq!(rows[2].detail.as_deref(), Some("N/A"));
     for (index, row) in rows.iter().enumerate() {
       assert!(row.detail.is_some(), "row {index} should have detail");
@@ -2211,7 +2118,7 @@ mod tests {
 
   #[test]
   fn hostname_page_row_keeps_current_value_while_editing() {
-    let mut app = App::with_context(Page::Hostname, Lang::En, Theme::load());
+    let mut app = App::with_context(Page::Hostname, Lang::for_locale("en-US"), Theme::load());
     app.hostname = "current-machine".into();
     app.hostname_editing = true;
     app.hostname_input = "draft-name".into();
@@ -2227,7 +2134,7 @@ mod tests {
 
   #[test]
   fn system_dashboard_counts_match_loaded_accounts() {
-    let mut app = App::with_context(Page::System, Lang::En, Theme::load());
+    let mut app = App::with_context(Page::System, Lang::for_locale("en-US"), Theme::load());
     app.admin.accounts = serde_json::json!({
       "actor_uid":1000,
       "shells":["/bin/bash", "/bin/zsh"],
@@ -2251,7 +2158,7 @@ mod tests {
 
   #[test]
   fn task_window_scrolls_and_closes() {
-    let mut app = App::with_context(Page::Main, Lang::En, Theme::load());
+    let mut app = App::with_context(Page::Main, Lang::for_locale("en-US"), Theme::load());
     let live = LiveProcess::new();
     for _ in 0..40 {
       live.push_line("line");
@@ -2285,7 +2192,7 @@ mod tests {
 
   #[test]
   fn task_bottom_offset_is_zero_for_short_output() {
-    let mut app = App::with_context(Page::Main, Lang::En, Theme::load());
+    let mut app = App::with_context(Page::Main, Lang::for_locale("en-US"), Theme::load());
     let live = LiveProcess::new();
     live.push_line("done.");
     app.task_live = Some(live);
@@ -2302,7 +2209,7 @@ mod tests {
 
   #[test]
   fn empty_poll_returns_false() {
-    let mut app = App::with_context(Page::Main, Lang::En, Theme::load());
+    let mut app = App::with_context(Page::Main, Lang::for_locale("en-US"), Theme::load());
     assert!(!app.poll());
   }
 }

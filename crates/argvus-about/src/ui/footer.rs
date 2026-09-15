@@ -17,14 +17,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
   let hints = if area.width < 110 {
     tr(
       app.lang,
-      "q Sair | Esc Voltar | ←/→ Abas | ↑/↓ Rolar | Enter Abrir | ? Ajuda",
-      "q Quit | Esc Back | ←/→ Tabs | ↑/↓ Scroll | Enter Open | ? Help",
+      "control_center.q_quit_esc_back_tabs_scroll_enter_open_help",
     )
   } else {
     tr(
       app.lang,
-      "q Sair  |  Esc Voltar  |  ←/→ Abas  |  ↑/↓ Navegar  |  Enter Abrir  |  PgUp/PgDn Rolar  |  ? Ajuda",
-      "q Quit  |  Esc Back  |  ←/→ Tabs  |  ↑/↓ Navigate  |  Enter Open  |  PgUp/PgDn Scroll  |  ? Help",
+      "control_center.q_quit_esc_back_tabs_navigate_enter_open_pgup_pgdn_scroll_help",
     )
   };
   draw_footer(frame, area, &app.theme, status, hints);

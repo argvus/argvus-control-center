@@ -130,11 +130,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let message = if matches!(app.page(), Page::AppSelector(_)) && app.search.is_empty() {
       tr(
         app.lang,
-        "Nenhum aplicativo instalado detectado",
-        "No installed applications detected",
+        "control_center.no_installed_applications_detected",
       )
     } else {
-      tr(app.lang, "Nenhum item encontrado", "No matching items")
+      tr(app.lang, "control_center.no_matching_items")
     };
     Paragraph::new(message).style(Style::new().fg(app.theme.muted).bg(app.theme.background))
   } else {

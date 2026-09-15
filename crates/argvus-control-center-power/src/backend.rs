@@ -55,7 +55,11 @@ fn detect_is_laptop() -> bool {
   }
   fs::read_dir("/sys/class/power_supply")
     .ok()
-    .and_then(|dir| dir.flatten().find(|e| e.file_name().to_string_lossy().starts_with("BAT")))
+    .and_then(|dir| {
+      dir
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().starts_with("BAT"))
+    })
     .is_some()
 }
 

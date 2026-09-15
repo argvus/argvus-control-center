@@ -1,7 +1,7 @@
 use argvus_control_center_core::paths::argvus_config_home;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{mpsc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, mpsc};
 use std::time::Duration;
 
 /// The ARGVUS hypridle configuration lives under the user config path.

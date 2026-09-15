@@ -99,7 +99,7 @@ impl AudioApp {
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Carregando áudio...", "Loading audio...").into(),
+      text: tr(self.lang, "control_center.loading_audio").into(),
     });
   }
   pub fn poll(&mut self) -> bool {
@@ -112,7 +112,7 @@ impl AudioApp {
         Ok(Ok(s)) => {
           self.snapshot = s;
           self.normalize();
-          self.success(tr(self.lang, "Áudio atualizado", "Audio refreshed"));
+          self.success(tr(self.lang, "control_center.audio_refreshed"));
         }
         Ok(Err(e)) | Err(e) => self.error(e),
       };
@@ -195,7 +195,7 @@ impl AudioApp {
     }
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Aplicando áudio...", "Applying audio change...").into(),
+      text: tr(self.lang, "control_center.applying_audio_change").into(),
     });
     let caps = self.capabilities.clone();
     self.action = Some(self.jobs.spawn(move |_| {
@@ -214,12 +214,7 @@ impl AudioApp {
       AudioAction::SetDefault(id) => {
         self.start_action(
           move |b| b.set_default(id),
-          tr(
-            self.lang,
-            "Dispositivo padrão atualizado.",
-            "Default device updated.",
-          )
-          .into(),
+          tr(self.lang, "control_center.default_device_updated").into(),
         );
       }
     }
@@ -238,7 +233,7 @@ impl AudioApp {
       let value = clamp_volume(current + delta);
       self.start_action(
         move |b| b.set_volume(id, value),
-        tr(self.lang, "Volume alterado.", "Volume changed.").into(),
+        tr(self.lang, "control_center.volume_changed").into(),
       );
     } else {
       self.warn_disappeared();
@@ -250,7 +245,7 @@ impl AudioApp {
       let mute = !d.muted;
       self.start_action(
         move |b| b.set_mute(id, mute),
-        tr(self.lang, "Mute alterado.", "Mute changed.").into(),
+        tr(self.lang, "control_center.mute_changed").into(),
       );
     } else {
       self.warn_disappeared();
@@ -259,8 +254,7 @@ impl AudioApp {
   fn warn_disappeared(&mut self) {
     self.error(tr(
       self.lang,
-      "Dispositivo não está mais disponível. Pressione r para atualizar.",
-      "Device is no longer available. Press r to refresh.",
+      "control_center.device_is_no_longer_available_press_r_to_refresh",
     ));
   }
   pub fn handle(&mut self, key: KeyCode) -> bool {
@@ -396,41 +390,41 @@ impl AudioApp {
     vec![
       (
         ActionButton::SetDefault,
-        Button::new(tr(self.lang, "Padrão", "Default"), ButtonKind::Primary),
+        Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
       ),
       (
         ActionButton::VolumeUp,
-        Button::new(tr(self.lang, "Volume +", "Volume +"), ButtonKind::Secondary),
+        Button::new(
+          tr(self.lang, "control_center.volume"),
+          ButtonKind::Secondary,
+        ),
       ),
       (
         ActionButton::VolumeDown,
-        Button::new(tr(self.lang, "Volume -", "Volume -"), ButtonKind::Secondary),
+        Button::new(
+          tr(self.lang, "control_center.volume_c53634"),
+          ButtonKind::Secondary,
+        ),
       ),
       (
         ActionButton::Mute,
-        Button::new(tr(self.lang, "Mudo", "Mute"), ButtonKind::Secondary),
+        Button::new(tr(self.lang, "control_center.mute"), ButtonKind::Secondary),
       ),
       (
         ActionButton::SetVolume,
-        Button::new(tr(self.lang, "Valor", "Value"), ButtonKind::Secondary),
+        Button::new(tr(self.lang, "control_center.value"), ButtonKind::Secondary),
       ),
     ]
   }
   fn footer_hints(&self) -> &'static str {
     let action = tr(
       self.lang,
-      "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   r Refresh   ←/Esc Back   ? Help",
+      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
     );
-    let readonly = tr(
-      self.lang,
-      "r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "r Refresh   ←/Esc Back   ? Help",
-    );
+    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
     let home = tr(
       self.lang,
-      "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   r Atualizar   ? Ajuda",
-      "↑/↓ Navigate   →/Enter Open   ←/Esc Back   r Refresh   ? Help",
+      "control_center.navigate_enter_open_esc_back_r_refresh_help",
     );
     if self.page == AudioPage::Home {
       home
@@ -455,14 +449,10 @@ impl AudioApp {
           let id = d.id;
           self.start_action(
             move |b| b.set_volume(id, v),
-            tr(self.lang, "Volume definido.", "Volume set.").into(),
+            tr(self.lang, "control_center.volume_set").into(),
           );
         } else {
-          self.error(tr(
-            self.lang,
-            "Volume inválido (0-100).",
-            "Invalid volume (0-100).",
-          ));
+          self.error(tr(self.lang, "control_center.invalid_volume_0_100"));
         }
       }
       KeyCode::Backspace => {
@@ -522,19 +512,11 @@ impl AudioApp {
       frame.render_widget(Clear, popup);
       frame.render_widget(
         Paragraph::new(vec![
-          Line::from(tr(
-            self.lang,
-            "Digite o volume (0-100):",
-            "Enter volume (0-100):",
-          )),
+          Line::from(tr(self.lang, "control_center.enter_volume_0_100")),
           Line::from(format!("{value}_")),
-          Line::from(tr(
-            self.lang,
-            "Enter aplicar   Esc cancelar",
-            "Enter apply   Esc cancel",
-          )),
+          Line::from(tr(self.lang, "control_center.enter_apply_esc_cancel")),
         ])
-        .block(Block::bordered().title(tr(self.lang, "Volume", "Volume"))),
+        .block(Block::bordered().title(tr(self.lang, "control_center.volume_3e7bd7"))),
         popup,
       );
     }
@@ -549,27 +531,19 @@ impl AudioApp {
         .unwrap_or("dispositivo");
       let message = format!(
         "{} '{}' {}?",
-        tr(self.lang, "Definir", "Set"),
+        tr(self.lang, "control_center.set"),
         dev_name,
-        tr(
-          self.lang,
-          "como dispositivo padrão de áudio",
-          "as default audio device"
-        )
+        tr(self.lang, "control_center.as_default_audio_device")
       );
       draw_confirmation(
         frame,
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(
-            self.lang,
-            "Confirmar operação de áudio",
-            "Confirm audio operation",
-          ),
+          title: tr(self.lang, "control_center.confirm_audio_operation"),
           message: &message,
-          confirm_label: tr(self.lang, "Continuar", "Continue"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.continue"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       );
@@ -587,15 +561,15 @@ impl AudioApp {
     }
   }
   fn home_rows(&self) -> Vec<String> {
-    let summary_label = tr(self.lang, "Resumo", "Summary");
-    let output_label = tr(self.lang, "Saída", "Output");
-    let input_label = tr(self.lang, "Entrada", "Input");
-    let devices_label = tr(self.lang, "Dispositivos", "Devices");
+    let summary_label = tr(self.lang, "control_center.summary");
+    let output_label = tr(self.lang, "control_center.output");
+    let input_label = tr(self.lang, "control_center.input");
+    let devices_label = tr(self.lang, "control_center.devices");
 
     let status_str = if self.snapshot.available {
-      tr(self.lang, "Ativo", "Active")
+      tr(self.lang, "control_center.active")
     } else {
-      tr(self.lang, "Indisponível", "Unavailable")
+      tr(self.lang, "control_center.unavailable")
     };
 
     let default_out_str = self
@@ -633,7 +607,7 @@ impl AudioApp {
         format!(
           "{} {}",
           self.snapshot.outputs.len(),
-          tr(self.lang, "saídas", "outputs")
+          tr(self.lang, "control_center.outputs")
         ),
         default_out_str
       ),
@@ -644,7 +618,7 @@ impl AudioApp {
         format!(
           "{} {}",
           self.snapshot.inputs.len(),
-          tr(self.lang, "entradas", "inputs")
+          tr(self.lang, "control_center.inputs")
         ),
         default_in_str
       ),
@@ -655,7 +629,7 @@ impl AudioApp {
         format!(
           "{} {}",
           total_devs,
-          tr(self.lang, "dispositivos", "devices")
+          tr(self.lang, "control_center.devices_a41e65")
         )
       ),
     ]
@@ -666,12 +640,9 @@ impl AudioApp {
         format!(
           " {} {}",
           AppConfig::icon("💻"),
-          tr(self.lang, "SISTEMA DE ÁUDIO", "AUDIO SYSTEM")
+          tr(self.lang, "control_center.audio_system")
         ),
-        format!(
-          "   Status: {}",
-          tr(self.lang, "Indisponível", "Unavailable")
-        ),
+        format!("   Status: {}", tr(self.lang, "control_center.unavailable")),
       ];
     }
 
@@ -709,7 +680,7 @@ impl AudioApp {
       format!(
         " {} {}",
         AppConfig::icon("💻"),
-        tr(self.lang, "SISTEMA DE ÁUDIO", "AUDIO SYSTEM")
+        tr(self.lang, "control_center.audio_system")
       ),
       format!(
         "   Servidor:    {}",
@@ -719,12 +690,12 @@ impl AudioApp {
           self.snapshot.backend.clone()
         }
       ),
-      format!("   Status:      {}", tr(self.lang, "Ativo", "Active")),
+      format!("   Status:      {}", tr(self.lang, "control_center.active")),
       "".into(),
       format!(
         " {} {}",
         AppConfig::icon("🔊"),
-        tr(self.lang, "DISPOSITIVOS PADRÃO", "DEFAULT DEVICES")
+        tr(self.lang, "control_center.default_devices")
       ),
       format!("   Saída:       {}", default_out),
       format!("   Entrada:     {}", default_in),
@@ -732,7 +703,7 @@ impl AudioApp {
       format!(
         " {} {}",
         AppConfig::icon("🎧"),
-        tr(self.lang, "DISPOSITIVOS DISPONÍVEIS", "AVAILABLE DEVICES")
+        tr(self.lang, "control_center.available_devices")
       ),
       format!("   Saídas:      {}", self.snapshot.outputs.len()),
       format!("   Entradas:    {}", self.snapshot.inputs.len()),
@@ -743,22 +714,14 @@ impl AudioApp {
       return vec![
         tr(
           self.lang,
-          "PipeWire/WirePlumber não está disponível.",
-          "PipeWire/WirePlumber is unavailable.",
+          "control_center.pipewire_wireplumber_is_unavailable",
         )
         .into(),
       ];
     }
     let devices = self.devices();
     if devices.is_empty() {
-      return vec![
-        tr(
-          self.lang,
-          "Nenhum dispositivo encontrado.",
-          "No devices found.",
-        )
-        .into(),
-      ];
+      return vec![tr(self.lang, "control_center.no_devices_found").into()];
     }
     devices
       .iter()
@@ -771,10 +734,10 @@ impl AudioApp {
             self.snapshot.default_input
           })
         {
-          badges.push(format!("● {}", tr(self.lang, "Padrão", "Default")));
+          badges.push(format!("● {}", tr(self.lang, "control_center.default")));
         }
         if d.muted {
-          badges.push(format!("✖ {}", tr(self.lang, "Mudo", "Muted")));
+          badges.push(format!("✖ {}", tr(self.lang, "control_center.muted")));
         }
         let vol = d
           .volume
@@ -794,8 +757,7 @@ impl AudioApp {
       return vec![
         tr(
           self.lang,
-          "PipeWire/WirePlumber não está disponível.",
-          "PipeWire/WirePlumber is unavailable.",
+          "control_center.pipewire_wireplumber_is_unavailable",
         )
         .into(),
       ];
@@ -805,22 +767,22 @@ impl AudioApp {
     rows.push(format!(
       " {} {}",
       AppConfig::icon("🔊"),
-      tr(self.lang, "DISPOSITIVOS DE SAÍDA", "OUTPUT DEVICES")
+      tr(self.lang, "control_center.output_devices")
     ));
     if self.snapshot.outputs.is_empty() {
       rows.push(format!(
         "   {}",
-        tr(self.lang, "Nenhuma saída encontrada", "No output found")
+        tr(self.lang, "control_center.no_output_found")
       ));
     } else {
       for d in &self.snapshot.outputs {
         let is_def = Some(d.id) == self.snapshot.default_output;
         let mut flags = Vec::new();
         if is_def {
-          flags.push(tr(self.lang, "Padrão", "Default"));
+          flags.push(tr(self.lang, "control_center.default"));
         }
         if d.muted {
-          flags.push(tr(self.lang, "Mudo", "Muted"));
+          flags.push(tr(self.lang, "control_center.muted"));
         }
         let flag_str = if flags.is_empty() {
           String::new()
@@ -839,22 +801,22 @@ impl AudioApp {
     rows.push(format!(
       " {} {}",
       AppConfig::icon("🎙️"),
-      tr(self.lang, "DISPOSITIVOS DE ENTRADA", "INPUT DEVICES")
+      tr(self.lang, "control_center.input_devices")
     ));
     if self.snapshot.inputs.is_empty() {
       rows.push(format!(
         "   {}",
-        tr(self.lang, "Nenhuma entrada encontrada", "No input found")
+        tr(self.lang, "control_center.no_input_found")
       ));
     } else {
       for d in &self.snapshot.inputs {
         let is_def = Some(d.id) == self.snapshot.default_input;
         let mut flags = Vec::new();
         if is_def {
-          flags.push(tr(self.lang, "Padrão", "Default"));
+          flags.push(tr(self.lang, "control_center.default"));
         }
         if d.muted {
-          flags.push(tr(self.lang, "Mudo", "Muted"));
+          flags.push(tr(self.lang, "control_center.muted"));
         }
         let flag_str = if flags.is_empty() {
           String::new()
@@ -872,7 +834,7 @@ impl AudioApp {
     rows
   }
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Áudio", "Audio");
+    let root = tr(self.lang, "control_center.audio");
     if self.page == AudioPage::Home {
       root.into()
     } else {
@@ -881,11 +843,11 @@ impl AudioApp {
   }
   fn page_label(&self) -> &'static str {
     match self.page {
-      AudioPage::Home => tr(self.lang, "Áudio", "Audio"),
-      AudioPage::Summary => tr(self.lang, "Resumo", "Summary"),
-      AudioPage::Output => tr(self.lang, "Saída", "Output"),
-      AudioPage::Input => tr(self.lang, "Entrada", "Input"),
-      AudioPage::Devices => tr(self.lang, "Dispositivos", "Devices"),
+      AudioPage::Home => tr(self.lang, "control_center.audio"),
+      AudioPage::Summary => tr(self.lang, "control_center.summary"),
+      AudioPage::Output => tr(self.lang, "control_center.output"),
+      AudioPage::Input => tr(self.lang, "control_center.input"),
+      AudioPage::Devices => tr(self.lang, "control_center.devices"),
     }
   }
 }
@@ -897,7 +859,11 @@ mod tests {
 
   #[test]
   fn audio_home_rows_act_as_a_status_dashboard() {
-    let mut app = AudioApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.available = true;
     app.snapshot.backend = "PipeWire".into();
     app.snapshot.outputs = vec![AudioDevice {
@@ -930,7 +896,11 @@ mod tests {
 
   #[test]
   fn audio_device_rows_render_clean_badges() {
-    let mut app = AudioApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.available = true;
     app.snapshot.outputs = vec![
       AudioDevice {
@@ -963,7 +933,11 @@ mod tests {
 
   #[test]
   fn audio_home_and_details_are_keyboard_navigable() {
-    let mut app = AudioApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.outputs = vec![AudioDevice {
       id: 1,
       description: "Speakers".into(),
@@ -980,7 +954,11 @@ mod tests {
 
   #[test]
   fn audio_confirmation_dialog_shown_and_cancelable() {
-    let mut app = AudioApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.outputs = vec![AudioDevice {
       id: 10,
       description: "Headphones".into(),
@@ -996,7 +974,11 @@ mod tests {
 
   #[test]
   fn audio_tab_cycles_between_list_and_buttons() {
-    let mut app = AudioApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let mut app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     app.snapshot.outputs = vec![AudioDevice {
       id: 1,
       description: "Speakers".into(),
@@ -1013,7 +995,11 @@ mod tests {
 
   #[test]
   fn audio_uses_shared_chrome_and_contextual_footer() {
-    let app = AudioApp::new(Lang::En, Theme::load(), Capabilities::default());
+    let app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
     let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
     let text = terminal

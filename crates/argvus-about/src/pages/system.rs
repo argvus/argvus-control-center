@@ -6,22 +6,22 @@ use super::{Doc, Row, simple_doc};
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let rows = vec![
-    key_value(tr(lang, "Dispositivo", "Device"), &app.system.hostname),
-    key_value(tr(lang, "Nome do S.O.", "OS name"), &app.system.os_name),
-    key_value(tr(lang, "Tipo do S.O.", "OS type"), &app.system.os_type),
+    key_value(tr(lang, "control_center.device"), &app.system.hostname),
+    key_value(tr(lang, "control_center.os_name"), &app.system.os_name),
+    key_value(tr(lang, "control_center.os_type"), &app.system.os_type),
     key_value(
-      tr(lang, "Distribuidor", "Distributor"),
+      tr(lang, "control_center.distributor"),
       &app.system.distributor,
     ),
     key_value("ARGVUS", &app.argvus_version),
     key_value("GTK", &app.gtk_version),
-    key_value(tr(lang, "Kernel", "Kernel"), &app.system.kernel),
+    key_value(tr(lang, "control_center.kernel"), &app.system.kernel),
     key_value(
-      tr(lang, "Sistema de janelas", "Window system"),
+      tr(lang, "control_center.window_system"),
       &app.system.window_system,
     ),
     key_value("CPU", &app.system.cpu),
-    key_value(tr(lang, "Memória", "Memory"), &app.system.memory),
+    key_value(tr(lang, "control_center.memory"), &app.system.memory),
     key_value("GPU", &app.system.gpus),
   ];
 

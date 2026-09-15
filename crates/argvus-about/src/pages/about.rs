@@ -5,64 +5,65 @@ use super::{ARGVUS_URL, DONATE_URL, Doc, Row, simple_doc};
 
 pub struct Module {
   pub name: &'static str,
-  pub pt: &'static str,
-  pub en: &'static str,
+  pub key: &'static str,
 }
 
 pub struct Group {
-  pub pt: &'static str,
-  pub en: &'static str,
+  pub key: &'static str,
   pub modules: &'static [Module],
 }
 
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let mut rows = vec![
-        Row::Lead(
-            tr(
-                lang,
-                "O ARGVUS é uma coleção modular de pacotes que juntos entregam um ambiente de desktop completo para Wayland e Hyprland.",
-                "ARGVUS is a modular collection of packages that together provide a complete desktop environment for Wayland and Hyprland.",
-            )
-            .to_string(),
-        ),
-        Row::Spacer,
-        kv_row(lang, "Versão", "Version", app.argvus_version.clone()),
-        kv_row(lang, "Licença", "License", "GPL-3.0".to_string()),
-        Row::Spacer,
-    ];
+    Row::Lead(
+      tr(
+        lang,
+        "control_center.argvus_is_a_modular_collection_of_packages_that_together_provide_a_com",
+      )
+      .to_string(),
+    ),
+    Row::Spacer,
+    kv_row(
+      lang,
+      "control_center.about_version",
+      app.argvus_version.clone(),
+    ),
+    kv_row(lang, "control_center.about_license", "GPL-3.0".to_string()),
+    Row::Spacer,
+  ];
 
   for group in groups() {
     rows.push(Row::Divider {
-      label: Some(tr(lang, group.pt, group.en).to_string()),
+      label: Some(tr(lang, group.key).to_string()),
     });
     for module in group.modules {
       rows.push(Row::Module {
         name: module.name.to_string(),
-        description: tr(lang, module.pt, module.en).to_string(),
+        description: tr(lang, module.key).to_string(),
       });
     }
   }
 
   rows.push(Row::Spacer);
   rows.push(Row::Divider {
-    label: Some(tr(lang, "Links", "Links").to_string()),
+    label: Some(tr(lang, "control_center.links").to_string()),
   });
   rows.push(Row::Link {
     label: ARGVUS_URL.to_string(),
     url: ARGVUS_URL.to_string(),
   });
   rows.push(Row::Link {
-    label: tr(lang, "Apoiar o projeto", "Support the project").to_string(),
+    label: tr(lang, "control_center.support_the_project").to_string(),
     url: DONATE_URL.to_string(),
   });
 
   simple_doc(&rows, &app.theme, width, selected)
 }
 
-fn kv_row<'a>(lang: crate::i18n::Lang, pt: &'a str, en: &'a str, value: String) -> Row {
+fn kv_row(lang: crate::i18n::Lang, key: &str, value: String) -> Row {
   Row::KeyValue {
-    key: format!("{:<8}", tr(lang, pt, en)),
+    key: format!("{:<8}", tr(lang, key)),
     value,
   }
 }
@@ -70,106 +71,86 @@ fn kv_row<'a>(lang: crate::i18n::Lang, pt: &'a str, en: &'a str, value: String) 
 pub fn groups() -> [Group; 4] {
   [
     Group {
-      pt: "Núcleo",
-      en: "Core",
+      key: "control_center.about_core",
       modules: &[
         Module {
           name: "argvus-session",
-          pt: "Ciclo de vida da sessão, targets e integração Hyprland.",
-          en: "Session lifecycle, targets and Hyprland integration.",
+          key: "control_center.about_session_lifecycle_targets_and_hyprland_integration",
         },
         Module {
           name: "argvus-hyprland",
-          pt: "Configuracao Hyprland e scripts do shell ARGVUS.",
-          en: "Hyprland configuration and ARGVUS shell scripts.",
+          key: "control_center.about_hyprland_configuration_and_argvus_shell_scripts",
         },
         Module {
           name: "argvus-portal",
-          pt: "Portais Wayland, DBus e preferências de integração.",
-          en: "Wayland portals, DBus and integration preferences.",
+          key: "control_center.about_wayland_portals_dbus_and_integration_preferences",
         },
       ],
     },
     Group {
-      pt: "Interface e Desktop",
-      en: "Shell and desktop",
+      key: "control_center.about_shell_and_desktop",
       modules: &[
         Module {
           name: "argvus-launcher",
-          pt: "Launcher Rofi, menus e temas.",
-          en: "Rofi launcher, menus and themes.",
+          key: "control_center.about_rofi_launcher_menus_and_themes",
         },
         Module {
           name: "argvus-control-panel",
-          pt: "Painel lateral Quickshell e seus temas.",
-          en: "Quickshell sidebar control panel and its themes.",
+          key: "control_center.about_quickshell_sidebar_control_panel_and_its_themes",
         },
         Module {
           name: "argvus-appearance",
-          pt: "Temas, fontes, wallpapers e integração visual.",
-          en: "Themes, fonts, wallpapers and visual integration.",
+          key: "control_center.about_themes_fonts_wallpapers_and_visual_integration",
         },
         Module {
           name: "argvus-taskbar-calendar",
-          pt: "Calendário e popup integrado à taskbar.",
-          en: "Calendar and taskbar popup integration.",
+          key: "control_center.about_calendar_and_taskbar_popup_integration",
         },
         Module {
           name: "argvus-taskbar-storage",
-          pt: "Módulo de dispositivos removíveis e armazenamento.",
-          en: "Removable device and storage module.",
+          key: "control_center.about_removable_device_and_storage_module",
         },
         Module {
           name: "argvus-greeter",
-          pt: "Tela gráfica de login do ARGVUS.",
-          en: "ARGVUS graphical login screen.",
+          key: "control_center.about_argvus_graphical_login_screen",
         },
         Module {
           name: "argvus-lock",
-          pt: "Bloqueio de tela e temas do lock screen.",
-          en: "Screen locking and lock screen themes.",
+          key: "control_center.about_screen_locking_and_lock_screen_themes",
         },
       ],
     },
     Group {
-      pt: "Configuração",
-      en: "Configuration",
+      key: "control_center.about_configuration",
       modules: &[
         Module {
           name: "argvus-control-center",
-          pt: "Configurações do ARGVUS, incluindo fontes e aplicativos padrão.",
-          en: "ARGVUS control center, including fonts and default applications.",
+          key: "control_center.about_argvus_control_center_including_fonts_and_default_applications",
         },
         Module {
           name: "argvus-about",
-          pt: "Informações do sistema, créditos e licença do ARGVUS.",
-          en: "System information, credits and ARGVUS license.",
+          key: "control_center.about_system_information_credits_and_argvus_license",
         },
         Module {
           name: "argvus-accounts",
-          pt: "Configurações de conta e usuário.",
-          en: "Account and user settings.",
+          key: "control_center.about_account_and_user_settings",
         },
         Module {
           name: "argvus-display",
-          pt: "Gerenciamento de monitores e layouts.",
-          en: "Monitor and layout management.",
+          key: "control_center.about_monitor_and_layout_management",
         },
       ],
     },
     Group {
-      pt: "Serviços e Energia",
-      en: "Services and power",
+      key: "control_center.about_services_and_power",
       modules: &[
         Module {
           name: "argvus-network",
-          pt: "NetworkManager, Wi-Fi e Bluetooth.",
-          en: "NetworkManager, Wi-Fi and Bluetooth.",
+          key: "control_center.about_networkmanager_wi_fi_and_bluetooth",
         },
         Module {
           name: "argvus-power",
-          pt: "Menu de energia, idle e ações de sessão.",
-          en: "Power menu, idle and session actions.",
+          key: "control_center.about_power_menu_idle_and_session_actions",
         },
       ],
     },
@@ -196,13 +177,13 @@ mod tests {
   #[test]
   fn every_group_is_represented_in_both_languages() {
     use crate::i18n::Lang;
-    for lang in [Lang::Pt, Lang::En] {
+    for lang in [Lang::for_locale("pt-BR"), Lang::for_locale("en-US")] {
       let mut app = App::test();
       app.lang = lang;
       let doc = doc(&app, 80, 0);
       let text = doc.lines.iter().map(|l| l.to_string()).collect::<String>();
       for group in groups() {
-        let label = tr(lang, group.pt, group.en);
+        let label = tr(lang, group.key);
         assert!(
           text.contains(label),
           "missing group '{}' for {:?}",

@@ -76,12 +76,7 @@ impl AppearanceApp {
     self.status_loading = true;
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(
-        self.lang,
-        "Carregando aparência...",
-        "Loading appearance...",
-      )
-      .into(),
+      text: tr(self.lang, "control_center.loading_appearance").into(),
     });
   }
 
@@ -116,7 +111,7 @@ impl AppearanceApp {
           self.status_loading = false;
           self.status = Some(StatusMessage {
             kind: StatusKind::Error,
-            text: format!("{} {error}", tr(self.lang, "Erro:", "Error:")),
+            text: format!("{} {error}", tr(self.lang, "control_center.error")),
           });
         }
       }
@@ -141,7 +136,7 @@ impl AppearanceApp {
         Err(error) => {
           self.status = Some(StatusMessage {
             kind: StatusKind::Error,
-            text: format!("{} {error}", tr(self.lang, "Erro:", "Error:")),
+            text: format!("{} {error}", tr(self.lang, "control_center.error")),
           });
         }
       }
@@ -165,18 +160,13 @@ impl AppearanceApp {
     if effects {
       let enable = !self.state.effects;
       self.apply(
-        tr(self.lang, "Efeitos aplicados", "Effects applied").into(),
+        tr(self.lang, "control_center.effects_applied").into(),
         move || backend::set_effects(enable),
       );
     } else {
       let enable = !self.state.widget_telemetry;
       self.apply(
-        tr(
-          self.lang,
-          "Telemetria do widget alterada",
-          "Widget telemetry changed",
-        )
-        .into(),
+        tr(self.lang, "control_center.widget_telemetry_changed").into(),
         move || backend::set_telemetry(enable),
       );
     }
@@ -188,7 +178,7 @@ impl AppearanceApp {
         if let Some((name, _)) = THEMES.get(self.selected) {
           let name = name.to_string();
           self.apply(
-            tr(self.lang, "Tema aplicado", "Theme applied").into(),
+            tr(self.lang, "control_center.theme_applied").into(),
             move || backend::set_theme(&name),
           );
         }
@@ -197,7 +187,7 @@ impl AppearanceApp {
         if let Some((_, color)) = ACCENTS.get(self.selected) {
           let color = color.to_string();
           self.apply(
-            tr(self.lang, "Cor de destaque aplicada", "Accent applied").into(),
+            tr(self.lang, "control_center.accent_applied").into(),
             move || backend::set_accent(&color),
           );
         }
@@ -205,13 +195,13 @@ impl AppearanceApp {
       AppearancePage::Wallpapers => {
         if self.selected == 0 {
           self.apply(
-            tr(self.lang, "Seletor de papel de parede aberto", "Wallpaper chooser opened").into(),
+            tr(self.lang, "control_center.wallpaper_chooser_opened").into(),
             backend::choose_wallpaper,
           );
         } else if let Some(name) = self.state.wallpapers.get(self.selected - 1) {
           let name = name.clone();
           self.apply(
-            tr(self.lang, "Papel de parede aplicado", "Wallpaper applied").into(),
+            tr(self.lang, "control_center.wallpaper_applied").into(),
             move || backend::set_wallpaper(&name),
           );
         }
@@ -223,12 +213,7 @@ impl AppearanceApp {
           "bottom"
         };
         self.apply(
-          tr(
-            self.lang,
-            "Posição da barra alterada",
-            "Taskbar position changed",
-          )
-          .into(),
+          tr(self.lang, "control_center.taskbar_position_changed").into(),
           move || backend::set_waybar_position(position),
         );
       }
@@ -253,20 +238,13 @@ impl AppearanceApp {
         let value = self.prompt_buffer.trim().to_string();
         let parsed = value.parse::<i32>().ok();
         if !matches!(parsed, Some(0..=100)) {
-          self.prompt_error = Some(
-            tr(
-              self.lang,
-              "Digite um número inteiro válido",
-              "Enter a valid integer",
-            )
-            .into(),
-          );
+          self.prompt_error = Some(tr(self.lang, "control_center.enter_a_valid_integer").into());
           return false;
         }
         let back = self.prompt_back.take();
         let key = goal.key();
         self.apply(
-          tr(self.lang, "Espaçamento aplicado", "Spacing applied").into(),
+          tr(self.lang, "control_center.spacing_applied").into(),
           move || backend::set_spaces(key, &value),
         );
         self.page = back.unwrap_or(AppearancePage::Home);
@@ -374,65 +352,57 @@ impl AppearanceApp {
   }
 
   fn home_rows(&self) -> Vec<String> {
-    let enabled = tr(self.lang, "Ativado", "Enabled");
-    let disabled = tr(self.lang, "Desativado", "Disabled");
+    let enabled = tr(self.lang, "control_center.enabled");
+    let disabled = tr(self.lang, "control_center.disabled");
     let position_value = if self.state.waybar_pos == "bottom" {
-      tr(self.lang, "Inferior", "Bottom")
+      tr(self.lang, "control_center.bottom")
     } else {
-      tr(self.lang, "Superior", "Top")
+      tr(self.lang, "control_center.top")
     };
     vec![
       format!(
         "{} · {}",
-        tr(self.lang, "Tema", "Theme"),
+        tr(self.lang, "control_center.theme"),
         theme_label(&self.state.theme)
       ),
       format!(
         "{} · {}",
-        tr(self.lang, "Cor de destaque", "Highlight color"),
+        tr(self.lang, "control_center.highlight_color"),
         accent_label(&self.state.accent)
       ),
       format!(
         "{} · {}",
-        tr(self.lang, "Papel de parede", "Wallpaper"),
+        tr(self.lang, "control_center.wallpaper"),
         self
           .state
           .wallpaper_active
           .clone()
-          .unwrap_or_else(|| tr(self.lang, "nenhum", "none").to_string())
+          .unwrap_or_else(|| tr(self.lang, "control_center.none").to_string())
       ),
       format!(
         "{} · {}",
-        tr(self.lang, "Posição da barra de tarefas", "Taskbar position"),
+        tr(self.lang, "control_center.taskbar_position"),
         position_value
       ),
       format!(
         "{} · {}",
-        tr(
-          self.lang,
-          "Janelas: espaçamento interno",
-          "Windows: inner gap"
-        ),
+        tr(self.lang, "control_center.windows_inner_gap"),
         self.state.gaps_in
       ),
       format!(
         "{} · {}",
-        tr(
-          self.lang,
-          "Janelas: espaçamento externo",
-          "Windows: outer gap"
-        ),
+        tr(self.lang, "control_center.windows_outer_gap"),
         self.state.gaps_out
       ),
       format!(
         "{} · {}",
-        tr(self.lang, "Barra de tarefas: margem", "Taskbar: margin"),
+        tr(self.lang, "control_center.taskbar_margin"),
         self.state.waybar
       ),
       format!(
         "[{}] {} · {}",
         if self.state.effects { "x" } else { " " },
-        tr(self.lang, "Efeitos de interface", "Interface effects"),
+        tr(self.lang, "control_center.interface_effects"),
         if self.state.effects {
           enabled
         } else {
@@ -446,7 +416,7 @@ impl AppearanceApp {
         } else {
           " "
         },
-        tr(self.lang, "Telemetria do widget", "Widget telemetry"),
+        tr(self.lang, "control_center.widget_telemetry"),
         if self.state.widget_telemetry {
           enabled
         } else {
@@ -457,19 +427,19 @@ impl AppearanceApp {
   }
 
   fn breadcrumb(&self) -> String {
-    let title = tr(self.lang, "Aparência", "Appearance").to_string();
+    let title = tr(self.lang, "control_center.appearance").to_string();
     let page = match self.page {
-      AppearancePage::Home => tr(self.lang, "Aparência", "Appearance").to_string(),
-      AppearancePage::Themes => tr(self.lang, "Temas", "Themes").to_string(),
-      AppearancePage::Wallpapers => tr(self.lang, "Papéis de parede", "Wallpapers").to_string(),
-      AppearancePage::Accents => tr(self.lang, "Cor de destaque", "Highlight color").to_string(),
+      AppearancePage::Home => tr(self.lang, "control_center.appearance").to_string(),
+      AppearancePage::Themes => tr(self.lang, "control_center.themes").to_string(),
+      AppearancePage::Wallpapers => tr(self.lang, "control_center.wallpapers").to_string(),
+      AppearancePage::Accents => tr(self.lang, "control_center.highlight_color").to_string(),
       AppearancePage::WaybarPosition => {
-        tr(self.lang, "Posição da barra", "Taskbar position").to_string()
+        tr(self.lang, "control_center.taskbar_position_f0e1c3").to_string()
       }
       AppearancePage::Prompt { goal } => match goal {
-        PromptGoal::GapsIn => tr(self.lang, "Espaçamento interno", "Inner gap").to_string(),
-        PromptGoal::GapsOut => tr(self.lang, "Espaçamento externo", "Outer gap").to_string(),
-        PromptGoal::Waybar => tr(self.lang, "Margem da barra", "Taskbar margin").to_string(),
+        PromptGoal::GapsIn => tr(self.lang, "control_center.inner_gap").to_string(),
+        PromptGoal::GapsOut => tr(self.lang, "control_center.outer_gap").to_string(),
+        PromptGoal::Waybar => tr(self.lang, "control_center.taskbar_margin_3ac0eb").to_string(),
       },
     };
     format!("{title} › {page}")
@@ -477,20 +447,16 @@ impl AppearanceApp {
 
   fn hints(&self) -> String {
     match self.page {
-      AppearancePage::Prompt { .. } => tr(
-        self.lang,
-        "0-9 editar · Enter confirmar · Esc voltar",
-        "0-9 edit · Enter confirm · Esc back",
-      ),
+      AppearancePage::Prompt { .. } => {
+        tr(self.lang, "control_center.0_9_edit_enter_confirm_esc_back")
+      }
       AppearancePage::Home => tr(
         self.lang,
-        "↑↓/jk navegar · Enter abrir · Espaço alternar · r atualizar · Esc voltar",
-        "↑↓/jk navigate · Enter open · Space toggle · r refresh · Esc back",
+        "control_center.jk_navigate_enter_open_space_toggle_r_refresh_esc_back",
       ),
       _ => tr(
         self.lang,
-        "↑↓/jk navegar · Enter aplicar · r atualizar · Esc voltar",
-        "↑↓/jk navigate · Enter apply · r refresh · Esc back",
+        "control_center.jk_navigate_enter_apply_r_refresh_esc_back",
       ),
     }
     .to_string()
@@ -514,7 +480,7 @@ impl AppearanceApp {
           .iter()
           .map(|(name, label)| {
             if self.state.theme == *name {
-              format!("{label} · {}", tr(self.lang, "atual", "current"))
+              format!("{label} · {}", tr(self.lang, "control_center.current"))
             } else {
               label.to_string()
             }
@@ -527,7 +493,10 @@ impl AppearanceApp {
           .iter()
           .map(|(label, color)| {
             if self.state.accent == *color {
-              format!("{label} ({color}) · {}", tr(self.lang, "atual", "current"))
+              format!(
+                "{label} ({color}) · {}",
+                tr(self.lang, "control_center.current")
+              )
             } else {
               format!("{label} ({color})")
             }
@@ -536,31 +505,28 @@ impl AppearanceApp {
         list(frame, area, &self.theme, &rows, self.selected);
       }
       AppearancePage::Wallpapers => {
-        let mut rows = vec![tr(
-          self.lang,
-          "Escolher imagem da HOME…",
-          "Choose image from HOME…",
-        ).to_string()];
-        rows.extend(self
-          .state
-          .wallpapers
-          .iter()
-          .map(|name| {
-            if self.state.wallpaper_active.as_deref() == Some(name.as_str()) {
-              format!("{name} · {}", tr(self.lang, "atual", "current"))
-            } else {
-              name.clone()
-            }
-          })
-          .collect::<Vec<_>>());
+        let mut rows = vec![tr(self.lang, "control_center.choose_image_from_home").to_string()];
+        rows.extend(
+          self
+            .state
+            .wallpapers
+            .iter()
+            .map(|name| {
+              if self.state.wallpaper_active.as_deref() == Some(name.as_str()) {
+                format!("{name} · {}", tr(self.lang, "control_center.current"))
+              } else {
+                name.clone()
+              }
+            })
+            .collect::<Vec<_>>(),
+        );
         if rows.is_empty() {
           self.draw_empty(
             frame,
             area,
             tr(
               self.lang,
-              "Nenhum papel de parede em /usr/share/backgrounds/argvus",
-              "No wallpapers in /usr/share/backgrounds/argvus",
+              "control_center.no_wallpapers_in_usr_share_backgrounds_argvus",
             )
             .to_string(),
           );
@@ -572,7 +538,7 @@ impl AppearanceApp {
         let rows = [
           format!(
             "{} {}",
-            tr(self.lang, "Superior", "Top"),
+            tr(self.lang, "control_center.top"),
             if self.state.waybar_pos == "top" {
               "· atual"
             } else {
@@ -581,7 +547,7 @@ impl AppearanceApp {
           ),
           format!(
             "{} {}",
-            tr(self.lang, "Inferior", "Bottom"),
+            tr(self.lang, "control_center.bottom"),
             if self.state.waybar_pos == "bottom" {
               "· atual"
             } else {
@@ -614,17 +580,9 @@ impl AppearanceApp {
 
   fn draw_prompt(&mut self, frame: &mut Frame, area: Rect, goal: PromptGoal) {
     let label = match goal {
-      PromptGoal::GapsIn => tr(
-        self.lang,
-        "Janelas: espaçamento interno",
-        "Windows: inner gap",
-      ),
-      PromptGoal::GapsOut => tr(
-        self.lang,
-        "Janelas: espaçamento externo",
-        "Windows: outer gap",
-      ),
-      PromptGoal::Waybar => tr(self.lang, "Barra de tarefas: margem", "Taskbar: margin"),
+      PromptGoal::GapsIn => tr(self.lang, "control_center.windows_inner_gap"),
+      PromptGoal::GapsOut => tr(self.lang, "control_center.windows_outer_gap"),
+      PromptGoal::Waybar => tr(self.lang, "control_center.taskbar_margin"),
     };
     let chunks = Layout::vertical([
       Constraint::Length(3),
@@ -652,8 +610,7 @@ impl AppearanceApp {
       let hint = Line::from(Span::styled(
         tr(
           self.lang,
-          "0 a 100 · independente do tema",
-          "0 to 100 · independent of the theme",
+          "control_center.0_to_100_independent_of_the_theme",
         ),
         Style::new()
           .fg(self.theme.foreground)
@@ -673,7 +630,7 @@ mod tests {
   fn home_has_nine_rows_leading_to_pages() {
     let app = AppearanceApp {
       page: AppearancePage::Home,
-      lang: Lang::Pt,
+      lang: Lang::for_locale("pt-BR"),
       theme: Theme::load(),
       status: None,
       state: AppearanceState::default(),
@@ -695,7 +652,7 @@ mod tests {
   fn waybar_position_picker_length() {
     let mut app = AppearanceApp {
       page: AppearancePage::WaybarPosition,
-      lang: Lang::Pt,
+      lang: Lang::for_locale("pt-BR"),
       theme: Theme::load(),
       status: None,
       state: AppearanceState::default(),

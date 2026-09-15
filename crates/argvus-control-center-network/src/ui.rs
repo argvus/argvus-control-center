@@ -119,9 +119,9 @@ impl NetworkApp {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
       text: if scan {
-        tr(self.lang, "Buscando redes...", "Scanning for networks...")
+        tr(self.lang, "control_center.scanning_for_networks")
       } else {
-        tr(self.lang, "Atualizando rede...", "Refreshing network...")
+        tr(self.lang, "control_center.refreshing_network")
       }
       .into(),
     });
@@ -152,9 +152,9 @@ impl NetworkApp {
           self.status = Some(StatusMessage {
             kind: StatusKind::Success,
             text: if self.scan {
-              tr(self.lang, "Redes atualizadas", "Networks updated")
+              tr(self.lang, "control_center.networks_updated")
             } else {
-              tr(self.lang, "Rede atualizada", "Network refreshed")
+              tr(self.lang, "control_center.network_refreshed")
             }
             .into(),
           });
@@ -207,15 +207,15 @@ impl NetworkApp {
     }));
   }
   fn action_label(&self, label: &str) -> String {
-    let english = match label {
-      "Conectando" => "Connecting",
-      "Desconectando" => "Disconnecting",
-      "Esquecendo" => "Forgetting",
-      "Alterando Wi-Fi" => "Changing Wi-Fi",
-      "Aplicando DNS" => "Applying DNS",
-      other => other,
+    let key = match label {
+      "Conectando" => "control_center.connecting",
+      "Desconectando" => "control_center.disconnecting",
+      "Esquecendo" => "control_center.forgetting",
+      "Alterando Wi-Fi" => "control_center.changing_wifi",
+      "Aplicando DNS" => "control_center.applying_dns",
+      other => return other.to_owned(),
     };
-    tr(self.lang, label, english).into()
+    tr(self.lang, key).into()
   }
   fn home_pages(&self) -> Vec<NetworkPage> {
     let mut pages = vec![
@@ -250,7 +250,7 @@ impl NetworkApp {
     pages
   }
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "Rede", "Network");
+    let root = tr(self.lang, "control_center.network");
     if self.page == NetworkPage::Home {
       root.into()
     } else {
@@ -259,16 +259,16 @@ impl NetworkApp {
   }
   fn page_label(&self) -> &'static str {
     match self.page {
-      NetworkPage::Home => tr(self.lang, "Rede", "Network"),
-      NetworkPage::Status => tr(self.lang, "Status", "Status"),
-      NetworkPage::Interfaces => tr(self.lang, "Interfaces", "Interfaces"),
-      NetworkPage::Wifi => tr(self.lang, "Wi-Fi", "Wi-Fi"),
-      NetworkPage::Ethernet => tr(self.lang, "Ethernet", "Ethernet"),
-      NetworkPage::Vpn => tr(self.lang, "VPN", "VPN"),
-      NetworkPage::Dns => tr(self.lang, "DNS", "DNS"),
-      NetworkPage::Proxy => tr(self.lang, "Proxy", "Proxy"),
-      NetworkPage::Firewall => tr(self.lang, "Firewall", "Firewall"),
-      NetworkPage::Detail(_) => tr(self.lang, "Interface", "Interface"),
+      NetworkPage::Home => tr(self.lang, "control_center.network"),
+      NetworkPage::Status => tr(self.lang, "control_center.status"),
+      NetworkPage::Interfaces => tr(self.lang, "control_center.interfaces"),
+      NetworkPage::Wifi => tr(self.lang, "control_center.wi_fi"),
+      NetworkPage::Ethernet => tr(self.lang, "control_center.ethernet"),
+      NetworkPage::Vpn => tr(self.lang, "control_center.vpn"),
+      NetworkPage::Dns => tr(self.lang, "control_center.dns"),
+      NetworkPage::Proxy => tr(self.lang, "control_center.proxy"),
+      NetworkPage::Firewall => tr(self.lang, "control_center.firewall"),
+      NetworkPage::Detail(_) => tr(self.lang, "control_center.interface"),
     }
   }
   fn connect_wifi(&mut self, index: usize) {
@@ -292,7 +292,7 @@ impl NetworkApp {
     let cap = self.capabilities.clone();
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
-      text: tr(self.lang, "Conectando...", "Connecting...").into(),
+      text: tr(self.lang, "control_center.connecting").into(),
     });
     self.action = Some(self.jobs.spawn(move |_| {
       Ok(
@@ -539,79 +539,94 @@ impl NetworkApp {
           ActionButton::WifiToggle,
           Button::new(
             if self.snapshot.wifi_enabled == Some(false) {
-              tr(self.lang, "Ligar Wi-Fi", "Enable Wi-Fi")
+              tr(self.lang, "control_center.enable_wi_fi")
             } else {
-              tr(self.lang, "Desligar Wi-Fi", "Disable Wi-Fi")
+              tr(self.lang, "control_center.disable_wi_fi")
             },
             ButtonKind::Secondary,
           ),
         ),
         (
           ActionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.refresh"),
+            ButtonKind::Secondary,
+          ),
         ),
       ],
       NetworkPage::Interfaces | NetworkPage::Ethernet | NetworkPage::Vpn => vec![
         (
           ActionButton::Connect,
-          Button::new(tr(self.lang, "Conectar", "Connect"), ButtonKind::Primary),
+          Button::new(tr(self.lang, "control_center.connect"), ButtonKind::Primary),
         ),
         (
           ActionButton::Disconnect,
           Button::new(
-            tr(self.lang, "Desconectar", "Disconnect"),
+            tr(self.lang, "control_center.disconnect"),
             ButtonKind::Danger,
           ),
         ),
         (
           ActionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.refresh"),
+            ButtonKind::Secondary,
+          ),
         ),
       ],
       NetworkPage::Wifi => vec![
         (
           ActionButton::Connect,
-          Button::new(tr(self.lang, "Conectar", "Connect"), ButtonKind::Primary),
+          Button::new(tr(self.lang, "control_center.connect"), ButtonKind::Primary),
         ),
         (
           ActionButton::Disconnect,
           Button::new(
-            tr(self.lang, "Desconectar", "Disconnect"),
+            tr(self.lang, "control_center.disconnect"),
             ButtonKind::Secondary,
           ),
         ),
         (
           ActionButton::Forget,
-          Button::new(tr(self.lang, "Esquecer", "Forget"), ButtonKind::Danger),
+          Button::new(tr(self.lang, "control_center.forget"), ButtonKind::Danger),
         ),
         (
           ActionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.refresh"),
+            ButtonKind::Secondary,
+          ),
         ),
       ],
       NetworkPage::Dns => vec![
         (
           ActionButton::DnsManual,
           Button::new(
-            tr(self.lang, "DNS manual", "Manual DNS"),
+            tr(self.lang, "control_center.manual_dns"),
             ButtonKind::Secondary,
           ),
         ),
         (
           ActionButton::DnsAutomatic,
           Button::new(
-            tr(self.lang, "DNS automático", "Automatic DNS"),
+            tr(self.lang, "control_center.automatic_dns"),
             ButtonKind::Primary,
           ),
         ),
         (
           ActionButton::Refresh,
-          Button::new(tr(self.lang, "Atualizar", "Refresh"), ButtonKind::Secondary),
+          Button::new(
+            tr(self.lang, "control_center.refresh"),
+            ButtonKind::Secondary,
+          ),
         ),
       ],
       NetworkPage::Proxy | NetworkPage::Detail(_) => vec![(
         ActionButton::Refresh,
-        Button::new(tr(self.lang, "Atualizar", "Refresh"), ButtonKind::Secondary),
+        Button::new(
+          tr(self.lang, "control_center.refresh"),
+          ButtonKind::Secondary,
+        ),
       )],
       _ => Vec::new(),
     }
@@ -619,18 +634,12 @@ impl NetworkApp {
   fn footer_hints(&self) -> &'static str {
     let action = tr(
       self.lang,
-      "↑/↓ Navegar   Tab Ações   ←/→ Mover   Enter Ativar   r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "↑/↓ Navigate   Tab Actions   ←/→ Move   Enter Activate   r Refresh   ←/Esc Back   ? Help",
+      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
     );
-    let readonly = tr(
-      self.lang,
-      "r Atualizar   ←/Esc Voltar   ? Ajuda",
-      "r Refresh   ←/Esc Back   ? Help",
-    );
+    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
     let home = tr(
       self.lang,
-      "↑/↓ Navegar   →/Enter Abrir   ←/Esc Voltar   r Atualizar   ? Ajuda",
-      "↑/↓ Navigate   →/Enter Open   ←/Esc Back   r Refresh   ? Help",
+      "control_center.navigate_enter_open_esc_back_r_refresh_help",
     );
     if self.page == NetworkPage::Home {
       home
@@ -803,7 +812,7 @@ impl NetworkApp {
     } else {
       self.status = Some(StatusMessage {
         kind: StatusKind::Error,
-        text: tr(self.lang, "Servidor DNS inválido.", "Invalid DNS server.").into(),
+        text: tr(self.lang, "control_center.invalid_dns_server").into(),
       });
     }
   }
@@ -898,19 +907,11 @@ impl NetworkApp {
       f.render_widget(Clear, popup);
       f.render_widget(
         Paragraph::new(vec![
-          Line::from(tr(
-            self.lang,
-            "Servidores DNS (separados por vírgula):",
-            "DNS servers (comma separated):",
-          )),
+          Line::from(tr(self.lang, "control_center.dns_servers_comma_separated")),
           Line::from(format!("{input}_")),
-          Line::from(tr(
-            self.lang,
-            "Enter aplicar   Esc cancelar",
-            "Enter apply   Esc cancel",
-          )),
+          Line::from(tr(self.lang, "control_center.enter_apply_esc_cancel")),
         ])
-        .block(Block::bordered().title(tr(self.lang, "Servidores DNS", "DNS servers"))),
+        .block(Block::bordered().title(tr(self.lang, "control_center.dns_servers"))),
         popup,
       );
     } else if let Some(password) = &self.password {
@@ -919,19 +920,11 @@ impl NetworkApp {
       let shown = "•".repeat(argvus_tui::text::display_width(password));
       f.render_widget(
         Paragraph::new(vec![
-          Line::from(tr(
-            self.lang,
-            "Senha da rede Wi-Fi:",
-            "Wi-Fi network password:",
-          )),
+          Line::from(tr(self.lang, "control_center.wi_fi_network_password")),
           Line::from(format!("{shown}_")),
-          Line::from(tr(
-            self.lang,
-            "Enter conectar   Esc cancelar",
-            "Enter connect   Esc cancel",
-          )),
+          Line::from(tr(self.lang, "control_center.enter_connect_esc_cancel")),
         ])
-        .block(Block::bordered().title(tr(self.lang, "Senha Wi-Fi", "Wi-Fi password"))),
+        .block(Block::bordered().title(tr(self.lang, "control_center.wi_fi_password"))),
         popup,
       );
     }
@@ -946,14 +939,14 @@ impl NetworkApp {
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(self.lang, "Esquecer rede", "Forget network"),
+          title: tr(self.lang, "control_center.forget_network"),
           message: &format!(
             "{} {}?",
-            tr(self.lang, "Esquecer a rede", "Forget network"),
+            tr(self.lang, "control_center.forget_network_58478a"),
             name
           ),
-          confirm_label: tr(self.lang, "Esquecer", "Forget"),
-          cancel_label: tr(self.lang, "Cancelar", "Cancel"),
+          confirm_label: tr(self.lang, "control_center.forget"),
+          cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
       );
@@ -975,21 +968,21 @@ impl NetworkApp {
           format!(
             " {} {}",
             AppConfig::icon("🌐"),
-            tr(self.lang, "CONECTIVIDADE", "CONNECTIVITY")
+            tr(self.lang, "control_center.connectivity")
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "Estado:", "State:"),
+            tr(self.lang, "control_center.state"),
             self.snapshot.connectivity
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "Interface:", "Interface:"),
+            tr(self.lang, "control_center.interface_df13f7"),
             active.map(|i| i.name.as_str()).unwrap_or("—")
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "IPv4:", "IPv4:"),
+            tr(self.lang, "control_center.ipv4"),
             active
               .and_then(|i| i.ipv4.first())
               .map(String::as_str)
@@ -997,7 +990,7 @@ impl NetworkApp {
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "IPv6:", "IPv6:"),
+            tr(self.lang, "control_center.ipv6"),
             active
               .map(|i| i.ipv6.join(", "))
               .filter(|v| !v.is_empty())
@@ -1005,20 +998,20 @@ impl NetworkApp {
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "Gateway:", "Gateway:"),
+            tr(self.lang, "control_center.gateway"),
             active.and_then(|i| i.gateway.as_deref()).unwrap_or("—")
           ),
           "".into(),
           format!(
             " {} {}",
             AppConfig::icon("📶"),
-            tr(self.lang, "CONEXÕES", "CONNECTIONS")
+            tr(self.lang, "control_center.connections")
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "Wi-Fi:", "Wi-Fi:"),
+            tr(self.lang, "control_center.wi_fi_ac2ca3"),
             if self.snapshot.wifi_enabled == Some(false) {
-              tr(self.lang, "Desligado", "Disabled")
+              tr(self.lang, "control_center.disabled_ac84bd")
             } else {
               self
                 .snapshot
@@ -1026,12 +1019,12 @@ impl NetworkApp {
                 .iter()
                 .find(|w| w.connected)
                 .map(|w| w.ssid.as_str())
-                .unwrap_or_else(|| tr(self.lang, "Inativo", "Inactive"))
+                .unwrap_or_else(|| tr(self.lang, "control_center.inactive"))
             }
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "DNS:", "DNS:"),
+            tr(self.lang, "control_center.dns_d80a0d"),
             if self.snapshot.dns.servers.is_empty() {
               "—".into()
             } else {
@@ -1040,14 +1033,14 @@ impl NetworkApp {
           ),
           format!(
             "   {:<14} {}",
-            tr(self.lang, "VPN:", "VPN:"),
+            tr(self.lang, "control_center.vpn_fda889"),
             self
               .snapshot
               .vpn
               .iter()
               .find(|v| v.active)
               .map(|v| terminal_text(&v.name))
-              .unwrap_or_else(|| tr(self.lang, "Inativa", "Inactive").into())
+              .unwrap_or_else(|| tr(self.lang, "control_center.inactive_6f56ef").into())
           ),
         ]
       }
@@ -1057,14 +1050,14 @@ impl NetworkApp {
         .map(|i| {
           let v = &self.snapshot.interfaces[i];
           let status_badge = if v.state == "connected" {
-            format!("   ★ {}", tr(self.lang, "Conectado", "Connected"))
+            format!("   ★ {}", tr(self.lang, "control_center.connected"))
           } else {
             String::new()
           };
           let conn = v
             .connection
             .clone()
-            .unwrap_or_else(|| tr(self.lang, "sem conexão", "no connection").into());
+            .unwrap_or_else(|| tr(self.lang, "control_center.no_connection").into());
           format!("{} ({})  ·  {}{}", v.name, v.kind, conn, status_badge)
         })
         .collect(),
@@ -1074,7 +1067,7 @@ impl NetworkApp {
         .get(i)
         .map(|v| {
           let status = if v.state == "connected" {
-            format!("★ {}", tr(self.lang, "Conectado", "Connected"))
+            format!("★ {}", tr(self.lang, "control_center.connected"))
           } else {
             v.state.clone()
           };
@@ -1082,30 +1075,34 @@ impl NetworkApp {
             format!(
               " {} {}",
               AppConfig::icon("🔌"),
-              tr(self.lang, "INTERFACE DE REDE", "NETWORK INTERFACE")
+              tr(self.lang, "control_center.network_interface")
             ),
-            format!("   {:<12} {}", tr(self.lang, "Nome:", "Name:"), v.name),
-            format!("   {:<12} {}", tr(self.lang, "Tipo:", "Type:"), v.kind),
-            format!("   {:<12} {}", tr(self.lang, "Status:", "Status:"), status),
+            format!("   {:<12} {}", tr(self.lang, "control_center.name"), v.name),
+            format!("   {:<12} {}", tr(self.lang, "control_center.type"), v.kind),
             format!(
               "   {:<12} {}",
-              tr(self.lang, "Driver:", "Driver:"),
+              tr(self.lang, "control_center.status_bbe39c"),
+              status
+            ),
+            format!(
+              "   {:<12} {}",
+              tr(self.lang, "control_center.driver"),
               v.driver.as_deref().unwrap_or("—")
             ),
             "".into(),
             format!(
               "   {:<12} {}",
-              tr(self.lang, "Operstate:", "Operstate:"),
+              tr(self.lang, "control_center.operstate"),
               v.operstate
             ),
             format!(
               "   {:<12} {}",
-              tr(self.lang, "MAC:", "MAC:"),
+              tr(self.lang, "control_center.mac"),
               v.mac.as_deref().unwrap_or("—")
             ),
             format!(
               "   {:<12} {}",
-              tr(self.lang, "IPv4:", "IPv4:"),
+              tr(self.lang, "control_center.ipv4"),
               if v.ipv4.is_empty() {
                 "—".into()
               } else {
@@ -1114,7 +1111,7 @@ impl NetworkApp {
             ),
             format!(
               "   {:<12} {}",
-              tr(self.lang, "IPv6:", "IPv6:"),
+              tr(self.lang, "control_center.ipv6"),
               if v.ipv6.is_empty() {
                 "—".into()
               } else {
@@ -1123,7 +1120,7 @@ impl NetworkApp {
             ),
             format!(
               "   {:<12} {}",
-              tr(self.lang, "MTU:", "MTU:"),
+              tr(self.lang, "control_center.mtu"),
               v.mtu.map(|m| m.to_string()).unwrap_or_else(|| "—".into())
             ),
           ]
@@ -1135,9 +1132,9 @@ impl NetworkApp {
         .map(|i| {
           let w = &self.snapshot.wifi[i];
           let badge = if w.connected {
-            format!("   ★ {}", tr(self.lang, "Conectado", "Connected"))
+            format!("   ★ {}", tr(self.lang, "control_center.connected"))
           } else if w.known {
-            format!("   ● {}", tr(self.lang, "Salva", "Saved"))
+            format!("   ● {}", tr(self.lang, "control_center.saved"))
           } else {
             String::new()
           };
@@ -1160,7 +1157,7 @@ impl NetworkApp {
         .map(|i| {
           let v = &self.snapshot.vpn[i];
           let badge = if v.active {
-            format!("   ★ {}", tr(self.lang, "Ativa", "Active"))
+            format!("   ★ {}", tr(self.lang, "control_center.active_c7cc67"))
           } else {
             String::new()
           };
@@ -1171,16 +1168,16 @@ impl NetworkApp {
         format!(
           " {} {}",
           AppConfig::icon("🔎"),
-          tr(self.lang, "CONFIGURAÇÃO DE DNS", "DNS CONFIGURATION")
+          tr(self.lang, "control_center.dns_configuration")
         ),
         format!(
           "   {:<16} {}",
-          tr(self.lang, "Fonte:", "Source:"),
+          tr(self.lang, "control_center.source_2c26d9"),
           terminal_text(&self.snapshot.dns.source)
         ),
         format!(
           "   {:<16} {}",
-          tr(self.lang, "Servidores:", "Servers:"),
+          tr(self.lang, "control_center.servers"),
           if self.snapshot.dns.servers.is_empty() {
             "—".into()
           } else {
@@ -1189,7 +1186,7 @@ impl NetworkApp {
         ),
         format!(
           "   {:<16} {}",
-          tr(self.lang, "Search Domains:", "Search Domains:"),
+          tr(self.lang, "control_center.search_domains"),
           if self.snapshot.dns.search_domains.is_empty() {
             "—".into()
           } else {
@@ -1206,7 +1203,7 @@ impl NetworkApp {
           format!(
             " {} {}",
             AppConfig::icon("🛡"),
-            tr(self.lang, "CONFIGURAÇÃO DE PROXY", "PROXY CONFIGURATION")
+            tr(self.lang, "control_center.proxy_configuration")
           ),
           format!("   {:<14} {}", "HTTP_PROXY:", http),
           format!("   {:<14} {}", "HTTPS_PROXY:", https),
@@ -1225,13 +1222,13 @@ impl NetworkApp {
       .find(|i| i.state == "connected");
     let active_iface = active
       .map(|i| i.name.as_str())
-      .unwrap_or_else(|| tr(self.lang, "Nenhuma", "None"));
+      .unwrap_or_else(|| tr(self.lang, "control_center.none_247448"));
     let ipv4 = active
       .and_then(|i| i.ipv4.first())
       .map(String::as_str)
       .unwrap_or("—");
     let wifi_status = if self.snapshot.wifi_enabled == Some(false) {
-      tr(self.lang, "Desligado", "Disabled")
+      tr(self.lang, "control_center.disabled_ac84bd")
     } else {
       self
         .snapshot
@@ -1239,7 +1236,7 @@ impl NetworkApp {
         .iter()
         .find(|w| w.connected)
         .map(|w| w.ssid.as_str())
-        .unwrap_or_else(|| tr(self.lang, "Desconectado", "Disconnected"))
+        .unwrap_or_else(|| tr(self.lang, "control_center.disconnected"))
     };
     let active_vpn = self
       .snapshot
@@ -1247,17 +1244,17 @@ impl NetworkApp {
       .iter()
       .find(|v| v.active)
       .map(|v| terminal_text(&v.name))
-      .unwrap_or_else(|| tr(self.lang, "Inativa", "Inactive").into());
+      .unwrap_or_else(|| tr(self.lang, "control_center.inactive_6f56ef").into());
     let dns_count = self.snapshot.dns.servers.len();
     let dns_str = if dns_count > 0 {
       self.snapshot.dns.servers.join(", ")
     } else {
-      tr(self.lang, "Automático", "Automatic").into()
+      tr(self.lang, "control_center.automatic").into()
     };
     let proxy_str = if self.snapshot.proxy.http.is_some() || self.snapshot.proxy.https.is_some() {
-      tr(self.lang, "Ativo", "Active")
+      tr(self.lang, "control_center.active_095d39")
     } else {
-      tr(self.lang, "Desativado", "Disabled")
+      tr(self.lang, "control_center.disabled")
     };
 
     let pages = self.home_pages();
@@ -1267,21 +1264,21 @@ impl NetworkApp {
         NetworkPage::Status => format!(
           "{} {}  ·  {} · {}",
           AppConfig::icon("🌐"),
-          tr(self.lang, "Status", "Status"),
+          tr(self.lang, "control_center.status"),
           self.snapshot.connectivity,
           active_iface
         ),
         NetworkPage::Interfaces => format!(
           "{} {}  ·  {} ({})",
           AppConfig::icon("🔌"),
-          tr(self.lang, "Interfaces", "Interfaces"),
+          tr(self.lang, "control_center.interfaces"),
           self.snapshot.interfaces.len(),
           ipv4
         ),
         NetworkPage::Ethernet => format!(
           "{} {}  ·  {}",
           AppConfig::icon("🖧"),
-          tr(self.lang, "Ethernet", "Ethernet"),
+          tr(self.lang, "control_center.ethernet"),
           self
             .snapshot
             .interfaces
@@ -1292,31 +1289,31 @@ impl NetworkApp {
         NetworkPage::Wifi => format!(
           "{} {}  ·  {}",
           AppConfig::icon("📶"),
-          tr(self.lang, "Wi-Fi", "Wi-Fi"),
+          tr(self.lang, "control_center.wi_fi"),
           wifi_status
         ),
         NetworkPage::Vpn => format!(
           "{} {}  ·  {}",
           AppConfig::icon("🔒"),
-          tr(self.lang, "VPN", "VPN"),
+          tr(self.lang, "control_center.vpn"),
           active_vpn
         ),
         NetworkPage::Dns => format!(
           "{} {}  ·  {}",
           AppConfig::icon("🔎"),
-          tr(self.lang, "DNS", "DNS"),
+          tr(self.lang, "control_center.dns"),
           dns_str
         ),
         NetworkPage::Proxy => format!(
           "{} {}  ·  {}",
           AppConfig::icon("🛡"),
-          tr(self.lang, "Proxy", "Proxy"),
+          tr(self.lang, "control_center.proxy"),
           proxy_str
         ),
         NetworkPage::Firewall => format!(
           "{} {}",
           AppConfig::icon("🔥"),
-          tr(self.lang, "Firewall", "Firewall")
+          tr(self.lang, "control_center.firewall")
         ),
         NetworkPage::Home | NetworkPage::Detail(_) => String::new(),
       })
@@ -1347,7 +1344,7 @@ fn apply_dns_privileged(
   )?;
   let output = operation.execute(&request)?;
   if output.status == Some(0) {
-    Ok(tr(lang, "DNS aplicado", "DNS applied").into())
+    Ok(tr(lang, "control_center.dns_applied").into())
   } else {
     Err(terminal_text(&String::from_utf8_lossy(&output.stderr)))
   }
@@ -1371,7 +1368,7 @@ mod tests {
 
   fn app() -> NetworkApp {
     NetworkApp::new(
-      Lang::En,
+      Lang::for_locale("en-US"),
       argvus_theme::Theme::load(),
       Capabilities::default(),
     )
