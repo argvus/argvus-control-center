@@ -326,9 +326,12 @@ fn effects_state() -> bool {
 }
 
 fn telemetry_state() -> bool {
-  if let Ok(output) =
-    SystemProcessRunner.run(&ProcessRequest::new("argvus-widget-telemetry-toggle").arg("status"))
-    && output.status.is_none_or(|status| status == 0)
+  if let Ok(output) = SystemProcessRunner.run(
+    &ProcessRequest::new("env")
+      .arg("ARGVUS_MACHINE_OUTPUT=1")
+      .arg("argvus-widget-telemetry-toggle")
+      .arg("status"),
+  ) && output.status.is_none_or(|status| status == 0)
   {
     match terminal_text(&String::from_utf8_lossy(&output.stdout)).trim() {
       "enabled" => return true,
