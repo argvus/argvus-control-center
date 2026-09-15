@@ -74,6 +74,7 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     "fonts" => parse_fonts(&args[1..]).map(settings_route),
     #[cfg(feature = "locale")]
     "locale" | "locale-region" => parse_locale(&args[1..]).map(settings_route),
+    "input" | "mouse" | "touchpad" if args.len() == 1 => Ok(settings_route(Page::MouseTouchpad)),
     #[cfg(feature = "language")]
     "language" if args.len() == 1 => Ok(settings_route(Page::Language)),
     "config" if args.len() == 1 => Ok(Some(InitialRoute::Config)),
@@ -508,6 +509,10 @@ mod tests {
     assert_eq!(
       parse(&args(&["locale", "--keyboard"])).unwrap(),
       Some(InitialRoute::Settings(Page::Keyboard))
+    );
+    assert_eq!(
+      parse(&args(&["input"])).unwrap(),
+      Some(InitialRoute::Settings(Page::MouseTouchpad))
     );
     assert_eq!(
       parse(&args(&["system", "hostname"])).unwrap(),

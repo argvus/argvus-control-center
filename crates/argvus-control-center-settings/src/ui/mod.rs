@@ -244,6 +244,29 @@ mod tests {
   }
 
   #[test]
+  fn mouse_touchpad_page_renders_integrated_input_controls() {
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+    let mut app = App::new(Page::MouseTouchpad);
+    app.error_modal = None;
+    terminal.draw(|frame| draw(&mut app, frame)).unwrap();
+    let rendered = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .map(|cell| cell.symbol())
+      .collect::<String>();
+    let rows = app.rows();
+    for row in rows.iter().filter(|row| row.detail.is_some()).take(3) {
+      assert!(
+        rendered.contains(&row.label),
+        "missing rendered row: {}",
+        row.label
+      );
+    }
+  }
+
+  #[test]
   fn reset_pages_render_a_reset_defaults_button() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     for page in [Page::DefaultApps, Page::Fonts] {

@@ -96,6 +96,26 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     return;
   }
 
+  if app.page() == crate::navigation::Page::MouseTouchpad {
+    match key.code {
+      KeyCode::Left | KeyCode::Char('h') => {
+        let selected = app.navigation.current().selected;
+        app.input_cycle(selected, -1);
+      }
+      KeyCode::Right | KeyCode::Char('l') => {
+        let selected = app.navigation.current().selected;
+        app.input_cycle(selected, 1);
+      }
+      KeyCode::Char(' ') => app.toggle_current(),
+      _ => handle_regular_key(app, key),
+    }
+    return;
+  }
+
+  handle_regular_key(app, key);
+}
+
+fn handle_regular_key(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
     KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),

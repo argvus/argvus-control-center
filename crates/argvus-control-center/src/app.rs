@@ -1013,6 +1013,11 @@ impl App {
       label: tr(self.lang, "control_center.hardware"),
       action: 4,
     });
+    #[cfg(feature = "hardware")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.mouse_touchpad"),
+      action: 20,
+    });
     #[cfg(feature = "displays")]
     if self.capabilities.has_hyprctl {
       rows.push(HomeRow::Item {
@@ -1222,6 +1227,7 @@ impl App {
         self.route = Route::Appearance;
         self.appearance.reload();
       }
+      20 => self.open_settings(Page::MouseTouchpad),
       _ => {}
     }
   }
@@ -1478,6 +1484,29 @@ mod tests {
         Some(HomeRow::Item { .. })
       ));
     }
+  }
+
+  #[cfg(feature = "hardware")]
+  #[test]
+  fn mouse_touchpad_is_in_the_hardware_group() {
+    let app = App::new(InitialRoute::Home);
+    let rows = app.home_rows();
+    let hardware_index = rows
+      .iter()
+      .position(|row| {
+        matches!(row, HomeRow::Header(label) if *label == tr(app.lang, "control_center.hardware"))
+      })
+      .expect("hardware heading");
+    let input_index = rows
+      .iter()
+      .position(|row| {
+        matches!(row, HomeRow::Item { label, .. } if *label == tr(app.lang, "control_center.mouse_touchpad"))
+      })
+      .expect("mouse and touchpad item");
+    assert!(input_index > hardware_index);
+    assert!(!rows[..hardware_index].iter().any(|row| {
+      matches!(row, HomeRow::Item { label, .. } if *label == tr(app.lang, "control_center.mouse_touchpad"))
+    }));
   }
 
   #[cfg(feature = "about")]

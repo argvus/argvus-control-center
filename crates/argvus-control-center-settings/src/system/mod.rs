@@ -1,7 +1,9 @@
 pub mod command;
 pub mod fonts;
 pub mod host;
+pub mod input;
 pub mod keyboard;
 pub mod locale;
 pub mod privileged;
+pub mod ratbag;
 pub mod time;

@@ -8,7 +8,7 @@ use crate::config::fonts::{FontSettings, FontTarget, SettingKind};
 use crate::i18n::{Lang, na, tr};
 use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
-use crate::system::{host, keyboard, locale, time};
+use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
 use argvus_control_center_core::config::AppConfig;
 use argvus_control_center_core::{
@@ -54,6 +54,14 @@ pub enum PendingAction {
   SetNtp(bool),
 }
 
+#[derive(Debug, Clone, Copy)]
+enum RatbagRowAction {
+  Device,
+  Profile,
+  Dpi,
+  ReportRate,
+}
+
 pub struct App {
   pub admin: crate::administration::Administration,
   pub lang: Lang,
@@ -85,6 +93,17 @@ pub struct App {
   keyboard_layouts: Vec<keyboard::Layout>,
   keyboard_variants: Vec<keyboard::Variant>,
   console_keymaps: Vec<String>,
+  input: input::InputSettings,
+  input_loading: bool,
+  input_load_job: Option<JobHandle<input::InputSettings>>,
+  input_device_job: Option<JobHandle<(input::Devices, Vec<crate::system::ratbag::Device>)>>,
+  input_last_device_refresh: Instant,
+  input_pending: Option<(usize, i8, Instant)>,
+  input_toggle_pending: Option<usize>,
+  input_job: Option<JobHandle<input::InputSettings>>,
+  ratbag_device: usize,
+  ratbag_pending_path: Option<String>,
+  ratbag_job: Option<JobHandle<Vec<crate::system::ratbag::Device>>>,
   hostname: String,
   jobs: JobManager,
   task_job: Option<JobHandle<Result<String, String>>>,
@@ -145,6 +164,17 @@ impl App {
       keyboard_info,
       keyboard_layouts: keyboard::layouts(),
       console_keymaps: keyboard::console_keymaps(),
+      input: input::InputSettings::default(),
+      input_loading: true,
+      input_load_job: None,
+      input_device_job: None,
+      input_last_device_refresh: Instant::now(),
+      input_pending: None,
+      input_toggle_pending: None,
+      input_job: None,
+      ratbag_device: 0,
+      ratbag_pending_path: None,
+      ratbag_job: None,
       hostname,
       jobs: JobManager::default(),
       task_job: None,
@@ -153,6 +183,7 @@ impl App {
       task_scroll: 0,
       task_follow: false,
     };
+    app.input_load_job = Some(app.jobs.spawn(|_| Ok(input::load())));
     if initial != Page::Main {
       app.select_current();
     }
@@ -456,6 +487,7 @@ impl App {
           current: false,
         },
       ],
+      Page::MouseTouchpad => self.input_rows(),
       Page::KeyboardLayout => self
         .keyboard_layouts
         .iter()
@@ -527,6 +559,212 @@ impl App {
         current: false,
       }],
     }
+  }
+
+  fn input_rows(&self) -> Vec<Row> {
+    if self.input_loading {
+      let loading = tr(self.lang, "control_center.input_loading").to_string();
+      return [
+        tr(self.lang, "control_center.input_mouse").to_string(),
+        tr(self.lang, "control_center.input_pointer_speed").to_string(),
+        tr(self.lang, "control_center.input_acceleration").to_string(),
+        tr(self.lang, "control_center.input_natural_scrolling").to_string(),
+        tr(self.lang, "control_center.input_scroll_speed").to_string(),
+        tr(self.lang, "control_center.input_left_handed").to_string(),
+        tr(self.lang, "control_center.input_touchpad").to_string(),
+      ]
+      .into_iter()
+      .enumerate()
+      .map(|(index, label)| Row {
+        label,
+        detail: (index != 0).then(|| loading.clone()),
+        current: false,
+      })
+      .collect();
+    }
+    let m = &self.input.mouse;
+    let t = &self.input.touchpad;
+    let mut rows = vec![
+      Row::plain(tr(self.lang, "control_center.input_mouse")),
+      Row {
+        label: tr(self.lang, "control_center.input_pointer_speed").into(),
+        detail: Some(input::speed_display(m.sensitivity)),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "control_center.input_acceleration").into(),
+        detail: Some(tr(self.lang, input::accel_label(&m.accel_profile)).into()),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "control_center.input_natural_scrolling").into(),
+        detail: Some(enabled_label(self.lang, m.natural_scroll).into()),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "control_center.input_scroll_speed").into(),
+        detail: Some(input::factor_display(m.scroll_factor)),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "control_center.input_left_handed").into(),
+        detail: Some(enabled_label(self.lang, m.left_handed).into()),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "control_center.input_touchpad").into(),
+        detail: Some(
+          if self.input.devices.touchpad {
+            tr(self.lang, "control_center.available")
+          } else {
+            tr(self.lang, "control_center.not_available")
+          }
+          .into(),
+        ),
+        current: false,
+      },
+    ];
+    if self.input.devices.touchpad {
+      rows.extend([
+        Row {
+          label: tr(self.lang, "control_center.input_touchpad_pointer_speed").into(),
+          detail: Some(input::speed_display(t.sensitivity)),
+          current: false,
+        },
+        Row {
+          label: tr(self.lang, "control_center.input_touchpad_natural_scrolling").into(),
+          detail: Some(enabled_label(self.lang, t.natural_scroll).into()),
+          current: false,
+        },
+        Row {
+          label: tr(self.lang, "control_center.input_tap_to_click").into(),
+          detail: Some(enabled_label(self.lang, t.tap_to_click).into()),
+          current: false,
+        },
+        Row {
+          label: tr(self.lang, "control_center.input_tap_and_drag").into(),
+          detail: Some(enabled_label(self.lang, t.tap_and_drag).into()),
+          current: false,
+        },
+        Row {
+          label: tr(self.lang, "control_center.input_two_finger_right_click").into(),
+          detail: Some(enabled_label(self.lang, t.two_finger_right_click).into()),
+          current: false,
+        },
+        Row {
+          label: tr(self.lang, "control_center.input_disable_while_typing").into(),
+          detail: Some(enabled_label(self.lang, t.disable_while_typing).into()),
+          current: false,
+        },
+      ]);
+    }
+    if !self.input.ratbag.is_empty() {
+      let device = self
+        .input
+        .ratbag
+        .get(self.ratbag_device)
+        .or_else(|| self.input.ratbag.first())
+        .expect("ratbag device list is not empty");
+      rows.push(Row {
+        label: tr(self.lang, "control_center.input_hardware_mouse").into(),
+        detail: (self.input.ratbag.len() == 1).then(|| {
+          if device.name.is_empty() {
+            tr(self.lang, "control_center.input_hardware_device_unknown").to_string()
+          } else {
+            device.name.clone()
+          }
+        }),
+        current: false,
+      });
+      if self.input.ratbag.len() > 1 {
+        rows.push(Row {
+          label: tr(self.lang, "control_center.input_hardware_device").into(),
+          detail: Some(if device.name.is_empty() {
+            tr(self.lang, "control_center.input_hardware_device_unknown").to_string()
+          } else {
+            device.name.clone()
+          }),
+          current: false,
+        });
+      }
+      if let Some(profile) = device.active_profile() {
+        let profile_name = if profile.name.is_empty() {
+          self.lang.tr_args(
+            "control_center.input_hardware_profile_number",
+            [("number", profile.index.to_string())],
+          )
+        } else {
+          profile.name.clone()
+        };
+        rows.push(Row {
+          label: tr(self.lang, "control_center.input_hardware_profile").into(),
+          detail: Some(profile_name),
+          current: false,
+        });
+        if let Some(resolution) = profile.active_resolution() {
+          let dpi = if resolution.dpi_x == resolution.dpi_y {
+            resolution.dpi_x.to_string()
+          } else {
+            format!("{} × {}", resolution.dpi_x, resolution.dpi_y)
+          };
+          if profile.supports_dpi() {
+            rows.push(Row {
+              label: tr(self.lang, "control_center.input_hardware_dpi").into(),
+              detail: Some(
+                self
+                  .lang
+                  .tr_args("control_center.input_hardware_dpi_unit", [("value", dpi)]),
+              ),
+              current: false,
+            });
+          }
+        }
+        if profile.report_rate.is_some() && profile.supports_report_rate() {
+          rows.push(Row {
+            label: tr(self.lang, "control_center.input_hardware_polling_rate").into(),
+            detail: Some(self.lang.tr_args(
+              "control_center.input_hardware_polling_unit",
+              [("value", profile.report_rate.unwrap_or_default().to_string())],
+            )),
+            current: false,
+          });
+        }
+      }
+    }
+    rows
+  }
+
+  fn ratbag_row_action(&self, index: usize) -> Option<RatbagRowAction> {
+    if self.input.ratbag.is_empty() {
+      return None;
+    }
+    let device = self
+      .input
+      .ratbag
+      .get(self.ratbag_device)
+      .or_else(|| self.input.ratbag.first())?;
+    let mut row = 7 + usize::from(self.input.devices.touchpad) * 6;
+    if self.input.ratbag.len() > 1 {
+      if index == row + 1 {
+        return Some(RatbagRowAction::Device);
+      }
+      row += 1;
+    }
+    let profile = device.active_profile()?;
+    if index == row + 1 {
+      return Some(RatbagRowAction::Profile);
+    }
+    row += 1;
+    if profile.supports_dpi() {
+      if index == row + 1 {
+        return Some(RatbagRowAction::Dpi);
+      }
+      row += 1;
+    }
+    if !profile.report_rates.is_empty() && index == row + 1 {
+      return Some(RatbagRowAction::ReportRate);
+    }
+    None
   }
 
   fn system_rows(&self) -> Vec<Row> {
@@ -648,6 +886,10 @@ impl App {
         setting_label(self.lang, setting)
       ),
       Page::LocaleRegion => format!("{root} > {}", tr(self.lang, "control_center.locale_region")),
+      Page::MouseTouchpad => format!(
+        "{root} > {}",
+        tr(self.lang, "control_center.mouse_touchpad")
+      ),
       Page::TimeZone => format!(
         "{root} > {} > {}",
         tr(self.lang, "control_center.locale_region"),
@@ -883,6 +1125,44 @@ impl App {
     if self.page() == Page::Keyboard {
       return matches!(index, 0 | 1 | 4);
     }
+    if self.page() == Page::MouseTouchpad {
+      if self.input_loading {
+        return false;
+      }
+      if !self.input.ratbag.is_empty() && index == 7 + usize::from(self.input.devices.touchpad) * 6
+      {
+        return false;
+      }
+      if let Some(action) = self.ratbag_row_action(index) {
+        return match action {
+          RatbagRowAction::Device => self.input.ratbag.len() > 1,
+          RatbagRowAction::Profile => self
+            .input
+            .ratbag
+            .get(self.ratbag_device)
+            .or_else(|| self.input.ratbag.first())
+            .is_some_and(|device| device.profiles.len() > 1),
+          RatbagRowAction::Dpi => self
+            .input
+            .ratbag
+            .get(self.ratbag_device)
+            .or_else(|| self.input.ratbag.first())
+            .and_then(crate::system::ratbag::Device::active_profile)
+            .is_some_and(crate::system::ratbag::Profile::supports_dpi),
+          RatbagRowAction::ReportRate => self
+            .input
+            .ratbag
+            .get(self.ratbag_device)
+            .or_else(|| self.input.ratbag.first())
+            .and_then(crate::system::ratbag::Device::active_profile)
+            .is_some_and(crate::system::ratbag::Profile::supports_report_rate),
+        };
+      }
+      if !self.input.devices.mouse && matches!(index, 1..=5) {
+        return false;
+      }
+      return !matches!(index, 0 | 6);
+    }
     if self.page() == Page::Language {
       return index >= LANGUAGE_INFO_ROWS && index < self.rows().len();
     }
@@ -1089,6 +1369,7 @@ impl App {
         4 => self.open_system_page(Page::ConsoleKeymap),
         _ => {}
       },
+      Page::MouseTouchpad => self.apply_input(selected),
       Page::KeyboardLayout => self.apply_keyboard_layout(selected),
       Page::KeyboardVariant => self.apply_keyboard_variant(selected),
       Page::ConsoleKeymap => self.apply_console_keymap(selected),
@@ -1158,6 +1439,11 @@ impl App {
       self.toggle_keyboard_layout();
       return;
     }
+    if self.page() == Page::MouseTouchpad {
+      let selected = self.navigation.current().selected;
+      self.apply_input(selected);
+      return;
+    }
     if self.page() != Page::SystemLocales {
       return;
     }
@@ -1173,6 +1459,112 @@ impl App {
     {
       self.selected_locales.insert(key.clone());
     }
+  }
+
+  fn apply_input(&mut self, selected: usize) {
+    if let Some(action) = self.ratbag_row_action(selected) {
+      match action {
+        RatbagRowAction::Device => self.cycle_ratbag_device(1),
+        RatbagRowAction::Profile => self.queue_ratbag(crate::system::ratbag::Change::Profile(1)),
+        RatbagRowAction::Dpi => self.queue_ratbag(crate::system::ratbag::Change::Dpi(1)),
+        RatbagRowAction::ReportRate => {
+          self.queue_ratbag(crate::system::ratbag::Change::ReportRate(1))
+        }
+      }
+      return;
+    }
+    if matches!(selected, 3 | 5 | 8..=12) {
+      self.input_toggle_pending = Some(selected);
+      self.status = Some(Status {
+        text: tr(self.lang, "control_center.input_applying").to_string(),
+        kind: StatusKind::Success,
+        created: Instant::now(),
+      });
+    } else {
+      self.input_cycle(selected, 1);
+    }
+  }
+
+  pub(crate) fn input_cycle(&mut self, selected: usize, direction: i8) {
+    if let Some(action) = self.ratbag_row_action(selected) {
+      match action {
+        RatbagRowAction::Device => self.cycle_ratbag_device(direction),
+        RatbagRowAction::Profile => {
+          self.queue_ratbag(crate::system::ratbag::Change::Profile(direction))
+        }
+        RatbagRowAction::Dpi => self.queue_ratbag(crate::system::ratbag::Change::Dpi(direction)),
+        RatbagRowAction::ReportRate => {
+          self.queue_ratbag(crate::system::ratbag::Change::ReportRate(direction))
+        }
+      }
+      return;
+    }
+    let direction = direction.signum();
+    let pending = self.input_pending.take();
+    self.input_pending = Some(match pending {
+      Some((pending_selected, pending_direction, _)) if pending_selected == selected => (
+        selected,
+        pending_direction.saturating_add(direction),
+        Instant::now() + Duration::from_millis(100),
+      ),
+      _ => (
+        selected,
+        direction,
+        Instant::now() + Duration::from_millis(100),
+      ),
+    });
+    self.status = Some(Status {
+      text: tr(self.lang, "control_center.input_applying").to_string(),
+      kind: StatusKind::Success,
+      created: Instant::now(),
+    });
+  }
+
+  pub(crate) fn input_success(&mut self) {
+    self.success(tr(self.lang, "control_center.input_applied").to_string());
+  }
+
+  pub(crate) fn input_failure(&mut self, error: String) {
+    eprintln!("argvus-control-center: input setting failed: {error}");
+    self.fail(tr(self.lang, "control_center.input_apply_failed"));
+  }
+
+  fn cycle_ratbag_device(&mut self, direction: i8) {
+    let Some(next) = crate::system::ratbag::next_device_index(
+      self.ratbag_device,
+      self.input.ratbag.len(),
+      direction,
+    ) else {
+      return;
+    };
+    self.ratbag_device = next;
+  }
+
+  fn queue_ratbag(&mut self, change: crate::system::ratbag::Change) {
+    if self.ratbag_job.is_some() {
+      return;
+    }
+    let Some(device) = self
+      .input
+      .ratbag
+      .get(self.ratbag_device)
+      .or_else(|| self.input.ratbag.first())
+      .cloned()
+    else {
+      return;
+    };
+    self.status = Some(Status {
+      text: tr(self.lang, "control_center.input_hardware_applying").to_string(),
+      kind: StatusKind::Success,
+      created: Instant::now(),
+    });
+    let device_path = device.path.clone();
+    self.ratbag_job = Some(
+      self
+        .jobs
+        .spawn(move |_| crate::system::ratbag::apply(&device, change)),
+    );
+    self.ratbag_pending_path = Some(device_path);
   }
 
   fn toggle_keyboard_layout(&mut self) {
@@ -1417,6 +1809,119 @@ impl App {
 
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
+    if let Some(job) = self.input_load_job.take() {
+      match job.try_state() {
+        JobState::Running => self.input_load_job = Some(job),
+        JobState::Finished(Ok(settings)) => {
+          self.input = settings;
+          self.input_loading = false;
+          self.input_last_device_refresh = Instant::now();
+          self.normalize_selection();
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          self.input_loading = false;
+          self.input_failure(error);
+          changed = true;
+        }
+      }
+    }
+    if !self.input_loading
+      && self.page() == Page::MouseTouchpad
+      && self.input_device_job.is_none()
+      && self.input_last_device_refresh.elapsed() >= Duration::from_secs(2)
+    {
+      self.input_last_device_refresh = Instant::now();
+      self.input_device_job = Some(
+        self
+          .jobs
+          .spawn(|_| Ok((input::detect_devices(), crate::system::ratbag::devices()))),
+      );
+      changed = true;
+    }
+    if let Some(job) = self.input_device_job.take() {
+      match job.try_state() {
+        JobState::Running => self.input_device_job = Some(job),
+        JobState::Finished(Ok((devices, ratbag))) => {
+          self.input.devices = devices;
+          self.input.ratbag = ratbag;
+          self.ratbag_device = self
+            .ratbag_device
+            .min(self.input.ratbag.len().saturating_sub(1));
+          self.normalize_selection();
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          eprintln!("argvus-control-center: input device refresh failed: {error}");
+        }
+      }
+    }
+    if self.input_job.is_none()
+      && let Some(selected) = self.input_toggle_pending.take()
+    {
+      let mut settings = self.input.clone();
+      self.input_job = Some(self.jobs.spawn(move |_| {
+        settings.toggle(selected)?;
+        Ok(settings)
+      }));
+      changed = true;
+    }
+    if self.input_job.is_none()
+      && let Some((selected, direction, deadline)) = self.input_pending
+      && deadline <= Instant::now()
+    {
+      self.input_pending = None;
+      let mut settings = self.input.clone();
+      self.input_job = Some(self.jobs.spawn(move |_| {
+        settings.cycle_by(selected, direction)?;
+        Ok(settings)
+      }));
+      changed = true;
+    }
+    if let Some(job) = self.input_job.take() {
+      match job.try_state() {
+        JobState::Running => self.input_job = Some(job),
+        JobState::Finished(Ok(settings)) => {
+          self.input = settings;
+          self.input_success();
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          self.input_failure(error);
+          changed = true;
+        }
+      }
+    }
+    if let Some(job) = self.ratbag_job.take() {
+      match job.try_state() {
+        JobState::Running => self.ratbag_job = Some(job),
+        JobState::Finished(Ok(devices)) => {
+          let requested_path = self.ratbag_pending_path.take();
+          self.input.ratbag = devices;
+          if let Some(path) = requested_path
+            && let Some(index) = self
+              .input
+              .ratbag
+              .iter()
+              .position(|device| device.path == path)
+          {
+            self.ratbag_device = index;
+          }
+          self.ratbag_device = self
+            .ratbag_device
+            .min(self.input.ratbag.len().saturating_sub(1));
+          self.success(tr(self.lang, "control_center.input_applied").to_string());
+          self.normalize_selection();
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          self.ratbag_pending_path = None;
+          eprintln!("argvus-control-center: ratbag setting failed: {error}");
+          self.fail(tr(self.lang, "control_center.input_hardware_apply_failed"));
+          changed = true;
+        }
+      }
+    }
     if let Some(job) = self.task_job.take() {
       match job.try_state() {
         JobState::Running => {
@@ -2001,6 +2506,50 @@ mod tests {
   fn search_is_case_insensitive() {
     assert!(search_matches("nOtO", &["Noto Sans", "Regular"]));
     assert!(!search_matches("Roboto", &["Noto Sans"]));
+  }
+
+  #[test]
+  fn hardware_rows_follow_ratbag_capabilities() {
+    let mut app = App::with_context(
+      Page::MouseTouchpad,
+      Lang::for_locale("en-US"),
+      Theme::load(),
+    );
+    app.input_loading = false;
+    app.input.devices.mouse = true;
+    app.input.ratbag = vec![crate::system::ratbag::Device {
+      path: "/device/test".into(),
+      name: "Test mouse".into(),
+      profiles: vec![crate::system::ratbag::Profile {
+        path: "/profile/test".into(),
+        name: String::new(),
+        index: 3,
+        active: true,
+        disabled: false,
+        report_rate: Some(500),
+        report_rates: vec![125, 500],
+        resolutions: vec![crate::system::ratbag::Resolution {
+          path: "/resolution/test".into(),
+          index: 2,
+          dpi_x: 800,
+          dpi_y: 800,
+          active: true,
+          default: true,
+          supported: vec![400, 800],
+        }],
+      }],
+    }];
+    let rows = app.rows();
+    assert!(
+      rows
+        .iter()
+        .any(|row| { row.label == tr(app.lang, "control_center.input_hardware_mouse") })
+    );
+    let dpi_label = tr(app.lang, "control_center.input_hardware_dpi");
+    let polling_label = tr(app.lang, "control_center.input_hardware_polling_rate");
+    assert!(rows.iter().any(|row| row.label == dpi_label));
+    assert!(rows.iter().any(|row| row.label == polling_label));
+    assert!(app.row_selectable(rows.iter().position(|row| row.label == dpi_label).unwrap()));
   }
 
   #[test]

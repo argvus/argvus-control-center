@@ -16,6 +16,7 @@ pub enum Page {
   RegionalLocale,
   SystemLocales,
   Keyboard,
+  MouseTouchpad,
   KeyboardLayout,
   KeyboardVariant,
   ConsoleKeymap,

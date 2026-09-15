@@ -9,6 +9,7 @@ license=('GPL-3.0-only')
 depends=(
   'argvus-accounts'
   'argvus-firewall'
+  'argvus-i18n'
   'fontconfig'
   'gcc-libs'
   'glibc'
@@ -17,6 +18,9 @@ depends=(
   'systemd'
   'xkeyboard-config'
   'xdg-utils'
+)
+optdepends=(
+  'argvus-language-pt-br: Brazilian Portuguese translations'
 )
 makedepends=(
   'cargo'
