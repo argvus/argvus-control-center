@@ -47,7 +47,7 @@ unicode-width = "0.2"
 zbus = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-argvus-i18n = { path = "../argvus-i18n" }
+argvus-i18n = { package = "argvus-i18n-core", path = "../argvus-i18n/crates/core" }
 
 [profile.release]
 lto = true

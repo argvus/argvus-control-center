@@ -44,12 +44,11 @@ pub fn collect(cap: &Capabilities) -> HardwareSnapshot {
 }
 
 fn detect_is_laptop() -> bool {
-  if let Ok(chassis) = fs::read_to_string("/sys/class/dmi/id/chassis_type") {
-    if let Ok(n) = chassis.trim().parse::<u8>() {
-      if matches!(n, 8..=14 | 30..=32) {
-        return true;
-      }
-    }
+  if let Ok(chassis) = fs::read_to_string("/sys/class/dmi/id/chassis_type")
+    && let Ok(n) = chassis.trim().parse::<u8>()
+    && matches!(n, 8..=14 | 30..=32)
+  {
+    return true;
   }
   fs::read_dir("/sys/class/power_supply")
     .ok()

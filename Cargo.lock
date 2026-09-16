@@ -94,7 +94,7 @@ dependencies = [
  "argvus-control-center-session",
  "argvus-control-center-settings",
  "argvus-control-center-storage",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -105,7 +105,7 @@ dependencies = [
 name = "argvus-control-center-about"
 version = "0.1.0"
 dependencies = [
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "image",
@@ -120,7 +120,7 @@ name = "argvus-control-center-appearance"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -142,7 +142,7 @@ name = "argvus-control-center-audio"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -155,7 +155,7 @@ name = "argvus-control-center-bluetooth"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -169,7 +169,7 @@ name = "argvus-control-center-boot"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -181,7 +181,7 @@ dependencies = [
 name = "argvus-control-center-core"
 version = "0.1.0"
 dependencies = [
- "argvus-i18n",
+ "argvus-i18n-core",
  "serde",
  "toml",
 ]
@@ -192,7 +192,7 @@ version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
  "argvus-control-center-storage",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -204,7 +204,7 @@ name = "argvus-control-center-displays"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -219,7 +219,7 @@ name = "argvus-control-center-hardware"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -233,7 +233,7 @@ version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
  "argvus-control-center-settings",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -246,7 +246,7 @@ name = "argvus-control-center-packages"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -259,7 +259,7 @@ name = "argvus-control-center-power"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -271,7 +271,7 @@ name = "argvus-control-center-services"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -286,7 +286,7 @@ name = "argvus-control-center-session"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -301,7 +301,7 @@ version = "0.1.0"
 dependencies = [
  "argvus-control-center-apps",
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -318,7 +318,7 @@ name = "argvus-control-center-storage"
 version = "0.1.0"
 dependencies = [
  "argvus-control-center-core",
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
  "crossterm",
@@ -328,7 +328,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "argvus-i18n"
+name = "argvus-i18n-core"
 version = "0.1.0"
 dependencies = [
  "serde_json",
@@ -345,7 +345,7 @@ dependencies = [
 name = "argvus-tui"
 version = "0.1.0"
 dependencies = [
- "argvus-i18n",
+ "argvus-i18n-core",
  "argvus-theme",
  "crossterm",
  "ratatui",

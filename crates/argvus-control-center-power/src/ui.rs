@@ -621,10 +621,10 @@ impl PowerApp {
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let mut lines = self.rows();
-    if let Some(state) = &self.state {
-      if state.is_laptop {
-        lines.push(self.capabilities_line());
-      }
+    if let Some(state) = &self.state
+      && state.is_laptop
+    {
+      lines.push(self.capabilities_line());
     }
     let shell_body = shell(
       frame,

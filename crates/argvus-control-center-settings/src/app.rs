@@ -627,11 +627,6 @@ impl App {
     if self.input.devices.touchpad {
       rows.extend([
         Row {
-          label: tr(self.lang, "control_center.input_touchpad_pointer_speed").into(),
-          detail: Some(input::speed_display(t.sensitivity)),
-          current: false,
-        },
-        Row {
           label: tr(self.lang, "control_center.input_touchpad_natural_scrolling").into(),
           detail: Some(enabled_label(self.lang, t.natural_scroll).into()),
           current: false,
@@ -743,7 +738,7 @@ impl App {
       .ratbag
       .get(self.ratbag_device)
       .or_else(|| self.input.ratbag.first())?;
-    let mut row = 7 + usize::from(self.input.devices.touchpad) * 6;
+    let mut row = 7 + usize::from(self.input.devices.touchpad) * 5;
     if self.input.ratbag.len() > 1 {
       if index == row + 1 {
         return Some(RatbagRowAction::Device);
@@ -1129,7 +1124,7 @@ impl App {
       if self.input_loading {
         return false;
       }
-      if !self.input.ratbag.is_empty() && index == 7 + usize::from(self.input.devices.touchpad) * 6
+      if !self.input.ratbag.is_empty() && index == 7 + usize::from(self.input.devices.touchpad) * 5
       {
         return false;
       }
@@ -1473,7 +1468,7 @@ impl App {
       }
       return;
     }
-    if matches!(selected, 3 | 5 | 8..=12) {
+    if matches!(selected, 3 | 5 | 7..=11) {
       self.input_toggle_pending = Some(selected);
       self.status = Some(Status {
         text: tr(self.lang, "control_center.input_applying").to_string(),
