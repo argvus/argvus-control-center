@@ -28,7 +28,10 @@ version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
 rust-version = "1.95"
+authors = ["ARGVUS"]
 repository = "https://github.com/argvus/argvus-control-center"
+homepage = "https://github.com/argvus/argvus-control-center"
+description = "Keyboard-first terminal control center for the ARGVUS desktop"
 
 [workspace.dependencies]
 anyhow = "1.0"

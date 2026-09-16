@@ -22,11 +22,11 @@ crates/
 ├── argvus-control-center-storage/      lsblk/S.M.A.R.T. backend
 └── argvus-control-center-diagnostics/  system health checks
 packaging/arch/
-├── PKGBUILD                           Arch Linux package (remote source)
-├── PKGBUILD.local                     Arch Linux package (local tarball)
-├── etc/argvus/control-center/         shipped config.toml
+├── ci/PKGBUILD                        Arch Linux package (remote source)
+├── local/PKGBUILD                     Arch Linux package (local tarball)
 └── usr/share/applications/            .desktop file
-resources/                             theme CSS files shipped to /etc/argvus/control-center
+src/usr/share/argvus/control-center/   shipped config, themes, and docs
+tools/sh/pkgbuild_local.sh             local source archive and makepkg driver
 ```
 
 ## Commands
@@ -37,7 +37,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt && cargo fmt --check
 make validate          # full validation pipeline
-make install-files     # install to DESTDIR/PREFIX without building
+make package           # build the local Arch package
 ```
 
 ## Conventions
@@ -70,14 +70,15 @@ make install-files     # install to DESTDIR/PREFIX without building
 
 ## Arch Linux packaging
 
-The `packaging/arch/` directory contains the PKGBUILD files and the files that
-ship in the Arch package. `make install-files` installs the binary, desktop
-file, config, and theme resources into `DESTDIR`. The `backup=()` array in the
-PKGBUILD preserves the user's `config.toml` on package upgrade.
+The `packaging/arch/` directory contains the CI and local PKGBUILDs plus the
+desktop file shipped in the Arch package. The package functions install the
+binary, compatibility symlink, desktop file, config, themes, docs, SVG, and
+license. The `backup=()` array in each PKGBUILD preserves the user's
+`config.toml` on package upgrade.
 
 ```sh
-makepkg -sf           # local build (PKGBUILD.local)
-makepkg -sf --printsrcinfo > .SRCINFO
+make package          # local build through tools/sh/pkgbuild_local.sh
+(cd packaging/arch/ci && makepkg -p PKGBUILD --printsrcinfo)
 ```
 
 ## Release flow

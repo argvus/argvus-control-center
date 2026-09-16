@@ -1,40 +1,77 @@
-PREFIX ?= /usr
-DESTDIR ?=
-CARGO ?= cargo
+.PHONY: help build package pkg rust-build release install install-package clean \
+	validate lint fmt fmt-check clippy test tests check audit deny machete changelog
 
-.PHONY: build build-bin test validate install install-files clean
+.DEFAULT_GOAL := help
 
-build:
-	@tools/build-local-package.sh
+help:
+	@echo "Available targets:"
+	@echo "  make build           - validate and create the local Arch package"
+	@echo "  make rust-build      - build the Rust workspace in debug mode"
+	@echo "  make release         - build the Rust workspace in release mode"
+	@echo "  make package         - create the package in build/dist/"
+	@echo "  make install         - install the locally built package (sudo pacman -U)"
+	@echo "  make clean           - remove build/ and cargo outputs"
+	@echo "  make validate        - validate scripts and PKGBUILD metadata"
+	@echo "  make check           - run formatting, lint and Rust tests"
+	@echo "  make changelog       - regenerate CHANGELOG.md with git-cliff"
 
-build-bin:
-	$(CARGO) build --release --workspace
+lint:
+	@shellcheck tools/sh/pkgbuild_local.sh
+	@echo "Lint Shell Script OK"
+
+fmt:
+	@cargo fmt --all
+
+fmt-check:
+	@cargo fmt --all -- --check
+
+clippy:
+	@cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 test:
-	$(CARGO) test --workspace
+	@cargo test --workspace --locked
+
+tests: test
+
+audit:
+	@cargo audit
+
+deny:
+	@cargo deny check
+
+machete:
+	@cargo machete
+
+check: lint fmt-check clippy test
+
+rust-build:
+	@cargo build --workspace --locked
+
+release: check
+	@cargo build --workspace --release --locked
+
+package: check
+	@tools/sh/pkgbuild_local.sh
+
+pkg: package
+
+build: package
+
+install: package
+	@sudo pacman -U build/dist/*.zst --overwrite="*" --noconfirm
+
+install-package: install
 
 validate:
-	$(CARGO) fmt --check
-	$(CARGO) clippy --workspace --all-targets --all-features -- -D warnings
-	$(CARGO) test --workspace
-	$(CARGO) build --release --workspace
-	test -x target/release/argvus-control-center
-	test -f packaging/arch/usr/share/applications/argvus-control-center.desktop
-	test -f assets/argvus-about.svg
+	@shellcheck tools/sh/pkgbuild_local.sh
+	@cargo metadata --locked --no-deps --format-version 1 >/dev/null
+	@cd packaging/arch/ci && makepkg -p PKGBUILD --printsrcinfo >/dev/null
+	@cd packaging/arch/local && makepkg -p PKGBUILD --printsrcinfo >/dev/null
+	@echo "Validation OK"
 
-install: build-bin install-files
+changelog:
+	@git-cliff -o CHANGELOG.md
 
-install-files:
-	install -Dm755 target/release/argvus-control-center $(DESTDIR)$(PREFIX)/bin/argvus-control-center
-	ln -sf argvus-control-center $(DESTDIR)$(PREFIX)/bin/argvus-controle-center
-	install -Dm644 assets/argvus-about.svg $(DESTDIR)$(PREFIX)/share/argvus-control-center/argvus-about.svg
-	install -dm755 $(DESTDIR)$(PREFIX)/share/argvus/control-center
-	cp -R --no-preserve=ownership src/usr/share/argvus/control-center/. $(DESTDIR)$(PREFIX)/share/argvus/control-center/
-	install -Dm644 src/usr/share/argvus/control-center/config/config.toml $(DESTDIR)/etc/argvus/control-center/config.toml
-	install -Dm644 packaging/arch/usr/share/applications/argvus-control-center.desktop $(DESTDIR)$(PREFIX)/share/applications/argvus-control-center.desktop
-	install -Dm644 src/usr/share/argvus/control-center/docs/README.md $(DESTDIR)$(PREFIX)/share/argvus/control-center/docs/README.md
-	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/licenses/argvus-control-center/LICENSE
 clean:
-	$(CARGO) clean
-	rm -rf dist
-	rm -f packaging/arch/*.zst packaging/arch/*.tar.gz
+	@cargo clean
+	@rm -rf build/
