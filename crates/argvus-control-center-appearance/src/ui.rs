@@ -1,7 +1,8 @@
 use crate::{
   backend,
   model::{
-    ACCENTS, AppearancePage, AppearanceState, PromptGoal, THEMES, accent_label, theme_label,
+    ACCENTS, AppearancePage, AppearanceState, PromptGoal, THEME_FAMILIES, accent_label,
+    theme_family_label,
   },
 };
 use argvus_control_center_core::jobs::{JobHandle, JobManager, JobState};
@@ -174,9 +175,22 @@ impl AppearanceApp {
 
   fn pick(&mut self) {
     match self.page {
-      AppearancePage::Themes => {
-        if let Some((name, _)) = THEMES.get(self.selected) {
-          let name = name.to_string();
+      AppearancePage::Themes if self.selected < THEME_FAMILIES.len() => {
+        self.page = AppearancePage::ThemeModes {
+          family: self.selected,
+        };
+        self.selected = 0;
+      }
+      AppearancePage::Themes => {}
+      AppearancePage::ThemeModes { family } => {
+        if let Some((base, _)) = THEME_FAMILIES.get(family)
+          && self.selected < 2
+        {
+          let name = if self.selected == 0 {
+            (*base).to_string()
+          } else {
+            format!("{base}-float")
+          };
           self.apply(
             tr(self.lang, "control_center.theme_applied").into(),
             move || backend::set_theme(&name),
@@ -283,10 +297,15 @@ impl AppearanceApp {
     if matches!(key, KeyCode::Esc | KeyCode::Left) {
       match self.page {
         AppearancePage::Home => return true,
-        AppearancePage::Themes
-        | AppearancePage::Wallpapers
-        | AppearancePage::Accents
-        | AppearancePage::WaybarPosition => {
+        AppearancePage::Themes => {
+          self.page = AppearancePage::Home;
+          self.selected = 0;
+        }
+        AppearancePage::ThemeModes { .. } => {
+          self.page = AppearancePage::Themes;
+          self.selected = 0;
+        }
+        AppearancePage::Wallpapers | AppearancePage::Accents | AppearancePage::WaybarPosition => {
           self.page = AppearancePage::Home;
           self.selected = 0;
         }
@@ -305,6 +324,7 @@ impl AppearanceApp {
         _ => {}
       },
       AppearancePage::Themes
+      | AppearancePage::ThemeModes { .. }
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
       | AppearancePage::WaybarPosition => match key {
@@ -343,7 +363,8 @@ impl AppearanceApp {
 
   fn picker_len(&self) -> usize {
     match self.page {
-      AppearancePage::Themes => THEMES.len(),
+      AppearancePage::Themes => THEME_FAMILIES.len(),
+      AppearancePage::ThemeModes { .. } => 2,
       AppearancePage::Accents => ACCENTS.len(),
       AppearancePage::Wallpapers => self.state.wallpapers.len() + 1,
       AppearancePage::WaybarPosition => 2,
@@ -363,7 +384,15 @@ impl AppearanceApp {
       format!(
         "{} · {}",
         tr(self.lang, "control_center.theme"),
-        theme_label(&self.state.theme)
+        format!(
+          "{} [{}]",
+          theme_family_label(&self.state.theme),
+          if self.state.is_float_theme() {
+            tr(self.lang, "control_center.theme_mode_float")
+          } else {
+            tr(self.lang, "control_center.theme_mode_sticky")
+          }
+        )
       ),
       format!(
         "{} · {}",
@@ -431,6 +460,13 @@ impl AppearanceApp {
     let page = match self.page {
       AppearancePage::Home => tr(self.lang, "control_center.appearance").to_string(),
       AppearancePage::Themes => tr(self.lang, "control_center.themes").to_string(),
+      AppearancePage::ThemeModes { family } => {
+        let family = THEME_FAMILIES
+          .get(family)
+          .map(|(_, label)| *label)
+          .unwrap_or("ARGVUS");
+        format!("{} › {}", tr(self.lang, "control_center.themes"), family)
+      }
       AppearancePage::Wallpapers => tr(self.lang, "control_center.wallpapers").to_string(),
       AppearancePage::Accents => tr(self.lang, "control_center.highlight_color").to_string(),
       AppearancePage::WaybarPosition => {
@@ -476,16 +512,42 @@ impl AppearanceApp {
         list(frame, area, &self.theme, &rows, self.selected);
       }
       AppearancePage::Themes => {
-        let rows = THEMES
+        let rows = THEME_FAMILIES
           .iter()
           .map(|(name, label)| {
-            if self.state.theme == *name {
-              format!("{label} · {}", tr(self.lang, "control_center.current"))
+            let current = self
+              .state
+              .theme
+              .strip_suffix("-float")
+              .unwrap_or(&self.state.theme);
+            if current == *name {
+              format!("{label} > · {}", tr(self.lang, "control_center.current"))
             } else {
-              label.to_string()
+              format!("{label} >")
             }
           })
           .collect::<Vec<_>>();
+        list(frame, area, &self.theme, &rows, self.selected);
+      }
+      AppearancePage::ThemeModes { family } => {
+        let base = THEME_FAMILIES.get(family).map(|(name, _)| *name);
+        let rows = [
+          ("control_center.theme_mode_sticky", base.map(str::to_string)),
+          (
+            "control_center.theme_mode_float",
+            base.map(|name| format!("{name}-float")),
+          ),
+        ]
+        .iter()
+        .map(|(key, name)| {
+          let label = tr(self.lang, key).to_string();
+          if name.as_deref() == Some(self.state.theme.as_str()) {
+            format!("{label} · {}", tr(self.lang, "control_center.current"))
+          } else {
+            label
+          }
+        })
+        .collect::<Vec<_>>();
         list(frame, area, &self.theme, &rows, self.selected);
       }
       AppearancePage::Accents => {
@@ -645,7 +707,9 @@ mod tests {
       reload_requested: false,
       manager: JobManager::default(),
     };
-    assert_eq!(app.home_rows().len(), 9);
+    let rows = app.home_rows();
+    assert_eq!(rows.len(), 9);
+    assert!(rows[0].contains("ARGVUS Dark Aether ["));
   }
 
   #[test]
@@ -670,5 +734,30 @@ mod tests {
     assert_eq!(app.picker_len(), 2);
     app.selected = 1;
     assert!(!app.handle(KeyCode::Enter));
+  }
+
+  #[test]
+  fn theme_picker_starts_with_families_then_two_modes() {
+    let mut app = AppearanceApp {
+      page: AppearancePage::Themes,
+      lang: Lang::for_locale("en-US"),
+      theme: Theme::load(),
+      status: None,
+      state: AppearanceState::default(),
+      loaded: true,
+      status_loading: false,
+      selected: 0,
+      prompt_buffer: String::new(),
+      prompt_error: None,
+      prompt_back: None,
+      job: None,
+      action: None,
+      reload_requested: false,
+      manager: JobManager::default(),
+    };
+    assert_eq!(app.picker_len(), THEME_FAMILIES.len());
+    assert!(!app.handle(KeyCode::Enter));
+    assert_eq!(app.page, AppearancePage::ThemeModes { family: 0 });
+    assert_eq!(app.picker_len(), 2);
   }
 }

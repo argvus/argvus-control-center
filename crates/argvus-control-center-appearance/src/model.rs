@@ -2,6 +2,7 @@
 pub enum AppearancePage {
   Home,
   Themes,
+  ThemeModes { family: usize },
   Wallpapers,
   Accents,
   WaybarPosition,
@@ -42,12 +43,30 @@ pub const THEMES: &[(&str, &str)] = &[
   ("argvus-light-veil-float", "Argvus Light Veil Float"),
 ];
 
+/// Theme families shown before selecting the Sticky or Float mode.
+pub const THEME_FAMILIES: &[(&str, &str)] = &[
+  ("argvus-dark-aether", "ARGVUS Dark Aether"),
+  ("argvus-dark-silver", "ARGVUS Dark Silver"),
+  ("argvus-dark-slate", "ARGVUS Dark Slate"),
+  ("argvus-dark-universe", "ARGVUS Dark Universe"),
+  ("argvus-light-veil", "ARGVUS Light Veil"),
+];
+
 pub fn theme_label(name: &str) -> String {
   THEMES
     .iter()
     .find(|(code, _)| *code == name)
     .map(|(_, label)| (*label).to_string())
     .unwrap_or_else(|| name.to_string())
+}
+
+pub fn theme_family_label(name: &str) -> String {
+  let family = name.strip_suffix("-float").unwrap_or(name);
+  THEME_FAMILIES
+    .iter()
+    .find(|(code, _)| *code == family)
+    .map(|(_, label)| (*label).to_string())
+    .unwrap_or_else(|| theme_label(family))
 }
 
 /// The highlight colors offered by the control panel, in display order.
@@ -117,6 +136,10 @@ mod tests {
   #[test]
   fn known_theme_and_accent_labels_resolve() {
     assert_eq!(theme_label("argvus-dark-aether"), "Argvus Dark Aether");
+    assert_eq!(
+      theme_family_label("argvus-dark-aether-float"),
+      "ARGVUS Dark Aether"
+    );
     assert_eq!(accent_label("#3590bd"), "Blue");
     assert_eq!(theme_label("custom-theme"), "custom-theme");
     assert_eq!(accent_label("#123456"), "#123456");
