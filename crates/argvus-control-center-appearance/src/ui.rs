@@ -5,7 +5,10 @@ use crate::{
     accent_label, theme_family_label,
   },
 };
-use argvus_control_center_core::jobs::{JobHandle, JobManager, JobState};
+use argvus_control_center_core::{
+  config::AppConfig,
+  jobs::{JobHandle, JobManager, JobState},
+};
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
@@ -25,6 +28,16 @@ use ratatui::{
 enum JobData {
   Loaded(AppearanceState),
   Action(String),
+}
+
+fn icon_label(icon: &'static str, label: impl AsRef<str>) -> String {
+  let label = label.as_ref();
+  let icon = AppConfig::icon(icon);
+  if icon.is_empty() {
+    label.to_string()
+  } else {
+    format!("{icon} {label}")
+  }
 }
 
 pub struct AppearanceApp {
@@ -420,7 +433,7 @@ impl AppearanceApp {
     vec![
       format!(
         "{} · {} [{}]",
-        tr(self.lang, "control_center.theme"),
+        icon_label("🎨", tr(self.lang, "control_center.theme")),
         theme_family_label(&self.state.theme),
         if self.state.is_float_theme() {
           tr(self.lang, "control_center.theme_mode_float")
@@ -430,23 +443,26 @@ impl AppearanceApp {
       ),
       format!(
         "{} · {}",
-        tr(self.lang, "control_center.highlight_color"),
+        icon_label("🌈", tr(self.lang, "control_center.highlight_color")),
         accent_label(&self.state.accent)
       ),
       format!(
         "{} · {}",
-        tr(self.lang, "control_center.wallpaper"),
+        icon_label("🖼️", tr(self.lang, "control_center.wallpaper")),
         self
           .state
           .wallpaper_active
           .clone()
           .unwrap_or_else(|| tr(self.lang, "control_center.none").to_string())
       ),
-      tr(self.lang, "control_center.spaces_borders_position").to_string(),
+      icon_label(
+        "📐",
+        tr(self.lang, "control_center.spaces_borders_position"),
+      ),
       format!(
         "[{}] {} · {}",
         if self.state.effects { "x" } else { " " },
-        tr(self.lang, "control_center.interface_effects"),
+        icon_label("✨", tr(self.lang, "control_center.interface_effects")),
         if self.state.effects {
           enabled
         } else {
@@ -460,7 +476,7 @@ impl AppearanceApp {
         } else {
           " "
         },
-        tr(self.lang, "control_center.widget_telemetry"),
+        icon_label("📊", tr(self.lang, "control_center.widget_telemetry")),
         if self.state.widget_telemetry {
           enabled
         } else {
@@ -554,94 +570,138 @@ impl AppearanceApp {
       AppearancePage::Home => self.home_rows(),
       AppearancePage::Themes => THEME_FAMILIES
         .iter()
-        .map(|(_, label)| (*label).to_string())
+        .map(|(name, label)| {
+          let current = self
+            .state
+            .theme
+            .strip_suffix("-float")
+            .unwrap_or(&self.state.theme);
+          let suffix = if current == *name {
+            format!(" · {}", tr(self.lang, "control_center.current"))
+          } else {
+            String::new()
+          };
+          format!("{label}{suffix} >")
+        })
         .collect(),
-      AppearancePage::ThemeModes { .. } => vec![
-        tr(self.lang, "control_center.theme_mode_sticky").into(),
-        tr(self.lang, "control_center.theme_mode_float").into(),
-      ],
-      AppearancePage::Wallpapers => {
-        std::iter::once(tr(self.lang, "control_center.choose_image_from_home").to_string())
-          .chain(self.state.wallpapers.iter().map(|v| v.to_string()))
-          .collect()
-      }
+      AppearancePage::ThemeModes { .. } => [
+        (
+          "📌",
+          "control_center.theme_mode_sticky",
+          !self.state.is_float_theme(),
+        ),
+        (
+          "🪟",
+          "control_center.theme_mode_float",
+          self.state.is_float_theme(),
+        ),
+      ]
+      .into_iter()
+      .map(|(icon, key, current)| {
+        let suffix = if current {
+          format!(" · {}", tr(self.lang, "control_center.current"))
+        } else {
+          String::new()
+        };
+        format!("{}{}", icon_label(icon, tr(self.lang, key)), suffix)
+      })
+      .collect(),
+      AppearancePage::Wallpapers => std::iter::once(icon_label(
+        "📂",
+        tr(self.lang, "control_center.choose_image_from_home"),
+      ))
+      .chain(self.state.wallpapers.iter().map(|value| {
+        if self.state.wallpaper_active.as_deref() == Some(value.as_str()) {
+          format!("{value} · {}", tr(self.lang, "control_center.current"))
+        } else {
+          value.to_string()
+        }
+      }))
+      .collect(),
       AppearancePage::Accents => ACCENTS
         .iter()
-        .map(|(label, color)| format!("{label} ({color})"))
+        .map(|(label, color)| {
+          let suffix = if self.state.accent == *color {
+            format!(" · {}", tr(self.lang, "control_center.current"))
+          } else {
+            String::new()
+          };
+          format!("{label} ({color}){suffix}")
+        })
         .collect(),
       AppearancePage::SpacesBordersPosition => vec![
-        tr(self.lang, "control_center.taskbar_position").into(),
-        tr(self.lang, "control_center.taskbar_spaces").into(),
-        tr(self.lang, "control_center.window_spaces").into(),
-        tr(self.lang, "control_center.general_borders").into(),
-        tr(self.lang, "control_center.edge_thickness").into(),
+        icon_label("↕", tr(self.lang, "control_center.taskbar_position")),
+        icon_label("📏", tr(self.lang, "control_center.taskbar_spaces")),
+        icon_label("📐", tr(self.lang, "control_center.window_spaces")),
+        icon_label("◯", tr(self.lang, "control_center.general_borders")),
+        icon_label("▰", tr(self.lang, "control_center.edge_thickness")),
       ],
       AppearancePage::TaskbarPosition => vec![
         format!(
           "{}{}",
-          tr(self.lang, "control_center.top"),
+          icon_label("↥", tr(self.lang, "control_center.top")),
           if self.state.waybar_pos == TaskbarPosition::Top {
-            " · current"
+            format!(" · {}", tr(self.lang, "control_center.current"))
           } else {
-            ""
+            String::new()
           }
         ),
         format!(
           "{}{}",
-          tr(self.lang, "control_center.bottom"),
+          icon_label("↧", tr(self.lang, "control_center.bottom")),
           if self.state.waybar_pos == TaskbarPosition::Bottom {
-            " · current"
+            format!(" · {}", tr(self.lang, "control_center.current"))
           } else {
-            ""
+            String::new()
           }
         ),
       ],
       AppearancePage::TaskbarSpaces => vec![
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.top"),
+          icon_label("↥", tr(self.lang, "control_center.top")),
           self.state.waybar_top
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.left"),
+          icon_label("↤", tr(self.lang, "control_center.left")),
           self.state.waybar_left
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.right"),
+          icon_label("↦", tr(self.lang, "control_center.right")),
           self.state.waybar_right
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.bottom"),
+          icon_label("↧", tr(self.lang, "control_center.bottom")),
           self.state.waybar_bottom
         ),
       ],
       AppearancePage::WindowSpaces => vec![
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.inner_gap"),
+          icon_label("↔", tr(self.lang, "control_center.inner_gap")),
           self.state.gaps_in
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.outer_gap_top"),
+          icon_label("↥", tr(self.lang, "control_center.outer_gap_top")),
           self.state.gaps_out_top
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.outer_gap_left"),
+          icon_label("↤", tr(self.lang, "control_center.outer_gap_left")),
           self.state.gaps_out_left
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.outer_gap_right"),
+          icon_label("↦", tr(self.lang, "control_center.outer_gap_right")),
           self.state.gaps_out_right
         ),
         format!(
           "{} · {}",
-          tr(self.lang, "control_center.outer_gap_bottom"),
+          icon_label("↧", tr(self.lang, "control_center.outer_gap_bottom")),
           self.state.gaps_out_bottom
         ),
       ],
@@ -649,7 +709,7 @@ impl AppearanceApp {
         format!(
           "[{}] {} · {}",
           if self.state.rounded { "x" } else { " " },
-          tr(self.lang, "control_center.rounded"),
+          icon_label("◯", tr(self.lang, "control_center.rounded")),
           if self.state.rounded {
             tr(self.lang, "control_center.enabled")
           } else {
@@ -658,18 +718,18 @@ impl AppearanceApp {
         ),
         format!(
           "{} · {}{}",
-          tr(self.lang, "control_center.rounding"),
+          icon_label("⌒", tr(self.lang, "control_center.rounding")),
           self.state.rounding,
           if self.state.rounded {
-            ""
+            String::new()
           } else {
-            " · disabled"
+            format!(" · {}", tr(self.lang, "control_center.disabled"))
           }
         ),
       ],
       AppearancePage::EdgeThickness => vec![format!(
         "{} · {}",
-        tr(self.lang, "control_center.thickness"),
+        icon_label("▰", tr(self.lang, "control_center.thickness")),
         self.state.thickness
       )],
       AppearancePage::Prompt { .. } => Vec::new(),
@@ -787,6 +847,20 @@ mod tests {
   fn home_has_categories_and_spacing_is_nested() {
     assert_eq!(app(AppearancePage::Home).rows().len(), 6);
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
+  }
+  #[test]
+  fn home_rows_follow_the_global_icon_setting() {
+    AppConfig::set_session_icons(true);
+    let with_icons = app(AppearancePage::Home).home_rows();
+    assert!(with_icons[0].starts_with("🎨 Theme"));
+    assert!(with_icons[3].starts_with("📐 Spaces"));
+
+    AppConfig::set_session_icons(false);
+    let without_icons = app(AppearancePage::Home).home_rows();
+    assert!(without_icons[0].starts_with("Theme"));
+    assert!(without_icons[3].starts_with("Spaces"));
+    assert!(!without_icons.iter().any(|row| row.starts_with(' ')));
+    AppConfig::set_session_icons(true);
   }
   #[test]
   fn selection_bounds_follow_each_page() {
