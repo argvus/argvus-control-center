@@ -130,7 +130,8 @@ fn parse_appearance(args: &[String]) -> Result<AppearancePage, String> {
     Some("themes") => AppearancePage::Themes,
     Some("wallpapers") => AppearancePage::Wallpapers,
     Some("accents") | Some("accent") | Some("color") => AppearancePage::Accents,
-    Some("taskbar") | Some("position") => AppearancePage::WaybarPosition,
+    Some("taskbar") | Some("position") => AppearancePage::TaskbarPosition,
+    Some("spaces") => AppearancePage::SpacesBordersPosition,
     Some(v) => return Err(format!("unknown Appearance page '{v}'")),
   })
 }
@@ -726,7 +727,7 @@ mod tests {
     );
     assert_eq!(
       parse(&args(&["appearance", "taskbar"])).unwrap(),
-      Some(InitialRoute::Appearance(AppearancePage::WaybarPosition))
+      Some(InitialRoute::Appearance(AppearancePage::TaskbarPosition))
     );
     assert!(parse(&args(&["appearance", "unknown"])).is_err());
   }

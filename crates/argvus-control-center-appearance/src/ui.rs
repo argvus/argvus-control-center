@@ -1,21 +1,25 @@
 use crate::{
   backend,
   model::{
-    ACCENTS, AppearancePage, AppearanceState, PromptGoal, THEME_FAMILIES, accent_label,
-    theme_family_label,
+    ACCENTS, AppearancePage, AppearanceState, PromptGoal, THEME_FAMILIES, TaskbarPosition,
+    accent_label, theme_family_label,
   },
 };
 use argvus_control_center_core::jobs::{JobHandle, JobManager, JobState};
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
-use argvus_tui::components::{StatusKind, StatusMessage};
-use argvus_tui::page::{list, shell, status};
+use argvus_tui::{
+  components::{StatusKind, StatusMessage},
+  page::{list, shell, status},
+};
 use crossterm::event::KeyCode;
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Margin, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::{
+  Frame,
+  layout::{Constraint, Layout, Rect},
+  style::{Modifier, Style},
+  text::{Line, Span},
+  widgets::Paragraph,
+};
 
 #[derive(Debug, Clone)]
 enum JobData {
@@ -23,10 +27,6 @@ enum JobData {
   Action(String),
 }
 
-/// Keyboard-first appearance settings: theme, accent, wallpaper, taskbar
-/// position, spacing gaps, interface effects and widget telemetry. Every
-/// action farms out to the shared ARGVUS shell scripts so this TUI stays in
-/// sync with the graphical control panel.
 pub struct AppearanceApp {
   pub page: AppearancePage,
   pub lang: Lang,
@@ -44,12 +44,10 @@ pub struct AppearanceApp {
   reload_requested: bool,
   manager: JobManager,
 }
-
 impl AppearanceApp {
   pub fn reload(&mut self) {
     self.refresh();
   }
-
   pub fn new(lang: Lang, theme: Theme) -> Self {
     let mut app = Self {
       page: AppearancePage::Home,
@@ -72,7 +70,6 @@ impl AppearanceApp {
     app.trigger_first_load();
     app
   }
-
   fn trigger_first_load(&mut self) {
     self.status_loading = true;
     self.status = Some(StatusMessage {
@@ -80,18 +77,15 @@ impl AppearanceApp {
       text: tr(self.lang, "control_center.loading_appearance").into(),
     });
   }
-
   fn refresh(&mut self) {
-    if self.job.is_some() {
-      return;
+    if self.job.is_none() {
+      self.job = Some(
+        self
+          .manager
+          .spawn(|_| Ok(JobData::Loaded(backend::load_state()))),
+      );
     }
-    self.job = Some(
-      self
-        .manager
-        .spawn(|_| Ok(JobData::Loaded(backend::load_state()))),
-    );
   }
-
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -102,12 +96,12 @@ impl AppearanceApp {
         Ok(JobData::Loaded(state)) => {
           self.state = state;
           self.loaded = true;
-          if self.status_loading {
+          let was_loading = self.status_loading;
+          self.status_loading = false;
+          if was_loading {
             self.status = None;
           }
-          self.status_loading = false;
         }
-        Ok(JobData::Action(_)) => {}
         Err(error) => {
           self.status_loading = false;
           self.status = Some(StatusMessage {
@@ -115,6 +109,7 @@ impl AppearanceApp {
             text: format!("{} {error}", tr(self.lang, "control_center.error")),
           });
         }
+        Ok(JobData::Action(_)) => {}
       }
       changed = true;
     }
@@ -131,21 +126,20 @@ impl AppearanceApp {
           self.status = Some(StatusMessage {
             kind: StatusKind::Success,
             text: text.clone(),
-          });
+          })
         }
-        Ok(_) => {}
         Err(error) => {
           self.status = Some(StatusMessage {
             kind: StatusKind::Error,
             text: format!("{} {error}", tr(self.lang, "control_center.error")),
-          });
+          })
         }
+        Ok(_) => {}
       }
       changed = true;
     }
     changed
   }
-
   fn apply(&mut self, message: String, task: impl FnOnce() -> Result<(), String> + Send + 'static) {
     if self.action.is_some() {
       return;
@@ -156,36 +150,35 @@ impl AppearanceApp {
       Ok(JobData::Action(message))
     }));
   }
-
-  fn toggle(&mut self, effects: bool) {
-    if effects {
-      let enable = !self.state.effects;
-      self.apply(
-        tr(self.lang, "control_center.effects_applied").into(),
-        move || backend::set_effects(enable),
-      );
-    } else {
-      let enable = !self.state.widget_telemetry;
-      self.apply(
-        tr(self.lang, "control_center.widget_telemetry_changed").into(),
-        move || backend::set_telemetry(enable),
-      );
-    }
+  fn go(&mut self, page: AppearancePage) {
+    self.page = page;
+    self.selected = 0;
   }
-
+  fn toggle(&mut self) {
+    let value = if self.state.rounded { "0" } else { "1" };
+    let enable = !self.state.rounded;
+    self.apply(
+      tr(self.lang, "control_center.border_settings_applied").into(),
+      move || {
+        backend::set_border("rounded", value).and_then(|_| {
+          if enable {
+            backend::set_border("rounding", "2")
+          } else {
+            Ok(())
+          }
+        })
+      },
+    );
+  }
   fn pick(&mut self) {
     match self.page {
       AppearancePage::Themes if self.selected < THEME_FAMILIES.len() => {
-        self.page = AppearancePage::ThemeModes {
+        self.go(AppearancePage::ThemeModes {
           family: self.selected,
-        };
-        self.selected = 0;
+        })
       }
-      AppearancePage::Themes => {}
       AppearancePage::ThemeModes { family } => {
-        if let Some((base, _)) = THEME_FAMILIES.get(family)
-          && self.selected < 2
-        {
+        if let Some((base, _)) = THEME_FAMILIES.get(family) {
           let name = if self.selected == 0 {
             (*base).to_string()
           } else {
@@ -220,63 +213,88 @@ impl AppearanceApp {
           );
         }
       }
-      AppearancePage::WaybarPosition => {
-        let position = if self.selected.is_multiple_of(2) {
-          "top"
-        } else {
-          "bottom"
-        };
+      AppearancePage::TaskbarPosition => {
+        let position = if self.selected == 0 { "top" } else { "bottom" };
         self.apply(
           tr(self.lang, "control_center.taskbar_position_changed").into(),
           move || backend::set_waybar_position(position),
         );
       }
+      AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
+      AppearancePage::TaskbarSpaces => self.open_prompt(
+        [
+          PromptGoal::WaybarTop,
+          PromptGoal::WaybarLeft,
+          PromptGoal::WaybarRight,
+          PromptGoal::WaybarBottom,
+        ][self.selected],
+      ),
+      AppearancePage::WindowSpaces => self.open_prompt(
+        [
+          PromptGoal::GapsIn,
+          PromptGoal::GapsOutTop,
+          PromptGoal::GapsOutLeft,
+          PromptGoal::GapsOutRight,
+          PromptGoal::GapsOutBottom,
+        ][self.selected],
+      ),
+      AppearancePage::GeneralBorders if self.selected == 1 && self.state.rounded => {
+        self.open_prompt(PromptGoal::Rounding)
+      }
+      AppearancePage::EdgeThickness => self.open_prompt(PromptGoal::Thickness),
       _ => {}
     }
   }
-
   fn open_prompt(&mut self, goal: PromptGoal) {
     self.prompt_back = Some(self.page);
     self.page = AppearancePage::Prompt { goal };
     self.prompt_buffer.clear();
     self.prompt_error = None;
   }
-
   fn prompt_key(&mut self, key: KeyCode) -> bool {
     match key {
-      KeyCode::Enter => {
-        let goal = match self.page {
-          AppearancePage::Prompt { goal } => goal,
-          _ => PromptGoal::GapsIn,
+      KeyCode::Enter if self.action.is_none() => {
+        let AppearancePage::Prompt { goal } = self.page else {
+          return false;
         };
         let value = self.prompt_buffer.trim().to_string();
-        let parsed = value.parse::<i32>().ok();
-        if !matches!(parsed, Some(0..=100)) {
-          self.prompt_error = Some(tr(self.lang, "control_center.enter_a_valid_integer").into());
+        let (min, max) = goal.range();
+        let valid = value
+          .parse::<i32>()
+          .ok()
+          .is_some_and(|v| (min..=max).contains(&v));
+        if !valid {
+          self.prompt_error = Some(format!(
+            "{} ({}–{})",
+            tr(self.lang, "control_center.enter_a_valid_integer"),
+            min,
+            max
+          ));
           return false;
         }
-        let back = self.prompt_back.take();
-        let key = goal.key();
-        self.apply(
-          tr(self.lang, "control_center.spacing_applied").into(),
-          move || backend::set_spaces(key, &value),
-        );
-        self.page = back.unwrap_or(AppearancePage::Home);
-        self.prompt_buffer.clear();
-        self.prompt_error = None;
+        let back = self.prompt_back.take().unwrap_or(AppearancePage::Home);
+        let key_name = goal.key();
+        let message_key = if matches!(goal, PromptGoal::Rounding) {
+          "control_center.border_settings_applied"
+        } else if matches!(goal, PromptGoal::Thickness) {
+          "control_center.thickness_applied"
+        } else {
+          "control_center.spacing_applied"
+        };
+        self.apply(tr(self.lang, message_key).into(), move || match goal {
+          PromptGoal::Rounding | PromptGoal::Thickness => backend::set_border(key_name, &value),
+          _ => backend::set_spacing(key_name, &value),
+        });
+        self.go(back);
         false
       }
       KeyCode::Esc | KeyCode::Left => {
-        let back = self.prompt_back.take();
-        self.page = back.unwrap_or(AppearancePage::Home);
-        self.prompt_buffer.clear();
-        self.prompt_error = None;
+        let back = self.prompt_back.take().unwrap_or(AppearancePage::Home);
+        self.go(back);
         false
       }
-      KeyCode::Char(character) if character.is_ascii_digit() => {
-        if self.prompt_buffer.len() < 3 {
-          self.prompt_buffer.push(character);
-        }
+      KeyCode::Char(c) if c.is_ascii_digit() && self.prompt_buffer.len() < 3 => {
+        self.prompt_buffer.push(c);
         false
       }
       KeyCode::Backspace => {
@@ -286,7 +304,6 @@ impl AppearanceApp {
       _ => false,
     }
   }
-
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.prompt_back.is_some() {
       return self.prompt_key(key);
@@ -295,104 +312,121 @@ impl AppearanceApp {
       return false;
     }
     if matches!(key, KeyCode::Esc | KeyCode::Left) {
-      match self.page {
-        AppearancePage::Home => return true,
-        AppearancePage::Themes => {
-          self.page = AppearancePage::Home;
-          self.selected = 0;
-        }
-        AppearancePage::ThemeModes { .. } => {
-          self.page = AppearancePage::Themes;
-          self.selected = 0;
-        }
-        AppearancePage::Wallpapers | AppearancePage::Accents | AppearancePage::WaybarPosition => {
-          self.page = AppearancePage::Home;
-          self.selected = 0;
-        }
-        AppearancePage::Prompt { .. } => {}
+      return self.back();
+    }
+    let len = self.selection_len();
+    match key {
+      KeyCode::Char('r') => self.refresh(),
+      KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
+      KeyCode::Down | KeyCode::Char('j') => {
+        self.selected = (self.selected + 1).min(len.saturating_sub(1))
       }
-      return false;
+      KeyCode::Home => self.selected = 0,
+      KeyCode::End => self.selected = len.saturating_sub(1),
+      KeyCode::Enter | KeyCode::Right | KeyCode::Char(' ') => self.open_or_pick(),
+      _ => {}
+    }
+    false
+  }
+  fn back(&mut self) -> bool {
+    if self.page == AppearancePage::Home {
+      return true;
     }
     match self.page {
-      AppearancePage::Home => match key {
-        KeyCode::Char('r') => self.refresh(),
-        KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
-        KeyCode::Home => self.selected = 0,
-        KeyCode::End => self.selected = Self::selection_len_home().saturating_sub(1),
-        KeyCode::Enter | KeyCode::Right | KeyCode::Char(' ') => self.open_home_choice(),
+      AppearancePage::Home => unreachable!(),
+      AppearancePage::Themes
+      | AppearancePage::Wallpapers
+      | AppearancePage::Accents
+      | AppearancePage::SpacesBordersPosition => {
+        self.go(AppearancePage::Home);
+      }
+      AppearancePage::ThemeModes { .. } => {
+        self.go(AppearancePage::Themes);
+      }
+      AppearancePage::TaskbarPosition
+      | AppearancePage::TaskbarSpaces
+      | AppearancePage::WindowSpaces
+      | AppearancePage::GeneralBorders
+      | AppearancePage::EdgeThickness => {
+        self.go(AppearancePage::SpacesBordersPosition);
+      }
+      AppearancePage::Prompt { .. } => {}
+    }
+    false
+  }
+  fn open_or_pick(&mut self) {
+    match self.page {
+      AppearancePage::Home => match self.selected {
+        0 => self.go(AppearancePage::Themes),
+        1 => self.go(AppearancePage::Accents),
+        2 => self.go(AppearancePage::Wallpapers),
+        3 => self.go(AppearancePage::SpacesBordersPosition),
+        4 => self.apply_toggle_effects(),
+        5 => self.apply_toggle_telemetry(),
+        _ => {}
+      },
+      AppearancePage::SpacesBordersPosition => match self.selected {
+        0 => self.go(AppearancePage::TaskbarPosition),
+        1 => self.go(AppearancePage::TaskbarSpaces),
+        2 => self.go(AppearancePage::WindowSpaces),
+        3 => self.go(AppearancePage::GeneralBorders),
+        4 => self.go(AppearancePage::EdgeThickness),
         _ => {}
       },
       AppearancePage::Themes
       | AppearancePage::ThemeModes { .. }
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
-      | AppearancePage::WaybarPosition => match key {
-        KeyCode::Char('r') => self.refresh(),
-        KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
-        KeyCode::Home => self.selected = 0,
-        KeyCode::End => self.selected = self.picker_len().saturating_sub(1),
-        KeyCode::Enter | KeyCode::Right => self.pick(),
-        _ => {}
-      },
+      | AppearancePage::TaskbarPosition
+      | AppearancePage::TaskbarSpaces
+      | AppearancePage::WindowSpaces
+      | AppearancePage::GeneralBorders
+      | AppearancePage::EdgeThickness => self.pick(),
       AppearancePage::Prompt { .. } => {}
     }
-    false
   }
-
-  fn open_home_choice(&mut self) {
-    match self.selected {
-      0 => self.page = AppearancePage::Themes,
-      1 => self.page = AppearancePage::Accents,
-      2 => self.page = AppearancePage::Wallpapers,
-      3 => self.page = AppearancePage::WaybarPosition,
-      4 => self.open_prompt(PromptGoal::GapsIn),
-      5 => self.open_prompt(PromptGoal::GapsOut),
-      6 => self.open_prompt(PromptGoal::Waybar),
-      7 => self.toggle(true),
-      8 => self.toggle(false),
-      _ => {}
-    }
-    self.selected = 0;
+  fn apply_toggle_effects(&mut self) {
+    let value = !self.state.effects;
+    self.apply(
+      tr(self.lang, "control_center.effects_applied").into(),
+      move || backend::set_effects(value),
+    );
   }
-
-  const fn selection_len_home() -> usize {
-    9
+  fn apply_toggle_telemetry(&mut self) {
+    let value = !self.state.widget_telemetry;
+    self.apply(
+      tr(self.lang, "control_center.widget_telemetry_changed").into(),
+      move || backend::set_telemetry(value),
+    );
   }
-
-  fn picker_len(&self) -> usize {
+  fn selection_len(&self) -> usize {
     match self.page {
+      AppearancePage::Home => 6,
       AppearancePage::Themes => THEME_FAMILIES.len(),
-      AppearancePage::ThemeModes { .. } => 2,
       AppearancePage::Accents => ACCENTS.len(),
+      AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
       AppearancePage::Wallpapers => self.state.wallpapers.len() + 1,
-      AppearancePage::WaybarPosition => 2,
-      _ => 0,
+      AppearancePage::SpacesBordersPosition => 5,
+      AppearancePage::TaskbarSpaces => 4,
+      AppearancePage::WindowSpaces => 5,
+      AppearancePage::GeneralBorders => 2,
+      AppearancePage::EdgeThickness => 1,
+      AppearancePage::Prompt { .. } => 0,
     }
   }
-
   fn home_rows(&self) -> Vec<String> {
     let enabled = tr(self.lang, "control_center.enabled");
     let disabled = tr(self.lang, "control_center.disabled");
-    let position_value = if self.state.waybar_pos == "bottom" {
-      tr(self.lang, "control_center.bottom")
-    } else {
-      tr(self.lang, "control_center.top")
-    };
     vec![
       format!(
-        "{} · {}",
+        "{} · {} [{}]",
         tr(self.lang, "control_center.theme"),
-        format!(
-          "{} [{}]",
-          theme_family_label(&self.state.theme),
-          if self.state.is_float_theme() {
-            tr(self.lang, "control_center.theme_mode_float")
-          } else {
-            tr(self.lang, "control_center.theme_mode_sticky")
-          }
-        )
+        theme_family_label(&self.state.theme),
+        if self.state.is_float_theme() {
+          tr(self.lang, "control_center.theme_mode_float")
+        } else {
+          tr(self.lang, "control_center.theme_mode_sticky")
+        }
       ),
       format!(
         "{} · {}",
@@ -408,26 +442,7 @@ impl AppearanceApp {
           .clone()
           .unwrap_or_else(|| tr(self.lang, "control_center.none").to_string())
       ),
-      format!(
-        "{} · {}",
-        tr(self.lang, "control_center.taskbar_position"),
-        position_value
-      ),
-      format!(
-        "{} · {}",
-        tr(self.lang, "control_center.windows_inner_gap"),
-        self.state.gaps_in
-      ),
-      format!(
-        "{} · {}",
-        tr(self.lang, "control_center.windows_outer_gap"),
-        self.state.gaps_out
-      ),
-      format!(
-        "{} · {}",
-        tr(self.lang, "control_center.taskbar_margin"),
-        self.state.waybar
-      ),
+      tr(self.lang, "control_center.spaces_borders_position").to_string(),
       format!(
         "[{}] {} · {}",
         if self.state.effects { "x" } else { " " },
@@ -454,50 +469,237 @@ impl AppearanceApp {
       ),
     ]
   }
-
-  fn breadcrumb(&self) -> String {
-    let title = tr(self.lang, "control_center.appearance").to_string();
-    let page = match self.page {
-      AppearancePage::Home => tr(self.lang, "control_center.appearance").to_string(),
-      AppearancePage::Themes => tr(self.lang, "control_center.themes").to_string(),
-      AppearancePage::ThemeModes { family } => {
-        let family = THEME_FAMILIES
-          .get(family)
-          .map(|(_, label)| *label)
-          .unwrap_or("ARGVUS");
-        format!("{} › {}", tr(self.lang, "control_center.themes"), family)
-      }
-      AppearancePage::Wallpapers => tr(self.lang, "control_center.wallpapers").to_string(),
-      AppearancePage::Accents => tr(self.lang, "control_center.highlight_color").to_string(),
-      AppearancePage::WaybarPosition => {
-        tr(self.lang, "control_center.taskbar_position_f0e1c3").to_string()
-      }
-      AppearancePage::Prompt { goal } => match goal {
-        PromptGoal::GapsIn => tr(self.lang, "control_center.inner_gap").to_string(),
-        PromptGoal::GapsOut => tr(self.lang, "control_center.outer_gap").to_string(),
-        PromptGoal::Waybar => tr(self.lang, "control_center.taskbar_margin_3ac0eb").to_string(),
-      },
-    };
-    format!("{title} › {page}")
+  fn prompt_label(&self, goal: PromptGoal) -> &'static str {
+    match goal {
+      PromptGoal::WaybarTop => "control_center.top",
+      PromptGoal::WaybarLeft => "control_center.left",
+      PromptGoal::WaybarRight => "control_center.right",
+      PromptGoal::WaybarBottom => "control_center.bottom",
+      PromptGoal::GapsIn => "control_center.inner_gap",
+      PromptGoal::GapsOutTop => "control_center.outer_gap_top",
+      PromptGoal::GapsOutLeft => "control_center.outer_gap_left",
+      PromptGoal::GapsOutRight => "control_center.outer_gap_right",
+      PromptGoal::GapsOutBottom => "control_center.outer_gap_bottom",
+      PromptGoal::Rounding => "control_center.rounding",
+      PromptGoal::Thickness => "control_center.thickness",
+    }
   }
-
-  fn hints(&self) -> String {
+  fn breadcrumb(&self) -> String {
+    let root = tr(self.lang, "control_center.appearance");
     match self.page {
-      AppearancePage::Prompt { .. } => {
-        tr(self.lang, "control_center.0_9_edit_enter_confirm_esc_back")
+      AppearancePage::Home => root.into(),
+      AppearancePage::Themes => format!("{root} › {}", tr(self.lang, "control_center.themes")),
+      AppearancePage::ThemeModes { .. } => {
+        format!("{root} › {}", tr(self.lang, "control_center.themes"))
       }
-      AppearancePage::Home => tr(
-        self.lang,
-        "control_center.jk_navigate_enter_open_space_toggle_r_refresh_esc_back",
+      AppearancePage::Wallpapers => {
+        format!("{root} › {}", tr(self.lang, "control_center.wallpapers"))
+      }
+      AppearancePage::Accents => format!(
+        "{root} › {}",
+        tr(self.lang, "control_center.highlight_color")
       ),
-      _ => tr(
-        self.lang,
-        "control_center.jk_navigate_enter_apply_r_refresh_esc_back",
+      AppearancePage::SpacesBordersPosition => format!(
+        "{root} › {}",
+        tr(self.lang, "control_center.spaces_borders_position")
+      ),
+      AppearancePage::TaskbarPosition => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.spaces_borders_position"),
+        tr(self.lang, "control_center.taskbar_position")
+      ),
+      AppearancePage::TaskbarSpaces => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.spaces_borders_position"),
+        tr(self.lang, "control_center.taskbar_spaces")
+      ),
+      AppearancePage::WindowSpaces => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.spaces_borders_position"),
+        tr(self.lang, "control_center.window_spaces")
+      ),
+      AppearancePage::GeneralBorders => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.spaces_borders_position"),
+        tr(self.lang, "control_center.general_borders")
+      ),
+      AppearancePage::EdgeThickness => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.spaces_borders_position"),
+        tr(self.lang, "control_center.edge_thickness")
+      ),
+      AppearancePage::Prompt { goal } => format!(
+        "{} › {}",
+        self.breadcrumb_for_prompt(goal),
+        tr(self.lang, self.prompt_label(goal))
       ),
     }
-    .to_string()
   }
-
+  fn breadcrumb_for_prompt(&self, _goal: PromptGoal) -> String {
+    let root = tr(self.lang, "control_center.appearance");
+    let section = match self.prompt_back.unwrap_or(AppearancePage::Home) {
+      AppearancePage::TaskbarSpaces => tr(self.lang, "control_center.taskbar_spaces"),
+      AppearancePage::WindowSpaces => tr(self.lang, "control_center.window_spaces"),
+      AppearancePage::GeneralBorders => tr(self.lang, "control_center.general_borders"),
+      AppearancePage::EdgeThickness => tr(self.lang, "control_center.edge_thickness"),
+      _ => "",
+    };
+    format!(
+      "{root} › {} › {section}",
+      tr(self.lang, "control_center.spaces_borders_position")
+    )
+  }
+  fn rows(&self) -> Vec<String> {
+    match self.page {
+      AppearancePage::Home => self.home_rows(),
+      AppearancePage::Themes => THEME_FAMILIES
+        .iter()
+        .map(|(_, label)| (*label).to_string())
+        .collect(),
+      AppearancePage::ThemeModes { .. } => vec![
+        tr(self.lang, "control_center.theme_mode_sticky").into(),
+        tr(self.lang, "control_center.theme_mode_float").into(),
+      ],
+      AppearancePage::Wallpapers => {
+        std::iter::once(tr(self.lang, "control_center.choose_image_from_home").to_string())
+          .chain(self.state.wallpapers.iter().map(|v| v.to_string()))
+          .collect()
+      }
+      AppearancePage::Accents => ACCENTS
+        .iter()
+        .map(|(label, color)| format!("{label} ({color})"))
+        .collect(),
+      AppearancePage::SpacesBordersPosition => vec![
+        tr(self.lang, "control_center.taskbar_position").into(),
+        tr(self.lang, "control_center.taskbar_spaces").into(),
+        tr(self.lang, "control_center.window_spaces").into(),
+        tr(self.lang, "control_center.general_borders").into(),
+        tr(self.lang, "control_center.edge_thickness").into(),
+      ],
+      AppearancePage::TaskbarPosition => vec![
+        format!(
+          "{}{}",
+          tr(self.lang, "control_center.top"),
+          if self.state.waybar_pos == TaskbarPosition::Top {
+            " · current"
+          } else {
+            ""
+          }
+        ),
+        format!(
+          "{}{}",
+          tr(self.lang, "control_center.bottom"),
+          if self.state.waybar_pos == TaskbarPosition::Bottom {
+            " · current"
+          } else {
+            ""
+          }
+        ),
+      ],
+      AppearancePage::TaskbarSpaces => vec![
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.top"),
+          self.state.waybar_top
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.left"),
+          self.state.waybar_left
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.right"),
+          self.state.waybar_right
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.bottom"),
+          self.state.waybar_bottom
+        ),
+      ],
+      AppearancePage::WindowSpaces => vec![
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.inner_gap"),
+          self.state.gaps_in
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.outer_gap_top"),
+          self.state.gaps_out_top
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.outer_gap_left"),
+          self.state.gaps_out_left
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.outer_gap_right"),
+          self.state.gaps_out_right
+        ),
+        format!(
+          "{} · {}",
+          tr(self.lang, "control_center.outer_gap_bottom"),
+          self.state.gaps_out_bottom
+        ),
+      ],
+      AppearancePage::GeneralBorders => vec![
+        format!(
+          "[{}] {} · {}",
+          if self.state.rounded { "x" } else { " " },
+          tr(self.lang, "control_center.rounded"),
+          if self.state.rounded {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
+        ),
+        format!(
+          "{} · {}{}",
+          tr(self.lang, "control_center.rounding"),
+          self.state.rounding,
+          if self.state.rounded {
+            ""
+          } else {
+            " · disabled"
+          }
+        ),
+      ],
+      AppearancePage::EdgeThickness => vec![format!(
+        "{} · {}",
+        tr(self.lang, "control_center.thickness"),
+        self.state.thickness
+      )],
+      AppearancePage::Prompt { .. } => Vec::new(),
+    }
+  }
+  fn hints(&self) -> String {
+    if matches!(self.page, AppearancePage::Prompt { .. }) {
+      let (min, max) = if let AppearancePage::Prompt { goal } = self.page {
+        goal.range()
+      } else {
+        (0, 100)
+      };
+      format!("0-9 edit · Enter confirm · Esc back · {min}..{max}")
+    } else if matches!(
+      self.page,
+      AppearancePage::Home | AppearancePage::SpacesBordersPosition
+    ) {
+      tr(
+        self.lang,
+        "control_center.jk_navigate_enter_open_space_toggle_r_refresh_esc_back",
+      )
+      .into()
+    } else {
+      tr(
+        self.lang,
+        "control_center.jk_navigate_enter_apply_r_refresh_esc_back",
+      )
+      .into()
+    }
+  }
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = shell(
       frame,
@@ -506,240 +708,65 @@ impl AppearanceApp {
       &self.breadcrumb(),
       &self.hints(),
     );
-    match self.page {
-      AppearancePage::Home => {
-        let rows = self.home_rows();
-        list(frame, area, &self.theme, &rows, self.selected);
-      }
-      AppearancePage::Themes => {
-        let rows = THEME_FAMILIES
-          .iter()
-          .map(|(name, label)| {
-            let current = self
-              .state
-              .theme
-              .strip_suffix("-float")
-              .unwrap_or(&self.state.theme);
-            if current == *name {
-              format!("{label} > · {}", tr(self.lang, "control_center.current"))
-            } else {
-              format!("{label} >")
-            }
-          })
-          .collect::<Vec<_>>();
-        list(frame, area, &self.theme, &rows, self.selected);
-      }
-      AppearancePage::ThemeModes { family } => {
-        let base = THEME_FAMILIES.get(family).map(|(name, _)| *name);
-        let rows = [
-          ("control_center.theme_mode_sticky", base.map(str::to_string)),
-          (
-            "control_center.theme_mode_float",
-            base.map(|name| format!("{name}-float")),
-          ),
-        ]
-        .iter()
-        .map(|(key, name)| {
-          let label = tr(self.lang, key).to_string();
-          if name.as_deref() == Some(self.state.theme.as_str()) {
-            format!("{label} · {}", tr(self.lang, "control_center.current"))
-          } else {
-            label
-          }
-        })
-        .collect::<Vec<_>>();
-        list(frame, area, &self.theme, &rows, self.selected);
-      }
-      AppearancePage::Accents => {
-        let rows = ACCENTS
-          .iter()
-          .map(|(label, color)| {
-            if self.state.accent == *color {
-              format!(
-                "{label} ({color}) · {}",
-                tr(self.lang, "control_center.current")
-              )
-            } else {
-              format!("{label} ({color})")
-            }
-          })
-          .collect::<Vec<_>>();
-        list(frame, area, &self.theme, &rows, self.selected);
-      }
-      AppearancePage::Wallpapers => {
-        let mut rows = vec![tr(self.lang, "control_center.choose_image_from_home").to_string()];
-        rows.extend(
-          self
-            .state
-            .wallpapers
-            .iter()
-            .map(|name| {
-              if self.state.wallpaper_active.as_deref() == Some(name.as_str()) {
-                format!("{name} · {}", tr(self.lang, "control_center.current"))
-              } else {
-                name.clone()
-              }
-            })
-            .collect::<Vec<_>>(),
-        );
-        if rows.is_empty() {
-          self.draw_empty(
-            frame,
-            area,
-            tr(
-              self.lang,
-              "control_center.no_wallpapers_in_usr_share_backgrounds_argvus",
-            )
-            .to_string(),
-          );
-        } else {
-          list(frame, area, &self.theme, &rows, self.selected);
-        }
-      }
-      AppearancePage::WaybarPosition => {
-        let rows = [
-          format!(
-            "{} {}",
-            tr(self.lang, "control_center.top"),
-            if self.state.waybar_pos == "top" {
-              "· atual"
-            } else {
-              ""
-            }
-          ),
-          format!(
-            "{} {}",
-            tr(self.lang, "control_center.bottom"),
-            if self.state.waybar_pos == "bottom" {
-              "· atual"
-            } else {
-              ""
-            }
-          ),
-        ];
-        list(frame, area, &self.theme, &rows, self.selected);
-      }
-      AppearancePage::Prompt { goal } => {
-        self.draw_prompt(frame, area, goal);
-      }
+    if let AppearancePage::Prompt { goal } = self.page {
+      self.draw_prompt(frame, area, goal);
+    } else {
+      let rows = self.rows();
+      list(
+        frame,
+        area,
+        &self.theme,
+        &rows,
+        self.selected.min(rows.len().saturating_sub(1)),
+      );
     }
     if let Some(message) = &self.status {
       status(frame, area, &self.theme, message);
     }
   }
-
-  fn draw_empty(&self, frame: &mut Frame, area: Rect, text: String) {
-    frame.render_widget(
-      Paragraph::new(Line::from(Span::styled(
-        text,
-        Style::new()
-          .fg(self.theme.foreground)
-          .add_modifier(Modifier::DIM),
-      ))),
-      area.inner(Margin::new(1, 0)),
-    );
-  }
-
   fn draw_prompt(&mut self, frame: &mut Frame, area: Rect, goal: PromptGoal) {
-    let label = match goal {
-      PromptGoal::GapsIn => tr(self.lang, "control_center.windows_inner_gap"),
-      PromptGoal::GapsOut => tr(self.lang, "control_center.windows_outer_gap"),
-      PromptGoal::Waybar => tr(self.lang, "control_center.taskbar_margin"),
-    };
+    let label = tr(self.lang, self.prompt_label(goal));
     let chunks = Layout::vertical([
       Constraint::Length(3),
       Constraint::Length(1),
       Constraint::Min(1),
     ])
     .split(area);
-    let input = Paragraph::new(Line::from(Span::styled(
-      format!("{label}: {}", self.prompt_buffer),
-      Style::new()
-        .fg(self.theme.selected_foreground)
-        .bg(self.theme.selected_background),
-    )));
-    frame.render_widget(input, chunks[0]);
-    if let Some(error) = &self.prompt_error {
-      frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-          error.clone(),
-          Style::new().fg(self.theme.error),
-        ))),
-        chunks[1],
-      );
-    }
-    if self.prompt_error.is_none() {
-      let hint = Line::from(Span::styled(
-        tr(
-          self.lang,
-          "control_center.0_to_100_independent_of_the_theme",
-        ),
+    frame.render_widget(
+      Paragraph::new(Line::from(Span::styled(
+        format!("{label}: {}", self.prompt_buffer),
         Style::new()
-          .fg(self.theme.foreground)
+          .fg(self.theme.selected_foreground)
+          .bg(self.theme.selected_background),
+      ))),
+      chunks[0],
+    );
+    let text = self.prompt_error.clone().unwrap_or_else(|| {
+      let (min, max) = goal.range();
+      format!("{min}..{max} · Enter confirm · Esc back")
+    });
+    frame.render_widget(
+      Paragraph::new(Line::from(Span::styled(
+        text,
+        Style::new()
+          .fg(if self.prompt_error.is_some() {
+            self.theme.error
+          } else {
+            self.theme.foreground
+          })
           .add_modifier(Modifier::DIM),
-      ));
-      frame.render_widget(Paragraph::new(hint), chunks[1]);
-    }
+      ))),
+      chunks[1],
+    );
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::model::AppearancePage;
-
-  #[test]
-  fn home_has_nine_rows_leading_to_pages() {
-    let app = AppearanceApp {
-      page: AppearancePage::Home,
-      lang: Lang::for_locale("pt-BR"),
-      theme: Theme::load(),
-      status: None,
-      state: AppearanceState::default(),
-      loaded: true,
-      status_loading: false,
-      selected: 0,
-      prompt_buffer: String::new(),
-      prompt_error: None,
-      prompt_back: None,
-      job: None,
-      action: None,
-      reload_requested: false,
-      manager: JobManager::default(),
-    };
-    let rows = app.home_rows();
-    assert_eq!(rows.len(), 9);
-    assert!(rows[0].contains("ARGVUS Dark Aether ["));
-  }
-
-  #[test]
-  fn waybar_position_picker_length() {
-    let mut app = AppearanceApp {
-      page: AppearancePage::WaybarPosition,
-      lang: Lang::for_locale("pt-BR"),
-      theme: Theme::load(),
-      status: None,
-      state: AppearanceState::default(),
-      loaded: true,
-      status_loading: false,
-      selected: 0,
-      prompt_buffer: String::new(),
-      prompt_error: None,
-      prompt_back: None,
-      job: None,
-      action: None,
-      reload_requested: false,
-      manager: JobManager::default(),
-    };
-    assert_eq!(app.picker_len(), 2);
-    app.selected = 1;
-    assert!(!app.handle(KeyCode::Enter));
-  }
-
-  #[test]
-  fn theme_picker_starts_with_families_then_two_modes() {
-    let mut app = AppearanceApp {
-      page: AppearancePage::Themes,
+  fn app(page: AppearancePage) -> AppearanceApp {
+    AppearanceApp {
+      page,
       lang: Lang::for_locale("en-US"),
       theme: Theme::load(),
       status: None,
@@ -754,10 +781,26 @@ mod tests {
       action: None,
       reload_requested: false,
       manager: JobManager::default(),
-    };
-    assert_eq!(app.picker_len(), THEME_FAMILIES.len());
-    assert!(!app.handle(KeyCode::Enter));
-    assert_eq!(app.page, AppearancePage::ThemeModes { family: 0 });
-    assert_eq!(app.picker_len(), 2);
+    }
+  }
+  #[test]
+  fn home_has_categories_and_spacing_is_nested() {
+    assert_eq!(app(AppearancePage::Home).rows().len(), 6);
+    assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
+  }
+  #[test]
+  fn selection_bounds_follow_each_page() {
+    let mut a = app(AppearancePage::WindowSpaces);
+    a.handle(KeyCode::End);
+    assert_eq!(a.selected, 4);
+    a.handle(KeyCode::Down);
+    assert_eq!(a.selected, 4);
+  }
+  #[test]
+  fn disabled_rounding_does_not_open_prompt() {
+    let mut a = app(AppearancePage::GeneralBorders);
+    a.selected = 1;
+    a.handle(KeyCode::Enter);
+    assert!(a.prompt_back.is_none());
   }
 }

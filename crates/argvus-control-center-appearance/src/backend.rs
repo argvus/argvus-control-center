@@ -1,4 +1,4 @@
-use crate::model::AppearanceState;
+use crate::model::{AppearanceState, TaskbarPosition};
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
   process::{ProcessRequest, ProcessRunner, SystemProcessRunner},
@@ -20,7 +20,7 @@ fn script(name: &str) -> PathBuf {
     "effects-toggle.sh" => "session",
     "theme-switch.sh" | "accent-switch.sh" | "hypr-wallpaper-pick.sh" => "appearance",
     "hyprlock-theme.sh" => "lock",
-    "spaces-switch.sh" => "hyprland",
+    "spaces-switch.sh" | "borders-switch.sh" => "hyprland",
     _ => "session",
   };
   system_config_root().join(project).join("sh").join(name)
@@ -258,10 +258,6 @@ fn accent_file() -> PathBuf {
   argvus_config_home().join(".accent-color")
 }
 
-fn spaces_file() -> PathBuf {
-  argvus_config_home().join(".spaces")
-}
-
 fn theme_default_accent(theme: &str) -> Option<&'static str> {
   match theme {
     "argvus-dark-aether" | "argvus-dark-aether-float" => Some("#3590bd"),
@@ -273,41 +269,40 @@ fn theme_default_accent(theme: &str) -> Option<&'static str> {
   }
 }
 
-fn load_spaces(state: &mut AppearanceState) {
-  let mut gaps_in = None;
-  let mut gaps_out = None;
-  let mut waybar = None;
-  let mut waybar_pos = None;
-  if let Ok(content) = fs::read_to_string(spaces_file()) {
-    for line in content.lines() {
-      let Some((key, value)) = line.split_once('=') else {
-        continue;
-      };
-      match key.trim() {
-        "gaps_in" => gaps_in = value.trim().parse::<i32>().ok(),
-        "gaps_out" => gaps_out = value.trim().parse::<i32>().ok(),
-        "waybar" => waybar = value.trim().parse::<i32>().ok(),
-        "waybar_pos" => waybar_pos = Some(value.trim().to_string()),
-        _ => {}
-      }
+fn parse_pairs(output: &str) -> impl Iterator<Item = (&str, &str)> {
+  output.lines().filter_map(|line| {
+    line
+      .split_once('=')
+      .map(|(key, value)| (key.trim(), value.trim()))
+  })
+}
+
+fn parse_spacing_status(output: &str, state: &mut AppearanceState) {
+  for (key, value) in parse_pairs(output) {
+    match key {
+      "waybar_pos" => state.waybar_pos = TaskbarPosition::from_value(value),
+      "waybar_top" => state.waybar_top = value.parse().unwrap_or(state.waybar_top),
+      "waybar_left" => state.waybar_left = value.parse().unwrap_or(state.waybar_left),
+      "waybar_right" => state.waybar_right = value.parse().unwrap_or(state.waybar_right),
+      "waybar_bottom" => state.waybar_bottom = value.parse().unwrap_or(state.waybar_bottom),
+      "gaps_in" => state.gaps_in = value.parse().unwrap_or(state.gaps_in),
+      "gaps_out_top" => state.gaps_out_top = value.parse().unwrap_or(state.gaps_out_top),
+      "gaps_out_left" => state.gaps_out_left = value.parse().unwrap_or(state.gaps_out_left),
+      "gaps_out_right" => state.gaps_out_right = value.parse().unwrap_or(state.gaps_out_right),
+      "gaps_out_bottom" => state.gaps_out_bottom = value.parse().unwrap_or(state.gaps_out_bottom),
+      _ => {}
     }
   }
-  if let Some(value) = gaps_in {
-    state.gaps_in = value;
-  }
-  if let Some(value) = gaps_out {
-    state.gaps_out = value;
-  }
-  if let Some(value) = waybar {
-    state.waybar = value;
-  }
-  match waybar_pos.as_deref() {
-    Some("bottom") => state.waybar_pos = "bottom".into(),
-    Some(_) => state.waybar_pos = "top".into(),
-    None if state.is_float_theme() => {
-      state.waybar_pos = "top".into();
+}
+
+fn parse_borders_status(output: &str, state: &mut AppearanceState) {
+  for (key, value) in parse_pairs(output) {
+    match key {
+      "rounded" => state.rounded = value == "1",
+      "rounding" => state.rounding = value.parse().unwrap_or(state.rounding),
+      "thickness" => state.thickness = value.parse().unwrap_or(state.thickness),
+      _ => {}
     }
-    None => {}
   }
 }
 
@@ -477,7 +472,12 @@ pub fn load_state() -> AppearanceState {
   state.wallpaper_active = active_wallpaper();
   state.effects = effects_state();
   state.widget_telemetry = telemetry_state();
-  load_spaces(&mut state);
+  if let Some(output) = run_script_output(&script("spaces-switch.sh"), &["--status"]) {
+    parse_spacing_status(&output, &mut state);
+  }
+  if let Some(output) = run_script_output(&script("borders-switch.sh"), &["--status"]) {
+    parse_borders_status(&output, &mut state);
+  }
   state
 }
 
@@ -629,11 +629,11 @@ pub fn choose_wallpaper() -> Result<(), String> {
   Ok(())
 }
 
-pub fn set_spaces(key: &str, value: &str) -> Result<(), String> {
+pub fn set_spacing(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid spaces key/value".into());
   }
-  run_script(&script("spaces-switch.sh"), &["--set", key, value])?;
+  run_script(&script("spaces-switch.sh"), &["--set-persist", key, value])?;
   run_script(&script("spaces-switch.sh"), &["--apply"])
 }
 
@@ -643,17 +643,41 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
   }
   run_script(
     &script("spaces-switch.sh"),
-    &["--set", "waybar_pos", position],
-  )
+    &["--set-persist", "waybar_pos", position],
+  )?;
+  run_script(&script("spaces-switch.sh"), &["--apply"])
+}
+
+pub fn set_border(key: &str, value: &str) -> Result<(), String> {
+  if key.is_empty() || value.is_empty() {
+    return Err("invalid border key/value".into());
+  }
+  run_script(&script("borders-switch.sh"), &["--set-persist", key, value])?;
+  run_script(&script("borders-switch.sh"), &["--apply"])?;
+
+  // `borders-switch.sh --apply` updates the current Hyprland process and
+  // generated styles. Session reload is still required for the managed
+  // components to consume the persisted border contract, and the Control
+  // Center is not one of the components restarted by argvus-sessionctl.
+  let output = SystemProcessRunner
+    .run(&ProcessRequest::new("argvus-sessionctl").arg("reload"))
+    .map_err(|error| error.to_string())?;
+  if output.status.is_none_or(|status| status != 0) {
+    let stderr = terminal_text(&String::from_utf8_lossy(&output.stderr))
+      .trim()
+      .to_string();
+    return Err(if stderr.is_empty() {
+      "argvus-sessionctl reload falhou".into()
+    } else {
+      stderr
+    });
+  }
+  Ok(())
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::sync::Mutex;
-
-  static ENV_LOCK: Mutex<()> = Mutex::new(());
-
   #[test]
   fn theme_default_accents_exist() {
     assert_eq!(
@@ -664,26 +688,20 @@ mod tests {
   }
 
   #[test]
-  fn spaces_file_round_trips() {
-    let dir = std::env::temp_dir().join(format!("argvus-appearance-spaces-{}", std::process::id()));
-    let _guard = ENV_LOCK.lock().unwrap();
-    let original = argvus_config_home();
-    unsafe { std::env::set_var("ARGVUS_CONFIG_HOME", &dir) };
-    let _ = fs::remove_dir_all(spaces_file().parent().unwrap());
-    fs::create_dir_all(spaces_file().parent().unwrap()).unwrap();
-    fs::write(
-      spaces_file(),
-      "gaps_in=4\ngaps_out=2\nwaybar=16\nwaybar_pos=bottom\n",
-    )
-    .unwrap();
+  fn status_parsers_ignore_unknown_keys() {
     let mut state = AppearanceState::default();
-    load_spaces(&mut state);
-    assert_eq!(state.gaps_in, 4);
-    assert_eq!(state.gaps_out, 2);
-    assert_eq!(state.waybar, 16);
-    assert_eq!(state.waybar_pos, "bottom");
-    unsafe { std::env::set_var("ARGVUS_CONFIG_HOME", original.to_str().unwrap_or("/tmp/n")) };
-    let _ = fs::remove_dir_all(&dir);
+    parse_spacing_status(
+      "waybar_pos=top\nwaybar_top=16\nwaybar_left=14\nwaybar_right=14\nwaybar_bottom=0\ngaps_in=8\ngaps_out_top=8\ngaps_out_left=10\ngaps_out_right=10\ngaps_out_bottom=8\nfuture_property=123\n",
+      &mut state,
+    );
+    parse_borders_status(
+      "rounded=1\nrounding=4\nthickness=1\nfuture_property=123\n",
+      &mut state,
+    );
+    assert_eq!(state.waybar_top, 16);
+    assert_eq!(state.gaps_out_left, 10);
+    assert!(state.rounded);
+    assert_eq!(state.rounding, 4);
   }
 
   #[test]
