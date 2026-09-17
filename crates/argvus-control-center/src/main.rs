@@ -43,6 +43,9 @@ fn main() -> Result<()> {
     if app.config.poll() {
       dirty = true;
     }
+    if app.poll_search_cursor() {
+      dirty = true;
+    }
     #[cfg(any(
       feature = "hardware",
       feature = "services",

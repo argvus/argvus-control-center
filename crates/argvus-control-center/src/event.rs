@@ -1,4 +1,6 @@
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+  Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
+};
 
 use crate::app::{App, Route};
 
@@ -13,6 +15,10 @@ pub fn handle(app: &mut App, event: Event) {
     app.resize(width, height);
     return;
   }
+  if let Event::Mouse(mouse) = event {
+    handle_mouse(app, mouse);
+    return;
+  }
   let Event::Key(key) = event else {
     return;
   };
@@ -24,6 +30,23 @@ pub fn handle(app: &mut App, event: Event) {
     return;
   }
   if app.route == Route::Settings && app.settings.admin.busy() {
+    return;
+  }
+  if app.route == Route::Home && app.search_active {
+    match key.code {
+      KeyCode::Esc if app.search_query.is_empty() => app.clear_global_search(),
+      KeyCode::Esc => app.update_global_search(String::new()),
+      KeyCode::Backspace => app.pop_global_search(),
+      KeyCode::Up | KeyCode::Char('k') => app.move_global_search(-1),
+      KeyCode::Down | KeyCode::Char('j') => app.move_global_search(1),
+      KeyCode::Enter => app.open_global_search_result(),
+      KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+        let mut query = app.search_query.clone();
+        query.push(character);
+        app.update_global_search(query);
+      }
+      _ => {}
+    }
     return;
   }
   if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -152,6 +175,18 @@ pub fn handle(app: &mut App, event: Event) {
   }
 }
 
+fn handle_mouse(app: &mut App, mouse: crossterm::event::MouseEvent) {
+  if app.route != Route::Home || !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+    return;
+  }
+  // Home layout: outer border + one header row, then the three-row search field.
+  let search_top = 2u16;
+  let search_bottom = search_top.saturating_add(3);
+  if mouse.row >= search_top && mouse.row < search_bottom {
+    app.begin_global_search();
+  }
+}
+
 #[cfg(any(
   feature = "hardware",
   feature = "services",
@@ -173,6 +208,7 @@ fn domain_key(key: KeyCode) -> KeyCode {
 
 fn handle_home(app: &mut App, key: KeyEvent) {
   match key.code {
+    KeyCode::Char('/') => app.begin_global_search(),
     KeyCode::Up | KeyCode::Char('k') => app.move_home(-1),
     KeyCode::Down | KeyCode::Char('j') => app.move_home(1),
     KeyCode::Home => app.home_selected = 0,
@@ -262,6 +298,52 @@ mod tests {
     assert_eq!(
       app.settings.page(),
       argvus_control_center_settings::Page::CreateUser
+    );
+  }
+
+  #[test]
+  fn home_global_search_updates_live_and_clears_before_canceling() {
+    let mut app = App::new(InitialRoute::Home);
+    handle(&mut app, press(KeyCode::Char('/')));
+    handle(&mut app, press(KeyCode::Char('w')));
+    handle(&mut app, press(KeyCode::Char('i')));
+    handle(&mut app, press(KeyCode::Char('f')));
+    assert!(app.search_active);
+    assert_eq!(app.search_query, "wif");
+    assert!(app.search_result_ids.iter().any(|id| id == "network.wifi"));
+    handle(&mut app, press(KeyCode::Esc));
+    assert!(app.search_active);
+    assert!(app.search_query.is_empty());
+    handle(&mut app, press(KeyCode::Esc));
+    assert!(!app.search_active);
+  }
+
+  #[test]
+  fn clicking_home_search_field_focuses_global_search() {
+    let mut app = App::new(InitialRoute::Home);
+    handle(
+      &mut app,
+      Event::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 10,
+        row: 3,
+        modifiers: KeyModifiers::NONE,
+      }),
+    );
+    assert!(app.search_active);
+  }
+
+  #[cfg(feature = "network")]
+  #[test]
+  fn global_search_opens_a_real_deep_link() {
+    let mut app = App::new(InitialRoute::Home);
+    app.begin_global_search();
+    app.update_global_search("wifi".into());
+    app.open_global_search_result();
+    assert_eq!(app.route, Route::Network);
+    assert_eq!(
+      app.network.page,
+      argvus_control_center_network::NetworkPage::Wifi
     );
   }
 

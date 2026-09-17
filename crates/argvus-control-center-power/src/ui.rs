@@ -477,19 +477,19 @@ impl PowerApp {
     if state.is_laptop {
       rows.push(format!(
         " {}  {}  ·  ▸ {}",
-        AppConfig::icon("💻"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         tr(self.lang, "control_center.on_lid_close_battery"),
         behavior_label(self.lang, state.lid[0].value()),
       ));
       rows.push(format!(
         " {}  {}  ·  ▸ {}",
-        AppConfig::icon("🔌"),
+        AppConfig::icon(argvus_tui::icons::ETHERNET),
         tr(self.lang, "control_center.on_lid_close_ac"),
         behavior_label(self.lang, state.lid[1].value()),
       ));
       rows.push(format!(
         " {}  {}  ·  ▸ {}",
-        AppConfig::icon("⏻"),
+        AppConfig::icon(argvus_tui::icons::POWER),
         tr(self.lang, "control_center.power_button"),
         behavior_label(self.lang, state.power_button.value()),
       ));
@@ -498,14 +498,14 @@ impl PowerApp {
     rows.push(if state.screen_off_supported {
       format!(
         " {}  {}  ·  ▸ {}",
-        AppConfig::icon("🖥️"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         tr(self.lang, "control_center.screen_off_after"),
         idle_label(state.screen_off_minutes.unwrap_or(0)),
       )
     } else {
       format!(
         " {}  {}  ·  {}",
-        AppConfig::icon("🖥️"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         tr(self.lang, "control_center.screen_off_after"),
         tr(self.lang, "control_center.via_argvus_hypridle"),
       )
@@ -514,14 +514,14 @@ impl PowerApp {
     rows.push(if state.lock_supported {
       format!(
         " {}  {}  ·  ▸ {}",
-        AppConfig::icon("🔒"),
+        AppConfig::icon(argvus_tui::icons::LOCK),
         tr(self.lang, "control_center.lock_screen_after"),
         idle_label(state.lock_minutes.unwrap_or(0)),
       )
     } else {
       format!(
         " {}  {}  ·  {}",
-        AppConfig::icon("🔒"),
+        AppConfig::icon(argvus_tui::icons::LOCK),
         tr(self.lang, "control_center.lock_screen_after"),
         tr(self.lang, "control_center.via_argvus_hypridle"),
       )
@@ -544,7 +544,7 @@ impl PowerApp {
     let suspend_icon = if state.can_suspend { "✓" } else { "✕" };
     let hibernate_icon = if state.can_hibernate { "✓" } else { "✕" };
     format!(
-      " 🔋 {}: {}   {}: {}",
+      " {}: {}   {}: {}",
       tr(self.lang, "control_center.suspend"),
       suspend_icon,
       tr(self.lang, "control_center.hibernate"),

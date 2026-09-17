@@ -24,23 +24,79 @@ impl SearchRegistry {
     &self.entries
   }
   pub fn search(&self, query: &str) -> Vec<&SearchEntry> {
-    let query = query.trim().to_ascii_lowercase();
-    self
+    let query = normalize(query);
+    if query.is_empty() {
+      return Vec::new();
+    }
+    let mut matches: Vec<(u8, usize, &SearchEntry)> = self
       .entries
       .iter()
-      .filter(|entry| {
-        query.is_empty()
-          || [
-            entry.id.as_str(),
-            entry.category.as_str(),
-            entry.title.as_str(),
-          ]
-          .into_iter()
-          .chain(entry.keywords.iter().map(String::as_str))
-          .any(|value| value.to_ascii_lowercase().contains(&query))
+      .enumerate()
+      .filter_map(|(index, entry)| {
+        let rank = match_rank(&query, entry);
+        rank.map(|rank| (rank, index, entry))
       })
-      .collect()
+      .collect();
+    matches.sort_by_key(|(rank, index, _)| (*rank, *index));
+    matches.into_iter().map(|(_, _, entry)| entry).collect()
   }
+}
+
+fn normalize(value: &str) -> String {
+  value
+    .trim()
+    .chars()
+    .map(|character| match character {
+      'á' | 'à' | 'ã' | 'â' | 'ä' | 'Á' | 'À' | 'Ã' | 'Â' | 'Ä' => 'a',
+      'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+      'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+      'ó' | 'ò' | 'õ' | 'ô' | 'ö' | 'Ó' | 'Ò' | 'Õ' | 'Ô' | 'Ö' => 'o',
+      'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+      'ç' | 'Ç' => 'c',
+      other => other.to_ascii_lowercase(),
+    })
+    .collect()
+}
+
+fn match_rank(query: &str, entry: &SearchEntry) -> Option<u8> {
+  let title = normalize(&entry.title);
+  let category = normalize(&entry.category);
+  if title == query {
+    return Some(0);
+  }
+  if title.starts_with(query) {
+    return Some(1);
+  }
+  if title.split_whitespace().any(|word| word.starts_with(query)) {
+    return Some(2);
+  }
+  if title.contains(query) {
+    return Some(3);
+  }
+  let keywords = entry.keywords.iter().map(|keyword| normalize(keyword));
+  if keywords.clone().any(|keyword| keyword == query) {
+    return Some(4);
+  }
+  if entry
+    .keywords
+    .iter()
+    .map(|keyword| normalize(keyword))
+    .any(|keyword| keyword.starts_with(query))
+  {
+    return Some(5);
+  }
+  if entry
+    .keywords
+    .iter()
+    .map(|keyword| normalize(keyword))
+    .any(|keyword| keyword.contains(query))
+  {
+    return Some(6);
+  }
+  if category.contains(query) || normalize(&entry.id).contains(query) {
+    return Some(7);
+  }
+  None
 }
 
 #[cfg(test)]
@@ -59,5 +115,31 @@ mod tests {
     registry.register(entry.clone()).unwrap();
     assert_eq!(registry.search("wireless").len(), 1);
     assert!(registry.register(entry).is_err());
+  }
+
+  #[test]
+  fn ranks_exact_title_before_keyword_and_empty_query_is_empty() {
+    let mut registry = SearchRegistry::default();
+    registry
+      .register(SearchEntry {
+        id: "audio".into(),
+        category: "audio".into(),
+        title: "Audio".into(),
+        keywords: vec!["sound".into()],
+        route: "audio/summary".into(),
+      })
+      .unwrap();
+    registry
+      .register(SearchEntry {
+        id: "audio.output".into(),
+        category: "audio".into(),
+        title: "Output".into(),
+        keywords: vec!["audio".into()],
+        route: "audio/output".into(),
+      })
+      .unwrap();
+    assert_eq!(registry.search("audio")[0].title, "Audio");
+    assert!(registry.search(" ").is_empty());
+    assert_eq!(registry.search("ÁUDIO")[0].title, "Audio");
   }
 }

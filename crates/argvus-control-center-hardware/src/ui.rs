@@ -593,29 +593,39 @@ impl HardwareApp {
     vec![
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("💻"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         summary_label,
         self.snapshot.architecture,
         self.snapshot.kernel
       ),
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("🧠"),
+        AppConfig::icon(argvus_tui::icons::MEMORY),
         cpu_label,
         cpu_str,
         self.snapshot.cpu.governor.as_deref().unwrap_or("—")
       ),
-      format!("{} {}  ·  {}", AppConfig::icon("🎮"), gpu_label, gpu_str),
-      format!("{} {}  ·  {}", AppConfig::icon("⚡"), memory_label, mem_str),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("🔋"),
+        AppConfig::icon(argvus_tui::icons::GPU),
+        gpu_label,
+        gpu_str
+      ),
+      format!(
+        "{} {}  ·  {}",
+        AppConfig::icon(argvus_tui::icons::POWER),
+        memory_label,
+        mem_str
+      ),
+      format!(
+        "{} {}  ·  {}",
+        AppConfig::icon(argvus_tui::icons::BATTERY),
         power_label,
         power_str
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("🔌"),
+        AppConfig::icon(argvus_tui::icons::ETHERNET),
         devices_label,
         dev_str
       ),

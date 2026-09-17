@@ -35,6 +35,7 @@ use argvus_control_center_settings::{App as SettingsState, Page};
 use argvus_control_center_storage::{StorageApp, StoragePage};
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
@@ -157,6 +158,12 @@ pub struct App {
   pub appearance: AppearanceApp,
   pub capabilities: Capabilities,
   pub search_registry: SearchRegistry,
+  pub search_query: String,
+  pub search_active: bool,
+  pub search_selected: usize,
+  pub search_result_ids: Vec<String>,
+  pub search_cursor_visible: bool,
+  search_cursor_last_blink: Instant,
   pub jobs: JobManager,
 }
 
@@ -334,6 +341,96 @@ impl App {
     }
     let mut search_registry = SearchRegistry::default();
     let entries: [(&str, &str, &str, &str, &str); _] = [
+      #[cfg(feature = "fonts")]
+      (
+        "settings.fonts",
+        "appearance",
+        "Fonts",
+        "font fonts typeface typography",
+        "settings/fonts",
+      ),
+      #[cfg(feature = "apps")]
+      (
+        "settings.default_apps",
+        "applications",
+        "Default Apps",
+        "default application apps browser terminal file manager",
+        "settings/default-apps",
+      ),
+      #[cfg(feature = "about")]
+      (
+        "about",
+        "system",
+        "About",
+        "about information version license",
+        "about/system",
+      ),
+      #[cfg(feature = "network")]
+      (
+        "network",
+        "network",
+        "Network",
+        "network internet connectivity",
+        "network/home",
+      ),
+      #[cfg(feature = "audio")]
+      (
+        "audio",
+        "audio",
+        "Audio",
+        "audio sound volume",
+        "audio/home",
+      ),
+      #[cfg(feature = "bluetooth")]
+      (
+        "bluetooth",
+        "bluetooth",
+        "Bluetooth",
+        "bluetooth wireless pairing",
+        "bluetooth/home",
+      ),
+      #[cfg(feature = "hardware")]
+      (
+        "hardware",
+        "hardware",
+        "Hardware",
+        "hardware system devices",
+        "hardware/home",
+      ),
+      #[cfg(feature = "services")]
+      (
+        "services",
+        "services",
+        "Services",
+        "services systemd daemon",
+        "services/home",
+      ),
+      #[cfg(feature = "boot")]
+      ("boot", "boot", "Boot", "boot startup", "boot/home"),
+      #[cfg(feature = "packages")]
+      (
+        "packages",
+        "packages",
+        "Packages",
+        "package pacman software",
+        "packages/home",
+      ),
+      #[cfg(feature = "storage")]
+      (
+        "storage",
+        "storage",
+        "Storage",
+        "storage disk filesystem",
+        "storage/home",
+      ),
+      #[cfg(feature = "diagnostics")]
+      (
+        "diagnostics",
+        "diagnostics",
+        "Diagnostics",
+        "diagnostics health",
+        "diagnostics/home",
+      ),
       #[cfg(feature = "hardware")]
       (
         "hardware.summary",
@@ -969,6 +1066,12 @@ impl App {
       appearance,
       capabilities,
       search_registry,
+      search_query: String::new(),
+      search_active: false,
+      search_selected: 0,
+      search_result_ids: Vec::new(),
+      search_cursor_visible: true,
+      search_cursor_last_blink: Instant::now(),
       jobs: JobManager::default(),
     }
   }
@@ -1238,6 +1341,316 @@ impl App {
     self.route = Route::Settings;
   }
 
+  pub fn begin_global_search(&mut self) {
+    self.search_active = true;
+    self.search_cursor_visible = true;
+    self.search_cursor_last_blink = Instant::now();
+    self.search_query.clear();
+    self.search_selected = 0;
+    self.search_result_ids.clear();
+  }
+
+  pub fn update_global_search(&mut self, query: String) {
+    self.search_query = query;
+    self.search_selected = 0;
+    self.search_result_ids = self
+      .search_registry
+      .search(&self.search_query)
+      .into_iter()
+      .map(|entry| entry.id.clone())
+      .collect();
+  }
+
+  pub fn pop_global_search(&mut self) {
+    let mut query = self.search_query.clone();
+    query.pop();
+    self.update_global_search(query);
+  }
+
+  pub fn move_global_search(&mut self, delta: isize) {
+    let last = self.search_result_ids.len().saturating_sub(1);
+    self.search_selected = (self.search_selected as isize + delta).clamp(0, last as isize) as usize;
+  }
+
+  pub fn clear_global_search(&mut self) {
+    self.search_active = false;
+    self.search_cursor_visible = false;
+    self.search_query.clear();
+    self.search_selected = 0;
+    self.search_result_ids.clear();
+  }
+
+  pub fn poll_search_cursor(&mut self) -> bool {
+    if !self.search_active || self.search_cursor_last_blink.elapsed() < Duration::from_millis(500) {
+      return false;
+    }
+    self.search_cursor_visible = !self.search_cursor_visible;
+    self.search_cursor_last_blink = Instant::now();
+    true
+  }
+
+  pub fn open_global_search_result(&mut self) {
+    let Some(id) = self.search_result_ids.get(self.search_selected).cloned() else {
+      return;
+    };
+    let Some(route) = self
+      .search_registry
+      .entries()
+      .iter()
+      .find(|entry| entry.id == id)
+      .map(|entry| entry.route.clone())
+    else {
+      return;
+    };
+    self.clear_global_search();
+    self.open_search_route(&route);
+  }
+
+  fn open_search_route(&mut self, route: &str) {
+    let Some((domain, page)) = route.split_once('/') else {
+      return;
+    };
+    match (domain, page) {
+      #[cfg(feature = "apps")]
+      (_, "default-apps") => self.open_settings(Page::DefaultApps),
+      #[cfg(feature = "fonts")]
+      (_, "fonts") => self.open_settings(Page::Fonts),
+      #[cfg(feature = "about")]
+      ("about", "system") => {
+        self.about.active_tab = Tab::System;
+        self.route = Route::About;
+      }
+      #[cfg(feature = "hardware")]
+      ("hardware", "summary") => self.open_hardware_page(HardwarePage::Summary),
+      #[cfg(feature = "hardware")]
+      ("hardware", "home") => self.open_hardware_page(HardwarePage::Home),
+      #[cfg(feature = "hardware")]
+      ("hardware", "cpu") => self.open_hardware_page(HardwarePage::Cpu),
+      #[cfg(feature = "hardware")]
+      ("hardware", "gpu") => self.open_hardware_page(HardwarePage::Gpu),
+      #[cfg(feature = "hardware")]
+      ("hardware", "memory") => self.open_hardware_page(HardwarePage::Memory),
+      #[cfg(feature = "hardware")]
+      ("hardware", "power") => self.open_hardware_page(HardwarePage::Power),
+      #[cfg(feature = "hardware")]
+      ("hardware", "devices") => self.open_hardware_page(HardwarePage::Devices),
+      #[cfg(feature = "services")]
+      ("services", "system") => self.open_services_page(ServicePage::System),
+      #[cfg(feature = "services")]
+      ("services", "home") => self.open_services_page(ServicePage::Home),
+      #[cfg(feature = "services")]
+      ("services", "user") => self.open_services_page(ServicePage::User),
+      #[cfg(feature = "services")]
+      ("services", "failed") => self.open_services_page(ServicePage::Failed),
+      #[cfg(feature = "services")]
+      ("services", "logs") => self.open_services_page(ServicePage::Logs),
+      #[cfg(feature = "network")]
+      ("network", "status") => self.open_network_page(NetworkPage::Status),
+      #[cfg(feature = "network")]
+      ("network", "home") => self.open_network_page(NetworkPage::Home),
+      #[cfg(feature = "network")]
+      ("network", "interfaces") => self.open_network_page(NetworkPage::Interfaces),
+      #[cfg(feature = "network")]
+      ("network", "wifi") => self.open_network_page(NetworkPage::Wifi),
+      #[cfg(feature = "network")]
+      ("network", "ethernet") => self.open_network_page(NetworkPage::Ethernet),
+      #[cfg(feature = "network")]
+      ("network", "vpn") => self.open_network_page(NetworkPage::Vpn),
+      #[cfg(feature = "network")]
+      ("network", "dns") => self.open_network_page(NetworkPage::Dns),
+      #[cfg(feature = "network")]
+      ("network", "proxy") => self.open_network_page(NetworkPage::Proxy),
+      #[cfg(feature = "audio")]
+      ("audio", "summary") => self.open_audio_page(AudioPage::Summary),
+      #[cfg(feature = "audio")]
+      ("audio", "home") => self.open_audio_page(AudioPage::Home),
+      #[cfg(feature = "audio")]
+      ("audio", "output") => self.open_audio_page(AudioPage::Output),
+      #[cfg(feature = "audio")]
+      ("audio", "input") => self.open_audio_page(AudioPage::Input),
+      #[cfg(feature = "audio")]
+      ("audio", "devices") => self.open_audio_page(AudioPage::Devices),
+      #[cfg(feature = "bluetooth")]
+      ("bluetooth", "state") => self.open_bluetooth_page(BluetoothPage::State),
+      #[cfg(feature = "bluetooth")]
+      ("bluetooth", "home") => self.open_bluetooth_page(BluetoothPage::Home),
+      #[cfg(feature = "bluetooth")]
+      ("bluetooth", "devices") => self.open_bluetooth_page(BluetoothPage::Devices),
+      #[cfg(feature = "bluetooth")]
+      ("bluetooth", "pair") => self.open_bluetooth_page(BluetoothPage::Pair),
+      #[cfg(feature = "boot")]
+      ("boot", "summary") => self.open_boot_page(BootPage::Summary),
+      #[cfg(feature = "boot")]
+      ("boot", "home") => self.open_boot_page(BootPage::Home),
+      #[cfg(feature = "boot")]
+      ("boot", "kernel") => self.open_boot_page(BootPage::Kernel),
+      #[cfg(feature = "boot")]
+      ("boot", "bootloader") => self.open_boot_page(BootPage::Bootloader),
+      #[cfg(feature = "boot")]
+      ("boot", "initramfs") => self.open_boot_page(BootPage::Initramfs),
+      #[cfg(feature = "boot")]
+      ("boot", "plymouth") => self.open_boot_page(BootPage::Plymouth),
+      #[cfg(feature = "packages")]
+      ("packages", "search") => self.open_packages_page(PackagesPage::Search),
+      #[cfg(feature = "packages")]
+      ("packages", "home") => self.open_packages_page(PackagesPage::Home),
+      #[cfg(feature = "packages")]
+      ("packages", "installed") => self.open_packages_page(PackagesPage::Installed),
+      #[cfg(feature = "packages")]
+      ("packages", "updates") => self.open_packages_page(PackagesPage::Updates),
+      #[cfg(feature = "packages")]
+      ("packages", "orphans") => self.open_packages_page(PackagesPage::Orphans),
+      #[cfg(feature = "packages")]
+      ("packages", "cache") => self.open_packages_page(PackagesPage::Cache),
+      #[cfg(feature = "packages")]
+      ("packages", "aur") => self.open_packages_page(PackagesPage::Aur),
+      #[cfg(feature = "packages")]
+      ("packages", "history") => self.open_packages_page(PackagesPage::History),
+      #[cfg(feature = "packages")]
+      ("packages", "downgrade") => self.open_packages_page(PackagesPage::Downgrade),
+      #[cfg(feature = "packages")]
+      ("packages", "mirrors") => self.open_packages_page(PackagesPage::Mirrors),
+      #[cfg(feature = "storage")]
+      ("storage", "summary") => self.open_storage_page(StoragePage::Summary),
+      #[cfg(feature = "storage")]
+      ("storage", "home") => self.open_storage_page(StoragePage::Home),
+      #[cfg(feature = "storage")]
+      ("storage", "disks") => self.open_storage_page(StoragePage::Disks),
+      #[cfg(feature = "storage")]
+      ("storage", "partitions") => self.open_storage_page(StoragePage::Partitions),
+      #[cfg(feature = "storage")]
+      ("storage", "filesystems") => self.open_storage_page(StoragePage::Filesystems),
+      #[cfg(feature = "storage")]
+      ("storage", "mounts") => self.open_storage_page(StoragePage::Mounts),
+      #[cfg(feature = "storage")]
+      ("storage", "smart") => self.open_storage_page(StoragePage::Smart),
+      #[cfg(feature = "storage")]
+      ("storage", "usage") => self.open_storage_page(StoragePage::Usage),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "summary") => self.open_diagnostics_page(DiagnosticPage::Summary),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "home") => self.open_diagnostics_page(DiagnosticPage::Home),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "services") => self.open_diagnostics_page(DiagnosticPage::Services),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "boot") => self.open_diagnostics_page(DiagnosticPage::Boot),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "graphics") => self.open_diagnostics_page(DiagnosticPage::Graphics),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "network") => self.open_diagnostics_page(DiagnosticPage::Network),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "audio") => self.open_diagnostics_page(DiagnosticPage::Audio),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "bluetooth") => self.open_diagnostics_page(DiagnosticPage::Bluetooth),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "storage") => self.open_diagnostics_page(DiagnosticPage::Storage),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "packages") => self.open_diagnostics_page(DiagnosticPage::Packages),
+      #[cfg(feature = "diagnostics")]
+      ("diagnostics", "argvus") => self.open_diagnostics_page(DiagnosticPage::Argvus),
+      #[cfg(feature = "session")]
+      ("session", "summary") => self.open_session_page(SessionPage::Home),
+      #[cfg(feature = "session")]
+      ("session", "components") => self.open_session_page(SessionPage::Components),
+      #[cfg(feature = "session")]
+      ("session", "autostart") => self.open_session_page(SessionPage::Autostart),
+      #[cfg(feature = "session")]
+      ("session", "diagnostics") => self.open_session_page(SessionPage::Diagnostics),
+      #[cfg(feature = "session")]
+      ("session", "logs") => self.open_session_page(SessionPage::Logs),
+      #[cfg(feature = "displays")]
+      ("displays", "summary") => self.open_displays_page(DisplayPage::Home),
+      #[cfg(feature = "appearance")]
+      ("appearance", "summary") => self.open_appearance_page(AppearancePage::Home),
+      #[cfg(feature = "appearance")]
+      ("appearance", "themes") => self.open_appearance_page(AppearancePage::Themes),
+      #[cfg(feature = "appearance")]
+      ("appearance", "wallpapers") => self.open_appearance_page(AppearancePage::Wallpapers),
+      #[cfg(feature = "appearance")]
+      ("appearance", "accents") => self.open_appearance_page(AppearancePage::Accents),
+      #[cfg(feature = "appearance")]
+      ("appearance", "taskbar") => self.open_appearance_page(AppearancePage::TaskbarPosition),
+      #[cfg(feature = "power")]
+      ("power", "summary") => {
+        self.route = Route::Power;
+        self.power.reload();
+      }
+      _ => {}
+    }
+  }
+
+  #[cfg(feature = "hardware")]
+  fn open_hardware_page(&mut self, page: HardwarePage) {
+    self.hardware.page = page;
+    self.route = Route::Hardware;
+  }
+  #[cfg(feature = "services")]
+  fn open_services_page(&mut self, page: ServicePage) {
+    self.services.page = page;
+    self.services.reload();
+    self.route = Route::Services;
+  }
+  #[cfg(feature = "network")]
+  fn open_network_page(&mut self, page: NetworkPage) {
+    self.network.page = page;
+    self.network.reload();
+    self.route = Route::Network;
+  }
+  #[cfg(feature = "audio")]
+  fn open_audio_page(&mut self, page: AudioPage) {
+    self.audio.page = page;
+    self.audio.reload();
+    self.route = Route::Audio;
+  }
+  #[cfg(feature = "bluetooth")]
+  fn open_bluetooth_page(&mut self, page: BluetoothPage) {
+    self.bluetooth.page = page;
+    self.bluetooth.reload();
+    self.route = Route::Bluetooth;
+  }
+  #[cfg(feature = "boot")]
+  fn open_boot_page(&mut self, page: BootPage) {
+    self.boot.page = page;
+    self.boot.reload();
+    self.route = Route::Boot;
+  }
+  #[cfg(feature = "packages")]
+  fn open_packages_page(&mut self, page: PackagesPage) {
+    self.packages.page = page;
+    self.packages.reload();
+    self.route = Route::Packages;
+  }
+  #[cfg(feature = "storage")]
+  fn open_storage_page(&mut self, page: StoragePage) {
+    self.storage.page = page;
+    self.storage.reload();
+    self.route = Route::Storage;
+  }
+  #[cfg(feature = "diagnostics")]
+  fn open_diagnostics_page(&mut self, page: DiagnosticPage) {
+    self.diagnostics.page = page;
+    self.diagnostics.reload();
+    self.route = Route::Diagnostics;
+  }
+  #[cfg(feature = "session")]
+  fn open_session_page(&mut self, page: SessionPage) {
+    self.session.page = page;
+    self.session.reload();
+    self.route = Route::Session;
+  }
+  #[cfg(feature = "displays")]
+  fn open_displays_page(&mut self, page: DisplayPage) {
+    self.displays.page = page;
+    self.displays.reload();
+    self.route = Route::Displays;
+  }
+  #[cfg(feature = "appearance")]
+  fn open_appearance_page(&mut self, page: AppearancePage) {
+    self.appearance.page = page;
+    self.appearance.reload();
+    self.route = Route::Appearance;
+  }
+
   pub fn back(&mut self) {
     match self.route {
       Route::Home => {}
@@ -1352,6 +1765,7 @@ impl App {
         tr(self.lang, "control_center.menu"),
         tr(self.lang, "control_center.navigate"),
         tr(self.lang, "control_center.enter_open"),
+        tr(self.lang, "control_center.search"),
         tr(self.lang, "control_center.s_configuration"),
       ]);
     }

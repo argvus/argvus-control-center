@@ -520,28 +520,28 @@ impl SessionApp {
     vec![
       format!(
         "{} {}  ·  {} {}",
-        AppConfig::icon("🧩"),
+        AppConfig::icon(argvus_tui::icons::APPS),
         tr(self.lang, "control_center.components"),
         running,
         tr(self.lang, "control_center.active_ae7190"),
       ),
       format!(
         "{} {}  ·  {} {}",
-        AppConfig::icon("🚀"),
+        AppConfig::icon(argvus_tui::icons::BOOT),
         tr(self.lang, "control_center.autostart"),
         autostart_enabled,
         tr(self.lang, "control_center.enabled_72aa06"),
       ),
       format!(
         "{} {}  ·  {} {}",
-        AppConfig::icon("🩺"),
+        AppConfig::icon(argvus_tui::icons::DIAGNOSTICS),
         tr(self.lang, "control_center.diagnostics"),
         failed,
         tr(self.lang, "control_center.failed_cc0486"),
       ),
       format!(
         "{} {}",
-        AppConfig::icon("📜"),
+        AppConfig::icon(argvus_tui::icons::LOGS),
         tr(self.lang, "control_center.logs")
       ),
     ]
@@ -556,7 +556,7 @@ impl SessionApp {
       .iter()
       .map(|entry| {
         let symbol = if entry.warn {
-          "⚠"
+          argvus_tui::icons::WARNING
         } else if entry.ok {
           "✓"
         } else {
@@ -890,7 +890,7 @@ mod tests {
     ];
     let rows = app.diagnostics_rows();
     assert!(rows[0].starts_with(" ✓ "));
-    assert!(rows[1].starts_with(" ⚠ "));
+    assert!(rows[1].starts_with(&format!(" {} ", argvus_tui::icons::WARNING)));
     assert!(rows[2].starts_with(" ✕ "));
   }
 }

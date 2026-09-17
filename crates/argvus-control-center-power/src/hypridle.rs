@@ -96,9 +96,7 @@ fn with_lock_listener(content: &str, minutes: u32) -> String {
   let seconds = minutes.saturating_mul(60);
   let command = lock_command(content);
   let base = content.trim_end_matches(['\r', '\n']).to_string();
-  format!(
-    "{base}\n\n# Screen-lock timer (managed by ARGVUS Control Center)\nlistener {{\n  timeout = {seconds}\n  on-timeout = {command}\n}}\n"
-  )
+  format!("{base}\n\nlistener {{\n  timeout = {seconds}\n  on-timeout = {command}\n}}\n")
 }
 
 /// Removes the listener block whose `on-timeout` matches, disabling the related
@@ -497,6 +495,7 @@ listener {
     let updated = with_lock_listener(bare, 1);
     assert_eq!(lock_minutes_from(&updated), Some(1));
     assert!(updated.contains("timeout = 300"), "{updated}");
+    assert!(!updated.contains("Screen-lock timer"), "{updated}");
     assert_eq!(listener_minutes_from(&updated, calls_dpms_off), Some(5));
   }
 

@@ -252,7 +252,7 @@ impl StorageApp {
     vec![
       format!(
         "{} {}  ·  {} {} · {}",
-        AppConfig::icon("📊"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         summary,
         disks.len(),
         tr(self.lang, "control_center.disks_5d5d98"),
@@ -260,39 +260,39 @@ impl StorageApp {
       ),
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("💽"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         disks_label,
         disks.len(),
         human_bytes(total)
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("🔖"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         partitions_label,
         self.partitions().len()
       ),
       format!(
         "{} {}  ·  {} · / {}%",
-        AppConfig::icon("📁"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         filesystems_label,
         self.snapshot.filesystems.len(),
         root_pct
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("📌"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         mounts_label,
         self.snapshot.mounts.len()
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("🛡️"),
+        AppConfig::icon(argvus_tui::icons::LOCK),
         "SMART",
         smart.trim_start()
       ),
       format!(
         "{} {}  ·  / {}%",
-        AppConfig::icon("📈"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         usage_label,
         root_pct
       ),
@@ -327,7 +327,7 @@ impl StorageApp {
     let mut rows = vec![
       format!(
         " {} {}",
-        AppConfig::icon("📊"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         tr(self.lang, "control_center.storage_summary")
       ),
       format!(
@@ -364,7 +364,7 @@ impl StorageApp {
       "".into(),
       format!(
         " {} {}",
-        AppConfig::icon("💾"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         tr(self.lang, "control_center.usage_by_filesystem")
       ),
     ];
@@ -422,7 +422,7 @@ impl StorageApp {
     for swap in &self.snapshot.swap {
       rows.push(format!(
         "{} {} {}  ·  {} / {}",
-        AppConfig::icon("🔄"),
+        AppConfig::icon(argvus_tui::icons::REFRESH),
         tr(self.lang, "control_center.swap_0b62a3"),
         swap.source,
         human_bytes(swap.used_bytes),
@@ -438,7 +438,7 @@ impl StorageApp {
     vec![
       format!(
         " {} {}",
-        AppConfig::icon("💽"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         tr(self.lang, "control_center.disk")
       ),
       format!(
@@ -501,7 +501,7 @@ impl StorageApp {
     vec![
       format!(
         " {} {}",
-        AppConfig::icon("🔖"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         tr(self.lang, "control_center.partition")
       ),
       format!(
@@ -571,7 +571,7 @@ impl StorageApp {
     let mut rows = vec![
       format!(
         " {} {}",
-        AppConfig::icon("📁"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         tr(self.lang, "control_center.filesystem_6effc4")
       ),
       format!(
@@ -630,7 +630,7 @@ impl StorageApp {
     vec![
       format!(
         " {} {}",
-        AppConfig::icon("📌"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         tr(self.lang, "control_center.mount_point")
       ),
       format!(
@@ -672,7 +672,7 @@ impl StorageApp {
     let mut rows = vec![
       format!(
         " {} {}",
-        AppConfig::icon("🛡️"),
+        AppConfig::icon(argvus_tui::icons::LOCK),
         tr(self.lang, "control_center.smart_eb1ea9")
       ),
       format!(
@@ -784,16 +784,16 @@ fn percentage(total: u64, available: u64) -> u64 {
 }
 fn disk_icon(device: &StorageDevice) -> &'static str {
   if device.name.starts_with("zram") || device.name.starts_with("loop") {
-    AppConfig::icon("🌀")
+    AppConfig::icon(argvus_tui::icons::MEMORY)
   } else {
-    AppConfig::icon("💽")
+    AppConfig::icon(argvus_tui::icons::STORAGE)
   }
 }
 fn partition_icon(partition: &StorageDevice) -> &'static str {
   match partition.fstype.as_deref() {
-    Some("crypto_LUKS") | Some("crypt") => AppConfig::icon("🔐"),
-    Some("swap") => AppConfig::icon("🔄"),
-    _ => AppConfig::icon("🔖"),
+    Some("crypto_LUKS") | Some("crypt") => AppConfig::icon(argvus_tui::icons::LOCK),
+    Some("swap") => AppConfig::icon(argvus_tui::icons::REFRESH),
+    _ => AppConfig::icon(argvus_tui::icons::STORAGE),
   }
 }
 fn disk_row(lang: Lang, device: &StorageDevice) -> String {

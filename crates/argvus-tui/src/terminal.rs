@@ -3,7 +3,7 @@ use std::panic;
 
 use crossterm::{
   cursor::{Hide, Show},
-  event::{DisableBracketedPaste, EnableBracketedPaste},
+  event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
   execute,
   terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -19,7 +19,13 @@ impl TerminalGuard {
   pub fn new() -> io::Result<Self> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    if let Err(error) = execute!(stdout, EnterAlternateScreen, EnableBracketedPaste, Hide) {
+    if let Err(error) = execute!(
+      stdout,
+      EnterAlternateScreen,
+      EnableBracketedPaste,
+      EnableMouseCapture,
+      Hide
+    ) {
       let _ = disable_raw_mode();
       return Err(error);
     }
@@ -43,6 +49,7 @@ impl Drop for TerminalGuard {
     let _ = execute!(
       self.terminal.backend_mut(),
       DisableBracketedPaste,
+      DisableMouseCapture,
       Show,
       LeaveAlternateScreen
     );
@@ -63,6 +70,7 @@ fn restore() {
   let _ = execute!(
     io::stdout(),
     DisableBracketedPaste,
+    DisableMouseCapture,
     Show,
     LeaveAlternateScreen
   );

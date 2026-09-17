@@ -967,7 +967,7 @@ impl NetworkApp {
         vec![
           format!(
             " {} {}",
-            AppConfig::icon("🌐"),
+            AppConfig::icon(argvus_tui::icons::NETWORK),
             tr(self.lang, "control_center.connectivity")
           ),
           format!(
@@ -1004,7 +1004,7 @@ impl NetworkApp {
           "".into(),
           format!(
             " {} {}",
-            AppConfig::icon("📶"),
+            AppConfig::icon(argvus_tui::icons::WIFI),
             tr(self.lang, "control_center.connections")
           ),
           format!(
@@ -1074,7 +1074,7 @@ impl NetworkApp {
           vec![
             format!(
               " {} {}",
-              AppConfig::icon("🔌"),
+              AppConfig::icon(argvus_tui::icons::ETHERNET),
               tr(self.lang, "control_center.network_interface")
             ),
             format!("   {:<12} {}", tr(self.lang, "control_center.name"), v.name),
@@ -1167,7 +1167,7 @@ impl NetworkApp {
       NetworkPage::Dns => vec![
         format!(
           " {} {}",
-          AppConfig::icon("🔎"),
+          AppConfig::icon(argvus_tui::icons::SEARCH),
           tr(self.lang, "control_center.dns_configuration")
         ),
         format!(
@@ -1202,7 +1202,7 @@ impl NetworkApp {
         vec![
           format!(
             " {} {}",
-            AppConfig::icon("🛡"),
+            AppConfig::icon(argvus_tui::icons::LOCK),
             tr(self.lang, "control_center.proxy_configuration")
           ),
           format!("   {:<14} {}", "HTTP_PROXY:", http),
@@ -1263,21 +1263,21 @@ impl NetworkApp {
       .map(|page| match page {
         NetworkPage::Status => format!(
           "{} {}  ·  {} · {}",
-          AppConfig::icon("🌐"),
+          AppConfig::icon(argvus_tui::icons::NETWORK),
           tr(self.lang, "control_center.status"),
           self.snapshot.connectivity,
           active_iface
         ),
         NetworkPage::Interfaces => format!(
           "{} {}  ·  {} ({})",
-          AppConfig::icon("🔌"),
+          AppConfig::icon(argvus_tui::icons::ETHERNET),
           tr(self.lang, "control_center.interfaces"),
           self.snapshot.interfaces.len(),
           ipv4
         ),
         NetworkPage::Ethernet => format!(
           "{} {}  ·  {}",
-          AppConfig::icon("🖧"),
+          AppConfig::icon(argvus_tui::icons::NETWORK),
           tr(self.lang, "control_center.ethernet"),
           self
             .snapshot
@@ -1288,31 +1288,31 @@ impl NetworkApp {
         ),
         NetworkPage::Wifi => format!(
           "{} {}  ·  {}",
-          AppConfig::icon("📶"),
+          AppConfig::icon(argvus_tui::icons::WIFI),
           tr(self.lang, "control_center.wi_fi"),
           wifi_status
         ),
         NetworkPage::Vpn => format!(
           "{} {}  ·  {}",
-          AppConfig::icon("🔒"),
+          AppConfig::icon(argvus_tui::icons::LOCK),
           tr(self.lang, "control_center.vpn"),
           active_vpn
         ),
         NetworkPage::Dns => format!(
           "{} {}  ·  {}",
-          AppConfig::icon("🔎"),
+          AppConfig::icon(argvus_tui::icons::SEARCH),
           tr(self.lang, "control_center.dns"),
           dns_str
         ),
         NetworkPage::Proxy => format!(
           "{} {}  ·  {}",
-          AppConfig::icon("🛡"),
+          AppConfig::icon(argvus_tui::icons::LOCK),
           tr(self.lang, "control_center.proxy"),
           proxy_str
         ),
         NetworkPage::Firewall => format!(
           "{} {}",
-          AppConfig::icon("🔥"),
+          AppConfig::icon(argvus_tui::icons::WARNING),
           tr(self.lang, "control_center.firewall")
         ),
         NetworkPage::Home | NetworkPage::Detail(_) => String::new(),

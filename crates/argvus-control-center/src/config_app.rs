@@ -1,11 +1,10 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
   privileged::{PrivilegedOperation, PrivilegedRequest, SystemSettingsOperation},
-  process::{ProcessRequest, ProcessRunner, SystemProcessRunner},
+  process::SystemProcessRunner,
   sanitize::terminal_text,
 };
 use argvus_i18n::{Lang, tr};
@@ -32,9 +31,6 @@ pub struct ConfigApp {
   operation: ConfigOperation,
   jobs: JobManager,
   save_job: Option<JobHandle<()>>,
-  dnd_enabled: bool,
-  dnd_job: Option<JobHandle<(bool, bool)>>,
-  dnd_last_refresh: Instant,
 }
 
 impl ConfigApp {
@@ -54,7 +50,7 @@ impl ConfigApp {
 
   fn with_operation(lang: Lang, theme: Theme, operation: ConfigOperation) -> Self {
     let config = AppConfig::load();
-    let mut app = Self {
+    Self {
       lang,
       theme,
       icons: config.icons(),
@@ -63,32 +59,15 @@ impl ConfigApp {
       operation,
       jobs: JobManager::default(),
       save_job: None,
-      dnd_enabled: false,
-      dnd_job: None,
-      dnd_last_refresh: Instant::now() - Duration::from_secs(2),
-    };
-    app.refresh_dnd();
-    app
+    }
   }
 
   pub fn rows(&self) -> Vec<String> {
-    vec![
-      format!(
-        "[{}] {}",
-        if self.icons { "✓" } else { " " },
-        tr(self.lang, "control_center.icons")
-      ),
-      format!(
-        "{} {}  ·  {}",
-        AppConfig::icon(if self.dnd_enabled { "🔕" } else { "🔔" }),
-        tr(self.lang, "control_center.do_not_disturb"),
-        if self.dnd_enabled {
-          tr(self.lang, "control_center.enabled")
-        } else {
-          tr(self.lang, "control_center.disabled")
-        }
-      ),
-    ]
+    vec![format!(
+      "[{}] {}",
+      if self.icons { "✓" } else { " " },
+      tr(self.lang, "control_center.icons")
+    )]
   }
 
   pub fn breadcrumb(&self) -> String {
@@ -108,8 +87,6 @@ impl ConfigApp {
       KeyCode::Enter | KeyCode::Char(' ') => {
         if self.selected == 0 {
           self.toggle();
-        } else {
-          self.toggle_dnd();
         }
         false
       }
@@ -170,39 +147,6 @@ impl ConfigApp {
     }));
   }
 
-  fn refresh_dnd(&mut self) {
-    if self.dnd_job.is_some() {
-      return;
-    }
-    self.dnd_job = Some(self.jobs.spawn(|_| {
-      read_dnd_command(
-        &ProcessRequest::new("argvus-notifications")
-          .arg("dnd")
-          .arg("status"),
-      )
-      .map(|enabled| (enabled, false))
-    }));
-    self.dnd_last_refresh = Instant::now();
-  }
-
-  fn toggle_dnd(&mut self) {
-    if self.dnd_job.is_some() {
-      return;
-    }
-    self.status = Some(StatusMessage {
-      kind: StatusKind::Info,
-      text: tr(self.lang, "control_center.applying").into(),
-    });
-    self.dnd_job = Some(self.jobs.spawn(move |_| {
-      read_dnd_command(
-        &ProcessRequest::new("argvus-notifications")
-          .arg("dnd")
-          .arg("toggle"),
-      )
-      .map(|state| (state, true))
-    }));
-  }
-
   fn persist_failed(&mut self, text: String) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Warning,
@@ -212,41 +156,6 @@ impl ConfigApp {
 
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
-    if self.dnd_job.is_none() && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2) {
-      self.refresh_dnd();
-    }
-    if let Some(job) = &self.dnd_job
-      && let JobState::Finished(result) = job.try_state()
-    {
-      self.dnd_job = None;
-      match result {
-        Ok((enabled, action)) => {
-          self.dnd_enabled = enabled;
-          if action {
-            self.status = Some(StatusMessage {
-              kind: StatusKind::Success,
-              text: if enabled {
-                tr(self.lang, "control_center.dnd_enabled").into()
-              } else {
-                tr(self.lang, "control_center.dnd_disabled").into()
-              },
-            });
-          } else {
-            self.status = None;
-          }
-        }
-        Err(error) => {
-          self.status = Some(StatusMessage {
-            kind: StatusKind::Error,
-            text: format!(
-              "{}: {error}",
-              tr(self.lang, "control_center.notification_state_error")
-            ),
-          });
-        }
-      }
-      changed = true;
-    }
     if let Some(job) = &self.save_job
       && let JobState::Finished(result) = job.try_state()
     {
@@ -307,25 +216,6 @@ impl ConfigApp {
     if let Some(status_message) = &self.status {
       status(frame, body, &self.theme, status_message);
     }
-  }
-}
-
-fn read_dnd_command(request: &ProcessRequest) -> Result<bool, String> {
-  let output = SystemProcessRunner
-    .run(&request.clone().timeout(Duration::from_secs(2)))
-    .map_err(|error| error.to_string())?;
-  if output.timed_out || output.status != Some(0) {
-    let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    return Err(if error.is_empty() {
-      "notification backend failed".into()
-    } else {
-      error
-    });
-  }
-  match String::from_utf8_lossy(&output.stdout).trim() {
-    "dnd=true" => Ok(true),
-    "dnd=false" => Ok(false),
-    value => Err(format!("invalid notification state: {value}")),
   }
 }
 

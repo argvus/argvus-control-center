@@ -975,7 +975,7 @@ impl PackagesApp {
   fn search_row(&self) -> String {
     format!(
       "{} {}: {}_",
-      AppConfig::icon("🔍"),
+      AppConfig::icon(argvus_tui::icons::SEARCH),
       tr(self.lang, "control_center.search_2c43ee"),
       self.query
     )
@@ -994,41 +994,41 @@ impl PackagesApp {
       .map(|page| match page {
         PackagesPage::Search => format!(
           "{} {}  ·  {} {}",
-          AppConfig::icon("🔍"),
+          AppConfig::icon(argvus_tui::icons::SEARCH),
           tr(self.lang, "control_center.install_official"),
           dashboard.available_count,
           packages
         ),
         PackagesPage::Aur => format!(
           "{} {}  ·  {}",
-          AppConfig::icon("⭐"),
+          AppConfig::icon(argvus_tui::icons::SUCCESS),
           tr(self.lang, "control_center.install_aur"),
           dashboard.aur_helper.as_deref().unwrap_or("—")
         ),
         PackagesPage::Installed => format!(
           "{} {}  ·  {} {}",
-          AppConfig::icon("📦"),
+          AppConfig::icon(argvus_tui::icons::PACKAGES),
           tr(self.lang, "control_center.installed_official"),
           dashboard.installed_count,
           packages
         ),
         PackagesPage::Orphans => format!(
           "{} {}  ·  {} {}",
-          AppConfig::icon("🧹"),
+          AppConfig::icon(argvus_tui::icons::ERROR),
           tr(self.lang, "control_center.installed_orphans"),
           dashboard.orphan_count,
           tr(self.lang, "control_center.orphans")
         ),
         PackagesPage::Updates => format!(
           "{} {}  ·  {} {}",
-          AppConfig::icon("🔄"),
+          AppConfig::icon(argvus_tui::icons::REFRESH),
           tr(self.lang, "control_center.updates_official"),
           dashboard.update_count,
           pending
         ),
         PackagesPage::Cache => format!(
           "{} {}  ·  {} {} · {}",
-          AppConfig::icon("💾"),
+          AppConfig::icon(argvus_tui::icons::STORAGE),
           tr(self.lang, "control_center.cache"),
           dashboard.cache_count,
           files,
@@ -1036,21 +1036,21 @@ impl PackagesApp {
         ),
         PackagesPage::History => format!(
           "{} {}  ·  {} {}",
-          AppConfig::icon("📜"),
+          AppConfig::icon(argvus_tui::icons::LOGS),
           tr(self.lang, "control_center.history"),
           dashboard.history_count,
           entries
         ),
         PackagesPage::Downgrade => format!(
           "{} {}  ·  {} {}",
-          AppConfig::icon("⏪"),
+          AppConfig::icon(argvus_tui::icons::UPDATE),
           tr(self.lang, "control_center.downgrade"),
           dashboard.cache_count,
           versions
         ),
         PackagesPage::Mirrors => format!(
           "{} {}  ·  {}/{} {}",
-          AppConfig::icon("🌐"),
+          AppConfig::icon(argvus_tui::icons::NETWORK),
           tr(self.lang, "control_center.mirrors"),
           dashboard.mirrors_enabled,
           dashboard.mirrors_total,
@@ -1517,7 +1517,7 @@ fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
   vec![
     format!(
       " {} {}",
-      AppConfig::icon("📦"),
+      AppConfig::icon(argvus_tui::icons::PACKAGES),
       tr(lang, "control_center.package_b3ef4b")
     ),
     format!(
@@ -1555,7 +1555,7 @@ fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
     "".into(),
     format!(
       " {} {}",
-      AppConfig::icon("🔗"),
+      AppConfig::icon(argvus_tui::icons::LINK),
       tr(lang, "control_center.source_70835f")
     ),
     format!(
@@ -1586,7 +1586,7 @@ fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
     "".into(),
     format!(
       " {} {}",
-      AppConfig::icon("⚙"),
+      AppConfig::icon(argvus_tui::icons::SETTINGS),
       tr(lang, "control_center.dependencies")
     ),
     format!(
@@ -2024,7 +2024,6 @@ mod tests {
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Packages"));
-    assert!(text.contains(app.theme.name.as_str()));
     assert!(text.contains("Enter"));
   }
 

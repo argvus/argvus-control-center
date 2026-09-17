@@ -591,7 +591,7 @@ impl AudioApp {
     vec![
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("💻"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         summary_label,
         if self.snapshot.backend.is_empty() {
           "PipeWire/WirePlumber".into()
@@ -602,7 +602,7 @@ impl AudioApp {
       ),
       format!(
         "{} {}  ·  {}  ·  {}",
-        AppConfig::icon("🔊"),
+        AppConfig::icon(argvus_tui::icons::AUDIO),
         output_label,
         format!(
           "{} {}",
@@ -613,7 +613,7 @@ impl AudioApp {
       ),
       format!(
         "{} {}  ·  {}  ·  {}",
-        AppConfig::icon("🎙️"),
+        AppConfig::icon(argvus_tui::icons::MICROPHONE),
         input_label,
         format!(
           "{} {}",
@@ -624,7 +624,7 @@ impl AudioApp {
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("🎧"),
+        AppConfig::icon(argvus_tui::icons::SPEAKER),
         devices_label,
         format!(
           "{} {}",
@@ -639,7 +639,7 @@ impl AudioApp {
       return vec![
         format!(
           " {} {}",
-          AppConfig::icon("💻"),
+          AppConfig::icon(argvus_tui::icons::MONITOR),
           tr(self.lang, "control_center.audio_system")
         ),
         format!("   Status: {}", tr(self.lang, "control_center.unavailable")),
@@ -679,7 +679,7 @@ impl AudioApp {
     vec![
       format!(
         " {} {}",
-        AppConfig::icon("💻"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         tr(self.lang, "control_center.audio_system")
       ),
       format!(
@@ -694,7 +694,7 @@ impl AudioApp {
       "".into(),
       format!(
         " {} {}",
-        AppConfig::icon("🔊"),
+        AppConfig::icon(argvus_tui::icons::AUDIO),
         tr(self.lang, "control_center.default_devices")
       ),
       format!("   Saída:       {}", default_out),
@@ -702,7 +702,7 @@ impl AudioApp {
       "".into(),
       format!(
         " {} {}",
-        AppConfig::icon("🎧"),
+        AppConfig::icon(argvus_tui::icons::SPEAKER),
         tr(self.lang, "control_center.available_devices")
       ),
       format!("   Saídas:      {}", self.snapshot.outputs.len()),
@@ -766,7 +766,7 @@ impl AudioApp {
 
     rows.push(format!(
       " {} {}",
-      AppConfig::icon("🔊"),
+      AppConfig::icon(argvus_tui::icons::AUDIO),
       tr(self.lang, "control_center.output_devices")
     ));
     if self.snapshot.outputs.is_empty() {
@@ -800,7 +800,7 @@ impl AudioApp {
     rows.push("".into());
     rows.push(format!(
       " {} {}",
-      AppConfig::icon("🎙️"),
+      AppConfig::icon(argvus_tui::icons::MICROPHONE),
       tr(self.lang, "control_center.input_devices")
     ));
     if self.snapshot.inputs.is_empty() {

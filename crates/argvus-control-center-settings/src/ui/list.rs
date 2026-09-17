@@ -150,10 +150,22 @@ mod tests {
   fn locale_region_rows() -> Vec<(String, String)> {
     vec![
       ("🌍 Time Zone".to_string(), "America/Sao_Paulo".to_string()),
-      ("🕒 Date & Time".to_string(), "00:54:59".to_string()),
-      ("🌐 Regional Locale".to_string(), "pt_BR.UTF-8".to_string()),
-      ("🗂️ System Locales".to_string(), "2 / 500".to_string()),
-      ("⌨️ Keyboard".to_string(), "br  ·  us-intl".to_string()),
+      (
+        format!("{} Date & Time", argvus_tui::icons::CLOCK),
+        "00:54:59".to_string(),
+      ),
+      (
+        format!("{} Regional Locale", argvus_tui::icons::NETWORK),
+        "pt_BR.UTF-8".to_string(),
+      ),
+      (
+        format!("{} System Locales", argvus_tui::icons::APPS),
+        "2 / 500".to_string(),
+      ),
+      (
+        format!("{} Keyboard", argvus_tui::icons::KEYBOARD),
+        "br  ·  us-intl".to_string(),
+      ),
     ]
   }
 

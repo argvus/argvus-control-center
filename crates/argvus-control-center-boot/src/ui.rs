@@ -811,7 +811,7 @@ impl BootApp {
         vec![
           format!(
             " {} {}",
-            AppConfig::icon("💻"),
+            AppConfig::icon(argvus_tui::icons::MONITOR),
             tr(self.lang, "control_center.base_system")
           ),
           format!("   Firmware:    {}", self.snapshot.firmware),
@@ -820,7 +820,7 @@ impl BootApp {
           "".into(),
           format!(
             " {} {}",
-            AppConfig::icon("💿"),
+            AppConfig::icon(argvus_tui::icons::STORAGE),
             tr(self.lang, "control_center.bootloader")
           ),
           format!("   Gerenciador: {}", self.loader_label()),
@@ -837,7 +837,7 @@ impl BootApp {
           "".into(),
           format!(
             " {} {}",
-            AppConfig::icon("📦"),
+            AppConfig::icon(argvus_tui::icons::PACKAGES),
             tr(self.lang, "control_center.components")
           ),
           format!("   Kernels:     {}", self.snapshot.kernels.len()),
@@ -954,34 +954,34 @@ impl BootApp {
     vec![
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("💻"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         summary,
         self.snapshot.firmware,
         secure
       ),
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("🧠"),
+        AppConfig::icon(argvus_tui::icons::MEMORY),
         kernel_label,
         self.snapshot.kernels.len(),
         self.snapshot.current_kernel
       ),
       format!(
         "{} {}  ·  {} · {}",
-        AppConfig::icon("💿"),
+        AppConfig::icon(argvus_tui::icons::STORAGE),
         bootloader_label,
         loader,
         timeout
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("📦"),
+        AppConfig::icon(argvus_tui::icons::PACKAGES),
         initramfs_label,
         initramfs
       ),
       format!(
         "{} {}  ·  {}",
-        AppConfig::icon("🎨"),
+        AppConfig::icon(argvus_tui::icons::PALETTE),
         plymouth_label,
         plymouth
       ),
@@ -1004,7 +1004,7 @@ impl BootApp {
     vec![
       format!(
         " {} {}",
-        AppConfig::icon("🧠"),
+        AppConfig::icon(argvus_tui::icons::MEMORY),
         tr(self.lang, "control_center.kernel_620593")
       ),
       format!(
@@ -1066,7 +1066,10 @@ impl BootApp {
       return vec![tr(self.lang, "control_center.entry_not_found").into()];
     };
     vec![
-      format!(" 💿 {}", tr(self.lang, "control_center.bootloader_entry")),
+      argvus_tui::icons::icon_label(
+        AppConfig::icon(argvus_tui::icons::STORAGE),
+        tr(self.lang, "control_center.bootloader_entry"),
+      ),
       format!(
         "   {:<12} {}",
         tr(self.lang, "control_center.title"),
@@ -1119,7 +1122,7 @@ impl BootApp {
     vec![
       format!(
         " {} {}",
-        AppConfig::icon("📦"),
+        AppConfig::icon(argvus_tui::icons::PACKAGES),
         tr(self.lang, "control_center.initramfs_fc455d")
       ),
       format!(
@@ -1482,7 +1485,6 @@ mod tests {
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Boot"));
-    assert!(text.contains(app.theme.name.as_str()));
     assert!(text.contains("Enter") && text.contains("Back"));
     assert!(text.contains("Summary") || text.contains("Resumo"));
   }

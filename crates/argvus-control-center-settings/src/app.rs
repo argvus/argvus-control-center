@@ -14,7 +14,7 @@ use argvus_control_center_core::config::AppConfig;
 use argvus_control_center_core::{
   jobs::{JobHandle, JobManager, JobState},
   privileged::{PrivilegedRequest, SystemSettingsOperation},
-  process::{LiveProcess, SystemProcessRunner},
+  process::{LiveProcess, ProcessRequest, ProcessRunner, SystemProcessRunner},
 };
 
 pub const MIN_WIDTH: u16 = 60;
@@ -106,6 +106,9 @@ pub struct App {
   ratbag_job: Option<JobHandle<Vec<crate::system::ratbag::Device>>>,
   hostname: String,
   jobs: JobManager,
+  dnd_enabled: bool,
+  dnd_job: Option<JobHandle<(bool, bool)>>,
+  dnd_last_refresh: Instant,
   task_job: Option<JobHandle<Result<String, String>>>,
   pub task_live: Option<LiveProcess>,
   pub task_open: bool,
@@ -177,6 +180,9 @@ impl App {
       ratbag_job: None,
       hostname,
       jobs: JobManager::default(),
+      dnd_enabled: false,
+      dnd_job: None,
+      dnd_last_refresh: Instant::now() - Duration::from_secs(2),
       task_job: None,
       task_live: None,
       task_open: false,
@@ -280,7 +286,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🌍"),
+            AppConfig::icon(argvus_tui::icons::NETWORK),
             tr(self.lang, "control_center.time_zone")
           ),
           detail: Some(non_empty(&self.datetime.time_zone)),
@@ -289,7 +295,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🕒"),
+            AppConfig::icon(argvus_tui::icons::HISTORY),
             tr(self.lang, "control_center.date_time")
           ),
           detail: Some(non_empty(&self.datetime.local_time)),
@@ -298,7 +304,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🌐"),
+            AppConfig::icon(argvus_tui::icons::NETWORK),
             tr(self.lang, "control_center.regional_locale")
           ),
           detail: Some(locale::current_lang()),
@@ -307,7 +313,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🗂️"),
+            AppConfig::icon(argvus_tui::icons::APPS),
             tr(self.lang, "control_center.system_locales")
           ),
           detail: Some(format!(
@@ -320,7 +326,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("⌨️"),
+            AppConfig::icon(argvus_tui::icons::KEYBOARD),
             tr(self.lang, "control_center.keyboard")
           ),
           detail: Some(format!(
@@ -345,7 +351,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🕒"),
+            AppConfig::icon(argvus_tui::icons::HISTORY),
             tr(self.lang, "control_center.local_date_time")
           ),
           detail: Some(self.datetime.local_time.clone()),
@@ -354,7 +360,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🌍"),
+            AppConfig::icon(argvus_tui::icons::NETWORK),
             tr(self.lang, "control_center.time_zone")
           ),
           detail: Some(self.datetime.time_zone.clone()),
@@ -363,14 +369,14 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🛰️"),
+            AppConfig::icon(argvus_tui::icons::SATELLITE),
             tr(self.lang, "control_center.automatic_date_time_ntp")
           ),
           detail: Some(enabled_label(self.lang, self.datetime.ntp.unwrap_or(false)).to_string()),
           current: false,
         },
         Row {
-          label: format!("{} RTC", AppConfig::icon("🔋")),
+          label: format!("{} RTC", AppConfig::icon(argvus_tui::icons::BATTERY)),
           detail: Some(
             if self.datetime.rtc_local.unwrap_or(false) {
               tr(self.lang, "control_center.local")
@@ -434,7 +440,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("⌨️"),
+            AppConfig::icon(argvus_tui::icons::KEYBOARD),
             tr(self.lang, "control_center.layout")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_layout)),
@@ -443,7 +449,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🔠"),
+            AppConfig::icon(argvus_tui::icons::FONTS),
             tr(self.lang, "control_center.variant")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_variant)),
@@ -452,7 +458,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🖮"),
+            AppConfig::icon(argvus_tui::icons::MOUSE),
             tr(self.lang, "control_center.model")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_model)),
@@ -461,7 +467,7 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("⚙️"),
+            AppConfig::icon(argvus_tui::icons::SETTINGS),
             tr(self.lang, "control_center.options")
           ),
           detail: Some(non_empty(&self.keyboard_info.x11_options)),
@@ -470,14 +476,17 @@ impl App {
         Row {
           label: format!(
             "{} {}",
-            AppConfig::icon("🖥️"),
+            AppConfig::icon(argvus_tui::icons::MONITOR),
             tr(self.lang, "control_center.console_keymap")
           ),
           detail: Some(non_empty(&self.keyboard_info.console_keymap)),
           current: false,
         },
         Row {
-          label: format!("{} Hyprland XKB", AppConfig::icon("🌿")),
+          label: format!(
+            "{} Hyprland XKB",
+            AppConfig::icon(argvus_tui::icons::NETWORK)
+          ),
           detail: Some(format!(
             "{} {} {}",
             non_empty(&self.keyboard_info.hypr_layout),
@@ -781,14 +790,14 @@ impl App {
     };
     vec![
       Row {
-        label: format!("{} Hostname", AppConfig::icon("🖥️")),
+        label: format!("{} Hostname", AppConfig::icon(argvus_tui::icons::MONITOR)),
         detail: Some(hostname),
         current: false,
       },
       Row {
         label: format!(
           "{} {}",
-          AppConfig::icon("👤"),
+          AppConfig::icon(argvus_tui::icons::USER),
           tr(self.lang, "control_center.users")
         ),
         detail: Some(users),
@@ -797,10 +806,27 @@ impl App {
       Row {
         label: format!(
           "{} {}",
-          AppConfig::icon("👥"),
+          AppConfig::icon(argvus_tui::icons::USERS),
           tr(self.lang, "control_center.groups")
         ),
         detail: Some(groups),
+        current: false,
+      },
+      Row {
+        label: format!(
+          "{} {}",
+          AppConfig::icon(if self.dnd_enabled {
+            argvus_tui::icons::BELL_OFF
+          } else {
+            argvus_tui::icons::BELL
+          }),
+          tr(self.lang, "control_center.do_not_disturb")
+        ),
+        detail: Some(if self.dnd_enabled {
+          tr(self.lang, "control_center.enabled").to_string()
+        } else {
+          tr(self.lang, "control_center.disabled").to_string()
+        }),
         current: false,
       },
     ]
@@ -1381,6 +1407,7 @@ impl App {
           self.navigation.push(Page::Groups);
           self.normalize_selection();
         }
+        3 => self.toggle_dnd(),
         _ => {}
       },
       Page::Firewall
@@ -1423,6 +1450,54 @@ impl App {
     self.hostname = host::current();
     self.admin.load(false);
     self.success(tr(self.lang, "control_center.data_updated").to_string());
+  }
+
+  fn refresh_dnd(&mut self) {
+    if self.dnd_job.is_some() {
+      return;
+    }
+    self.dnd_job = Some(self.jobs.spawn(|_| {
+      Self::read_dnd_command(
+        &ProcessRequest::new("argvus-notifications")
+          .arg("dnd")
+          .arg("status"),
+      )
+      .map(|enabled| (enabled, false))
+    }));
+    self.dnd_last_refresh = Instant::now();
+  }
+
+  fn toggle_dnd(&mut self) {
+    if self.dnd_job.is_some() {
+      return;
+    }
+    self.dnd_job = Some(self.jobs.spawn(|_| {
+      Self::read_dnd_command(
+        &ProcessRequest::new("argvus-notifications")
+          .arg("dnd")
+          .arg("toggle"),
+      )
+      .map(|state| (state, true))
+    }));
+  }
+
+  fn read_dnd_command(request: &ProcessRequest) -> Result<bool, String> {
+    let output = SystemProcessRunner
+      .run(&request.clone().timeout(Duration::from_secs(2)))
+      .map_err(|error| error.to_string())?;
+    if output.timed_out || output.status != Some(0) {
+      let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+      return Err(if error.is_empty() {
+        "notification backend failed".into()
+      } else {
+        error
+      });
+    }
+    match String::from_utf8_lossy(&output.stdout).trim() {
+      "dnd=true" => Ok(true),
+      "dnd=false" => Ok(false),
+      value => Err(format!("invalid notification state: {value}")),
+    }
   }
 
   pub fn toggle_current(&mut self) {
@@ -1804,6 +1879,35 @@ impl App {
 
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
+    if self.dnd_job.is_none()
+      && self.page() == Page::System
+      && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2)
+    {
+      self.refresh_dnd();
+    }
+    if let Some(job) = self.dnd_job.take() {
+      match job.try_state() {
+        JobState::Running => self.dnd_job = Some(job),
+        JobState::Finished(Ok((enabled, action))) => {
+          self.dnd_enabled = enabled;
+          if action {
+            self.success(if enabled {
+              tr(self.lang, "control_center.dnd_enabled").to_string()
+            } else {
+              tr(self.lang, "control_center.dnd_disabled").to_string()
+            });
+          }
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          self.fail(format!(
+            "{}: {error}",
+            tr(self.lang, "control_center.notification_state_error")
+          ));
+          changed = true;
+        }
+      }
+    }
     if let Some(job) = self.input_load_job.take() {
       match job.try_state() {
         JobState::Running => self.input_load_job = Some(job),
@@ -2311,17 +2415,17 @@ pub fn search_matches(query: &str, values: &[&str]) -> bool {
 
 pub fn category_icon(category: Category) -> &'static str {
   match category {
-    Category::Terminal => "🖥️",
-    Category::FileManager => "📁",
-    Category::TextEditor => "📝",
-    Category::TerminalEditor => "⌨️",
-    Category::Browser => "🌐",
-    Category::ImageViewer => "🖼️",
-    Category::PdfViewer => "📄",
-    Category::VideoPlayer => "🎬",
-    Category::AudioPlayer => "🎵",
-    Category::Archive => "📦",
-    Category::Launcher => "🚀",
+    Category::Terminal => argvus_tui::icons::MONITOR,
+    Category::FileManager => argvus_tui::icons::FOLDER,
+    Category::TextEditor => argvus_tui::icons::TEXT_EDITOR,
+    Category::TerminalEditor => argvus_tui::icons::KEYBOARD,
+    Category::Browser => argvus_tui::icons::NETWORK,
+    Category::ImageViewer => argvus_tui::icons::IMAGE,
+    Category::PdfViewer => argvus_tui::icons::PDF,
+    Category::VideoPlayer => argvus_tui::icons::VIDEO,
+    Category::AudioPlayer => argvus_tui::icons::MUSIC,
+    Category::Archive => argvus_tui::icons::PACKAGES,
+    Category::Launcher => argvus_tui::icons::BOOT,
   }
 }
 
@@ -2344,22 +2448,22 @@ pub fn category_label(lang: Lang, category: Category) -> &'static str {
 
 pub fn font_target_icon(target: FontTarget) -> &'static str {
   match target {
-    FontTarget::Taskbar => "🖥️",
-    FontTarget::Sysinfo => "📊",
-    FontTarget::ControlPanel => "🎛️",
-    FontTarget::System => "💻",
-    FontTarget::Apps => "📦",
-    FontTarget::Terminal => "⌨️",
-    FontTarget::Browser => "🌐",
+    FontTarget::Taskbar => argvus_tui::icons::MONITOR,
+    FontTarget::Sysinfo => argvus_tui::icons::DIAGNOSTICS,
+    FontTarget::ControlPanel => argvus_tui::icons::SETTINGS,
+    FontTarget::System => argvus_tui::icons::SERVICES,
+    FontTarget::Apps => argvus_tui::icons::PACKAGES,
+    FontTarget::Terminal => argvus_tui::icons::KEYBOARD,
+    FontTarget::Browser => argvus_tui::icons::NETWORK,
   }
 }
 
 pub fn setting_icon(setting: SettingKind) -> &'static str {
   match setting {
-    SettingKind::Antialiasing => "✨",
-    SettingKind::Hinting => "🔍",
-    SettingKind::Subpixel => "🌈",
-    SettingKind::Dpi => "📐",
+    SettingKind::Antialiasing => argvus_tui::icons::SUCCESS,
+    SettingKind::Hinting => argvus_tui::icons::SEARCH,
+    SettingKind::Subpixel => argvus_tui::icons::PALETTE,
+    SettingKind::Dpi => argvus_tui::icons::STORAGE,
   }
 }
 
@@ -2596,10 +2700,18 @@ mod tests {
     let rows = app.rows();
     assert_eq!(rows.len(), 11, "7 font targets + 4 settings");
     assert!(rows[0].label.contains("Taskbar"), "{}", rows[0].label);
-    assert!(rows[0].label.contains("🖥"), "{}", rows[0].label);
+    assert!(
+      rows[0].label.contains(argvus_tui::icons::MONITOR),
+      "{}",
+      rows[0].label
+    );
     assert!(rows[0].detail.is_some(), "font target should have detail");
     assert!(rows[7].label.contains("Antialiasing"), "{}", rows[7].label);
-    assert!(rows[7].label.contains("✨"), "{}", rows[7].label);
+    assert!(
+      rows[7].label.contains(argvus_tui::icons::SUCCESS),
+      "{}",
+      rows[7].label
+    );
     for (i, row) in rows.iter().enumerate() {
       assert!(row.detail.is_some(), "row {i} should have detail");
     }
@@ -2625,7 +2737,11 @@ mod tests {
     let rows = app.rows();
     assert_eq!(rows.len(), Category::ORDER.len());
     assert!(rows[0].label.contains("Terminal"), "{}", rows[0].label);
-    assert!(rows[0].label.contains("🖥"), "{}", rows[0].label);
+    assert!(
+      rows[0].label.contains(argvus_tui::icons::MONITOR),
+      "{}",
+      rows[0].label
+    );
     assert!(rows[0].detail.is_some(), "category should have detail");
     assert!(rows[2].label.contains("Editor"), "{}", rows[2].label);
     assert!(rows[4].label.contains("Browser"), "{}", rows[4].label);
@@ -2647,14 +2763,22 @@ mod tests {
   fn system_dashboard_uses_icons_and_live_state() {
     let app = App::with_context(Page::System, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
-    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.len(), 4);
     assert!(rows[0].label.contains("Hostname"), "{}", rows[0].label);
-    assert!(rows[0].label.contains("🖥"), "{}", rows[0].label);
+    assert!(
+      rows[0].label.contains(argvus_tui::icons::MONITOR),
+      "{}",
+      rows[0].label
+    );
     assert!(rows[0].detail.is_some(), "hostname should have detail");
-    assert_eq!(rows[1].label, "👤 Users");
+    assert_eq!(rows[1].label, format!("{} Users", argvus_tui::icons::USER));
     assert_eq!(rows[1].detail.as_deref(), Some("N/A"));
-    assert_eq!(rows[2].label, "👥 Groups:");
+    assert_eq!(
+      rows[2].label,
+      format!("{} Groups:", argvus_tui::icons::USERS)
+    );
     assert_eq!(rows[2].detail.as_deref(), Some("N/A"));
+    assert!(rows[3].label.contains("Do Not Disturb"));
     for (index, row) in rows.iter().enumerate() {
       assert!(row.detail.is_some(), "row {index} should have detail");
     }

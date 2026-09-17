@@ -29,7 +29,7 @@ pub fn draw_header(frame: &mut Frame, area: Rect, theme: &Theme, header: Header<
       crate::text::display_width(header.version_label) + crate::text::display_width(version) + 3
     })
     .unwrap_or(0);
-  let requested = version_width + crate::text::display_width(&theme.name);
+  let requested = version_width;
   let left_minimum = 10 + crate::text::display_width(header.title);
   let right_width = requested.min((inner.width as usize).saturating_sub(left_minimum));
   let columns =
@@ -57,10 +57,6 @@ pub fn draw_header(frame: &mut Frame, area: Rect, theme: &Theme, header: Header<
     ));
     right.push(Span::raw("  "));
   }
-  right.push(Span::styled(
-    theme.name.clone(),
-    Style::new().fg(theme.warning),
-  ));
   frame.render_widget(
     Paragraph::new(Line::from(right)).alignment(Alignment::Right),
     columns[1],
@@ -167,7 +163,7 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   #[test]
-  fn header_shows_full_theme_name_on_realistic_width() {
+  fn header_does_not_show_theme_name() {
     let mut theme = argvus_theme::Theme::load();
     theme.name = "argvus-dark-aether".into();
     let mut terminal = Terminal::new(TestBackend::new(120, 3)).unwrap();
@@ -192,10 +188,6 @@ mod tests {
       .iter()
       .map(|cell| cell.symbol())
       .collect::<String>();
-    assert!(
-      rendered.contains("argvus-dark-aether"),
-      "theme name must render in full, got: {}",
-      rendered
-    );
+    assert!(!rendered.contains("argvus-dark-aether"), "{rendered}");
   }
 }

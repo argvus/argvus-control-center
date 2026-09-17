@@ -31,13 +31,7 @@ enum JobData {
 }
 
 fn icon_label(icon: &'static str, label: impl AsRef<str>) -> String {
-  let label = label.as_ref();
-  let icon = AppConfig::icon(icon);
-  if icon.is_empty() {
-    label.to_string()
-  } else {
-    format!("{icon} {label}")
-  }
+  argvus_tui::icons::icon_label(AppConfig::icon(icon), label)
 }
 
 pub struct AppearanceApp {
@@ -433,7 +427,10 @@ impl AppearanceApp {
     vec![
       format!(
         "{} · {} [{}]",
-        icon_label("🎨", tr(self.lang, "control_center.theme")),
+        icon_label(
+          argvus_tui::icons::PALETTE,
+          tr(self.lang, "control_center.theme")
+        ),
         theme_family_label(&self.state.theme),
         if self.state.is_float_theme() {
           tr(self.lang, "control_center.theme_mode_float")
@@ -443,12 +440,18 @@ impl AppearanceApp {
       ),
       format!(
         "{} · {}",
-        icon_label("🌈", tr(self.lang, "control_center.highlight_color")),
+        icon_label(
+          argvus_tui::icons::PALETTE,
+          tr(self.lang, "control_center.highlight_color")
+        ),
         accent_label(&self.state.accent)
       ),
       format!(
         "{} · {}",
-        icon_label("🖼️", tr(self.lang, "control_center.wallpaper")),
+        icon_label(
+          argvus_tui::icons::IMAGE,
+          tr(self.lang, "control_center.wallpaper")
+        ),
         self
           .state
           .wallpaper_active
@@ -456,13 +459,16 @@ impl AppearanceApp {
           .unwrap_or_else(|| tr(self.lang, "control_center.none").to_string())
       ),
       icon_label(
-        "📐",
+        argvus_tui::icons::STORAGE,
         tr(self.lang, "control_center.spaces_borders_position"),
       ),
       format!(
         "[{}] {} · {}",
         if self.state.effects { "x" } else { " " },
-        icon_label("✨", tr(self.lang, "control_center.interface_effects")),
+        icon_label(
+          argvus_tui::icons::SUCCESS,
+          tr(self.lang, "control_center.interface_effects")
+        ),
         if self.state.effects {
           enabled
         } else {
@@ -476,7 +482,10 @@ impl AppearanceApp {
         } else {
           " "
         },
-        icon_label("📊", tr(self.lang, "control_center.widget_telemetry")),
+        icon_label(
+          argvus_tui::icons::DIAGNOSTICS,
+          tr(self.lang, "control_center.widget_telemetry")
+        ),
         if self.state.widget_telemetry {
           enabled
         } else {
@@ -586,7 +595,7 @@ impl AppearanceApp {
         .collect(),
       AppearancePage::ThemeModes { .. } => [
         (
-          "📌",
+          argvus_tui::icons::FOLDER,
           "control_center.theme_mode_sticky",
           !self.state.is_float_theme(),
         ),
@@ -630,16 +639,31 @@ impl AppearanceApp {
         })
         .collect(),
       AppearancePage::SpacesBordersPosition => vec![
-        icon_label("↕", tr(self.lang, "control_center.taskbar_position")),
-        icon_label("📏", tr(self.lang, "control_center.taskbar_spaces")),
-        icon_label("📐", tr(self.lang, "control_center.window_spaces")),
-        icon_label("◯", tr(self.lang, "control_center.general_borders")),
-        icon_label("▰", tr(self.lang, "control_center.edge_thickness")),
+        icon_label(
+          argvus_tui::icons::INFO,
+          tr(self.lang, "control_center.taskbar_position"),
+        ),
+        icon_label(
+          argvus_tui::icons::STORAGE,
+          tr(self.lang, "control_center.taskbar_spaces"),
+        ),
+        icon_label(
+          argvus_tui::icons::STORAGE,
+          tr(self.lang, "control_center.window_spaces"),
+        ),
+        icon_label(
+          argvus_tui::icons::INFO,
+          tr(self.lang, "control_center.general_borders"),
+        ),
+        icon_label(
+          argvus_tui::icons::INFO,
+          tr(self.lang, "control_center.edge_thickness"),
+        ),
       ],
       AppearancePage::TaskbarPosition => vec![
         format!(
           "{}{}",
-          icon_label("↥", tr(self.lang, "control_center.top")),
+          icon_label(argvus_tui::icons::INFO, tr(self.lang, "control_center.top")),
           if self.state.waybar_pos == TaskbarPosition::Top {
             format!(" · {}", tr(self.lang, "control_center.current"))
           } else {
@@ -648,7 +672,10 @@ impl AppearanceApp {
         ),
         format!(
           "{}{}",
-          icon_label("↧", tr(self.lang, "control_center.bottom")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.bottom")
+          ),
           if self.state.waybar_pos == TaskbarPosition::Bottom {
             format!(" · {}", tr(self.lang, "control_center.current"))
           } else {
@@ -659,49 +686,73 @@ impl AppearanceApp {
       AppearancePage::TaskbarSpaces => vec![
         format!(
           "{} · {}",
-          icon_label("↥", tr(self.lang, "control_center.top")),
+          icon_label(argvus_tui::icons::INFO, tr(self.lang, "control_center.top")),
           self.state.waybar_top
         ),
         format!(
           "{} · {}",
-          icon_label("↤", tr(self.lang, "control_center.left")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.left")
+          ),
           self.state.waybar_left
         ),
         format!(
           "{} · {}",
-          icon_label("↦", tr(self.lang, "control_center.right")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.right")
+          ),
           self.state.waybar_right
         ),
         format!(
           "{} · {}",
-          icon_label("↧", tr(self.lang, "control_center.bottom")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.bottom")
+          ),
           self.state.waybar_bottom
         ),
       ],
       AppearancePage::WindowSpaces => vec![
         format!(
           "{} · {}",
-          icon_label("↔", tr(self.lang, "control_center.inner_gap")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.inner_gap")
+          ),
           self.state.gaps_in
         ),
         format!(
           "{} · {}",
-          icon_label("↥", tr(self.lang, "control_center.outer_gap_top")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.outer_gap_top")
+          ),
           self.state.gaps_out_top
         ),
         format!(
           "{} · {}",
-          icon_label("↤", tr(self.lang, "control_center.outer_gap_left")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.outer_gap_left")
+          ),
           self.state.gaps_out_left
         ),
         format!(
           "{} · {}",
-          icon_label("↦", tr(self.lang, "control_center.outer_gap_right")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.outer_gap_right")
+          ),
           self.state.gaps_out_right
         ),
         format!(
           "{} · {}",
-          icon_label("↧", tr(self.lang, "control_center.outer_gap_bottom")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.outer_gap_bottom")
+          ),
           self.state.gaps_out_bottom
         ),
       ],
@@ -709,7 +760,10 @@ impl AppearanceApp {
         format!(
           "[{}] {} · {}",
           if self.state.rounded { "x" } else { " " },
-          icon_label("◯", tr(self.lang, "control_center.rounded")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.rounded")
+          ),
           if self.state.rounded {
             tr(self.lang, "control_center.enabled")
           } else {
@@ -718,7 +772,10 @@ impl AppearanceApp {
         ),
         format!(
           "{} · {}{}",
-          icon_label("⌒", tr(self.lang, "control_center.rounding")),
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.rounding")
+          ),
           self.state.rounding,
           if self.state.rounded {
             String::new()
@@ -729,7 +786,10 @@ impl AppearanceApp {
       ],
       AppearancePage::EdgeThickness => vec![format!(
         "{} · {}",
-        icon_label("▰", tr(self.lang, "control_center.thickness")),
+        icon_label(
+          argvus_tui::icons::INFO,
+          tr(self.lang, "control_center.thickness")
+        ),
         self.state.thickness
       )],
       AppearancePage::Prompt { .. } => Vec::new(),
@@ -852,8 +912,8 @@ mod tests {
   fn home_rows_follow_the_global_icon_setting() {
     AppConfig::set_session_icons(true);
     let with_icons = app(AppearancePage::Home).home_rows();
-    assert!(with_icons[0].starts_with("🎨 Theme"));
-    assert!(with_icons[3].starts_with("📐 Spaces"));
+    assert!(with_icons[0].starts_with(&format!("{} Theme", argvus_tui::icons::PALETTE)));
+    assert!(with_icons[3].starts_with(&format!("{} Spaces", argvus_tui::icons::STORAGE)));
 
     AppConfig::set_session_icons(false);
     let without_icons = app(AppearancePage::Home).home_rows();

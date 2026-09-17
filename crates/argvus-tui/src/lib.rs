@@ -1,6 +1,7 @@
 pub mod buttons;
 pub mod chrome;
 pub mod components;
+pub mod icons;
 pub mod page;
 pub mod terminal;
 pub mod text;

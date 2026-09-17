@@ -818,14 +818,14 @@ impl DisplaysApp {
       let name = self.stale_name(index).unwrap_or_default();
       return vec![format!(
         " {} {} {name}",
-        AppConfig::icon("🔌"),
+        AppConfig::icon(argvus_tui::icons::ETHERNET),
         tr(self.lang, "control_center.monitor_disconnected")
       )];
     };
     if !monitor.connected {
       return vec![format!(
         " {} {}",
-        AppConfig::icon("🔌"),
+        AppConfig::icon(argvus_tui::icons::ETHERNET),
         tr(self.lang, "control_center.monitor_disconnected")
       )];
     }
@@ -1362,7 +1362,7 @@ impl DisplaysApp {
           };
           rows.push(format!(
             "{} {}  ·  {}x{} @ {:.3} Hz  ·  {}x{}  ·  escala {}  ·  {} {}",
-            AppConfig::icon("🖥️"),
+            AppConfig::icon(argvus_tui::icons::MONITOR),
             monitor.name,
             monitor.width,
             monitor.height,
@@ -1377,7 +1377,7 @@ impl DisplaysApp {
         HomeEntry::Stale { name, persisted } => {
           rows.push(format!(
             "{} {}  ·  {}  ·  {}",
-            AppConfig::icon("🔌"),
+            AppConfig::icon(argvus_tui::icons::ETHERNET),
             name,
             tr(self.lang, "control_center.disconnected"),
             persisted
@@ -1389,7 +1389,7 @@ impl DisplaysApp {
         HomeEntry::Profiles => {
           rows.push(format!(
             " {} {} ({})",
-            AppConfig::icon("🗂️"),
+            AppConfig::icon(argvus_tui::icons::APPS),
             tr(self.lang, "control_center.profiles"),
             self.state.profiles.len()
           ));
@@ -1975,7 +1975,7 @@ impl DisplaysApp {
     lines.push(Line::from(""));
     if let Some(error) = &self.prompt_error {
       lines.push(Line::from(vec![Span::styled(
-        format!("⚠ {error}"),
+        argvus_tui::icons::icon_label(argvus_tui::icons::WARNING, error),
         Style::new().fg(self.theme.error),
       )]));
     }

@@ -800,7 +800,7 @@ impl ServicesApp {
     vec![
       format!(
         "{} {}  ·  {} {} · {} {}",
-        AppConfig::icon("⚙️"),
+        AppConfig::icon(argvus_tui::icons::SETTINGS),
         tr(self.lang, "control_center.system"),
         system_active,
         tr(self.lang, "control_center.active_ae7190"),
@@ -809,7 +809,7 @@ impl ServicesApp {
       ),
       format!(
         "{} {}  ·  {} {} · {} {}",
-        AppConfig::icon("👤"),
+        AppConfig::icon(argvus_tui::icons::USER),
         tr(self.lang, "control_center.user"),
         user_active,
         tr(self.lang, "control_center.active_ae7190"),
@@ -818,14 +818,14 @@ impl ServicesApp {
       ),
       format!(
         "{} {}  ·  {} {}",
-        AppConfig::icon("⚠️"),
+        AppConfig::icon(argvus_tui::icons::WARNING),
         tr(self.lang, "control_center.failed"),
         failed,
         tr(self.lang, "control_center.failed_cc0486"),
       ),
       format!(
         "{} {}  ·  {} {} · {} {}",
-        AppConfig::icon("📜"),
+        AppConfig::icon(argvus_tui::icons::LOGS),
         tr(self.lang, "control_center.logs"),
         tr(self.lang, "control_center.boot"),
         boot,
@@ -857,7 +857,7 @@ impl ServicesApp {
     };
     format!(
       "{} {}  ·  {} {} · {} {} · {} {}",
-      AppConfig::icon("📜"),
+      AppConfig::icon(argvus_tui::icons::LOGS),
       tr(self.lang, "control_center.logs"),
       tr(self.lang, "control_center.boot"),
       boot,
@@ -927,7 +927,7 @@ impl ServicesApp {
     let rows = vec![
       Line::from(format!(
         " {} {}",
-        AppConfig::icon("⚙️"),
+        AppConfig::icon(argvus_tui::icons::SETTINGS),
         tr(self.lang, "control_center.service_bfe08e")
       )),
       Line::from(format!(

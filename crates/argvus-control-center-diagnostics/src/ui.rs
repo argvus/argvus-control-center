@@ -229,21 +229,57 @@ impl DiagnosticsApp {
     let all: Vec<&DiagnosticCheck> = self.checks.iter().collect();
     let summary = format!(
       "{} {}  ·  {}",
-      AppConfig::icon("💻"),
+      AppConfig::icon(argvus_tui::icons::MONITOR),
       tr(self.lang, "control_center.summary"),
       self.entry_status(&all)
     );
     vec![
       summary,
-      self.dashboard_entry("services", "⚙️", tr(self.lang, "control_center.services")),
-      self.dashboard_entry("boot", "🧠", tr(self.lang, "control_center.kernel_boot")),
-      self.dashboard_entry("graphics", "🎮", tr(self.lang, "control_center.graphics")),
-      self.dashboard_entry("network", "🌐", tr(self.lang, "control_center.network")),
-      self.dashboard_entry("audio", "🔊", tr(self.lang, "control_center.audio")),
-      self.dashboard_entry("bluetooth", "🔗", tr(self.lang, "control_center.bluetooth")),
-      self.dashboard_entry("storage", "💽", tr(self.lang, "control_center.storage")),
-      self.dashboard_entry("packages", "📦", tr(self.lang, "control_center.packages")),
-      self.dashboard_entry("argvus", "⭐", tr(self.lang, "control_center.argvus")),
+      self.dashboard_entry(
+        "services",
+        argvus_tui::icons::SETTINGS,
+        tr(self.lang, "control_center.services"),
+      ),
+      self.dashboard_entry(
+        "boot",
+        argvus_tui::icons::MEMORY,
+        tr(self.lang, "control_center.kernel_boot"),
+      ),
+      self.dashboard_entry(
+        "graphics",
+        argvus_tui::icons::GPU,
+        tr(self.lang, "control_center.graphics"),
+      ),
+      self.dashboard_entry(
+        "network",
+        argvus_tui::icons::NETWORK,
+        tr(self.lang, "control_center.network"),
+      ),
+      self.dashboard_entry(
+        "audio",
+        argvus_tui::icons::AUDIO,
+        tr(self.lang, "control_center.audio"),
+      ),
+      self.dashboard_entry(
+        "bluetooth",
+        argvus_tui::icons::LINK,
+        tr(self.lang, "control_center.bluetooth"),
+      ),
+      self.dashboard_entry(
+        "storage",
+        argvus_tui::icons::STORAGE,
+        tr(self.lang, "control_center.storage"),
+      ),
+      self.dashboard_entry(
+        "packages",
+        argvus_tui::icons::PACKAGES,
+        tr(self.lang, "control_center.packages"),
+      ),
+      self.dashboard_entry(
+        "argvus",
+        argvus_tui::icons::SUCCESS,
+        tr(self.lang, "control_center.argvus"),
+      ),
     ]
   }
   fn dashboard_entry(&self, category: &str, icon: &str, label: &'static str) -> String {
@@ -322,7 +358,7 @@ impl DiagnosticsApp {
     let mut rows = vec![
       format!(
         " {} {}",
-        AppConfig::icon("💻"),
+        AppConfig::icon(argvus_tui::icons::MONITOR),
         tr(self.lang, "control_center.diagnostics_cc02b3")
       ),
       format!(
@@ -355,7 +391,7 @@ impl DiagnosticsApp {
       rows.push(String::new());
       rows.push(format!(
         " {} {}",
-        AppConfig::icon("⚙️"),
+        AppConfig::icon(argvus_tui::icons::SETTINGS),
         tr(self.lang, "control_center.system_1af4b7")
       ));
       rows.extend(system.into_iter().map(|check| {
@@ -516,16 +552,16 @@ fn category_label(lang: Lang, category: &str) -> &'static str {
 }
 fn category_icon(category: &str) -> &'static str {
   match category {
-    "services" => "⚙️",
-    "boot" => "🧠",
-    "graphics" => "🎮",
-    "network" => "🌐",
-    "audio" => "🔊",
-    "bluetooth" => "🔗",
-    "storage" => "💽",
-    "packages" => "📦",
-    "argvus" => "⭐",
-    _ => "💻",
+    "services" => argvus_tui::icons::SETTINGS,
+    "boot" => argvus_tui::icons::MEMORY,
+    "graphics" => argvus_tui::icons::GPU,
+    "network" => argvus_tui::icons::NETWORK,
+    "audio" => argvus_tui::icons::AUDIO,
+    "bluetooth" => argvus_tui::icons::LINK,
+    "storage" => argvus_tui::icons::STORAGE,
+    "packages" => argvus_tui::icons::PACKAGES,
+    "argvus" => argvus_tui::icons::SUCCESS,
+    _ => argvus_tui::icons::MONITOR,
   }
 }
 fn completion_status(lang: Lang, checks: &[DiagnosticCheck]) -> StatusMessage {
@@ -698,7 +734,6 @@ mod tests {
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Diagnostics"));
-    assert!(text.contains(app.theme.name.as_str()));
     assert!(text.contains("Enter") && text.contains("Back"));
 
     app.page = DiagnosticPage::Services;
