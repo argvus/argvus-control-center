@@ -10,6 +10,7 @@ depends=(
   'argvus-accounts'
   'argvus-firewall'
   'argvus-i18n'
+  'argvus-notifications'
   'fontconfig'
   'gcc-libs'
   'glibc'
