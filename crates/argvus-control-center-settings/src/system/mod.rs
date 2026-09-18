@@ -2,6 +2,7 @@ pub mod command;
 pub mod fonts;
 pub mod host;
 pub mod input;
+pub mod keybindings;
 pub mod keyboard;
 pub mod locale;
 pub mod privileged;

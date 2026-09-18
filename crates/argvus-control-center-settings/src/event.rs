@@ -78,6 +78,34 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     return;
   }
 
+  if matches!(
+    app.page(),
+    crate::navigation::Page::Keybindings
+      | crate::navigation::Page::KeybindingEdit
+      | crate::navigation::Page::KeybindingCapture
+  ) && app.has_keybinding_conflict()
+  {
+    match key.code {
+      KeyCode::Char('r') => app.replace_keybinding_conflict(),
+      KeyCode::Esc => app.cancel_keybinding_conflict(),
+      _ => {}
+    }
+    return;
+  }
+
+  if matches!(
+    app.page(),
+    crate::navigation::Page::KeybindingEdit | crate::navigation::Page::KeybindingCapture
+  ) && (app.is_keybinding_capturing() || key.code == KeyCode::Char('e'))
+  {
+    if !app.is_keybinding_capturing() {
+      app.begin_keybinding_capture();
+    } else {
+      app.capture_keybinding(key);
+    }
+    return;
+  }
+
   if app.searching {
     match key.code {
       KeyCode::Esc => app.back(),

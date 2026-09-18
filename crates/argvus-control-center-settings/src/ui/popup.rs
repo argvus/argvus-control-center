@@ -109,3 +109,85 @@ pub fn draw_hostname_input(frame: &mut Frame, area: Rect, app: &App) {
     popup,
   );
 }
+
+pub fn draw_keybinding_editor(frame: &mut Frame, area: Rect, app: &App) {
+  let popup = super::layout::centered(area, area.width.saturating_sub(10).clamp(46, 70), 13);
+  let selected = app.navigation.current().selected;
+  let rows = app.rows();
+  let name = rows
+    .get(selected)
+    .map(|row| row.label.as_str())
+    .unwrap_or("Keyboard shortcut");
+  let (modifiers, key, field) = app.keybinding_editor_state();
+  let labels = ["CTRL", "ALT", "SHIFT", "SUPER"];
+  let mut content = vec![Line::from(name.to_string()), Line::from("")];
+  for (index, label) in labels.into_iter().enumerate() {
+    content.push(Line::from(format!(
+      "{} [{}] {}",
+      if field == index { ">" } else { " " },
+      if modifiers[index] { "x" } else { " " },
+      label
+    )));
+  }
+  content.extend([
+    Line::from(format!(
+      "{} Key: [{}]",
+      if field == 4 { ">" } else { " " },
+      if key.is_empty() { "type a key" } else { key }
+    )),
+    Line::from(""),
+    Line::from(tr(app.lang, "control_center.keybindings_editor_navigation")),
+    Line::from(tr(app.lang, "control_center.keybindings_editor_actions")),
+  ]);
+  let title = tr(app.lang, "control_center.edit_shortcut");
+  let title = if title == "control_center.edit_shortcut" {
+    "Edit shortcut"
+  } else {
+    title
+  };
+  frame.render_widget(
+    Paragraph::new(content)
+      .block(
+        Block::bordered()
+          .title(format!(" {title} "))
+          .border_style(Style::new().fg(app.theme.border_active))
+          .style(Style::new().bg(app.theme.background)),
+      )
+      .style(Style::new().fg(app.theme.foreground)),
+    popup,
+  );
+}
+
+pub fn draw_keybinding_conflict(frame: &mut Frame, area: Rect, app: &App) {
+  let Some((_, keys, conflicts)) = app.keybinding_conflict_state() else {
+    return;
+  };
+  let popup = super::layout::centered(area, area.width.saturating_sub(10).clamp(46, 70), 10);
+  let mut content = vec![
+    Line::from(tr(app.lang, "control_center.keybindings_conflict")),
+    Line::from(keys.to_string()),
+    Line::from(""),
+    Line::from(tr(app.lang, "control_center.keybindings_used_by")),
+  ];
+  for id in conflicts {
+    content.push(Line::from(format!("  • {}", app.keybinding_label_for(&id))));
+  }
+  content.extend([
+    Line::from(""),
+    Line::from(tr(app.lang, "control_center.keybindings_choose_replace")),
+  ]);
+  frame.render_widget(
+    Paragraph::new(content)
+      .block(
+        Block::bordered()
+          .title(format!(
+            " {} ",
+            tr(app.lang, "control_center.keybindings_conflict_title")
+          ))
+          .border_style(Style::new().fg(app.theme.error))
+          .style(Style::new().bg(app.theme.background)),
+      )
+      .style(Style::new().fg(app.theme.foreground)),
+    popup,
+  );
+}

@@ -75,6 +75,9 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     #[cfg(feature = "locale")]
     "locale" | "locale-region" => parse_locale(&args[1..]).map(settings_route),
     "input" | "mouse" | "touchpad" if args.len() == 1 => Ok(settings_route(Page::MouseTouchpad)),
+    "keybindings" | "shortcuts" | "keyboard" if args.len() == 1 => {
+      Ok(settings_route(Page::Keybindings))
+    }
     #[cfg(feature = "language")]
     "language" if args.len() == 1 => Ok(settings_route(Page::Language)),
     "config" if args.len() == 1 => Ok(Some(InitialRoute::Config)),

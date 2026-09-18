@@ -36,6 +36,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   let areas = layout::areas(area);
   let buttons = app.page_buttons();
   if buttons.is_empty() {
+    frame.render_widget(Clear, areas.body);
     app.set_viewport(areas.body.height as usize);
     header::draw(frame, areas.header, app);
     list::draw(frame, areas.body, app);
@@ -44,6 +45,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     let split =
       Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(areas.body);
     app.set_viewport(split[0].height as usize);
+    frame.render_widget(Clear, split[0]);
     header::draw(frame, areas.header, app);
     list::draw(frame, split[0], app);
     let selected = app.navigation.current().selected;
@@ -61,6 +63,9 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   footer::draw(frame, areas.footer, app);
   if app.hostname_editing {
     popup::draw_hostname_input(frame, area, app);
+  }
+  if app.has_keybinding_conflict() {
+    popup::draw_keybinding_conflict(frame, area, app);
   }
   if let Some(editor) = &app.admin.editor {
     editor.draw(frame, area, app);

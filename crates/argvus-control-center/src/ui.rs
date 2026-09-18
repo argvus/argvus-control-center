@@ -277,6 +277,7 @@ fn home_icon_for_item(action: usize) -> String {
     18 => argvus_tui::icons::MONITOR,
     19 => argvus_tui::icons::PALETTE,
     20 => argvus_tui::icons::MOUSE,
+    21 => argvus_tui::icons::KEYBOARD,
     _ => "",
   };
   let icon = AppConfig::icon(glyph);
@@ -362,6 +363,7 @@ fn search_title(
     "mounts" => "control_center.mount_points",
     "smart" => "control_center.smart",
     "usage" => "control_center.disk_usage",
+    "keybindings" => "control_center.keyboard_shortcuts",
     _ => return entry.title.clone(),
   };
   let translated = tr(lang, key);

@@ -397,6 +397,13 @@ impl App {
         "hardware system devices",
         "hardware/home",
       ),
+      (
+        "settings.keybindings",
+        "hardware",
+        "Keyboard Shortcuts",
+        "keyboard shortcuts keybindings hotkeys bindings atalhos teclado",
+        "settings/keybindings",
+      ),
       #[cfg(feature = "services")]
       (
         "services",
@@ -1121,6 +1128,10 @@ impl App {
       label: tr(self.lang, "control_center.mouse_touchpad"),
       action: 20,
     });
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.keyboard_shortcuts"),
+      action: 21,
+    });
     #[cfg(feature = "displays")]
     if self.capabilities.has_hyprctl {
       rows.push(HomeRow::Item {
@@ -1331,6 +1342,7 @@ impl App {
         self.appearance.reload();
       }
       20 => self.open_settings(Page::MouseTouchpad),
+      21 => self.open_settings(Page::Keybindings),
       _ => {}
     }
   }
@@ -1415,6 +1427,7 @@ impl App {
       (_, "default-apps") => self.open_settings(Page::DefaultApps),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
+      (_, "keybindings") => self.open_settings(Page::Keybindings),
       #[cfg(feature = "about")]
       ("about", "system") => {
         self.about.active_tab = Tab::System;

@@ -7,12 +7,13 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
 ARTIFACTS_DIR="$BUILD_DIR/artifacts"
 DIST_DIR="$BUILD_DIR/dist"
+CARGO_TARGET_DIR="$BUILD_DIR/cargo-target"
 PKGBUILD_DIR="$ROOT_DIR/packaging/arch/local"
 PKGBUILD="$PKGBUILD_DIR/PKGBUILD"
 
 read -r pkgname pkgver <<<"$(bash -c 'source "$1"; printf "%s %s" "$pkgname" "$pkgver"' bash "$PKGBUILD")"
 
-mkdir -p "$ARTIFACTS_DIR" "$DIST_DIR"
+mkdir -p "$ARTIFACTS_DIR" "$CARGO_TARGET_DIR" "$DIST_DIR"
 find "$DIST_DIR" -maxdepth 1 -type f -name "${pkgname}-*.pkg.tar.*" -delete
 
 archive="$ARTIFACTS_DIR/${pkgname}-${pkgver}.tar.gz"
@@ -26,8 +27,11 @@ tar -cf - \
   --exclude='./.release' \
   --exclude='./packages-repo' \
   --exclude='./build' \
+  --exclude='*/build' \
   --exclude='./dist' \
+  --exclude='*/dist' \
   --exclude='./target' \
+  --exclude='*/target' \
   --exclude='./tools' \
   --exclude='./packaging/arch/ci/src' \
   --exclude='./packaging/arch/ci/pkg' \
@@ -46,8 +50,12 @@ fi
 
 tar -cf - \
   --exclude='./.git' \
-  --exclude='./target' \
+  --exclude='./build' \
+  --exclude='*/build' \
   --exclude='./dist' \
+  --exclude='*/dist' \
+  --exclude='./target' \
+  --exclude='*/target' \
   -C "$i18n_root" . \
   | tar -xf - -C "$staging_dir/argvus-i18n"
 
@@ -58,9 +66,9 @@ cd "$PKGBUILD_DIR"
 export BUILDDIR="$ARTIFACTS_DIR"
 export SRCDEST="$ARTIFACTS_DIR"
 export PKGDEST="$DIST_DIR"
+export CARGO_TARGET_DIR
 
 makepkg -p PKGBUILD --nodeps --noconfirm --needed --cleanbuild --clean --force "$@"
 
 printf 'Packages created in %s:\n' "$DIST_DIR"
 find "$DIST_DIR" -maxdepth 1 -type f -name "${pkgname}-*.pkg.tar.zst" -printf '  %f\n' | sort
-

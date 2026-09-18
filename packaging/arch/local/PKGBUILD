@@ -33,6 +33,10 @@ _source_dir() {
   printf '%s/%s' "$srcdir" "${pkgname}-${pkgver}"
 }
 
+_cargo_target_dir() {
+  printf '%s' "${CARGO_TARGET_DIR:-$(_source_dir)/target}"
+}
+
 prepare() {
   if [[ ! -f "$srcdir/argvus-i18n/Cargo.toml" ]]; then
     printf '%s\n' "argvus-i18n source is missing from the local source archive" >&2
@@ -45,19 +49,19 @@ prepare() {
 build() {
   cd "$(_source_dir)"
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${srcdir}=."
-  cargo build --release --locked --workspace --target-dir target
+  cargo build --release --locked --workspace
 }
 
 check() {
   cd "$(_source_dir)"
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${srcdir}=."
   env -u LC_ALL -u LC_MESSAGES -u LANGUAGE LANG=pt_BR.UTF-8 \
-    cargo test --locked --workspace --target-dir target
+    cargo test --locked --workspace
 }
 
 package() {
   cd "$(_source_dir)"
-  install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+  install -Dm755 "$(_cargo_target_dir)/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
   ln -s "${pkgname}" "${pkgdir}/usr/bin/argvus-controle-center"
   install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"

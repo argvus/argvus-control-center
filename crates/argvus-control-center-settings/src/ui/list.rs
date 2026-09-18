@@ -107,6 +107,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
           .bg(app.theme.selected_background)
           .fg(app.theme.selected_foreground)
           .add_modifier(Modifier::BOLD)
+      } else if app.keybinding_row_is_accent(&row) {
+        Style::new()
+          .bg(app.theme.background)
+          .fg(app.theme.accent)
+          .add_modifier(Modifier::BOLD)
       } else if !selectable {
         Style::new().bg(app.theme.background).fg(app.theme.muted)
       } else {

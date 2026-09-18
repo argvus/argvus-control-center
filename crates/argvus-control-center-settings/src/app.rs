@@ -8,6 +8,7 @@ use crate::config::fonts::{FontSettings, FontTarget, SettingKind};
 use crate::i18n::{Lang, na, tr};
 use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
+use crate::system::keybindings;
 use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
 use argvus_control_center_core::config::AppConfig;
@@ -50,6 +51,7 @@ pub enum PendingAction {
   ResetFonts,
   ResetFont(FontTarget),
   ResetFontSetting(SettingKind),
+  ResetKeybindings,
   ApplySystemLocales,
   SetNtp(bool),
 }
@@ -94,6 +96,16 @@ pub struct App {
   keyboard_variants: Vec<keyboard::Variant>,
   console_keymaps: Vec<String>,
   input: input::InputSettings,
+  keybindings: Vec<keybindings::Binding>,
+  keybinding_capturing: bool,
+  keybinding_editor_modifiers: [bool; 4],
+  keybinding_editor_key: String,
+  keybinding_editor_field: usize,
+  keybinding_detected: bool,
+  keybinding_super_required: bool,
+  keybinding_conflict: Option<(String, String, Vec<String>)>,
+  keybinding_edit_id: Option<String>,
+  keybinding_reload_deadline: Option<Instant>,
   input_loading: bool,
   input_load_job: Option<JobHandle<input::InputSettings>>,
   input_device_job: Option<JobHandle<(input::Devices, Vec<crate::system::ratbag::Device>)>>,
@@ -168,6 +180,16 @@ impl App {
       keyboard_layouts: keyboard::layouts(),
       console_keymaps: keyboard::console_keymaps(),
       input: input::InputSettings::default(),
+      keybindings: keybindings::load(),
+      keybinding_capturing: false,
+      keybinding_editor_modifiers: [false; 4],
+      keybinding_editor_key: String::new(),
+      keybinding_editor_field: 0,
+      keybinding_detected: false,
+      keybinding_super_required: false,
+      keybinding_conflict: None,
+      keybinding_edit_id: None,
+      keybinding_reload_deadline: None,
       input_loading: true,
       input_load_job: None,
       input_device_job: None,
@@ -496,6 +518,9 @@ impl App {
           current: false,
         },
       ],
+      Page::Keybindings => self.keybinding_rows(),
+      Page::KeybindingEdit => self.keybinding_edit_rows(),
+      Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::MouseTouchpad => self.input_rows(),
       Page::KeyboardLayout => self
         .keyboard_layouts
@@ -585,7 +610,7 @@ impl App {
       .into_iter()
       .enumerate()
       .map(|(index, label)| Row {
-        label,
+        label: label.to_string(),
         detail: (index != 0).then(|| loading.clone()),
         current: false,
       })
@@ -936,6 +961,20 @@ impl App {
         tr(self.lang, "control_center.locale_region"),
         tr(self.lang, "control_center.keyboard")
       ),
+      Page::Keybindings => format!(
+        "{root} > {}",
+        tr(self.lang, "control_center.keyboard_shortcuts")
+      ),
+      Page::KeybindingEdit => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.keyboard_shortcuts"),
+        tr(self.lang, "control_center.edit_shortcut")
+      ),
+      Page::KeybindingCapture => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.keyboard_shortcuts"),
+        tr(self.lang, "control_center.change_shortcut")
+      ),
       Page::KeyboardLayout => format!(
         "{root} > {} > {} > Layout",
         tr(self.lang, "control_center.locale_region"),
@@ -1047,6 +1086,9 @@ impl App {
         self.lang,
         "control_center.navigate_space_toggle_search_enter_apply_esc_back",
       ),
+      Page::Keybindings => tr(self.lang, "control_center.keybindings_help"),
+      Page::KeybindingEdit => tr(self.lang, "control_center.keybindings_editor_actions"),
+      Page::KeybindingCapture => tr(self.lang, "control_center.keybindings_capture_help"),
       Page::TimeZone
       | Page::RegionalLocale
       | Page::KeyboardLayout
@@ -1140,6 +1182,21 @@ impl App {
   }
 
   pub fn row_selectable(&self, index: usize) -> bool {
+    if self.page() == Page::Keybindings {
+      let rows = self.rows();
+      if index < rows.len() {
+        return index != 0
+          && rows[index].detail.is_some()
+          && !self.is_keybinding_column_header(&rows[index]);
+      }
+      return self.reset_page() && index < rows.len() + self.page_buttons().len();
+    }
+    if self.page() == Page::KeybindingEdit {
+      return (2..=4).contains(&index);
+    }
+    if self.page() == Page::KeybindingCapture {
+      return (2..=3).contains(&index);
+    }
     if self.page() == Page::DateTime {
       return (index == 0 && !self.datetime.ntp.unwrap_or(false)) || index == 2;
     }
@@ -1207,6 +1264,21 @@ impl App {
       }
     }
     rows.get(index).is_some()
+  }
+
+  pub fn keybinding_row_is_accent(&self, row: &Row) -> bool {
+    self.page() == Page::Keybindings
+      && (row.label.ends_with('»') || self.is_keybinding_column_header(row))
+  }
+
+  fn is_keybinding_column_header(&self, row: &Row) -> bool {
+    self.page() == Page::Keybindings
+      && row.label == tr(self.lang, "control_center.keybindings_column_shortcut")
+      && row.detail.as_deref()
+        == Some(tr(
+          self.lang,
+          "control_center.keybindings_column_description",
+        ))
   }
 
   pub fn normalize_selection(&mut self) {
@@ -1301,6 +1373,7 @@ impl App {
         | Page::AppSelector(_)
         | Page::FontSelector(_)
         | Page::SettingSelector(_)
+        | Page::Keybindings
     )
   }
 
@@ -1310,7 +1383,11 @@ impl App {
       self.admin.buttons(page, self.lang)
     } else if self.reset_page() {
       vec![crate::administration::Button::new(
-        tr(self.lang, "control_center.reset_defaults"),
+        if page == Page::Keybindings {
+          tr(self.lang, "control_center.restore_all_shortcuts")
+        } else {
+          tr(self.lang, "control_center.reset_defaults")
+        },
         crate::administration::ButtonKind::Secondary,
       )]
     } else {
@@ -1391,6 +1468,9 @@ impl App {
         _ => {}
       },
       Page::MouseTouchpad => self.apply_input(selected),
+      Page::Keybindings => self.open_keybinding_edit(),
+      Page::KeybindingEdit => self.apply_keybinding_edit_selection(),
+      Page::KeybindingCapture => self.apply_keybinding_capture_selection(),
       Page::KeyboardLayout => self.apply_keyboard_layout(selected),
       Page::KeyboardVariant => self.apply_keyboard_variant(selected),
       Page::ConsoleKeymap => self.apply_console_keymap(selected),
@@ -1441,6 +1521,17 @@ impl App {
       Page::FontSelector(target) => self.open_confirm(PendingAction::ResetFont(target)),
       Page::SettingSelector(setting) => {
         self.open_confirm(PendingAction::ResetFontSetting(setting));
+      }
+      Page::Keybindings => {
+        if self.on_buttons() {
+          self.open_confirm(PendingAction::ResetKeybindings)
+        } else {
+          self.restore_keybinding()
+        }
+      }
+      Page::KeybindingEdit => {
+        self.restore_keybinding();
+        self.navigation.back();
       }
       _ => {}
     }
@@ -1512,6 +1603,14 @@ impl App {
     if self.page() == Page::MouseTouchpad {
       let selected = self.navigation.current().selected;
       self.apply_input(selected);
+      return;
+    }
+    if self.page() == Page::Keybindings {
+      self.toggle_keybinding(true);
+      return;
+    }
+    if self.page() == Page::KeybindingEdit {
+      self.apply_keybinding_edit_selection();
       return;
     }
     if self.page() != Page::SystemLocales {
@@ -1724,6 +1823,16 @@ impl App {
         )),
         Err(error) => self.fail(error),
       },
+      PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
+        Ok(()) => {
+          self.keybindings = keybindings::load();
+          let _ = std::process::Command::new("argvus-sessionctl")
+            .arg("reload")
+            .status();
+          self.success(tr(self.lang, "control_center.keybindings_restored_all").to_string());
+        }
+        Err(error) => self.fail(error),
+      },
       PendingAction::ApplySystemLocales => self.apply_system_locales(),
       PendingAction::Administration(_) => self.admin.submit(),
       PendingAction::SetNtp(enabled) => match time::set_ntp(enabled) {
@@ -1802,6 +1911,7 @@ impl App {
         | Page::KeyboardLayout
         | Page::KeyboardVariant
         | Page::ConsoleKeymap
+        | Page::Keybindings
         | Page::SystemUsers
         | Page::GroupList
         | Page::SystemGroups
@@ -1842,6 +1952,12 @@ impl App {
 
   pub fn set_viewport(&mut self, viewport: usize) {
     self.viewport = viewport.max(1);
+    let location = self.navigation.current_mut();
+    location.scroll = location.scroll.min(
+      location
+        .selected
+        .saturating_sub(self.viewport.saturating_sub(1)),
+    );
     self.ensure_visible(self.rows().len());
   }
 
@@ -1879,6 +1995,16 @@ impl App {
 
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
+    if self
+      .keybinding_reload_deadline
+      .is_some_and(|deadline| deadline <= Instant::now())
+    {
+      self.keybinding_reload_deadline = None;
+      let _ = std::process::Command::new("argvus-sessionctl")
+        .arg("reload")
+        .status();
+      changed = true;
+    }
     if self.dnd_job.is_none()
       && self.page() == Page::System
       && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2)
@@ -2198,16 +2324,13 @@ impl App {
     self.task_scroll = 0;
     self.task_follow = true;
     live.push_line("$ locale-gen");
+    let applied = tr(self.lang, "control_center.applied").to_string();
     let operation = SystemSettingsOperation::new(SystemProcessRunner, executable);
     self.task_job = Some(self.jobs.spawn(move |_| {
       Ok(match operation.execute_live(&request, &live) {
         Ok(output) if output.status == Some(0) => {
           let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-          Ok(if stdout.is_empty() {
-            "ok".into()
-          } else {
-            stdout
-          })
+          Ok(if stdout.is_empty() { applied } else { stdout })
         }
         Ok(output) => Err(String::from_utf8_lossy(&output.stderr).trim().to_string()),
         Err(error) => Err(error.to_string()),
@@ -2318,6 +2441,604 @@ impl App {
     }
   }
 
+  fn visible_keybindings(&self) -> Vec<&keybindings::Binding> {
+    let mut bindings: Vec<_> = self
+      .keybindings
+      .iter()
+      .filter(|binding| keybinding_is_cheatsheet_entry(binding))
+      .filter(|binding| {
+        search_matches(
+          &self.search,
+          &[
+            &binding.id,
+            &binding.category,
+            &binding.keys,
+            &keybindings::display_keys(&binding.keys),
+            &binding.description_key,
+            &keybinding_label(self.lang, binding),
+            &keybinding_section(self.lang, binding),
+          ],
+        )
+      })
+      .collect();
+    bindings.sort_by_key(|binding| {
+      (
+        keybinding_section_order(binding),
+        keybinding_category_order(&binding.category),
+        binding.id.as_str(),
+      )
+    });
+    bindings
+  }
+
+  fn selected_keybinding(&self) -> Option<&keybindings::Binding> {
+    let selected = self.navigation.current().selected;
+    let row_count = self
+      .rows()
+      .into_iter()
+      .skip(1)
+      .take(selected.saturating_sub(1))
+      .filter(|row| row.detail.is_some() && !self.is_keybinding_column_header(row))
+      .count();
+    self.visible_keybindings().get(row_count).copied()
+  }
+
+  fn keybinding_rows(&self) -> Vec<Row> {
+    let mut rows = vec![Row {
+      label: format!(
+        "{}: {}",
+        tr(self.lang, "control_center.search_shortcuts"),
+        self.search
+      ),
+      detail: Some(String::new()),
+      current: false,
+    }];
+    let mut section = String::new();
+    let mut header_added = false;
+    for binding in self.visible_keybindings() {
+      let binding_section = keybinding_section(self.lang, binding);
+      if section != binding_section {
+        section = binding_section.clone();
+        rows.push(Row::plain(""));
+        rows.push(Row {
+          label: binding_section,
+          detail: None,
+          current: false,
+        });
+        rows.push(Row {
+          label: tr(self.lang, "control_center.keybindings_column_shortcut").to_string(),
+          detail: Some(tr(self.lang, "control_center.keybindings_column_description").to_string()),
+          current: false,
+        });
+        rows.push(Row::plain(""));
+        header_added = true;
+      }
+      rows.push(Row {
+        label: if binding.enabled {
+          keybindings::display_keys(&binding.keys)
+        } else {
+          tr(self.lang, "control_center.disabled").to_string()
+        },
+        detail: Some(keybinding_label(self.lang, binding)),
+        current: false,
+      });
+    }
+    if !header_added {
+      rows.retain(|row| row.detail.is_some());
+    }
+    rows
+  }
+
+  fn edited_binding(&self) -> Option<&keybindings::Binding> {
+    self
+      .keybinding_edit_id
+      .as_deref()
+      .and_then(|id| self.keybindings.iter().find(|b| b.id == id))
+  }
+
+  fn open_keybinding_edit(&mut self) {
+    let Some(id) = self.selected_keybinding().map(|binding| binding.id.clone()) else {
+      return;
+    };
+    self.keybinding_edit_id = Some(id);
+    self.navigation.push(Page::KeybindingEdit);
+    self.navigation.current_mut().selected = 2;
+    self.begin_keybinding_capture();
+    self.keybinding_capturing = false;
+    self.status = None;
+  }
+
+  fn keybinding_edit_rows(&self) -> Vec<Row> {
+    let Some(binding) = self.edited_binding() else {
+      return Vec::new();
+    };
+    vec![
+      Row {
+        label: keybinding_label(self.lang, binding),
+        detail: Some(keybinding_category(self.lang, &binding.category)),
+        current: false,
+      },
+      Row {
+        label: tr(self.lang, "control_center.keybindings_current_shortcut").into(),
+        detail: Some(if binding.enabled {
+          keybindings::display_keys(&binding.keys)
+        } else {
+          tr(self.lang, "control_center.disabled").into()
+        }),
+        current: false,
+      },
+      Row {
+        label: format!("[ {} ]", tr(self.lang, "control_center.change_shortcut")),
+        detail: None,
+        current: false,
+      },
+      Row {
+        label: format!("[ {} ]", tr(self.lang, "control_center.disable")),
+        detail: None,
+        current: false,
+      },
+      Row {
+        label: format!("[ {} ]", tr(self.lang, "control_center.restore_default")),
+        detail: None,
+        current: false,
+      },
+    ]
+  }
+
+  fn keybinding_capture_rows(&self) -> Vec<Row> {
+    let Some(binding) = self.edited_binding() else {
+      return Vec::new();
+    };
+    let label = if self.keybinding_detected {
+      tr(self.lang, "control_center.keybindings_detected_shortcut")
+    } else {
+      tr(self.lang, "control_center.press_new_shortcut")
+    };
+    let shortcut = if self.keybinding_detected {
+      self.captured_shortcut()
+    } else {
+      String::new()
+    };
+    vec![
+      Row {
+        label: keybinding_label(self.lang, binding),
+        detail: None,
+        current: false,
+      },
+      Row {
+        label: label.to_string(),
+        detail: Some(shortcut),
+        current: false,
+      },
+      Row {
+        label: format!(
+          "[ {} ]",
+          if self.keybinding_detected {
+            tr(self.lang, "control_center.apply")
+          } else {
+            tr(self.lang, "control_center.try_again")
+          }
+        ),
+        detail: None,
+        current: false,
+      },
+      Row {
+        label: format!("[ {} ]", tr(self.lang, "control_center.cancel")),
+        detail: None,
+        current: false,
+      },
+    ]
+  }
+
+  #[allow(dead_code)]
+  fn keybinding_picker_rows(&self) -> Vec<Row> {
+    let mouse = self
+      .edited_binding()
+      .is_some_and(|b| matches!(b.input.as_str(), "mouse" | "mouse_button" | "mouse_wheel"));
+    let options: Vec<(&str, &str)> = if mouse {
+      vec![
+        ("Mouse", "mouse:272"),
+        ("Mouse", "mouse:273"),
+        ("Mouse", "mouse:274"),
+        ("Wheel", "mouse:275"),
+        ("Wheel", "mouse:276"),
+      ]
+    } else {
+      let mut v = vec![
+        ("Common", "Return"),
+        ("Common", "Space"),
+        ("Common", "Tab"),
+        ("Common", "Escape"),
+        ("Common", "BackSpace"),
+        ("Common", "Delete"),
+        ("Navigation", "left"),
+        ("Navigation", "right"),
+        ("Navigation", "up"),
+        ("Navigation", "down"),
+        ("Navigation", "Home"),
+        ("Navigation", "End"),
+        ("Navigation", "Page_Up"),
+        ("Navigation", "Page_Down"),
+        ("Navigation", "Insert"),
+        ("Symbols", "minus"),
+        ("Symbols", "equal"),
+        ("Symbols", "bracketleft"),
+        ("Symbols", "bracketright"),
+        ("Symbols", "backslash"),
+        ("Symbols", "semicolon"),
+        ("Symbols", "apostrophe"),
+        ("Symbols", "comma"),
+        ("Symbols", "period"),
+        ("Symbols", "slash"),
+        ("Symbols", "grave"),
+      ];
+      for n in 1..=24 {
+        v.push(("Function", Box::leak(format!("F{n}").into_boxed_str())));
+      }
+      v
+    };
+    options
+      .into_iter()
+      .map(|(group, key)| Row {
+        label: format!("{group}: {}", keybindings::display_key(key)),
+        detail: None,
+        current: false,
+      })
+      .collect()
+  }
+
+  fn apply_keybinding_capture_selection(&mut self) {
+    match self.navigation.current().selected {
+      2 if self.keybinding_detected => self.apply_keybinding_editor(),
+      2 => self.keybinding_capturing = true,
+      3 => {
+        self.keybinding_capturing = false;
+        self.navigation.back();
+      }
+      _ => {}
+    }
+  }
+
+  fn captured_shortcut(&self) -> String {
+    let mut parts = Vec::new();
+    for (enabled, modifier) in self
+      .keybinding_editor_modifiers
+      .into_iter()
+      .zip(["CTRL", "ALT", "SHIFT", "SUPER"])
+    {
+      if enabled {
+        parts.push(modifier);
+      }
+    }
+    parts.push(self.keybinding_editor_key.as_str());
+    keybindings::display_keys(&parts.join(" + "))
+  }
+
+  fn apply_keybinding_edit_selection(&mut self) {
+    match self.navigation.current().selected {
+      2 => {
+        self.keybinding_capturing = true;
+        self.keybinding_detected = false;
+        self.navigation.push(Page::KeybindingCapture);
+        self.navigation.current_mut().selected = 2;
+      }
+      3 => {
+        self.keybinding_capturing = false;
+        self.toggle_keybinding(false);
+        self.navigation.back();
+      }
+      4 => {
+        self.keybinding_capturing = false;
+        self.restore_keybinding();
+        self.navigation.back();
+      }
+      _ => {}
+    }
+  }
+
+  #[allow(dead_code)]
+  fn select_keybinding_picker(&mut self) {
+    let Some(binding) = self.edited_binding() else {
+      return;
+    };
+    let mouse = matches!(
+      binding.input.as_str(),
+      "mouse" | "mouse_button" | "mouse_wheel"
+    );
+    let options = if mouse {
+      vec![
+        "mouse:272",
+        "mouse:273",
+        "mouse:274",
+        "mouse:275",
+        "mouse:276",
+      ]
+    } else {
+      let mut v = vec![
+        "Return",
+        "Space",
+        "Tab",
+        "Escape",
+        "BackSpace",
+        "Delete",
+        "left",
+        "right",
+        "up",
+        "down",
+        "Home",
+        "End",
+        "Page_Up",
+        "Page_Down",
+        "Insert",
+        "minus",
+        "equal",
+        "bracketleft",
+        "bracketright",
+        "backslash",
+        "semicolon",
+        "apostrophe",
+        "comma",
+        "period",
+        "slash",
+        "grave",
+      ];
+      v.extend((1..=24).map(|n| Box::leak(format!("F{n}").into_boxed_str()) as &str));
+      v
+    };
+    if let Some(key) = options.get(self.navigation.current().selected).copied() {
+      self.keybinding_editor_key = key.into();
+    }
+    self.navigation.back();
+  }
+
+  fn toggle_keybinding(&mut self, enabled: bool) {
+    let binding = self.edited_binding().or_else(|| self.selected_keybinding());
+    let Some(binding) = binding else {
+      return;
+    };
+    let id = binding.id.clone();
+    let keys = binding.keys.clone();
+    if let Err(error) = keybindings::save_override(
+      &id,
+      Some(keys),
+      Some(if enabled { !binding.enabled } else { false }),
+      &self.keybindings,
+    ) {
+      self.fail(error);
+      return;
+    }
+    self.keybindings = keybindings::load();
+    self.keybinding_reload_deadline = Some(Instant::now() + Duration::from_millis(250));
+    self.success(tr(self.lang, "control_center.keybindings_applied").to_string());
+  }
+
+  fn restore_keybinding(&mut self) {
+    let binding = self.edited_binding().or_else(|| self.selected_keybinding());
+    let Some(binding) = binding else {
+      return;
+    };
+    if let Err(error) = keybindings::restore(&binding.id, &self.keybindings) {
+      self.fail(error);
+      return;
+    }
+    self.keybindings = keybindings::load();
+    let _ = std::process::Command::new("argvus-sessionctl")
+      .arg("reload")
+      .status();
+    self.success(tr(self.lang, "control_center.keybindings_restored").to_string());
+  }
+
+  pub fn begin_keybinding_capture(&mut self) {
+    if let Some(keys) = self
+      .edited_binding()
+      .or_else(|| self.selected_keybinding())
+      .map(|binding| binding.keys.clone())
+    {
+      let parts: Vec<&str> = keys.split(" + ").collect();
+      self.keybinding_super_required = parts.contains(&"SUPER");
+      self.keybinding_editor_modifiers = [
+        parts.contains(&"CTRL"),
+        parts.contains(&"ALT"),
+        parts.contains(&"SHIFT"),
+        parts.contains(&"SUPER"),
+      ];
+      self.keybinding_editor_key = parts.last().copied().unwrap_or_default().to_string();
+    }
+    self.keybinding_editor_field = 0;
+    self.keybinding_capturing = true;
+    self.keybinding_detected = false;
+    self.success(tr(self.lang, "control_center.keybindings_press_key").to_string());
+  }
+  pub fn is_keybinding_capturing(&self) -> bool {
+    self.keybinding_capturing
+  }
+  pub fn has_keybinding_conflict(&self) -> bool {
+    self.keybinding_conflict.is_some()
+  }
+  pub fn keybinding_conflict_state(&self) -> Option<(&str, &str, Vec<String>)> {
+    self
+      .keybinding_conflict
+      .as_ref()
+      .map(|(id, keys, conflicts)| (id.as_str(), keys.as_str(), conflicts.clone()))
+  }
+  pub fn keybinding_label_for(&self, id: &str) -> String {
+    self
+      .keybindings
+      .iter()
+      .find(|binding| binding.id == id)
+      .map(|binding| keybinding_label(self.lang, binding))
+      .unwrap_or_else(|| id.to_string())
+  }
+  pub fn cancel_keybinding_conflict(&mut self) {
+    self.keybinding_conflict = None;
+  }
+  pub fn replace_keybinding_conflict(&mut self) {
+    let Some((id, keys, conflicts)) = self.keybinding_conflict.take() else {
+      return;
+    };
+    for old_id in conflicts {
+      let _ = keybindings::save_override(&old_id, None, Some(false), &self.keybindings);
+    }
+    if let Err(error) = keybindings::save_override(&id, Some(keys), Some(true), &self.keybindings) {
+      self.fail(error);
+      return;
+    }
+    self.keybindings = keybindings::load();
+    let _ = std::process::Command::new("argvus-sessionctl")
+      .arg("reload")
+      .status();
+    self.success(tr(self.lang, "control_center.keybindings_replaced").to_string());
+    if self.page() == Page::KeybindingCapture {
+      self.navigation.back();
+    }
+    self.navigation.back();
+  }
+  pub fn capture_keybinding(&mut self, key: crossterm::event::KeyEvent) {
+    if key.code == crossterm::event::KeyCode::Esc {
+      self.keybinding_capturing = false;
+      self.keybinding_detected = false;
+      return;
+    }
+    if self.keybinding_detected {
+      if key.code == crossterm::event::KeyCode::Enter {
+        self.apply_keybinding_editor();
+      }
+      return;
+    }
+    if key.code == crossterm::event::KeyCode::Enter && self.keybinding_editor_key.is_empty() {
+      self.keybinding_editor_key = "Return".into();
+    } else if key.code == crossterm::event::KeyCode::Tab && self.keybinding_editor_key.is_empty() {
+      self.keybinding_editor_key = "Tab".into();
+    } else if key.code == crossterm::event::KeyCode::Backspace
+      && self.keybinding_editor_key.is_empty()
+    {
+      self.keybinding_editor_key = "BackSpace".into();
+    } else {
+      self.capture_keybinding_key(key);
+    }
+    if !self.keybinding_editor_key.is_empty() {
+      self.keybinding_detected = true;
+      self.keybinding_capturing = false;
+    }
+  }
+
+  fn capture_keybinding_key(&mut self, key: crossterm::event::KeyEvent) {
+    if key.code == crossterm::event::KeyCode::Enter {
+      self.apply_keybinding_editor();
+      return;
+    }
+    self.keybinding_editor_modifiers = [
+      key
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::CONTROL),
+      key.modifiers.contains(crossterm::event::KeyModifiers::ALT),
+      key
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::SHIFT),
+      self.keybinding_super_required
+        || key
+          .modifiers
+          .contains(crossterm::event::KeyModifiers::SUPER),
+    ];
+    let raw = match key.code {
+      crossterm::event::KeyCode::Char(c) => match c {
+        '?' => "/".into(),
+        '_' => "-".into(),
+        '+' => "=".into(),
+        ':' => ";".into(),
+        '"' => "'".into(),
+        '{' => "[".into(),
+        '}' => "]".into(),
+        '|' => "\\".into(),
+        '~' => "`".into(),
+        '<' => ",".into(),
+        '>' => ".".into(),
+        other => other.to_string(),
+      },
+      crossterm::event::KeyCode::Enter => "Return".into(),
+      crossterm::event::KeyCode::Tab => "Tab".into(),
+      crossterm::event::KeyCode::Backspace => "BackSpace".into(),
+      crossterm::event::KeyCode::Left => "left".into(),
+      crossterm::event::KeyCode::Right => "right".into(),
+      crossterm::event::KeyCode::Up => "up".into(),
+      crossterm::event::KeyCode::Down => "down".into(),
+      crossterm::event::KeyCode::Esc => "Escape".into(),
+      crossterm::event::KeyCode::Delete => "Delete".into(),
+      crossterm::event::KeyCode::Insert => "Insert".into(),
+      crossterm::event::KeyCode::Home => "Home".into(),
+      crossterm::event::KeyCode::End => "End".into(),
+      crossterm::event::KeyCode::PageUp => "Page_Up".into(),
+      crossterm::event::KeyCode::PageDown => "Page_Down".into(),
+      crossterm::event::KeyCode::F(n) => format!("F{n}"),
+      _ => return,
+    };
+    self.keybinding_editor_key = raw;
+  }
+
+  fn apply_keybinding_editor(&mut self) {
+    let mut parts = Vec::new();
+    for (enabled, modifier) in self
+      .keybinding_editor_modifiers
+      .into_iter()
+      .zip(["CTRL", "ALT", "SHIFT", "SUPER"])
+    {
+      if enabled {
+        parts.push(modifier);
+      }
+    }
+    if self.keybinding_editor_key.is_empty() {
+      return;
+    }
+    parts.push(self.keybinding_editor_key.as_str());
+    let Ok(keys) = keybindings::normalize_keys(&parts.join(" + ")) else {
+      return;
+    };
+    let binding = self.edited_binding().or_else(|| {
+      self
+        .visible_keybindings()
+        .get(self.navigation.current().selected)
+        .copied()
+    });
+    let Some(binding) = binding else {
+      return;
+    };
+    let conflicts = keybindings::conflicts_in_context(
+      &self.keybindings,
+      &binding.id,
+      &keys,
+      &binding.context,
+      &binding.input,
+    );
+    if !conflicts.is_empty() {
+      self.keybinding_conflict = Some((binding.id.clone(), keys, conflicts));
+      self.keybinding_capturing = false;
+      return;
+    }
+    let id = binding.id.clone();
+    if let Err(error) = keybindings::save_override(&id, Some(keys), Some(true), &self.keybindings) {
+      self.fail(error);
+      return;
+    }
+    self.keybindings = keybindings::load();
+    self.keybinding_capturing = false;
+    let _ = std::process::Command::new("argvus-sessionctl")
+      .arg("reload")
+      .status();
+    self.success(tr(self.lang, "control_center.keybindings_applied").to_string());
+    if self.page() == Page::KeybindingCapture {
+      self.navigation.back();
+    }
+    self.navigation.back();
+  }
+
+  pub fn keybinding_editor_state(&self) -> ([bool; 4], &str, usize) {
+    (
+      self.keybinding_editor_modifiers,
+      &self.keybinding_editor_key,
+      self.keybinding_editor_field,
+    )
+  }
+
   fn ensure_visible(&mut self, count: usize) {
     let buttons = self.page_buttons().len();
     let rows = if buttons > 0 {
@@ -2394,6 +3115,157 @@ impl App {
     });
     self.error_modal = Some(error);
   }
+}
+
+fn keybinding_is_cheatsheet_entry(binding: &keybindings::Binding) -> bool {
+  !matches!(
+    binding.id.as_str(),
+    "resize.right"
+      | "resize.left"
+      | "resize.up"
+      | "resize.down"
+      | "resize.move_right"
+      | "resize.move_left"
+      | "resize.move_up"
+      | "resize.move_down"
+      | "resize.cancel_escape"
+      | "resize.cancel_return"
+  )
+}
+
+fn keybinding_section(lang: Lang, binding: &keybindings::Binding) -> String {
+  let software = matches!(
+    binding.id.as_str(),
+    id if id.starts_with("app.")
+      || matches!(
+        id,
+        "system.kitty_cheatsheet"
+          | "system.hyprland_cheatsheet"
+          | "system.clipboard"
+          | "system.clipboard_clear"
+          | "system.color_picker"
+          | "system.emoji_picker"
+          | "system.control_center"
+      )
+  );
+  let media = matches!(
+    binding.id.as_str(),
+    "session.volume_up"
+      | "session.volume_down"
+      | "session.mute"
+      | "session.brightness_up"
+      | "session.brightness_down"
+      | "session.play_pause"
+      | "session.next_track"
+      | "session.previous_track"
+      | "session.stop_track"
+  );
+  let section_key = if media {
+    "control_center.keybindings.section.media"
+  } else if software {
+    "control_center.keybindings.section.software"
+  } else {
+    "control_center.keybindings.section.desktop"
+  };
+  tr(lang, section_key).to_string()
+}
+
+fn keybinding_section_order(binding: &keybindings::Binding) -> usize {
+  if matches!(
+    binding.id.as_str(),
+    "session.volume_up"
+      | "session.volume_down"
+      | "session.mute"
+      | "session.brightness_up"
+      | "session.brightness_down"
+      | "session.play_pause"
+      | "session.next_track"
+      | "session.previous_track"
+      | "session.stop_track"
+  ) {
+    return 2;
+  }
+  if binding.id.starts_with("app.")
+    || matches!(
+      binding.id.as_str(),
+      "system.kitty_cheatsheet"
+        | "system.hyprland_cheatsheet"
+        | "system.clipboard"
+        | "system.clipboard_clear"
+        | "system.color_picker"
+        | "system.emoji_picker"
+        | "system.control_center"
+    )
+  {
+    1
+  } else {
+    0
+  }
+}
+
+fn keybinding_label(lang: Lang, binding: &keybindings::Binding) -> String {
+  if let Some(description) = keybindings::cheatsheet_description(lang, binding) {
+    return description;
+  }
+  let translated = tr(lang, &binding.description_key);
+  if translated != binding.description_key {
+    translated.to_string()
+  } else {
+    let label = binding
+      .id
+      .rsplit('.')
+      .next()
+      .unwrap_or(&binding.id)
+      .split('_')
+      .map(|part| {
+        let mut chars = part.chars();
+        match chars.next() {
+          Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+          None => String::new(),
+        }
+      })
+      .collect::<Vec<_>>()
+      .join(" ");
+    match label.as_str() {
+      "Terminal" => "Open terminal".into(),
+      "Browser" => "Open default browser".into(),
+      "File Manager" => "Open file manager".into(),
+      "Launcher" => "Open application launcher".into(),
+      "Close" => "Close window".into(),
+      "Maximize" => "Maximize window".into(),
+      "Next" => "Next workspace".into(),
+      "Previous" => "Previous workspace".into(),
+      _ => label,
+    }
+  }
+}
+
+fn keybinding_category(lang: Lang, category: &str) -> String {
+  let key = format!("control_center.keybindings.category.{category}");
+  let translated = tr(lang, &key);
+  if translated == key {
+    category.to_string()
+  } else {
+    translated.to_string()
+  }
+}
+
+fn keybinding_category_order(category: &str) -> usize {
+  [
+    "applications",
+    "windows",
+    "navigation",
+    "workspaces",
+    "system",
+    "session",
+    "media",
+    "screenshots",
+    "appearance",
+    "widgets",
+  ]
+  .iter()
+  .position(|value| *value == category)
+  .unwrap_or(usize::MAX)
 }
 
 impl Row {
@@ -2521,6 +3393,10 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
     PendingAction::ResetFontSetting(setting) => (
       format!("{}?", tr(lang, "control_center.reset_setting")),
       setting_label(lang, *setting).to_string(),
+    ),
+    PendingAction::ResetKeybindings => (
+      tr(lang, "control_center.restore_all_shortcuts").to_string(),
+      tr(lang, "control_center.restore_all_shortcuts_description").to_string(),
     ),
     PendingAction::ApplySystemLocales => (
       tr(lang, "control_center.apply_locale_changes").to_string(),
