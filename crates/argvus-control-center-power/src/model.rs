@@ -130,6 +130,7 @@ pub struct PowerState {
   /// Screen-lock idle timeout in minutes, when the ARGVUS hypridle config
   /// exposes a lock listener (None = not configured/unknown).
   pub lock_minutes: Option<u32>,
+  pub keep_awake: bool,
   pub can_suspend: bool,
   pub can_hibernate: bool,
   pub screen_off_supported: bool,
@@ -174,6 +175,7 @@ mod tests {
       can_hibernate: false,
       screen_off_supported: true,
       lock_supported: true,
+      keep_awake: false,
       is_laptop: true,
     };
     assert_eq!(state.lid_for(LidContext::Battery), PowerBehavior::Lock);

@@ -158,6 +158,7 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
       "Choose inactivity lock timeout",
       "Escolhe o tempo de bloqueio por inatividade",
     ),
+    "session.keep_awake" => ("Toggle Keep Awake", "Ativa/Desativa manter acordado"),
     "widget.weather" => (
       "Configure weather location",
       "Configura a localização do clima",

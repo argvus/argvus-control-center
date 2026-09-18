@@ -292,7 +292,7 @@ impl PowerApp {
     let Some(state) = &self.state else {
       return 0;
     };
-    if state.is_laptop { 6 } else { 2 }
+    if state.is_laptop { 7 } else { 3 }
   }
 
   fn handle_picker(&mut self, key: KeyCode) {
@@ -333,12 +333,14 @@ impl PowerApp {
       return;
     };
     let is_laptop = state.is_laptop;
+    let keep_awake = state.keep_awake;
 
     let lid_battery_idx = 0;
     let lid_ac_idx = 1;
     let power_btn_idx = 2;
     let screen_off_idx = if is_laptop { 3 } else { 0 };
     let lock_idx = if is_laptop { 4 } else { 1 };
+    let keep_awake_idx = if is_laptop { 5 } else { 2 };
 
     let target = match self.selected {
       i if i == lid_battery_idx && is_laptop => PickerTarget::LidBattery,
@@ -346,6 +348,10 @@ impl PowerApp {
       i if i == power_btn_idx && is_laptop => PickerTarget::PowerButton,
       i if i == screen_off_idx => PickerTarget::ScreenOff,
       i if i == lock_idx => PickerTarget::Lock,
+      i if i == keep_awake_idx => {
+        self.apply_keep_awake(!keep_awake);
+        return;
+      }
       _ => return,
     };
     self.picker = Some(Picker {
@@ -468,6 +474,24 @@ impl PowerApp {
     }));
   }
 
+  fn apply_keep_awake(&mut self, enabled: bool) {
+    if let Some(state) = &mut self.state {
+      state.keep_awake = enabled;
+    }
+    let description = tr(
+      self.lang,
+      if enabled {
+        "control_center.keep_awake_enabled"
+      } else {
+        "control_center.keep_awake_disabled"
+      },
+    );
+    self.action = Some(self.manager.spawn(move |_| {
+      backend::set_keep_awake(enabled)?;
+      Ok(JobData::Action(description.into()))
+    }));
+  }
+
   fn rows(&self) -> Vec<String> {
     let Some(state) = &self.state else {
       return vec![tr(self.lang, "control_center.loading").into()];
@@ -526,6 +550,20 @@ impl PowerApp {
         tr(self.lang, "control_center.via_argvus_hypridle"),
       )
     });
+
+    rows.push(format!(
+      " {}  {}  ·  ▸ {}",
+      AppConfig::icon(argvus_tui::icons::MONITOR),
+      tr(self.lang, "control_center.keep_awake"),
+      tr(
+        self.lang,
+        if state.keep_awake {
+          "control_center.enabled"
+        } else {
+          "control_center.disabled"
+        }
+      ),
+    ));
 
     if state.is_laptop {
       rows.push(self.capabilities_line());
@@ -839,6 +877,7 @@ mod tests {
       can_hibernate: true,
       screen_off_supported: true,
       lock_supported: true,
+      keep_awake: false,
       is_laptop: true,
     }
   }
@@ -853,6 +892,7 @@ mod tests {
       can_hibernate: true,
       screen_off_supported: true,
       lock_supported: true,
+      keep_awake: false,
       is_laptop: false,
     }
   }
@@ -869,7 +909,7 @@ mod tests {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(app.row_count(), 0);
     app.state = Some(laptop_state());
-    assert_eq!(app.row_count(), 6);
+    assert_eq!(app.row_count(), 7);
   }
 
   #[test]
@@ -877,7 +917,7 @@ mod tests {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(app.row_count(), 0);
     app.state = Some(desktop_state());
-    assert_eq!(app.row_count(), 2);
+    assert_eq!(app.row_count(), 3);
   }
 
   #[test]

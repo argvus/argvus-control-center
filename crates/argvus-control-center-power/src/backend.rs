@@ -29,6 +29,7 @@ pub fn load() -> PowerState {
   let screen_off_supported = hypridle::config_path().exists();
   let lock_minutes = hypridle::lock_minutes();
   let lock_supported = screen_off_supported;
+  let keep_awake = keep_awake_status();
   let can_suspend = systemctl_can("can-suspend");
   let can_hibernate = systemctl_can("can-hibernate");
   let is_laptop = detect_is_laptop();
@@ -41,8 +42,16 @@ pub fn load() -> PowerState {
     can_hibernate,
     screen_off_supported,
     lock_supported,
+    keep_awake,
     is_laptop,
   }
+}
+
+fn keep_awake_status() -> bool {
+  SystemProcessRunner
+    .run(&ProcessRequest::new("/usr/share/argvus/power/sh/keep-awake.sh").arg("status"))
+    .ok()
+    .is_some_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "enabled")
 }
 
 fn detect_is_laptop() -> bool {
@@ -117,6 +126,16 @@ pub fn apply_idle(minutes: u32) -> Result<(), String> {
 
 pub fn apply_lock(minutes: u32) -> Result<(), String> {
   hypridle::apply_lock_minutes(minutes).map(|_| ())
+}
+
+pub fn set_keep_awake(enabled: bool) -> Result<(), String> {
+  let value = if enabled { "on" } else { "off" };
+  let output = SystemProcessRunner
+    .run(&ProcessRequest::new("/usr/share/argvus/power/sh/keep-awake.sh").arg(value))
+    .map_err(|error| error.to_string())?;
+  (output.status == Some(0))
+    .then_some(())
+    .ok_or_else(|| terminal_text(String::from_utf8_lossy(&output.stderr).trim()).to_string())
 }
 
 pub fn suspend_now() -> Result<(), String> {

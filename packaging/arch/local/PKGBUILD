@@ -11,6 +11,7 @@ depends=(
   'argvus-firewall'
   'argvus-i18n'
   'argvus-notifications'
+  'argvus-power'
   'fontconfig'
   'gcc-libs'
   'glibc'
