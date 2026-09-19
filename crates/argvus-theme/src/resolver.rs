@@ -1,3 +1,7 @@
+//! Implements resource resolution in crate `argvus theme`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::collections::HashMap;
 
 use ratatui::style::Color;
@@ -7,6 +11,7 @@ use super::fallback;
 use super::loader::{self, Loader};
 use super::parser::{self, Rgba};
 
+/// Executes the `resolve` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn resolve(loader: &Loader) -> Theme {
   let mut definitions: Vec<(String, String)> = fallback::definitions()
     .into_iter()
@@ -82,6 +87,7 @@ pub fn resolve(loader: &Loader) -> Theme {
   }
 }
 
+/// Executes the `resolve_palette` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn resolve_palette(definitions: &[(String, String)]) -> HashMap<String, Rgba> {
   let mut palette = HashMap::new();
   for (name, value) in definitions {
@@ -96,14 +102,17 @@ pub fn resolve_palette(definitions: &[(String, String)]) -> HashMap<String, Rgba
   palette
 }
 
+/// Executes the `get` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn get(palette: &HashMap<String, Rgba>, name: &str, fallback: Rgba) -> Rgba {
   palette.get(name).copied().unwrap_or(fallback)
 }
 
+/// Executes the `color` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn color(value: Rgba) -> Color {
   Color::Rgb(value.r, value.g, value.b)
 }
 
+/// Executes the `composite` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn composite(front: Rgba, back: Rgba) -> Rgba {
   let alpha = front.a as f32 / 255.0;
   let blend = |a: u8, b: u8| (a as f32 * alpha + b as f32 * (1.0 - alpha)).round() as u8;
@@ -114,6 +123,7 @@ fn composite(front: Rgba, back: Rgba) -> Rgba {
   )
 }
 
+/// Executes the `luminance` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn luminance(color: Rgba) -> f32 {
   (0.299 * color.r as f32 + 0.587 * color.g as f32 + 0.114 * color.b as f32) / 255.0
 }
@@ -123,6 +133,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `resolves_references_and_later_overrides` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn resolves_references_and_later_overrides() {
     let palette = resolve_palette(&[
       ("base".into(), "#010203".into()),
@@ -134,6 +145,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `missing_files_still_produce_safe_theme` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn missing_files_still_produce_safe_theme() {
     let theme = resolve(&Loader::new());
     assert_ne!(theme.background, theme.foreground);

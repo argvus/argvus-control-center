@@ -1,3 +1,7 @@
+//! Implements locale discovery and configuration in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -6,12 +10,14 @@ use std::process::{Command, Stdio};
 use crate::error::SettingsError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Distro`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Distro {
   pub id: String,
   pub pretty_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `LocaleEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct LocaleEntry {
   pub locale: String,
   pub encoding: String,
@@ -19,10 +25,12 @@ pub struct LocaleEntry {
   pub line_index: usize,
 }
 
+/// Executes the `distro` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn distro() -> Distro {
   parse_os_release(&fs::read_to_string("/etc/os-release").unwrap_or_default())
 }
 
+/// Converts input data into `parse_os_release` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_os_release(contents: &str) -> Distro {
   let mut id = String::new();
   let mut pretty_name = String::new();
@@ -40,6 +48,7 @@ pub fn parse_os_release(contents: &str) -> Distro {
   Distro { id, pretty_name }
 }
 
+/// Executes the `current_lang` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn current_lang() -> String {
   command_stdout("localectl", &["status"])
     .and_then(|output| {
@@ -70,6 +79,7 @@ pub fn current_lang() -> String {
     .unwrap_or_default()
 }
 
+/// Executes the `generated_locales` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn generated_locales() -> Vec<String> {
   command_stdout("locale", &["-a"])
     .unwrap_or_default()
@@ -82,12 +92,14 @@ pub fn generated_locales() -> Vec<String> {
     .collect()
 }
 
+/// Executes the `locale_gen_entries` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn locale_gen_entries(path: &Path) -> Result<Vec<LocaleEntry>, SettingsError> {
   let contents = fs::read_to_string(path)
     .map_err(|error| SettingsError::System(format!("{}: {error}", path.display())))?;
   Ok(parse_locale_gen(&contents))
 }
 
+/// Converts input data into `parse_locale_gen` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_locale_gen(contents: &str) -> Vec<LocaleEntry> {
   contents
     .lines()
@@ -96,6 +108,7 @@ pub fn parse_locale_gen(contents: &str) -> Vec<LocaleEntry> {
     .collect()
 }
 
+/// Converts input data into `parse_locale_gen_line` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_locale_gen_line(line: &str, line_index: usize) -> Option<LocaleEntry> {
   let trimmed = line.trim_start();
   let (enabled, body) = if let Some(rest) = trimmed.strip_prefix('#') {
@@ -120,6 +133,7 @@ fn parse_locale_gen_line(line: &str, line_index: usize) -> Option<LocaleEntry> {
   })
 }
 
+/// Applies the `apply_locale_gen` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_locale_gen(contents: &str, selected: &BTreeSet<String>) -> String {
   let mut lines: Vec<String> = contents.lines().map(str::to_string).collect();
   for entry in parse_locale_gen(contents) {
@@ -147,6 +161,7 @@ pub fn apply_locale_gen(contents: &str, selected: &BTreeSet<String>) -> String {
   output
 }
 
+/// Applies the `set_lang` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_lang(locale: &str, generated: &[String]) -> Result<(), SettingsError> {
   if !generated.iter().any(|candidate| candidate == locale) {
     return Err(SettingsError::System(format!(
@@ -156,6 +171,7 @@ pub fn set_lang(locale: &str, generated: &[String]) -> Result<(), SettingsError>
   super::privileged::run(&["locale", "set-lang", locale]).map(|_| ())
 }
 
+/// Applies the `set_system_locales` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_system_locales(
   entries: &[LocaleEntry],
   selected: &BTreeSet<String>,
@@ -175,6 +191,7 @@ pub fn set_system_locales(
   super::privileged::run(&refs).map(|_| ())
 }
 
+/// Executes the `encoding_from_locale` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn encoding_from_locale(locale: &str) -> String {
   locale
     .rsplit_once('.')
@@ -182,6 +199,7 @@ pub fn encoding_from_locale(locale: &str) -> String {
     .unwrap_or_else(|| "UTF-8".to_string())
 }
 
+/// Executes the `normalize_locale` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn normalize_locale(value: &str) -> String {
   if let Some((base, encoding)) = value.rsplit_once('.') {
     format!(
@@ -193,6 +211,7 @@ fn normalize_locale(value: &str) -> String {
   }
 }
 
+/// Checks the condition represented by `is_locale_name` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn is_locale_name(value: &str) -> bool {
   !value.is_empty()
     && value
@@ -200,6 +219,7 @@ pub fn is_locale_name(value: &str) -> bool {
       .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'@' | b'-'))
 }
 
+/// Checks the condition represented by `is_encoding_name` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn is_encoding_name(value: &str) -> bool {
   !value.is_empty()
     && value
@@ -207,6 +227,7 @@ pub fn is_encoding_name(value: &str) -> bool {
       .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
+/// Executes the `command_stdout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
   let output = Command::new(command)
     .args(args)
@@ -224,6 +245,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Converts input data into `parses_os_release` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_os_release() {
     let distro = parse_os_release("ID=arch\nPRETTY_NAME=\"Arch Linux\"\n");
     assert_eq!(distro.id, "arch");
@@ -231,6 +253,7 @@ mod tests {
   }
 
   #[test]
+  /// Converts input data into `parses_locale_gen_and_preserves_comments` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_locale_gen_and_preserves_comments() {
     let entries = parse_locale_gen("# comment\n#en_US.UTF-8 UTF-8\nde_DE.UTF-8 UTF-8\n\n");
     assert_eq!(entries.len(), 2);
@@ -239,6 +262,7 @@ mod tests {
   }
 
   #[test]
+  /// Applies the `toggles_only_locale_lines` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggles_only_locale_lines() {
     let input = "# Header\n#en_US.UTF-8 UTF-8\nde_DE.UTF-8 UTF-8\n";
     let selected = BTreeSet::from(["en_US.UTF-8 UTF-8".to_string()]);

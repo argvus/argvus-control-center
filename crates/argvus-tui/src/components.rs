@@ -1,3 +1,7 @@
+//! Implements shared TUI components in crate `argvus tui`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use argvus_theme::Theme;
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -11,6 +15,7 @@ use ratatui::{
 use crate::text::{display_width, ellipsize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `StatusKind`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum StatusKind {
   Info,
   Success,
@@ -19,12 +24,14 @@ pub enum StatusKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `StatusMessage`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct StatusMessage {
   pub kind: StatusKind,
   pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Defines `OperationResult`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum OperationResult {
   Success(String),
   Warning(String),
@@ -32,6 +39,7 @@ pub enum OperationResult {
 }
 
 impl OperationResult {
+  /// Executes the `status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn status(&self) -> StatusMessage {
     let (kind, text) = match self {
       Self::Success(text) => (StatusKind::Success, text),
@@ -45,6 +53,7 @@ impl OperationResult {
   }
 }
 
+/// Renders `draw_status` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw_status(frame: &mut Frame, area: Rect, theme: &Theme, status: &StatusMessage) {
   let symbol = status_symbol(status.kind);
   let color = status_color(status.kind, theme);
@@ -82,6 +91,7 @@ pub fn draw_status(frame: &mut Frame, area: Rect, theme: &Theme, status: &Status
   );
 }
 
+/// Executes the `status_line_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn status_line_count(message: &StatusMessage, area_width: u16) -> usize {
   let symbol = status_symbol(message.kind);
   let available = usize::from(area_width)
@@ -90,6 +100,7 @@ pub fn status_line_count(message: &StatusMessage, area_width: u16) -> usize {
   wrap_text(&message.text, available).len()
 }
 
+/// Executes the `status_symbol` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn status_symbol(kind: StatusKind) -> &'static str {
   match kind {
     StatusKind::Info => "[i]",
@@ -99,6 +110,7 @@ fn status_symbol(kind: StatusKind) -> &'static str {
   }
 }
 
+/// Executes the `status_color` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn status_color(kind: StatusKind, theme: &Theme) -> ratatui::style::Color {
   match kind {
     StatusKind::Info => theme.muted,
@@ -108,6 +120,7 @@ fn status_color(kind: StatusKind, theme: &Theme) -> ratatui::style::Color {
   }
 }
 
+/// Executes the `wrap_text` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn wrap_text(value: &str, width: usize) -> Vec<String> {
   let width = width.max(1);
   let mut lines = Vec::new();
@@ -124,6 +137,7 @@ fn wrap_text(value: &str, width: usize) -> Vec<String> {
   lines
 }
 
+/// Represents `ConfirmationDialog`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct ConfirmationDialog<'a> {
   pub title: &'a str,
   pub message: &'a str,
@@ -133,11 +147,13 @@ pub struct ConfirmationDialog<'a> {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Represents `ConfirmationState`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct ConfirmationState {
   pub confirm_selected: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ConfirmationOutcome`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum ConfirmationOutcome {
   Pending,
   Confirmed,
@@ -145,6 +161,7 @@ pub enum ConfirmationOutcome {
 }
 
 impl ConfirmationState {
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> ConfirmationOutcome {
     match key {
       KeyCode::Tab | KeyCode::BackTab => {
@@ -166,6 +183,7 @@ impl ConfirmationState {
   }
 }
 
+/// Renders `draw_confirmation` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw_confirmation(
   frame: &mut Frame,
   area: Rect,
@@ -231,6 +249,7 @@ pub fn draw_confirmation(
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `result_maps_to_visible_status_without_colour_only_semantics` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn result_maps_to_visible_status_without_colour_only_semantics() {
     let status = OperationResult::Warning("backend unavailable".into()).status();
     assert_eq!(status.kind, StatusKind::Warning);
@@ -238,6 +257,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `confirmation_navigation_and_safe_default_work` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn confirmation_navigation_and_safe_default_work() {
     let mut state = ConfirmationState::default();
     assert!(!state.confirm_selected);
@@ -252,6 +272,7 @@ mod tests {
     assert_eq!(state.handle(KeyCode::Esc), ConfirmationOutcome::Cancelled);
   }
   #[test]
+  /// Executes the `confirmation_renders_multiline_message_on_separate_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn confirmation_renders_multiline_message_on_separate_rows() {
     use ratatui::{Terminal, backend::TestBackend};
     let theme = argvus_theme::Theme::load();
@@ -293,12 +314,14 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `long_status_is_ellipsized_on_character_boundaries` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn long_status_is_ellipsized_on_character_boundaries() {
     assert_eq!(ellipsize("erro muito longo", 6), "erro …");
     assert_eq!(ellipsize("áudio", 3), "áu…");
   }
 
   #[test]
+  /// Executes the `status_line_count_grows_when_the_width_shrinks` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn status_line_count_grows_when_the_width_shrinks() {
     let status = StatusMessage {
       kind: StatusKind::Warning,
@@ -310,6 +333,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `status_wraps_long_text_into_multiple_lines_without_losing_content` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn status_wraps_long_text_into_multiple_lines_without_losing_content() {
     use ratatui::{Terminal, backend::TestBackend};
     let theme = argvus_theme::Theme::load();

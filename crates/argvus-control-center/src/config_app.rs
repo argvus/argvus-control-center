@@ -1,3 +1,7 @@
+//! Implements `config app` responsibilities in crate `argvus control center`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::sync::Arc;
 
 use argvus_control_center_core::{
@@ -18,6 +22,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
 
+/// Names the type `ConfigOperation`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 type ConfigOperation = Arc<dyn PrivilegedOperation>;
 
 /// The ARGVUS Control Center configuration screen. Currently hosts the
@@ -34,6 +39,7 @@ pub struct ConfigApp {
 }
 
 impl ConfigApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     let executable = std::env::current_exe()
       .map(|path| path.to_string_lossy().into_owned())
@@ -48,6 +54,7 @@ impl ConfigApp {
     )
   }
 
+  /// Constructs `with_operation` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn with_operation(lang: Lang, theme: Theme, operation: ConfigOperation) -> Self {
     let config = AppConfig::load();
     Self {
@@ -62,6 +69,7 @@ impl ConfigApp {
     }
   }
 
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows(&self) -> Vec<String> {
     vec![format!(
       "[{}] {}",
@@ -70,10 +78,12 @@ impl ConfigApp {
     )]
   }
 
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     tr(self.lang, "control_center.configuration").into()
   }
 
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn footer_hints(&self) -> &'static str {
     tr(
       self.lang,
@@ -81,6 +91,7 @@ impl ConfigApp {
     )
   }
 
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     match key {
       KeyCode::Esc | KeyCode::Left => true,
@@ -104,6 +115,7 @@ impl ConfigApp {
     }
   }
 
+  /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
     self.selected = self.selected.min(self.rows().len().saturating_sub(1));
   }
@@ -147,6 +159,7 @@ impl ConfigApp {
     }));
   }
 
+  /// Executes the `persist_failed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn persist_failed(&mut self, text: String) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Warning,
@@ -154,6 +167,7 @@ impl ConfigApp {
     });
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.save_job
@@ -186,6 +200,7 @@ impl ConfigApp {
     changed
   }
 
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, frame: &mut Frame) {
     let area = frame.area();
     let body = shell(
@@ -228,13 +243,17 @@ mod tests {
   use std::sync::atomic::AtomicUsize;
   use std::time::Duration;
 
+  /// Maintains the static state `ENV_TEST_LOCK`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+  /// Maintains the static state `ENV_TEST_SEQUENCE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   static ENV_TEST_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
   #[derive(Default)]
+  /// Represents `RecordingOperation`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   struct RecordingOperation(Mutex<Option<PrivilegedRequest>>);
 
   impl PrivilegedOperation for RecordingOperation {
+    /// Executes the `execute` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
     fn execute(&self, request: &PrivilegedRequest) -> Result<ProcessOutput, String> {
       *self.0.lock().unwrap() = Some(request.clone());
       Ok(ProcessOutput {
@@ -247,14 +266,17 @@ mod tests {
   }
 
   #[derive(Default)]
+  /// Represents `FailingOperation`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   struct FailingOperation;
 
   impl PrivilegedOperation for FailingOperation {
+    /// Executes the `execute` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
     fn execute(&self, _request: &PrivilegedRequest) -> Result<ProcessOutput, String> {
       Err("simulated denial".into())
     }
   }
 
+  /// Constructs `with_config` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn with_config(on_icons: bool) -> (PathBuf, PathBuf) {
     let sequence = ENV_TEST_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
@@ -275,6 +297,7 @@ mod tests {
     (dir, path)
   }
 
+  /// Executes the `drain_poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn drain_poll(app: &mut ConfigApp) {
     for _ in 0..200 {
       if app.poll() {
@@ -286,6 +309,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `toggling_icons_flips_the_session_and_requests_a_privileged_save` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggling_icons_flips_the_session_and_requests_a_privileged_save() {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
@@ -317,6 +341,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `failed_save_reports_applied_this_session_warning` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn failed_save_reports_applied_this_session_warning() {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
@@ -339,6 +364,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `checkbox_label_tracks_icon_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn checkbox_label_tracks_icon_state() {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
@@ -351,6 +377,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `escape_leaves_and_enter_toggles` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn escape_leaves_and_enter_toggles() {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);
@@ -368,6 +395,7 @@ mod tests {
   }
 
   #[test]
+  /// Renders `draws_the_checkbox_screen` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draws_the_checkbox_screen() {
     let _guard = ENV_TEST_LOCK.lock().unwrap();
     let (dir, path) = with_config(true);

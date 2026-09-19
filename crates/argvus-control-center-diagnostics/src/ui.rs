@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center diagnostics`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{backend, model::*};
 use argvus_control_center_core::{
   capabilities::Capabilities,
@@ -13,6 +17,7 @@ use argvus_tui::{
 use crossterm::event::KeyCode;
 use ratatui::{Frame, text::Line};
 
+/// Represents `DiagnosticsApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct DiagnosticsApp {
   pub page: DiagnosticPage,
   checks: Vec<DiagnosticCheck>,
@@ -25,6 +30,7 @@ pub struct DiagnosticsApp {
   pub theme: Theme,
 }
 impl DiagnosticsApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, cap: Capabilities) -> Self {
     let mut a = Self {
       page: DiagnosticPage::Home,
@@ -40,9 +46,11 @@ impl DiagnosticsApp {
     a.refresh();
     a
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh()
   }
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn refresh(&mut self) {
     if self.job.is_some() {
       return;
@@ -59,6 +67,7 @@ impl DiagnosticsApp {
       text: tr(self.lang, "control_center.running_checks").into(),
     });
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let Some(job) = &self.job else {
       return false;
@@ -83,9 +92,11 @@ impl DiagnosticsApp {
       false
     }
   }
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn busy(&self) -> bool {
     self.job.is_some()
   }
+  /// Executes the `len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn len(&self) -> usize {
     match self.page {
       DiagnosticPage::Home => self.dashboard_rows().len(),
@@ -93,6 +104,7 @@ impl DiagnosticsApp {
       _ => self.category_checks().count(),
     }
   }
+  /// Executes the `category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn category(&self) -> &str {
     match self.page {
       DiagnosticPage::Services => "services",
@@ -107,6 +119,7 @@ impl DiagnosticsApp {
       _ => "system",
     }
   }
+  /// Executes the `category_checks` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn category_checks(&self) -> impl Iterator<Item = (usize, &DiagnosticCheck)> {
     let category = self.category();
     self
@@ -115,12 +128,14 @@ impl DiagnosticsApp {
       .enumerate()
       .filter(move |(_, check)| check.category == category)
   }
+  /// Executes the `detail_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_index(&self) -> usize {
     match self.page {
       DiagnosticPage::Detail(index) => index,
       _ => 0,
     }
   }
+  /// Executes the `back_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn back_page(&self) -> DiagnosticPage {
     match self.page {
       DiagnosticPage::Detail(index) => self
@@ -132,6 +147,7 @@ impl DiagnosticsApp {
       _ => DiagnosticPage::Home,
     }
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if matches!(key, KeyCode::Esc | KeyCode::Left) {
       if self.page == DiagnosticPage::Home {
@@ -154,6 +170,7 @@ impl DiagnosticsApp {
     }
     false
   }
+  /// Executes the `open_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_selected(&mut self) {
     match self.page {
       DiagnosticPage::Home => {
@@ -192,6 +209,7 @@ impl DiagnosticsApp {
       _ => {}
     }
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.diagnostics");
     match self.page {
@@ -210,6 +228,7 @@ impl DiagnosticsApp {
       _ => format!("{root} > {}", category_label(self.lang, self.category())),
     }
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     match self.page {
       DiagnosticPage::Home => tr(
@@ -225,6 +244,7 @@ impl DiagnosticsApp {
       ),
     }
   }
+  /// Executes the `dashboard_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn dashboard_rows(&self) -> Vec<String> {
     let all: Vec<&DiagnosticCheck> = self.checks.iter().collect();
     let summary = format!(
@@ -282,6 +302,7 @@ impl DiagnosticsApp {
       ),
     ]
   }
+  /// Executes the `dashboard_entry` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn dashboard_entry(&self, category: &str, icon: &str, label: &'static str) -> String {
     let checks: Vec<&DiagnosticCheck> = self
       .checks
@@ -295,6 +316,7 @@ impl DiagnosticsApp {
       self.entry_status(&checks)
     )
   }
+  /// Executes the `entry_status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn entry_status(&self, checks: &[&DiagnosticCheck]) -> String {
     if checks.is_empty() {
       tr(self.lang, "control_center.no_data").into()
@@ -307,6 +329,7 @@ impl DiagnosticsApp {
       )
     }
   }
+  /// Executes the `preview` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn preview(&self, checks: &[&DiagnosticCheck]) -> String {
     let errors = checks
       .iter()
@@ -326,6 +349,7 @@ impl DiagnosticsApp {
       tr(self.lang, "control_center.ok").into()
     }
   }
+  /// Executes the `category_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn category_rows(&self) -> Vec<String> {
     self
       .category_checks()
@@ -339,6 +363,7 @@ impl DiagnosticsApp {
       })
       .collect()
   }
+  /// Executes the `summary_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn summary_rows(&self) -> Vec<String> {
     let errors = self
       .checks
@@ -405,6 +430,7 @@ impl DiagnosticsApp {
     }
     rows
   }
+  /// Executes the `detail_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_rows(&self, index: usize) -> Vec<String> {
     let Some(check) = self.checks.get(index) else {
       return vec![tr(self.lang, "control_center.check_not_found").into()];
@@ -452,6 +478,7 @@ impl DiagnosticsApp {
       ),
     ]
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let body = shell(
       frame,
@@ -504,6 +531,7 @@ impl DiagnosticsApp {
   }
 }
 
+/// Executes the `page_for_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn page_for_category(category: &str) -> Option<DiagnosticPage> {
   match category {
     "services" => Some(DiagnosticPage::Services),
@@ -518,6 +546,7 @@ fn page_for_category(category: &str) -> Option<DiagnosticPage> {
     _ => None,
   }
 }
+/// Executes the `severity_glyph` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn severity_glyph(severity: Severity) -> &'static str {
   match severity {
     Severity::Error => "✖",
@@ -527,6 +556,7 @@ fn severity_glyph(severity: Severity) -> &'static str {
     Severity::Ok => "✔",
   }
 }
+/// Executes the `severity_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn severity_label(lang: Lang, severity: Severity) -> &'static str {
   match severity {
     Severity::Error => tr(lang, "control_center.error"),
@@ -536,6 +566,7 @@ fn severity_label(lang: Lang, severity: Severity) -> &'static str {
     Severity::Ok => tr(lang, "control_center.ok"),
   }
 }
+/// Executes the `category_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn category_label(lang: Lang, category: &str) -> &'static str {
   match category {
     "services" => tr(lang, "control_center.services"),
@@ -550,6 +581,7 @@ fn category_label(lang: Lang, category: &str) -> &'static str {
     _ => tr(lang, "control_center.system"),
   }
 }
+/// Executes the `category_icon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn category_icon(category: &str) -> &'static str {
   match category {
     "services" => argvus_tui::icons::SETTINGS,
@@ -564,6 +596,7 @@ fn category_icon(category: &str) -> &'static str {
     _ => argvus_tui::icons::MONITOR,
   }
 }
+/// Executes the `completion_status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn completion_status(lang: Lang, checks: &[DiagnosticCheck]) -> StatusMessage {
   let errors = checks
     .iter()
@@ -600,6 +633,7 @@ mod tests {
   use super::*;
   use ratatui::{Terminal, backend::TestBackend};
 
+  /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app() -> DiagnosticsApp {
     let mut app = DiagnosticsApp::new(
       Lang::for_locale("en-US"),
@@ -640,6 +674,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_home_dashboard_lists_categories_with_previews` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_home_dashboard_lists_categories_with_previews() {
     let app = app();
     let rows = app.dashboard_rows();
@@ -659,6 +694,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_category_rows_render_severity_glyphs` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_category_rows_render_severity_glyphs() {
     let mut app = app();
     app.page = DiagnosticPage::Services;
@@ -670,6 +706,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_detail_rows_render_aligned_sections` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_detail_rows_render_aligned_sections() {
     let app = app();
     let rows = app.detail_rows(0);
@@ -686,6 +723,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_summary_rows_include_counters_and_system_checks` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_summary_rows_include_counters_and_system_checks() {
     let app = app();
     let rows = app.summary_rows();
@@ -696,6 +734,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_home_opens_summary_and_escapes_back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_home_opens_summary_and_escapes_back() {
     let mut app = app();
     app.handle(KeyCode::Enter);
@@ -709,6 +748,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_category_details_back_out_one_level` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_category_details_back_out_one_level() {
     let mut app = app();
     app.page = DiagnosticPage::Services;
@@ -721,6 +761,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_uses_shared_chrome_and_contextual_footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_uses_shared_chrome_and_contextual_footer() {
     let mut app = app();
     let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
@@ -751,6 +792,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_detail_footer_and_breadcrumb_follow_the_parent_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_detail_footer_and_breadcrumb_follow_the_parent_category() {
     let app = app();
     assert_eq!(app.breadcrumb(), "Diagnostics");
@@ -761,6 +803,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `completion_status_reflects_worst_severity` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn completion_status_reflects_worst_severity() {
     assert_eq!(
       completion_status(Lang::for_locale("en-US"), &[]).kind,

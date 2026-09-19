@@ -1,9 +1,14 @@
+//! Implements keyboard-binding defaults and overrides in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, path::PathBuf, process::Command};
 
 use argvus_i18n::Lang;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Represents `Binding`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Binding {
   pub id: String,
   pub category: String,
@@ -21,42 +26,51 @@ pub struct Binding {
   #[serde(default)]
   pub enabled: bool,
 }
+/// Executes the `default_true` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn default_true() -> bool {
   true
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents `Manifest`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct Manifest {
   version: u32,
   bindings: Vec<Binding>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Represents `Overrides`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Overrides {
   pub version: u32,
   #[serde(default)]
   pub keybindings: BTreeMap<String, Override>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Represents `Override`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Override {
   pub keys: Option<String>,
   pub enabled: Option<bool>,
 }
 
+/// Executes the `manifest_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn manifest_path() -> PathBuf {
   std::env::var_os("ARGVUS_SYSTEM_CONFIG")
     .map(PathBuf::from)
     .unwrap_or_else(|| PathBuf::from("/usr/share/argvus"))
     .join("hyprland/keybindings.json")
 }
+/// Executes the `config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn config_path() -> PathBuf {
   crate::config::paths::argvus_config_home().join("keybindings.toml")
 }
+/// Executes the `generated_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn generated_path() -> PathBuf {
   crate::config::paths::argvus_config_home().join("generated/hypr/keybindings.lua")
 }
+/// Executes the `generated_cheatsheet_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn generated_cheatsheet_path() -> PathBuf {
   crate::config::paths::argvus_config_home().join("generated/hypr/keybindings.txt")
 }
 
+/// Executes the `cheatsheet_description` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
   let portuguese = lang.locale().starts_with("pt");
   if let Some(number) = binding.id.strip_prefix("workspace.switch.") {
@@ -214,6 +228,7 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
     description.0.to_string()
   })
 }
+/// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load() -> Vec<Binding> {
   let Ok(raw) = fs::read_to_string(manifest_path()) else {
     return Vec::new();
@@ -244,6 +259,7 @@ pub fn load() -> Vec<Binding> {
     })
     .collect()
 }
+/// Executes the `normalize_keys` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn normalize_keys(value: &str) -> Result<String, String> {
   let mut parts: Vec<String> = value
     .split('+')
@@ -322,6 +338,7 @@ pub fn normalize_keys(value: &str) -> Result<String, String> {
   })
 }
 
+/// Executes the `display_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn display_key(key: &str) -> String {
   match key {
     "slash" => "/".into(),
@@ -355,9 +372,11 @@ pub fn display_key(key: &str) -> String {
     other => other.into(),
   }
 }
+/// Executes the `conflicts` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn conflicts(bindings: &[Binding], id: &str, keys: &str) -> Vec<String> {
   conflicts_in_context(bindings, id, keys, "", "")
 }
+/// Executes the `conflicts_in_context` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn conflicts_in_context(
   bindings: &[Binding],
   id: &str,
@@ -380,6 +399,7 @@ pub fn conflicts_in_context(
     .map(|b| b.id.clone())
     .collect()
 }
+/// Applies the `save_override` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn save_override(
   id: &str,
   keys: Option<String>,
@@ -422,6 +442,7 @@ pub fn save_override(
   fs::rename(tmp, target).map_err(|e| e.to_string())?;
   generate(bindings)
 }
+/// Executes the `restore_all` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn restore_all(bindings: &[Binding]) -> Result<(), String> {
   let p = config_path();
   if p.exists() {
@@ -429,6 +450,7 @@ pub fn restore_all(bindings: &[Binding]) -> Result<(), String> {
   }
   generate(bindings)
 }
+/// Executes the `restore` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn restore(id: &str, bindings: &[Binding]) -> Result<(), String> {
   let mut file = fs::read_to_string(config_path())
     .ok()
@@ -444,6 +466,7 @@ pub fn restore(id: &str, bindings: &[Binding]) -> Result<(), String> {
   .map_err(|e| e.to_string())?;
   generate(bindings)
 }
+/// Executes the `generate` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn generate(bindings: &[Binding]) -> Result<(), String> {
   let overrides = fs::read_to_string(config_path())
     .ok()
@@ -504,6 +527,7 @@ pub fn generate(bindings: &[Binding]) -> Result<(), String> {
   fs::write(&cheat_tmp, cheatsheet).map_err(|e| e.to_string())?;
   fs::rename(cheat_tmp, cheat_path).map_err(|e| e.to_string())
 }
+/// Executes the `display_keys` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn display_keys(keys: &str) -> String {
   let mut modifiers = Vec::new();
   let mut key = "";
@@ -534,6 +558,7 @@ pub fn display_keys(keys: &str) -> String {
   }
   output.join(" + ")
 }
+/// Executes the `defaults` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn defaults() -> Vec<Binding> {
   let Ok(raw) = fs::read_to_string(manifest_path()) else {
     return Vec::new();
@@ -542,6 +567,7 @@ fn defaults() -> Vec<Binding> {
     .map(|m| m.bindings)
     .unwrap_or_default()
 }
+/// Executes the `lua_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn lua_key(s: &str) -> String {
   format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -550,6 +576,7 @@ fn lua_key(s: &str) -> String {
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `canonicalizes_modifiers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn canonicalizes_modifiers() {
     assert_eq!(
       normalize_keys("shift + super + q").unwrap(),
@@ -557,14 +584,17 @@ mod tests {
     );
   }
   #[test]
+  /// Executes the `rejects_empty` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rejects_empty() {
     assert!(normalize_keys("CTRL +").is_err());
   }
   #[test]
+  /// Executes the `deduplicates_modifiers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn deduplicates_modifiers() {
     assert_eq!(normalize_keys("SUPER + super + q").unwrap(), "SUPER + Q");
   }
   #[test]
+  /// Executes the `canonicalizes_symbols_and_special_keys` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn canonicalizes_symbols_and_special_keys() {
     for (raw, expected) in [
       ("/", "slash"),
@@ -588,6 +618,7 @@ mod tests {
     }
   }
   #[test]
+  /// Executes the `display_keys_hides_internal_keysyms` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn display_keys_hides_internal_keysyms() {
     assert_eq!(display_keys("SUPER + SHIFT + slash"), "SUPER + Shift + /");
     assert_eq!(

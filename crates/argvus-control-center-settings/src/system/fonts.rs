@@ -1,15 +1,21 @@
+//! Implements font discovery and configuration in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::collections::BTreeSet;
 use std::process::Command;
 
 use crate::error::SettingsError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `FontEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct FontEntry {
   pub family: String,
   pub style: String,
 }
 
 impl FontEntry {
+  /// Executes the `display_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn display_name(&self) -> String {
     if self.style.eq_ignore_ascii_case("regular") || self.style.is_empty() {
       self.family.clone()
@@ -19,6 +25,7 @@ impl FontEntry {
   }
 }
 
+/// Executes the `list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list() -> Result<Vec<FontEntry>, SettingsError> {
   let output = Command::new("fc-list")
     .args(["--format", "%{family}\t%{style}\n"])
@@ -60,6 +67,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `regular_style_uses_family_only` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn regular_style_uses_family_only() {
     let font = FontEntry {
       family: "Noto Sans".into(),
@@ -69,6 +77,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `named_style_is_visible` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn named_style_is_visible() {
     let font = FontEntry {
       family: "Noto Sans".into(),

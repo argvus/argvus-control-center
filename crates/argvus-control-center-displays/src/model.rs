@@ -1,3 +1,7 @@
+//! Implements domain state and models consumed by the UI in crate `argvus control center displays`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayPage {
   Home,
@@ -13,6 +17,7 @@ pub enum DisplayPage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `PromptGoal`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PromptGoal {
   /// Free-form "x,y" position editor for a monitor index.
   Position(usize),
@@ -25,6 +30,7 @@ pub enum PromptGoal {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `MonitorSetting`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum MonitorSetting {
   Resolution,
   RefreshRate,
@@ -44,6 +50,7 @@ pub enum MonitorSetting {
 }
 
 impl MonitorSetting {
+  /// Executes the `picker_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn picker_rows(lang: argvus_i18n::Lang) -> &'static [MonitorSetting] {
     let _ = lang;
     &[
@@ -67,6 +74,7 @@ impl MonitorSetting {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents `Mode`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Mode {
   pub id: i64,
   pub width: u32,
@@ -76,6 +84,7 @@ pub struct Mode {
 }
 
 impl Mode {
+  /// Executes the `label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn label(&self) -> String {
     format!(
       "{}x{} @ {:.3} Hz  ·  {} bpp",
@@ -83,6 +92,7 @@ impl Mode {
     )
   }
 
+  /// Executes the `method_specific` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn method_specific(&self) -> String {
     format!(
       "{}x{}@{}",
@@ -93,6 +103,7 @@ impl Mode {
   }
 }
 
+/// Executes the `format_rate` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn format_rate(rate: f64) -> String {
   let rounded = (rate * 1000.0).round() / 1000.0;
   if rounded.fract() < 0.0005 {
@@ -103,6 +114,7 @@ fn format_rate(rate: f64) -> String {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+/// Represents `MonitorInfo`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct MonitorInfo {
   pub make: String,
   pub model: String,
@@ -117,6 +129,7 @@ pub struct MonitorInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents `Monitor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Monitor {
   pub id: i32,
   pub name: String,
@@ -200,6 +213,7 @@ impl Monitor {
     body
   }
 
+  /// Executes the `mode_id_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn mode_id_args(&self, mode: &Mode) -> String {
     format!(
       "{}, #{:04X}, {}x{}, {}",
@@ -207,6 +221,7 @@ impl Monitor {
     )
   }
 
+  /// Executes the `resolution_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn resolution_args(&self, width: u32, height: u32, rate: f64) -> String {
     format!(
       "{}, {}x{}@{}, {}x{}, {}",
@@ -220,18 +235,22 @@ impl Monitor {
     )
   }
 
+  /// Executes the `position_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn position_args(&self, x: i32, y: i32) -> String {
     format!("{}, auto, {}x{}, auto", self.name, x, y)
   }
 
+  /// Executes the `scale_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn scale_args(&self, scale: f64) -> String {
     format!("{}, auto, {}x{}, {}", self.name, self.x, self.y, scale)
   }
 
+  /// Executes the `transform_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn transform_args(&self, transform: i32) -> String {
     format!("{}, auto, auto, auto, transform, {}", self.name, transform)
   }
 
+  /// Executes the `vrr_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn vrr_args(&self, vrr: i32) -> String {
     format!(
       "{}, auto, {}x{}, {}, vrr, {}",
@@ -239,6 +258,7 @@ impl Monitor {
     )
   }
 
+  /// Executes the `hdr_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn hdr_args(&self, hdr: i32) -> String {
     format!(
       "{}, auto, {}x{}, {}, supports_hdr, {}",
@@ -246,26 +266,32 @@ impl Monitor {
     )
   }
 
+  /// Executes the `mirror_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn mirror_args(&self, mirror: &str) -> String {
     format!("{}, auto, auto, auto, mirror, {}", self.name, mirror)
   }
 
+  /// Executes the `disabled_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn disabled_args(&self) -> String {
     format!("{}, disabled", self.name)
   }
 
+  /// Executes the `bitdepth_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn bitdepth_args(&self, bitdepth: i32) -> String {
     format!("{}, auto, auto, auto, bitdepth, {}", self.name, bitdepth)
   }
 
+  /// Executes the `enabled_with_current_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn enabled_with_current_args(&self) -> String {
     self.keyword_args()
   }
 
+  /// Checks the condition represented by `has_10bit` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn has_10bit(&self) -> bool {
     self.modes.iter().any(|mode| mode.bit_depth >= 10) || self.info.current_format.contains("10")
   }
 
+  /// Executes the `info_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn info_rows(&self) -> Vec<(String, String)> {
     let info = &self.info;
     let mut rows = Vec::new();
@@ -315,6 +341,7 @@ pub struct PersistedMonitor {
 }
 
 impl PersistedMonitor {
+  /// Executes the `position_coords` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn position_coords(&self) -> Option<(i32, i32)> {
     let (x, y) = self.position.as_deref()?.split_once('x')?;
     Some((x.parse().ok()?, y.parse().ok()?))
@@ -322,6 +349,7 @@ impl PersistedMonitor {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+/// Represents `PersistedConfig`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PersistedConfig {
   pub primary_monitor: Option<String>,
   pub monitors: Vec<(String, PersistedMonitor)>,
@@ -330,6 +358,7 @@ pub struct PersistedConfig {
 }
 
 impl PersistedConfig {
+  /// Executes the `persisted` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn persisted(&self, name: &str) -> PersistedMonitor {
     self
       .monitors
@@ -339,6 +368,7 @@ impl PersistedConfig {
       .unwrap_or_default()
   }
 
+  /// Applies the `set_monitor` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn set_monitor(&mut self, name: &str, config: PersistedMonitor) {
     let mut entries = std::mem::take(&mut self.monitors);
     if let Some(entry) = entries.iter_mut().find(|(existing, _)| existing == name) {
@@ -350,6 +380,7 @@ impl PersistedConfig {
     self.monitors = entries;
   }
 
+  /// Executes the `remove_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn remove_monitor(&mut self, name: &str) {
     self.monitors.retain(|(existing, _)| existing != name);
     self.workspaces.retain(|(monitor, _)| monitor != name);
@@ -358,6 +389,7 @@ impl PersistedConfig {
     }
   }
 
+  /// Executes the `workspaces_of` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn workspaces_of(&self, name: &str) -> Vec<u32> {
     self
       .workspaces
@@ -367,6 +399,7 @@ impl PersistedConfig {
       .unwrap_or_default()
   }
 
+  /// Applies the `set_workspaces` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn set_workspaces(&mut self, name: &str, ids: Vec<u32>) {
     let mut entries = std::mem::take(&mut self.workspaces);
     if let Some(entry) = entries.iter_mut().find(|(monitor, _)| monitor == name) {
@@ -379,6 +412,7 @@ impl PersistedConfig {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents `MonitorProfile`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct MonitorProfile {
   pub name: String,
   pub apply_wallpapers: bool,
@@ -386,6 +420,7 @@ pub struct MonitorProfile {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+/// Represents `DisplayState`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct DisplayState {
   /// Last applied primary monitor, readable by other ARGVUS components.
   pub primary_monitor: Option<String>,
@@ -394,11 +429,13 @@ pub struct DisplayState {
 }
 
 impl DisplayState {
+  /// Executes the `active_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn active_profile(&self) -> Option<&MonitorProfile> {
     let name = self.active_profile.as_deref()?;
     self.profiles.iter().find(|profile| profile.name == name)
   }
 
+  /// Executes the `profile_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn profile_index(&self, name: &str) -> Option<usize> {
     self
       .profiles
@@ -411,6 +448,7 @@ impl DisplayState {
 mod tests {
   use super::*;
 
+  /// Executes the `monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn monitor(name: &str) -> Monitor {
     Monitor {
       id: 0,
@@ -449,6 +487,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `mode_labels_show_fractional_refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn mode_labels_show_fractional_refresh() {
     let mode = Mode {
       id: 2,
@@ -462,6 +501,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `persisted_config_resolves_per_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn persisted_config_resolves_per_monitor() {
     let config = PersistedConfig {
       primary_monitor: Some("eDP-1".into()),
@@ -479,6 +519,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `fractional_rates_keep_precision` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn fractional_rates_keep_precision() {
     assert_eq!(format_rate(60.0), "60");
     assert_eq!(format_rate(59.999), "59.999");
@@ -486,6 +527,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `persisted_monitor_parses_positions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn persisted_monitor_parses_positions() {
     let persisted = PersistedMonitor {
       position: Some("1920x0".into()),
@@ -495,6 +537,7 @@ mod tests {
   }
 
   #[test]
+  /// Applies the `set_and_remove_monitors_keep_lists_sorted` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn set_and_remove_monitors_keep_lists_sorted() {
     let mut config = PersistedConfig::default();
     config.set_monitor("HDMI-A-1", PersistedMonitor::default());
@@ -506,6 +549,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `ten_bit_detection_covers_modes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn ten_bit_detection_covers_modes() {
     assert!(monitor("eDP-1").has_10bit());
     let mut plain = monitor("eDP-1");
@@ -521,6 +565,7 @@ mod tests {
   }
 
   #[test]
+  /// Applies the `apply_args_replays_persisted_fields` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_args_replays_persisted_fields() {
     let mon = monitor("eDP-1");
     let persisted = PersistedMonitor {
@@ -542,6 +587,7 @@ mod tests {
   }
 
   #[test]
+  /// Applies the `apply_args_appends_mirror_clear_when_active` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_args_appends_mirror_clear_when_active() {
     let mut mon = monitor("eDP-1");
     mon.info.mirror_of = Some("DP-1".into());
@@ -553,6 +599,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `workspaces_round_trip_per_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn workspaces_round_trip_per_monitor() {
     let mut config = PersistedConfig::default();
     config.set_workspaces("eDP-1", vec![1, 2, 3]);
@@ -562,6 +609,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `state_resolves_the_active_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn state_resolves_the_active_profile() {
     let state = DisplayState {
       primary_monitor: Some("eDP-1".into()),
@@ -578,6 +626,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `picker_rows_cover_the_documented_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_rows_cover_the_documented_settings() {
     let rows = MonitorSetting::picker_rows(argvus_i18n::Lang::for_locale("pt-BR"));
     assert!(rows.contains(&MonitorSetting::Workspaces));

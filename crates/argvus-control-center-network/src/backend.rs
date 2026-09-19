@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center network`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::model::*;
 use argvus_control_center_core::{
   capabilities::Capabilities,
@@ -12,6 +16,7 @@ use std::{
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+/// Defines `NetworkError`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum NetworkError {
   #[error("network backend unavailable")]
   BackendUnavailable,
@@ -25,17 +30,20 @@ pub enum NetworkError {
   Command(String),
 }
 
+/// Represents `NetworkBackend`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct NetworkBackend<R> {
   pub runner: R,
   pub capabilities: Capabilities,
 }
 impl<R: ProcessRunner> NetworkBackend<R> {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(runner: R, capabilities: Capabilities) -> Self {
     Self {
       runner,
       capabilities,
     }
   }
+  /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn run(&self, program: &str, args: &[&str], timeout: Duration) -> Result<String, NetworkError> {
     let request = args
       .iter()
@@ -52,6 +60,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
     }
     Ok(terminal_text(&String::from_utf8_lossy(&output.stdout)))
   }
+  /// Retrieves data for `snapshot` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn snapshot(&self, wifi_scan: bool) -> Result<NetworkSnapshot, NetworkError> {
     if !self.capabilities.has_nmcli {
       return Err(NetworkError::BackendUnavailable);
@@ -156,6 +165,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
     .into();
     Ok(snapshot)
   }
+  /// Executes the `connect_wifi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn connect_wifi(&self, ssid: &str, password: Option<&str>) -> Result<(), NetworkError> {
     validate_name(ssid)?;
     let mut request = ProcessRequest::new("nmcli")
@@ -177,6 +187,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
     }
     Ok(())
   }
+  /// Executes the `connection_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn connection_action(&self, name: &str, action: &str) -> Result<(), NetworkError> {
     validate_name(name)?;
     if !matches!(action, "up" | "down" | "delete") {
@@ -190,6 +201,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
       )
       .map(|_| ())
   }
+  /// Executes the `device_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn device_action(&self, device: &str, action: &str) -> Result<(), NetworkError> {
     validate_name(device)?;
     if !matches!(action, "connect" | "disconnect") {
@@ -203,6 +215,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
       )
       .map(|_| ())
   }
+  /// Applies the `set_wifi_enabled` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn set_wifi_enabled(&self, enabled: bool) -> Result<(), NetworkError> {
     self
       .run(
@@ -212,6 +225,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
       )
       .map(|_| ())
   }
+  /// Applies the `set_dns` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn set_dns(
     &self,
     connection: &str,
@@ -251,6 +265,7 @@ impl<R: ProcessRunner> NetworkBackend<R> {
       .map(|_| ())?;
     self.connection_action(connection, "up")
   }
+  /// Executes the `radio_wifi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn radio_wifi(&self) -> Option<bool> {
     self
       .run("nmcli", &["radio", "wifi"], Duration::from_secs(5))
@@ -263,12 +278,16 @@ impl<R: ProcessRunner> NetworkBackend<R> {
   }
 }
 
+/// Defines the constant `DEVICE_STATUS_FIELDS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const DEVICE_STATUS_FIELDS: &str = "DEVICE,TYPE,STATE,CONNECTION";
+/// Defines the constant `DEVICE_DETAIL_FIELDS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const DEVICE_DETAIL_FIELDS: &str = "GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION,GENERAL.HWADDR,GENERAL.MTU,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,IP6.ADDRESS,IP6.GATEWAY,IP6.DNS";
 
+/// Converts input data into `parse_field` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_field(value: &str) -> String {
   terminal_text(value).trim().to_string()
 }
+/// Executes the `split_nmcli` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn split_nmcli(line: &str) -> Vec<String> {
   let mut out = Vec::new();
   let mut cur = String::new();
@@ -292,6 +311,7 @@ pub fn split_nmcli(line: &str) -> Vec<String> {
   out.push(cur);
   out.into_iter().map(|s| parse_field(&s)).collect()
 }
+/// Converts input data into `parse_devices` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_devices(input: &str) -> Vec<InterfaceInfo> {
   input
     .lines()
@@ -320,6 +340,7 @@ pub fn parse_devices(input: &str) -> Vec<InterfaceInfo> {
     .collect()
 }
 
+/// Applies the `apply_device_details` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_device_details(interface: &mut InterfaceInfo, input: &str) {
   for line in input.lines() {
     let Some((key, raw)) = line.split_once(':') else {
@@ -345,6 +366,7 @@ pub fn apply_device_details(interface: &mut InterfaceInfo, input: &str) {
   }
 }
 
+/// Executes the `dns_from_interfaces` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn dns_from_interfaces(interfaces: &[InterfaceInfo]) -> Option<DnsInfo> {
   let mut servers = interfaces
     .iter()
@@ -358,6 +380,7 @@ fn dns_from_interfaces(interfaces: &[InterfaceInfo]) -> Option<DnsInfo> {
     ..Default::default()
   })
 }
+/// Converts input data into `parse_wifi` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_wifi(input: &str) -> Vec<WifiNetwork> {
   let mut out = Vec::new();
   for line in input.lines() {
@@ -386,6 +409,7 @@ pub fn parse_wifi(input: &str) -> Vec<WifiNetwork> {
   }
   out
 }
+/// Converts input data into `parse_vpn` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_vpn(input: &str) -> Vec<VpnConnection> {
   input
     .lines()
@@ -402,12 +426,15 @@ pub fn parse_vpn(input: &str) -> Vec<VpnConnection> {
     })
     .collect()
 }
+/// Executes the `valid_ipv4` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn valid_ipv4(value: &str) -> bool {
   value.parse::<Ipv4Addr>().is_ok()
 }
+/// Executes the `valid_ipv6` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn valid_ipv6(value: &str) -> bool {
   value.parse::<Ipv6Addr>().is_ok()
 }
+/// Executes the `validate_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn validate_name(value: &str) -> Result<(), NetworkError> {
   if value.is_empty() || value.chars().any(|c| c.is_control()) {
     Err(NetworkError::InvalidInput)
@@ -415,12 +442,14 @@ fn validate_name(value: &str) -> Result<(), NetworkError> {
     Ok(())
   }
 }
+/// Retrieves data for `read_text` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_text(path: &str) -> Option<String> {
   std::fs::read_to_string(path)
     .ok()
     .map(|v| terminal_text(&v).trim().to_string())
     .filter(|v| !v.is_empty())
 }
+/// Retrieves data for `read_dns` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_dns<R: ProcessRunner>(backend: &NetworkBackend<R>) -> DnsInfo {
   if backend.capabilities.has_resolvectl
     && let Ok(text) = backend.run("resolvectl", &["dns"], Duration::from_secs(5))
@@ -448,7 +477,9 @@ fn read_dns<R: ProcessRunner>(backend: &NetworkBackend<R>) -> DnsInfo {
     ..Default::default()
   }
 }
+/// Executes the `proxy_from_environment` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn proxy_from_environment() -> ProxyInfo {
+  /// Executes the `val` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn val(names: &[&str]) -> Option<String> {
     names
       .iter()
@@ -462,6 +493,7 @@ fn proxy_from_environment() -> ProxyInfo {
     no_proxy: val(&["NO_PROXY", "no_proxy"]),
   }
 }
+/// Executes the `redact_proxy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn redact_proxy(value: &str) -> String {
   if let Some(at) = value.rfind('@')
     && let Some(scheme) = value.find("://")
@@ -477,8 +509,10 @@ mod tests {
   use std::sync::Mutex;
 
   #[derive(Default)]
+  /// Represents `HostShapeRunner`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   struct HostShapeRunner(Mutex<Vec<ProcessRequest>>);
   impl ProcessRunner for HostShapeRunner {
+    /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
     fn run(&self, request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
       self.0.lock().unwrap().push(request.clone());
       let joined = request.args.join(" ");
@@ -504,6 +538,7 @@ mod tests {
     }
   }
   #[test]
+  /// Executes the `nmcli_escaping` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn nmcli_escaping() {
     assert_eq!(
       split_nmcli("wlan0:wifi:connected:Home\\:5G"),
@@ -511,12 +546,14 @@ mod tests {
     )
   }
   #[test]
+  /// Executes the `wifi_deduplicates` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn wifi_deduplicates() {
     let x = parse_wifi("*:Home:80:WPA2:2412:yes\n:Home:40:WPA2:5180:no");
     assert_eq!(x.len(), 1);
     assert_eq!(x[0].signal, Some(80));
   }
   #[test]
+  /// Executes the `real_nmcli_status_and_details_are_separate_and_optional` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn real_nmcli_status_and_details_are_separate_and_optional() {
     let mut devices = parse_devices(
       "br0:bridge:connected:br0\neno1:ethernet:connected:br0-ethernet\nlo:loopback:connected (externally):lo",
@@ -533,6 +570,7 @@ mod tests {
     assert!(devices[1].ipv4.is_empty());
   }
   #[test]
+  /// Retrieves data for `snapshot_uses_valid_status_fields_and_per_device_details` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn snapshot_uses_valid_status_fields_and_per_device_details() {
     let capabilities = Capabilities {
       has_nmcli: true,
@@ -570,8 +608,10 @@ mod tests {
   }
 
   #[derive(Default)]
+  /// Represents `FailingDetailRunner`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   struct FailingDetailRunner(Mutex<Vec<ProcessRequest>>);
   impl ProcessRunner for FailingDetailRunner {
+    /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
     fn run(&self, request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
       self.0.lock().unwrap().push(request.clone());
       let joined = request.args.join(" ");
@@ -602,6 +642,7 @@ mod tests {
   }
 
   #[test]
+  /// Retrieves data for `snapshot_ignores_failed_per_device_queries_and_stays_complete` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn snapshot_ignores_failed_per_device_queries_and_stays_complete() {
     let capabilities = Capabilities {
       has_nmcli: true,
@@ -619,12 +660,14 @@ mod tests {
     assert_eq!(snapshot.dns.source, "NetworkManager");
   }
   #[test]
+  /// Executes the `addresses_validate` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn addresses_validate() {
     assert!(valid_ipv4("192.0.2.1"));
     assert!(!valid_ipv4("no"));
     assert!(valid_ipv6("2001:db8::1"));
   }
   #[test]
+  /// Executes the `proxy_redacts_credentials` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn proxy_redacts_credentials() {
     assert_eq!(
       redact_proxy("http://user:pass@example.test:8080"),

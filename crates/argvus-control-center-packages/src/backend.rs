@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center packages`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::model::*;
 use argvus_control_center_core::{
   capabilities::{Capabilities, resolve_executable},
@@ -11,6 +15,7 @@ use std::{
 };
 use thiserror::Error;
 #[derive(Debug, Error)]
+/// Defines `PackageError`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PackageError {
   #[error("pacman is unavailable")]
   BackendUnavailable,
@@ -25,6 +30,7 @@ pub enum PackageError {
   #[error("invalid reflector option")]
   InvalidReflectorOption,
 }
+/// Represents `PackageBackend`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PackageBackend<R> {
   pub runner: R,
   pub capabilities: Capabilities,
@@ -34,6 +40,7 @@ pub struct PackageBackend<R> {
   pacman: String,
 }
 impl<R: ProcessRunner> PackageBackend<R> {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(runner: R, capabilities: Capabilities) -> Self {
     let pacman = resolve_executable("pacman")
       .map(|path| path.to_string_lossy().into_owned())
@@ -44,6 +51,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
       pacman,
     }
   }
+  /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn run(&self, args: &[&str]) -> Result<String, PackageError> {
     if !self.capabilities.has_pacman {
       return Err(PackageError::BackendUnavailable);
@@ -63,6 +71,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     }
     Ok(terminal_text(&String::from_utf8_lossy(&o.stdout)))
   }
+  /// Executes the `run_plan` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn run_plan(&self, args: &[String]) -> Result<String, PackageError> {
     if !self.capabilities.has_pacman {
       return Err(PackageError::BackendUnavailable);
@@ -89,6 +98,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     }
     Ok(terminal_text(&String::from_utf8_lossy(&output.stdout)))
   }
+  /// Executes the `plan_install` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn plan_install(&self, packages: &[String]) -> Result<TransactionPlan, PackageError> {
     validate_package_names(packages)?;
     let mut args = vec![
@@ -101,6 +111,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     args.extend(packages.iter().cloned());
     Ok(parse_transaction_plan(&self.run_plan(&args)?, true))
   }
+  /// Executes the `plan_remove` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn plan_remove(&self, packages: &[String]) -> Result<TransactionPlan, PackageError> {
     validate_package_names(packages)?;
     let mut args = vec![
@@ -112,6 +123,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     args.extend(packages.iter().cloned());
     Ok(parse_transaction_plan(&self.run_plan(&args)?, false))
   }
+  /// Executes the `plan_upgrade` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn plan_upgrade(&self) -> Result<TransactionPlan, PackageError> {
     Ok(parse_transaction_plan(
       &self.run_plan(&[
@@ -123,6 +135,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
       true,
     ))
   }
+  /// Executes the `installed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn installed(&self) -> Result<Vec<Package>, PackageError> {
     let (installed, foreign) = std::thread::scope(|scope| {
       let installed = scope.spawn(|| self.run(&["-Q"]));
@@ -148,15 +161,18 @@ impl<R: ProcessRunner> PackageBackend<R> {
     }
     Ok(packages)
   }
+  /// Applies the `updates` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn updates(&self) -> Result<Vec<Update>, PackageError> {
     let text = self.run(&["-Qu"])?;
     Ok(parse_updates(&text))
   }
+  /// Executes the `search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn search(&self, query: &str) -> Result<Vec<Package>, PackageError> {
     validate_search(query)?;
     let text = self.run(&["-Ss", query])?;
     Ok(parse_search(&text))
   }
+  /// Executes the `details` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn details(&self, name: &str) -> Result<PackageDetails, PackageError> {
     validate_package_name(name)?;
     let text = self
@@ -165,6 +181,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     parse_details(&text)
       .ok_or_else(|| PackageError::Command("package metadata was incomplete".into()))
   }
+  /// Executes the `orphans` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn orphans(&self) -> Result<Vec<Package>, PackageError> {
     let text = self.run(&["-Qdtq"])?;
     Ok(
@@ -181,14 +198,17 @@ impl<R: ProcessRunner> PackageBackend<R> {
         .collect(),
     )
   }
+  /// Executes the `history` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn history(&self) -> Result<Vec<HistoryEntry>, PackageError> {
     let text = fs::read_to_string("/var/log/pacman.log")
       .map_err(|e| PackageError::Command(e.to_string()))?;
     Ok(parse_history(&text))
   }
+  /// Executes the `cache` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cache(&self) -> Vec<CachePackage> {
     cache_entries(&cache_dir())
   }
+  /// Executes the `mirrors` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn mirrors(&self) -> Vec<Mirror> {
     parse_mirrors(
       &mirrorlist_path()
@@ -196,6 +216,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
         .unwrap_or_default(),
     )
   }
+  /// Executes the `aur_helper` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn aur_helper(&self) -> Option<&'static str> {
     self
       .capabilities
@@ -272,6 +293,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     }
     dashboard
   }
+  /// Executes the `aur_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn aur_search(&self, helper: &str, query: &str) -> Result<Vec<AurPackage>, PackageError> {
     if !matches!(helper, "paru" | "yay") {
       return Err(PackageError::InvalidPackageName);
@@ -302,6 +324,7 @@ impl<R: ProcessRunner> PackageBackend<R> {
     )
   }
 }
+/// Executes the `settle_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn settle_count(
   name: &str,
   result: Result<Result<usize, PackageError>, Box<dyn std::any::Any + Send>>,
@@ -322,6 +345,7 @@ fn settle_count(
     }
   }
 }
+/// Executes the `validate_package_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_package_name(v: &str) -> Result<(), PackageError> {
   if v.is_empty()
     || v.len() > 128
@@ -334,6 +358,7 @@ pub fn validate_package_name(v: &str) -> Result<(), PackageError> {
     Ok(())
   }
 }
+/// Executes the `validate_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_search(v: &str) -> Result<(), PackageError> {
   if v.trim().is_empty()
     || v.len() > 128
@@ -346,6 +371,7 @@ pub fn validate_search(v: &str) -> Result<(), PackageError> {
     Ok(())
   }
 }
+/// Executes the `validate_aur_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_aur_search(v: &str) -> Result<(), PackageError> {
   validate_search(v)?;
   if v.trim().chars().count() < 2 {
@@ -354,6 +380,7 @@ pub fn validate_aur_search(v: &str) -> Result<(), PackageError> {
     Ok(())
   }
 }
+/// Executes the `validate_package_names` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_package_names(values: &[String]) -> Result<(), PackageError> {
   if values.is_empty() {
     return Err(PackageError::InvalidPackageName);
@@ -362,6 +389,7 @@ pub fn validate_package_names(values: &[String]) -> Result<(), PackageError> {
     .iter()
     .try_for_each(|value| validate_package_name(value))
 }
+/// Converts input data into `parse_installed` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_installed(input: &str) -> Vec<Package> {
   input
     .lines()
@@ -382,6 +410,7 @@ pub fn parse_installed(input: &str) -> Vec<Package> {
     })
     .collect()
 }
+/// Converts input data into `parse_updates` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_updates(input: &str) -> Vec<Update> {
   input
     .lines()
@@ -401,6 +430,7 @@ pub fn parse_updates(input: &str) -> Vec<Update> {
     })
     .collect()
 }
+/// Converts input data into `parse_transaction_plan` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_transaction_plan(input: &str, install: bool) -> TransactionPlan {
   let mut plan = TransactionPlan {
     requires_full_upgrade: install,
@@ -475,6 +505,7 @@ pub fn classify_pacman_failure(stderr: &str) -> Option<TransactionDecision> {
   })
 }
 
+/// Executes the `validate_reflector_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_reflector_options(options: &ReflectorOptions) -> Result<(), PackageError> {
   if options.age_hours == 0
     || options.age_hours > 24 * 365
@@ -506,6 +537,7 @@ pub fn validate_reflector_options(options: &ReflectorOptions) -> Result<(), Pack
   Ok(())
 }
 
+/// Executes the `reflector_args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn reflector_args(options: &ReflectorOptions) -> Result<Vec<String>, PackageError> {
   validate_reflector_options(options)?;
   let mut args = Vec::new();
@@ -602,6 +634,7 @@ pub fn parse_cached_metadata(input: &str) -> Option<(String, String, String)> {
   Some((name.into(), version.into(), arch.into()))
 }
 
+/// Executes the `cached_versions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn cached_versions(package: &str, entries: &[CachePackage]) -> Vec<CachePackage> {
   entries
     .iter()
@@ -609,6 +642,7 @@ pub fn cached_versions(package: &str, entries: &[CachePackage]) -> Vec<CachePack
     .cloned()
     .collect()
 }
+/// Converts input data into `parse_search` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_search(input: &str) -> Vec<Package> {
   let mut out: Vec<Package> = Vec::new();
   for line in input.lines() {
@@ -641,6 +675,7 @@ pub fn parse_search(input: &str) -> Vec<Package> {
   }
   out
 }
+/// Converts input data into `parse_history` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_history(input: &str) -> Vec<HistoryEntry> {
   input
     .lines()
@@ -666,6 +701,7 @@ pub fn parse_history(input: &str) -> Vec<HistoryEntry> {
     })
     .collect()
 }
+/// Executes the `cache_entries` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn cache_entries(dir: &Path) -> Vec<CachePackage> {
   fs::read_dir(dir)
     .ok()
@@ -687,6 +723,7 @@ pub fn cache_entries(dir: &Path) -> Vec<CachePackage> {
     .collect()
 }
 
+/// Converts input data into `parse_details` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_details(input: &str) -> Option<PackageDetails> {
   let mut values = std::collections::BTreeMap::<String, String>::new();
   for line in input.lines() {
@@ -746,11 +783,13 @@ fn parse_details(input: &str) -> Option<PackageDetails> {
     install_date: values.get("Install Date").cloned(),
   })
 }
+/// Converts input data into `parse_size` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_size(value: Option<&String>) -> Option<u64> {
   value
     .and_then(|v| v.split_whitespace().next()?.parse::<f64>().ok())
     .map(|v| v as u64)
 }
+/// Executes the `cache_dir` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn cache_dir() -> PathBuf {
   fs::read_to_string("/etc/pacman.conf")
     .ok()
@@ -761,6 +800,7 @@ fn cache_dir() -> PathBuf {
     })
     .unwrap_or_else(|| PathBuf::from("/var/cache/pacman/pkg"))
 }
+/// Executes the `mirrorlist_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn mirrorlist_path() -> Option<PathBuf> {
   let config = fs::read_to_string("/etc/pacman.conf").ok()?;
   config
@@ -771,6 +811,7 @@ pub fn mirrorlist_path() -> Option<PathBuf> {
     })
     .or_else(|| Some(PathBuf::from("/etc/pacman.d/mirrorlist")))
 }
+/// Converts input data into `parse_mirrors` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_mirrors(input: &str) -> Vec<Mirror> {
   input
     .lines()
@@ -801,8 +842,10 @@ mod tests {
   use std::sync::Mutex;
 
   #[derive(Default)]
+  /// Represents `InstalledRunner`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   struct InstalledRunner(Mutex<Vec<ProcessRequest>>);
   impl ProcessRunner for InstalledRunner {
+    /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
     fn run(&self, request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
       self.0.lock().unwrap().push(request.clone());
       let stdout = if request.args == ["-Q"] {
@@ -821,6 +864,7 @@ mod tests {
     }
   }
   #[test]
+  /// Executes the `dashboard_reports_pacman_unavailable_instead_of_silent_zeros` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn dashboard_reports_pacman_unavailable_instead_of_silent_zeros() {
     let backend = PackageBackend::new(InstalledRunner::default(), Capabilities::default());
     let dashboard = backend.dashboard();
@@ -836,15 +880,19 @@ mod tests {
     );
   }
   #[test]
+  /// Converts input data into `parses_installed` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_installed() {
     let x = parse_installed("linux 6.1\nfoo 1-2\nrust 1:1.95.0-1");
     assert_eq!(x[0].name, "linux");
     assert_eq!(x[2].version, "1:1.95.0-1");
   }
   #[test]
+  /// Executes the `dashboard_reports_query_failures_instead_of_silent_zeros` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn dashboard_reports_query_failures_instead_of_silent_zeros() {
+    /// Represents `FailingRunner`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
     struct FailingRunner;
     impl ProcessRunner for FailingRunner {
+      /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
       fn run(&self, _: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
         Err(ProcessError::EmptyProgram)
       }
@@ -860,6 +908,7 @@ mod tests {
     assert!(dashboard.error.is_some());
   }
   #[test]
+  /// Executes the `installed_uses_two_compatible_queries_without_n_plus_one` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn installed_uses_two_compatible_queries_without_n_plus_one() {
     let capabilities = Capabilities {
       has_pacman: true,
@@ -879,11 +928,13 @@ mod tests {
     assert_eq!(args, [vec![String::from("-Q")], vec![String::from("-Qmq")]]);
   }
   #[test]
+  /// Converts input data into `parses_updates` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_updates() {
     let x = parse_updates("linux 6.1 -> 6.2");
     assert_eq!(x[0].available, "6.2");
   }
   #[test]
+  /// Converts input data into `parses_real_pacman_search_shape` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_real_pacman_search_shape() {
     let packages = parse_search(
       "extra/firefox 155.0.1-1 [installed]\n    Fast, Private & Safe Web Browser\nextra/firefox-developer-edition 156.0b1-1\n    Developer Edition of the popular browser\n",
@@ -895,6 +946,7 @@ mod tests {
     assert_eq!(packages[0].description, "Fast, Private & Safe Web Browser");
   }
   #[test]
+  /// Converts input data into `parses_localized_pacman_details_with_variable_spacing` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_localized_pacman_details_with_variable_spacing() {
     let details = parse_details(
       "Nome                 : pacman\nVersão               : 7.1.0-1\nDescrição            : Package manager\nArquitetura           : x86_64\n",
@@ -905,6 +957,7 @@ mod tests {
     assert_eq!(details.architecture.as_deref(), Some("x86_64"));
   }
   #[test]
+  /// Retrieves data for `detects_installed_via_localized_normalized_detail_field` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detects_installed_via_localized_normalized_detail_field() {
     let installed = parse_details(
       "Nome                 : pacman\nVersão               : 7.1.0-1\nRepositório           : core\nData de instalação    : ter 01 jan 2020 00:00:00\n",
@@ -918,10 +971,12 @@ mod tests {
     assert!(!not_installed.package.installed);
   }
   #[test]
+  /// Executes the `rejects_shell_input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rejects_shell_input() {
     assert!(validate_package_name("foo;bar").is_err());
   }
   #[test]
+  /// Executes the `history_is_structured` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn history_is_structured() {
     let x = parse_history("[2026-09-10T10:00] [ALPM] upgraded linux (1 -> 2)");
     assert_eq!(x[0].action, "ALPM");
@@ -929,6 +984,7 @@ mod tests {
     assert_eq!(x[0].new_version.as_deref(), Some("2"));
   }
   #[test]
+  /// Executes the `mirror_parser_keeps_order_and_enabled_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn mirror_parser_keeps_order_and_enabled_state() {
     let mirrors = parse_mirrors(
       "#Server = https://old.example/$repo/os/$arch\nServer = https://new.example/$repo/os/$arch\n",
@@ -939,6 +995,7 @@ mod tests {
     assert_eq!(mirrors[1].order, 2);
   }
   #[test]
+  /// Converts input data into `parses_real_reflector_country_table_with_multi_word_names` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_real_reflector_country_table_with_multi_word_names() {
     let countries = parse_reflector_countries(
       "Country              Code Count\n-------------------- ---- -----\nAlbania                AL     1\nHong Kong              HK    11\nNew Zealand            NZ     8\nUnited States          US   196\n",
@@ -949,11 +1006,13 @@ mod tests {
     );
   }
   #[test]
+  /// Executes the `rejects_code_and_header_lines_from_country_table` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rejects_code_and_header_lines_from_country_table() {
     assert!(parse_reflector_countries("Country  Code  Count\n---- ---- -----\n").is_empty());
     assert!(parse_reflector_countries("Albania AL\n").is_empty());
   }
   #[test]
+  /// Executes the `package_names_allow_arch_names_but_reject_shell_syntax` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn package_names_allow_arch_names_but_reject_shell_syntax() {
     assert!(validate_package_name("foo-bar@1").is_ok());
     assert!(validate_package_name("foo/bar").is_err());
@@ -961,6 +1020,7 @@ mod tests {
     assert!(validate_search("foo\nbar").is_err());
   }
   #[test]
+  /// Executes the `transaction_plan_preserves_targets_and_sizes_without_running_a_transaction` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_plan_preserves_targets_and_sizes_without_running_a_transaction() {
     let plan = parse_transaction_plan("foo-bar\t2.0-1\t1024\nlibfoo\t1.0-2\t2048\n", true);
     assert_eq!(plan.install.len(), 2);
@@ -972,6 +1032,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `classifies_conflicts_and_signature_failures_without_bypassing_them` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn classifies_conflicts_and_signature_failures_without_bypassing_them() {
     assert!(matches!(
       classify_pacman_failure("error: conflicting files: /usr/bin/foo exists in filesystem"),
@@ -990,6 +1051,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `reflector_options_are_typed_and_shell_safe` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn reflector_options_are_typed_and_shell_safe() {
     let options = ReflectorOptions {
       countries: vec!["Brazil".into(), "United States".into()],
@@ -1015,6 +1077,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cache_preview_matches_policy_and_counts_real_bytes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cache_preview_matches_policy_and_counts_real_bytes() {
     let entries = vec![
       CachePackage {
@@ -1043,6 +1106,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cached_metadata_does_not_depend_on_hyphen_splitting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cached_metadata_does_not_depend_on_hyphen_splitting() {
     assert_eq!(
       parse_cached_metadata("foo-bar-baz\t2:1.4-3\tx86_64"),

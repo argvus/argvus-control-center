@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center hardware`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::model::*;
 use argvus_control_center_core::{
   capabilities::Capabilities,
@@ -6,6 +10,7 @@ use argvus_control_center_core::{
 };
 use std::{collections::HashSet, fs, path::Path};
 
+/// Executes the `collect` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn collect(cap: &Capabilities) -> HardwareSnapshot {
   let cpuinfo = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
   let meminfo = fs::read_to_string("/proc/meminfo").unwrap_or_default();
@@ -43,6 +48,7 @@ pub fn collect(cap: &Capabilities) -> HardwareSnapshot {
   }
 }
 
+/// Retrieves data for `detect_is_laptop` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn detect_is_laptop() -> bool {
   if let Ok(chassis) = fs::read_to_string("/sys/class/dmi/id/chassis_type")
     && let Ok(n) = chassis.trim().parse::<u8>()
@@ -60,12 +66,14 @@ fn detect_is_laptop() -> bool {
     .is_some()
 }
 
+/// Retrieves data for `read_dmi` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_dmi(name: &str) -> Option<String> {
   fs::read_to_string(format!("/sys/class/dmi/id/{name}"))
     .ok()
     .map(|v| terminal_text(v.trim()))
     .filter(|v: &String| !v.is_empty())
 }
+/// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run(program: &str, args: &[&str]) -> String {
   let output = SystemProcessRunner
     .run(&ProcessRequest::new(program).args(args.iter().map(|v| (*v).to_string()).collect()))
@@ -76,16 +84,20 @@ fn run(program: &str, args: &[&str]) -> String {
     .unwrap_or_else(|| "N/A".into())
 }
 
+/// Defines the `RequestArgs`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 trait RequestArgs {
+  /// Executes the `args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn args(self, args: Vec<String>) -> Self;
 }
 impl RequestArgs for ProcessRequest {
+  /// Executes the `args` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn args(mut self, args: Vec<String>) -> Self {
     self.args = args;
     self
   }
 }
 
+/// Executes the `cpu` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn cpu(input: &str) -> CpuInfo {
   let mut out = CpuInfo::default();
   let mut processors = 0;
@@ -144,6 +156,7 @@ fn cpu(input: &str) -> CpuInfo {
   out
 }
 
+/// Executes the `memory` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn memory(input: &str) -> MemoryInfo {
   let mut m = MemoryInfo::default();
   for line in input.lines() {
@@ -166,6 +179,7 @@ fn memory(input: &str) -> MemoryInfo {
   m
 }
 
+/// Executes the `gpus` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn gpus(cap: &Capabilities) -> Vec<GpuInfo> {
   let mut out = Vec::new();
   if let Ok(entries) = fs::read_dir("/sys/class/drm") {
@@ -246,6 +260,7 @@ fn gpus(cap: &Capabilities) -> Vec<GpuInfo> {
   out
 }
 
+/// Converts input data into `parse_value` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_value(input: &str, key: &str) -> Option<String> {
   input.lines().find_map(|line| {
     line
@@ -254,11 +269,13 @@ fn parse_value(input: &str, key: &str) -> Option<String> {
       .map(|(_, value)| value.trim().into())
   })
 }
+/// Retrieves data for `read_path` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_path(path: &Path, name: &str) -> Option<String> {
   fs::read_to_string(path.join(name))
     .ok()
     .map(|v| terminal_text(v.trim()))
 }
+/// Executes the `find_render` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn find_render(card: &Path) -> Option<String> {
   fs::read_dir("/dev/dri")
     .ok()?
@@ -276,6 +293,7 @@ fn find_render(card: &Path) -> Option<String> {
     })
     .map(|p| p.display().to_string())
 }
+/// Executes the `battery` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn battery() -> Option<BatteryInfo> {
   let root = Path::new("/sys/class/power_supply");
   let entry = fs::read_dir(root)
@@ -303,9 +321,11 @@ fn battery() -> Option<BatteryInfo> {
     ac_online: ac_online(),
   })
 }
+/// Retrieves data for `read_num` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_num(p: &Path, n: &str) -> Option<u64> {
   fs::read_to_string(p.join(n)).ok()?.trim().parse().ok()
 }
+/// Executes the `ac_online` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn ac_online() -> Option<bool> {
   let root = Path::new("/sys/class/power_supply");
   fs::read_dir(root)
@@ -314,6 +334,7 @@ fn ac_online() -> Option<bool> {
     .filter(|v| v.file_name().to_string_lossy().starts_with("AC"))
     .find_map(|v| read_num(&v.path(), "online").map(|n| n == 1))
 }
+/// Executes the `energy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn energy(cap: &Capabilities) -> EnergyInfo {
   let profiles = if cap.has_power_profiles_daemon {
     parse_profiles(&run("powerprofilesctl", &["list"]))
@@ -359,6 +380,7 @@ fn parse_profiles(output: &str) -> Vec<String> {
     })
     .collect()
 }
+/// Executes the `devices` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn devices() -> Vec<DeviceInfo> {
   let mut devices = Vec::new();
   for (root, kind, limit) in [
@@ -406,6 +428,7 @@ fn devices() -> Vec<DeviceInfo> {
   }
   devices
 }
+/// Executes the `virtualization` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn virtualization(cap: &Capabilities) -> Option<String> {
   if !cap.is_virtual_machine {
     return None;
@@ -417,18 +440,21 @@ fn virtualization(cap: &Capabilities) -> Option<String> {
 mod tests {
   use super::*;
   #[test]
+  /// Converts input data into `parses_meminfo` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_meminfo() {
     let m = memory("MemTotal: 100 kB\nMemAvailable: 40 kB\nSwapTotal: 20 kB\nSwapFree: 5 kB");
     assert_eq!(m.used_kib, Some(60));
     assert_eq!(m.swap_free_kib, Some(5));
   }
   #[test]
+  /// Converts input data into `parses_cpu` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_cpu() {
     let c = cpu("vendor_id: GenuineIntel\nmodel name: Test\nprocessor: 0\nprocessor: 1\n");
     assert_eq!(c.threads, Some(2));
     assert_eq!(c.model.as_deref(), Some("Test"));
   }
   #[test]
+  /// Converts input data into `parses_power_profiles_keeping_only_actual_profiles` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_power_profiles_keeping_only_actual_profiles() {
     let output = "* performance:\n    CpuDriver:\tintel_pstate\n  balanced:\n    CpuDriver:\tintel_pstate\n    PlatformDriver:\tplaceholder\n  power-saver:\n    CpuDriver:\tintel_pstate\n    PlatformDriver:\tplaceholder\n";
     assert_eq!(
@@ -437,6 +463,7 @@ mod tests {
     );
   }
   #[test]
+  /// Converts input data into `parses_power_profiles_with_degraded_and_space_drivers` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_power_profiles_with_degraded_and_space_drivers() {
     let output = "* balanced:\n    CpuDriver:\tintel_pstate\n    Degraded:\tno\n  performance:\n    CpuDriver:  intel_pstate\n";
     assert_eq!(parse_profiles(output), vec!["balanced", "performance"]);

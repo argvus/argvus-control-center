@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center storage`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{backend, model::*};
 use argvus_control_center_core::{
   capabilities::Capabilities,
@@ -13,6 +17,7 @@ use argvus_tui::{
 use crossterm::event::KeyCode;
 use ratatui::{Frame, layout::Rect, text::Line};
 
+/// Represents `StorageApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct StorageApp {
   pub page: StoragePage,
   pub snapshot: StorageSnapshot,
@@ -25,6 +30,7 @@ pub struct StorageApp {
   pub status: Option<StatusMessage>,
 }
 impl StorageApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, cap: Capabilities) -> Self {
     let mut s = Self {
       page: StoragePage::Home,
@@ -40,9 +46,11 @@ impl StorageApp {
     s.refresh();
     s
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
   }
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn refresh(&mut self) {
     if self.job.is_some() {
       return;
@@ -58,6 +66,7 @@ impl StorageApp {
       text: tr(self.lang, "control_center.loading_storage").into(),
     });
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let Some(job) = &self.job else {
       return false;
@@ -84,9 +93,11 @@ impl StorageApp {
       false
     }
   }
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn busy(&self) -> bool {
     self.job.is_some()
   }
+  /// Executes the `len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn len(&self) -> usize {
     match self.page {
       StoragePage::Home => 7,
@@ -107,6 +118,7 @@ impl StorageApp {
       _ => 1,
     }
   }
+  /// Executes the `partitions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn partitions(&self) -> Vec<&StorageDevice> {
     self
       .snapshot
@@ -115,6 +127,7 @@ impl StorageApp {
       .flat_map(|d| d.children.iter())
       .collect()
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if matches!(key, KeyCode::Esc | KeyCode::Left) {
       if self.page == StoragePage::Home {
@@ -161,6 +174,7 @@ impl StorageApp {
     }
     false
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.storage");
     if self.page == StoragePage::Home {
@@ -169,6 +183,7 @@ impl StorageApp {
       format!("{root} > {}", self.label())
     }
   }
+  /// Executes the `label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn label(&self) -> &'static str {
     match self.page {
       StoragePage::Summary => tr(self.lang, "control_center.summary"),
@@ -187,6 +202,7 @@ impl StorageApp {
       _ => tr(self.lang, "control_center.summary"),
     }
   }
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       StoragePage::Home => self.home_rows(),
@@ -231,6 +247,7 @@ impl StorageApp {
       StoragePage::SmartDetails(index) => self.smart_detail(index),
     }
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let disks = physical_devices(&self.snapshot.devices);
     let total: u64 = disks.iter().map(|d| d.size_bytes.unwrap_or(0)).sum();
@@ -298,6 +315,7 @@ impl StorageApp {
       ),
     ]
   }
+  /// Executes the `summary_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn summary_rows(&self) -> Vec<String> {
     let disks = physical_devices(&self.snapshot.devices);
     let total: u64 = disks.iter().map(|d| d.size_bytes.unwrap_or(0)).sum();
@@ -379,6 +397,7 @@ impl StorageApp {
     }
     rows
   }
+  /// Executes the `smart_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn smart_rows(&self) -> Vec<String> {
     if self.snapshot.smart.is_empty() {
       return vec![if self.snapshot.smart_available {
@@ -412,6 +431,7 @@ impl StorageApp {
       })
       .collect()
   }
+  /// Executes the `usage_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn usage_rows(&self) -> Vec<String> {
     let mut rows = self
       .snapshot
@@ -431,6 +451,7 @@ impl StorageApp {
     }
     rows
   }
+  /// Executes the `disk_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn disk_detail(&self, index: usize) -> Vec<String> {
     let Some(d) = self.snapshot.devices.get(index) else {
       return vec![tr(self.lang, "control_center.disk_not_found").into()];
@@ -493,6 +514,7 @@ impl StorageApp {
       ),
     ]
   }
+  /// Executes the `partition_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn partition_detail(&self, index: usize) -> Vec<String> {
     let Some(p) = self.partitions().get(index).copied() else {
       return vec![tr(self.lang, "control_center.partition_not_found").into()];
@@ -546,6 +568,7 @@ impl StorageApp {
       ),
     ]
   }
+  /// Executes the `filesystem_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn filesystem_detail(&self, index: usize) -> Vec<String> {
     let Some(f) = self.snapshot.filesystems.get(index) else {
       return vec![tr(self.lang, "control_center.filesystem_not_found").into()];
@@ -623,6 +646,7 @@ impl StorageApp {
     }
     rows
   }
+  /// Executes the `mount_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn mount_detail(&self, index: usize) -> Vec<String> {
     let Some(m) = self.snapshot.mounts.get(index) else {
       return vec![tr(self.lang, "control_center.mount_point_not_found").into()];
@@ -660,6 +684,7 @@ impl StorageApp {
       ),
     ]
   }
+  /// Executes the `smart_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn smart_detail(&self, index: usize) -> Vec<String> {
     let Some(s) = self.snapshot.smart.get(index) else {
       return vec![tr(self.lang, "control_center.smart_unavailable").into()];
@@ -721,6 +746,7 @@ impl StorageApp {
     }
     rows
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let body = shell(
       frame,
@@ -769,12 +795,14 @@ impl StorageApp {
   }
 }
 
+/// Executes the `physical_devices` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn physical_devices(devices: &[StorageDevice]) -> Vec<&StorageDevice> {
   devices
     .iter()
     .filter(|d| d.kind == "disk" && !d.name.starts_with("zram") && !d.name.starts_with("loop"))
     .collect()
 }
+/// Executes the `percentage` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn percentage(total: u64, available: u64) -> u64 {
   total
     .saturating_sub(available)
@@ -782,6 +810,7 @@ fn percentage(total: u64, available: u64) -> u64 {
     .and_then(|used| used.checked_div(total))
     .unwrap_or(0)
 }
+/// Executes the `disk_icon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn disk_icon(device: &StorageDevice) -> &'static str {
   if device.name.starts_with("zram") || device.name.starts_with("loop") {
     AppConfig::icon(argvus_tui::icons::MEMORY)
@@ -789,6 +818,7 @@ fn disk_icon(device: &StorageDevice) -> &'static str {
     AppConfig::icon(argvus_tui::icons::STORAGE)
   }
 }
+/// Executes the `partition_icon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn partition_icon(partition: &StorageDevice) -> &'static str {
   match partition.fstype.as_deref() {
     Some("crypto_LUKS") | Some("crypt") => AppConfig::icon(argvus_tui::icons::LOCK),
@@ -796,6 +826,7 @@ fn partition_icon(partition: &StorageDevice) -> &'static str {
     _ => AppConfig::icon(argvus_tui::icons::STORAGE),
   }
 }
+/// Executes the `disk_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn disk_row(lang: Lang, device: &StorageDevice) -> String {
   let label = if device.name.starts_with("zram") || device.name.starts_with("loop") {
     device.kind.clone()
@@ -824,6 +855,7 @@ fn disk_row(lang: Lang, device: &StorageDevice) -> String {
     parts
   )
 }
+/// Executes the `partition_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn partition_row(partition: &StorageDevice) -> String {
   format!(
     "{} {:<12} {:>9}  {:<11}  {}",
@@ -834,6 +866,7 @@ fn partition_row(partition: &StorageDevice) -> String {
     partition.mountpoint.as_deref().unwrap_or("—")
   )
 }
+/// Executes the `filesystem_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn filesystem_row(filesystem: &Filesystem) -> String {
   let mountpoint = filesystem
     .mountpoint
@@ -857,6 +890,7 @@ fn filesystem_row(filesystem: &Filesystem) -> String {
     pct
   )
 }
+/// Executes the `usage_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn usage_row(lang: Lang, filesystem: &Filesystem) -> String {
   let mountpoint = filesystem
     .mountpoint
@@ -881,6 +915,7 @@ fn usage_row(lang: Lang, filesystem: &Filesystem) -> String {
   }
   format!("{:<18} {:<9}", mountpoint, filesystem.fstype)
 }
+/// Executes the `usage_bar` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn usage_bar(percent: u64, width: usize) -> String {
   let filled = (percent as usize * width / 100).min(width);
   let mut bar = String::with_capacity(width);
@@ -889,6 +924,7 @@ fn usage_bar(percent: u64, width: usize) -> String {
   }
   bar
 }
+/// Executes the `usage_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn usage_label(lang: Lang, level: UsageLevel) -> String {
   match level {
     UsageLevel::Ok => tr(lang, "control_center.ok").into(),
@@ -896,6 +932,7 @@ fn usage_label(lang: Lang, level: UsageLevel) -> String {
     UsageLevel::Critical => tr(lang, "control_center.critical").into(),
   }
 }
+/// Executes the `smart_health_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn smart_health_label(lang: Lang, health: SmartHealth) -> String {
   match health {
     SmartHealth::Passed => tr(lang, "control_center.passed").into(),
@@ -905,12 +942,14 @@ fn smart_health_label(lang: Lang, health: SmartHealth) -> String {
     SmartHealth::Unknown => tr(lang, "control_center.unknown_b75709").into(),
   }
 }
+/// Executes the `bool_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn bool_label(lang: Lang, value: Option<bool>) -> String {
   match value {
     Some(value) => yes_no(lang, value),
     None => "—".into(),
   }
 }
+/// Executes the `yes_no` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn yes_no(lang: Lang, value: bool) -> String {
   tr(
     lang,
@@ -922,10 +961,15 @@ fn yes_no(lang: Lang, value: bool) -> String {
   )
   .into()
 }
+/// Executes the `human_bytes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn human_bytes(bytes: u64) -> String {
+  /// Defines the constant `KIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const KIB: u64 = 1024;
+  /// Defines the constant `MIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const MIB: u64 = 1024 * 1024;
+  /// Defines the constant `GIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const GIB: u64 = 1024 * 1024 * 1024;
+  /// Defines the constant `TIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const TIB: u64 = 1024 * 1024 * 1024 * 1024;
   if bytes >= TIB {
     format!("{:.1} TiB", bytes as f64 / TIB as f64)
@@ -946,6 +990,7 @@ mod tests {
   use argvus_i18n::Lang;
   use argvus_theme::Theme;
 
+  /// Executes the `test_app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn test_app(snapshot: StorageSnapshot) -> StorageApp {
     let mut app = StorageApp::new(
       Lang::for_locale("en-US"),
@@ -957,6 +1002,7 @@ mod tests {
     app
   }
 
+  /// Executes the `sample_snapshot` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn sample_snapshot() -> StorageSnapshot {
     StorageSnapshot {
       devices: vec![
@@ -1021,6 +1067,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `storage_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn storage_home_rows_act_as_a_status_dashboard() {
     let app = test_app(sample_snapshot());
     let rows = app.home_rows();
@@ -1034,6 +1081,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `storage_summary_page_shows_counts_and_usage` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn storage_summary_page_shows_counts_and_usage() {
     let mut app = test_app(sample_snapshot());
     app.page = StoragePage::Summary;
@@ -1044,6 +1092,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `storage_smart_page_falls_back_when_no_data` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn storage_smart_page_falls_back_when_no_data() {
     let mut app = test_app(sample_snapshot());
     app.page = StoragePage::Smart;
@@ -1055,6 +1104,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `storage_usage_rows_append_swap` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn storage_usage_rows_append_swap() {
     let mut app = test_app(sample_snapshot());
     app.page = StoragePage::Usage;
@@ -1066,6 +1116,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `storage_detail_pages_render_section_headers_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn storage_detail_pages_render_section_headers_and_aligned_rows() {
     let mut app = test_app(sample_snapshot());
     app.page = StoragePage::DiskDetails(0);
@@ -1087,6 +1138,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `storage_human_bytes_and_percentage_helpers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn storage_human_bytes_and_percentage_helpers() {
     assert_eq!(human_bytes(0), "0 B");
     assert_eq!(human_bytes(1024), "1 KiB");

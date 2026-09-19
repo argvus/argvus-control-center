@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center audio`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend::{AudioBackend, clamp_volume},
   model::{AudioDevice, AudioPage, AudioSnapshot},
@@ -27,15 +31,18 @@ use ratatui::{
 };
 
 #[derive(Debug, Clone)]
+/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Pending {
   Action(AudioAction),
 }
 
 #[derive(Debug, Clone)]
+/// Defines `AudioAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum AudioAction {
   SetDefault(u32),
 }
 
+/// Represents `AudioApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct AudioApp {
   pub page: AudioPage,
   selected: Selection,
@@ -56,6 +63,7 @@ pub struct AudioApp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   SetDefault,
   VolumeUp,
@@ -65,6 +73,7 @@ enum ActionButton {
 }
 
 impl AudioApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: AudioPage::Home,
@@ -85,6 +94,7 @@ impl AudioApp {
       volume_input: None,
     }
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -102,6 +112,7 @@ impl AudioApp {
       text: tr(self.lang, "control_center.loading_audio").into(),
     });
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(j) = &self.job
@@ -136,24 +147,29 @@ impl AudioApp {
     }
     changed
   }
+  /// Executes the `success` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn success(&mut self, text: impl Into<String>) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Success,
       text: text.into(),
     });
   }
+  /// Executes the `error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn error(&mut self, text: impl Into<String>) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Error,
       text: text.into(),
     });
   }
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn busy(&self) -> bool {
     self.job.is_some() || self.action.is_some()
   }
+  /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
     self.selected.normalize(self.row_count());
   }
+  /// Executes the `row_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_count(&self) -> usize {
     match self.page {
       AudioPage::Home => 4,
@@ -163,6 +179,7 @@ impl AudioApp {
       AudioPage::Devices => self.snapshot.outputs.len() + self.snapshot.inputs.len(),
     }
   }
+  /// Executes the `devices` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn devices(&self) -> Vec<&AudioDevice> {
     match self.page {
       AudioPage::Output => self.snapshot.outputs.iter().collect(),
@@ -176,6 +193,7 @@ impl AudioApp {
       AudioPage::Home | AudioPage::Summary => Vec::new(),
     }
   }
+  /// Executes the `selected_device` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selected_device(&self) -> Option<&AudioDevice> {
     self
       .devices()
@@ -183,6 +201,7 @@ impl AudioApp {
       .copied()
       .filter(|device| device.id > 0)
   }
+  /// Executes the `start_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_action(
     &mut self,
     action: impl FnOnce(AudioBackend<SystemProcessRunner>) -> Result<(), crate::backend::AudioError>
@@ -206,6 +225,7 @@ impl AudioApp {
       )
     }));
   }
+  /// Executes the `start_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending(&mut self) {
     let Some(Pending::Action(action)) = self.pending.take() else {
       return;
@@ -219,6 +239,7 @@ impl AudioApp {
       }
     }
   }
+  /// Executes the `request_default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn request_default(&mut self) {
     if let Some(d) = self.selected_device() {
       self.pending = Some(Pending::Action(AudioAction::SetDefault(d.id)));
@@ -226,6 +247,7 @@ impl AudioApp {
       self.warn_disappeared();
     }
   }
+  /// Executes the `adjust_volume` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn adjust_volume(&mut self, delta: i16) {
     if let Some(d) = self.selected_device() {
       let id = d.id;
@@ -239,6 +261,7 @@ impl AudioApp {
       self.warn_disappeared();
     }
   }
+  /// Applies the `toggle_mute` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_mute(&mut self) {
     if let Some(d) = self.selected_device() {
       let id = d.id;
@@ -251,12 +274,14 @@ impl AudioApp {
       self.warn_disappeared();
     }
   }
+  /// Executes the `warn_disappeared` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn warn_disappeared(&mut self) {
     self.error(tr(
       self.lang,
       "control_center.device_is_no_longer_available_press_r_to_refresh",
     ));
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_some() {
       match self.confirmation.handle(key) {
@@ -329,6 +354,7 @@ impl AudioApp {
     }
     false
   }
+  /// Executes the `open_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_selected(&mut self) {
     if self.page == AudioPage::Home {
       self.page = match self.selected.index {
@@ -343,6 +369,7 @@ impl AudioApp {
       self.request_default();
     }
   }
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -359,6 +386,7 @@ impl AudioApp {
       self.on_buttons = true;
     }
   }
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -367,6 +395,7 @@ impl AudioApp {
     self.button_selected =
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.busy() {
       return;
@@ -383,6 +412,7 @@ impl AudioApp {
       ActionButton::SetVolume => self.volume_input = Some(String::new()),
     }
   }
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     if !matches!(self.page, AudioPage::Output | AudioPage::Input) || self.devices().is_empty() {
       return Vec::new();
@@ -416,6 +446,7 @@ impl AudioApp {
       ),
     ]
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     let action = tr(
       self.lang,
@@ -434,6 +465,7 @@ impl AudioApp {
       readonly
     }
   }
+  /// Processes `handle_volume_input` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_volume_input(&mut self, key: KeyCode) -> bool {
     let input = self.volume_input.as_mut().unwrap();
     match key {
@@ -463,6 +495,7 @@ impl AudioApp {
     }
     false
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, frame: &mut Frame) {
     let area = frame.area();
     let body = shell(
@@ -552,6 +585,7 @@ impl AudioApp {
       status(frame, body, &self.theme, status_message);
     }
   }
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       AudioPage::Home => self.home_rows(),
@@ -560,6 +594,7 @@ impl AudioApp {
       AudioPage::Devices => self.all_devices_rows(),
     }
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let summary_label = tr(self.lang, "control_center.summary");
     let output_label = tr(self.lang, "control_center.output");
@@ -634,6 +669,7 @@ impl AudioApp {
       ),
     ]
   }
+  /// Executes the `summary_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn summary_rows(&self) -> Vec<String> {
     if !self.snapshot.available {
       return vec![
@@ -709,6 +745,7 @@ impl AudioApp {
       format!("   Entradas:    {}", self.snapshot.inputs.len()),
     ]
   }
+  /// Executes the `device_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn device_rows(&self) -> Vec<String> {
     if !self.snapshot.available {
       return vec![
@@ -752,6 +789,7 @@ impl AudioApp {
       })
       .collect()
   }
+  /// Executes the `all_devices_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn all_devices_rows(&self) -> Vec<String> {
     if !self.snapshot.available {
       return vec![
@@ -833,6 +871,7 @@ impl AudioApp {
 
     rows
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.audio");
     if self.page == AudioPage::Home {
@@ -841,6 +880,7 @@ impl AudioApp {
       format!("{root} > {}", self.page_label())
     }
   }
+  /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn page_label(&self) -> &'static str {
     match self.page {
       AudioPage::Home => tr(self.lang, "control_center.audio"),
@@ -858,6 +898,7 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   #[test]
+  /// Executes the `audio_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_home_rows_act_as_a_status_dashboard() {
     let mut app = AudioApp::new(
       Lang::for_locale("en-US"),
@@ -895,6 +936,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `audio_device_rows_render_clean_badges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_device_rows_render_clean_badges() {
     let mut app = AudioApp::new(
       Lang::for_locale("en-US"),
@@ -932,6 +974,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `audio_home_and_details_are_keyboard_navigable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_home_and_details_are_keyboard_navigable() {
     let mut app = AudioApp::new(
       Lang::for_locale("en-US"),
@@ -953,6 +996,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `audio_confirmation_dialog_shown_and_cancelable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_confirmation_dialog_shown_and_cancelable() {
     let mut app = AudioApp::new(
       Lang::for_locale("en-US"),
@@ -973,6 +1017,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `audio_tab_cycles_between_list_and_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_tab_cycles_between_list_and_buttons() {
     let mut app = AudioApp::new(
       Lang::for_locale("en-US"),
@@ -994,6 +1039,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `audio_uses_shared_chrome_and_contextual_footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_uses_shared_chrome_and_contextual_footer() {
     let app = AudioApp::new(
       Lang::for_locale("en-US"),

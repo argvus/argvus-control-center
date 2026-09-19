@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center network`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend::NetworkBackend,
   model::{NetworkPage, NetworkSnapshot},
@@ -31,6 +35,7 @@ use ratatui::{
   widgets::{Block, Clear, Paragraph},
 };
 
+/// Represents `NetworkApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct NetworkApp {
   pub page: NetworkPage,
   detail_parent: NetworkPage,
@@ -57,6 +62,7 @@ pub struct NetworkApp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   Connect,
   Disconnect,
@@ -68,6 +74,7 @@ enum ActionButton {
 }
 
 impl NetworkApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: NetworkPage::Home,
@@ -94,6 +101,7 @@ impl NetworkApp {
       firewall: None,
     }
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     if self.page == NetworkPage::Firewall {
       self.ensure_firewall();
@@ -101,6 +109,7 @@ impl NetworkApp {
     }
     self.start_refresh(false);
   }
+  /// Executes the `ensure_firewall` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn ensure_firewall(&mut self) {
     if self.firewall.is_none() {
       self.firewall = Some(SettingsApp::with_context(
@@ -110,6 +119,7 @@ impl NetworkApp {
       ));
     }
   }
+  /// Executes the `start_refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_refresh(&mut self, scan: bool) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -133,6 +143,7 @@ impl NetworkApp {
       )
     }));
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     if self.page == NetworkPage::Firewall {
       return self
@@ -183,6 +194,7 @@ impl NetworkApp {
     }
     changed
   }
+  /// Executes the `action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn action<F>(&mut self, label: &'static str, task: F)
   where
     F: FnOnce(NetworkBackend<SystemProcessRunner>) -> Result<(), crate::backend::NetworkError>
@@ -206,6 +218,7 @@ impl NetworkApp {
       )
     }));
   }
+  /// Executes the `action_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn action_label(&self, label: &str) -> String {
     let key = match label {
       "Conectando" => "control_center.connecting",
@@ -217,6 +230,7 @@ impl NetworkApp {
     };
     tr(self.lang, key).into()
   }
+  /// Executes the `home_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_pages(&self) -> Vec<NetworkPage> {
     let mut pages = vec![
       NetworkPage::Status,
@@ -249,6 +263,7 @@ impl NetworkApp {
     pages.extend([NetworkPage::Dns, NetworkPage::Proxy, NetworkPage::Firewall]);
     pages
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.network");
     if self.page == NetworkPage::Home {
@@ -257,6 +272,7 @@ impl NetworkApp {
       format!("{root} > {}", self.page_label())
     }
   }
+  /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn page_label(&self) -> &'static str {
     match self.page {
       NetworkPage::Home => tr(self.lang, "control_center.network"),
@@ -271,6 +287,7 @@ impl NetworkApp {
       NetworkPage::Detail(_) => tr(self.lang, "control_center.interface"),
     }
   }
+  /// Executes the `connect_wifi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn connect_wifi(&mut self, index: usize) {
     let Some(network) = self.snapshot.wifi.get(index).cloned() else {
       return;
@@ -285,6 +302,7 @@ impl NetworkApp {
       self.run_wifi(index, None);
     }
   }
+  /// Executes the `run_wifi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn run_wifi(&mut self, index: usize, password: Option<String>) {
     let Some(network) = self.snapshot.wifi.get(index).cloned() else {
       return;
@@ -303,6 +321,7 @@ impl NetworkApp {
       )
     }));
   }
+  /// Executes the `visible_wifi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn visible_wifi(&self) -> Vec<usize> {
     let mut indexes: Vec<usize> = self
       .snapshot
@@ -328,6 +347,7 @@ impl NetworkApp {
     });
     indexes
   }
+  /// Executes the `visible_interfaces` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn visible_interfaces(&self) -> Vec<usize> {
     self
       .snapshot
@@ -340,6 +360,7 @@ impl NetworkApp {
       .map(|(i, _)| i)
       .collect()
   }
+  /// Executes the `visible_vpn` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn visible_vpn(&self) -> Vec<usize> {
     self
       .snapshot
@@ -356,6 +377,7 @@ impl NetworkApp {
       .map(|(i, _)| i)
       .collect()
   }
+  /// Executes the `current_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn current_index(&self) -> Option<usize> {
     match self.page {
       NetworkPage::Wifi => self.visible_wifi().get(self.selected.index).copied(),
@@ -367,6 +389,7 @@ impl NetworkApp {
       _ => None,
     }
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.page == NetworkPage::Firewall {
       return self.handle_firewall(key);
@@ -493,6 +516,7 @@ impl NetworkApp {
     }
     false
   }
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -509,6 +533,7 @@ impl NetworkApp {
       self.on_buttons = true;
     }
   }
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -517,6 +542,7 @@ impl NetworkApp {
     self.button_selected =
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     let actions = self.buttons();
     let Some((action, _)) = actions.get(self.button_selected) else {
@@ -532,6 +558,7 @@ impl NetworkApp {
       ActionButton::Refresh => self.start_refresh(self.page == NetworkPage::Wifi),
     }
   }
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     match self.page {
       NetworkPage::Status => vec![
@@ -631,6 +658,7 @@ impl NetworkApp {
       _ => Vec::new(),
     }
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     let action = tr(
       self.lang,
@@ -651,6 +679,7 @@ impl NetworkApp {
       readonly
     }
   }
+  /// Processes `handle_firewall` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_firewall(&mut self, key: KeyCode) -> bool {
     let Some(settings) = &mut self.firewall else {
       self.page = NetworkPage::Home;
@@ -671,6 +700,7 @@ impl NetworkApp {
     }
     false
   }
+  /// Executes the `open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open(&mut self) {
     if self.page == NetworkPage::Home {
       let pages = self.home_pages();
@@ -700,6 +730,7 @@ impl NetworkApp {
       self.connect_selected();
     }
   }
+  /// Executes the `connect_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn connect_selected(&mut self) {
     match self.page {
       NetworkPage::Wifi => {
@@ -734,6 +765,7 @@ impl NetworkApp {
       _ => {}
     }
   }
+  /// Executes the `disconnect_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn disconnect_selected(&mut self) {
     match self.page {
       NetworkPage::Wifi => {
@@ -764,6 +796,7 @@ impl NetworkApp {
       _ => {}
     }
   }
+  /// Executes the `forget_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn forget_selected(&mut self) {
     if let Some(i) = self.current_index()
       && self.snapshot.wifi.get(i).is_some()
@@ -772,6 +805,7 @@ impl NetworkApp {
       self.confirm_forget = true;
     }
   }
+  /// Executes the `perform_forget` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn perform_forget(&mut self) {
     if let Some(i) = self.current_index()
       && let Some(name) = self
@@ -785,10 +819,12 @@ impl NetworkApp {
       });
     }
   }
+  /// Applies the `toggle_wifi` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_wifi(&mut self) {
     let enabled = !self.snapshot.wifi_enabled.unwrap_or(true);
     self.action("Alterando Wi-Fi", move |b| b.set_wifi_enabled(enabled));
   }
+  /// Applies the `apply_dns` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_dns(&mut self, raw: &str) {
     let values: Vec<String> = raw
       .split(|c: char| c == ',' || c.is_whitespace())
@@ -816,6 +852,7 @@ impl NetworkApp {
       });
     }
   }
+  /// Applies the `apply_dns_privileged` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_dns_privileged(&mut self, connection: String, values: Vec<String>, automatic: bool) {
     if self.action.is_some() || self.job.is_some() {
       return;
@@ -841,6 +878,7 @@ impl NetworkApp {
       ))
     }));
   }
+  /// Executes the `row_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_count(&self) -> usize {
     match self.page {
       NetworkPage::Home => self.home_pages().len(),
@@ -851,6 +889,7 @@ impl NetworkApp {
       NetworkPage::Status | NetworkPage::Dns | NetworkPage::Proxy | NetworkPage::Firewall => 0,
     }
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, f: &mut Frame) {
     if self.page == NetworkPage::Firewall {
       if let Some(settings) = &mut self.firewall {
@@ -955,6 +994,7 @@ impl NetworkApp {
       status(f, body, &self.theme, status_message);
     }
   }
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       NetworkPage::Home => self.home_rows(),
@@ -1214,6 +1254,7 @@ impl NetworkApp {
       NetworkPage::Firewall => Vec::new(),
     }
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let active = self
       .snapshot
@@ -1321,6 +1362,7 @@ impl NetworkApp {
   }
 }
 
+/// Applies the `apply_dns_privileged` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn apply_dns_privileged(
   executable: String,
   lang: Lang,
@@ -1350,6 +1392,7 @@ fn apply_dns_privileged(
   }
 }
 
+/// Checks the condition represented by `has_wifi_hardware_sysfs` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn has_wifi_hardware_sysfs() -> bool {
   std::fs::read_dir("/sys/class/net")
     .ok()
@@ -1366,6 +1409,7 @@ mod tests {
   use argvus_control_center_core::capabilities::Capabilities;
   use argvus_i18n::Lang;
 
+  /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app() -> NetworkApp {
     NetworkApp::new(
       Lang::for_locale("en-US"),
@@ -1375,6 +1419,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `home_opens_firewall_and_back_returns_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_opens_firewall_and_back_returns_home() {
     let mut app = app();
     for _ in 0..5 {
@@ -1389,6 +1434,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `wifi_is_only_listed_when_a_card_exists` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn wifi_is_only_listed_when_a_card_exists() {
     let mut app = app();
     assert!(!app.home_pages().contains(&NetworkPage::Wifi));
@@ -1401,6 +1447,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `vpn_is_only_listed_when_vpn_is_detected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn vpn_is_only_listed_when_vpn_is_detected() {
     let mut app = app();
     assert!(!app.home_pages().contains(&NetworkPage::Vpn));
@@ -1420,6 +1467,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `firewall_page_delegates_to_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn firewall_page_delegates_to_settings() {
     let mut app = app();
     app.page = NetworkPage::Firewall;
@@ -1431,6 +1479,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `initial_firewall_route_creates_embedded_context` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn initial_firewall_route_creates_embedded_context() {
     let mut app = app();
     app.page = NetworkPage::Firewall;
@@ -1443,6 +1492,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `network_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn network_home_rows_act_as_a_status_dashboard() {
     let mut app = app();
     app.snapshot.connectivity = "full".into();
@@ -1463,6 +1513,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `interface_detail_has_only_refresh_button_and_stays_informational` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn interface_detail_has_only_refresh_button_and_stays_informational() {
     let mut app = app();
     app.snapshot.interfaces.push(InterfaceInfo {
@@ -1484,6 +1535,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `list_pages_expose_action_buttons_with_refresh_last` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn list_pages_expose_action_buttons_with_refresh_last() {
     let mut app = app();
     app.page = NetworkPage::Interfaces;
@@ -1529,6 +1581,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `tab_cycles_focus_between_list_and_buttons_and_restores_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn tab_cycles_focus_between_list_and_buttons_and_restores_selection() {
     let mut app = app();
     app.page = NetworkPage::Interfaces;
@@ -1555,6 +1608,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `backtab_lands_on_last_button_and_escape_returns_to_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn backtab_lands_on_last_button_and_escape_returns_to_list() {
     let mut app = app();
     app.page = NetworkPage::Wifi;
@@ -1566,6 +1620,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `entering_button_bar_on_readonly_status_keeps_focus_there` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn entering_button_bar_on_readonly_status_keeps_focus_there() {
     let mut app = app();
     app.page = NetworkPage::Status;
@@ -1574,6 +1629,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `detail_page_and_proxy_expose_only_a_refresh_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_page_and_proxy_expose_only_a_refresh_button() {
     let mut app = app();
     app.page = NetworkPage::Detail(0);
@@ -1587,6 +1643,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `interfaces_page_renders_button_bar_instead_of_footer_actions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn interfaces_page_renders_button_bar_instead_of_footer_actions() {
     let mut app = app();
     app.page = NetworkPage::Interfaces;

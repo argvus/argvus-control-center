@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center displays`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend,
   model::{
@@ -24,10 +28,13 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 use std::time::{Duration, Instant};
 
+/// Defines the constant `REVERT_SECONDS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const REVERT_SECONDS: u64 = 15;
+/// Defines the constant `HOTPLUG_INTERVAL`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const HOTPLUG_INTERVAL: Duration = Duration::from_millis(1500);
 
 #[derive(Debug, Clone, PartialEq)]
+/// Defines `PersistChange`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum PersistChange {
   Mode(String),
   Scale(f64),
@@ -44,6 +51,7 @@ enum PersistChange {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents `PickerOption`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct PickerOption {
   label: String,
   args: String,
@@ -53,6 +61,7 @@ struct PickerOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `DisplayButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum DisplayButton {
   Refresh,
   Apply,
@@ -66,6 +75,7 @@ enum DisplayButton {
 }
 
 #[derive(Debug, Clone)]
+/// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
   Snapshot {
     monitors: Vec<Monitor>,
@@ -77,6 +87,7 @@ enum JobData {
   Action(String),
 }
 
+/// Represents `RevertState`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct RevertState {
   name: String,
   previous: Monitor,
@@ -84,6 +95,7 @@ struct RevertState {
   deadline: Instant,
 }
 
+/// Defines `HomeEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum HomeEntry {
   Live(usize),
   Stale {
@@ -93,6 +105,7 @@ enum HomeEntry {
   Profiles,
 }
 
+/// Represents `DisplaysApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct DisplaysApp {
   pub page: DisplayPage,
   pub lang: Lang,
@@ -119,10 +132,12 @@ pub struct DisplaysApp {
 }
 
 impl DisplaysApp {
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
   }
 
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     let mut app = Self {
       page: DisplayPage::Home,
@@ -154,6 +169,7 @@ impl DisplaysApp {
     app
   }
 
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
     if self.job.is_some() {
       return;
@@ -177,6 +193,7 @@ impl DisplaysApp {
     });
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -284,6 +301,7 @@ impl DisplaysApp {
     changed
   }
 
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if let Some((index, mut confirm)) = self.confirm_profile.take() {
       match confirm.handle(key) {
@@ -454,6 +472,7 @@ impl DisplaysApp {
     false
   }
 
+  /// Executes the `prompt_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_key(&mut self, key: KeyCode) -> bool {
     let DisplayPage::Prompt { goal } = self.page else {
       return false;
@@ -479,6 +498,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `restore_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn restore_prompt(&mut self, goal: PromptGoal) {
     self.prompt_buffer.clear();
     self.prompt_error = None;
@@ -494,6 +514,7 @@ impl DisplaysApp {
     self.button_from = None;
   }
 
+  /// Executes the `commit_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn commit_prompt(&mut self, goal: PromptGoal) {
     let buffer = self.prompt_buffer.clone();
     match goal {
@@ -649,6 +670,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Applies the `apply_sdr` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_sdr<F: FnOnce(&mut PersistedMonitor)>(&mut self, index: usize, mutate: F) {
     let Some(monitor) = self.monitors.get(index).cloned() else {
       return;
@@ -666,6 +688,7 @@ impl DisplaysApp {
     self.spawn_apply_with_config(config, message);
   }
 
+  /// Executes the `spawn_save_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn spawn_save_state(&mut self, state: crate::model::DisplayState, message: String) {
     self.action = Some(self.manager.spawn(move |_| {
       backend::save_state(&state)?;
@@ -673,6 +696,7 @@ impl DisplaysApp {
     }));
   }
 
+  /// Executes the `exit_picker` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn exit_picker(&mut self) {
     let page = self.page;
     if let DisplayPage::Picker { monitor, .. } = page {
@@ -682,6 +706,7 @@ impl DisplaysApp {
     self.on_buttons = false;
   }
 
+  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
       DisplayPage::Home => self.home_entries().len(),
@@ -692,6 +717,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open(&mut self) {
     match self.page {
       DisplayPage::Home => match self.home_entries().get(self.selected) {
@@ -732,10 +758,12 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `stale_start` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn stale_start(&self) -> usize {
     self.monitors.len()
   }
 
+  /// Executes the `stale_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn stale_name(&self, index: usize) -> Option<String> {
     let start = self.stale_start();
     if index < start {
@@ -751,11 +779,13 @@ impl DisplaysApp {
     stale.get(index - start).map(|name| name.to_string())
   }
 
+  /// Executes the `detail_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_setting(&self, row: usize) -> Option<MonitorSetting> {
     let settings = self.detail_settings();
     settings.get(row).copied()
   }
 
+  /// Executes the `detail_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_settings(&self) -> Vec<MonitorSetting> {
     let index = match self.monitor_index() {
       Some(index) => index,
@@ -793,6 +823,7 @@ impl DisplaysApp {
     settings
   }
 
+  /// Executes the `monitor_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn monitor_index(&self) -> Option<usize> {
     match self.page {
       DisplayPage::Detail(index) | DisplayPage::Picker { monitor: index, .. } => Some(index),
@@ -800,6 +831,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `detail_info_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_info_rows(&self) -> Vec<(String, String)> {
     let Some(index) = self.monitor_index() else {
       return vec![];
@@ -810,6 +842,7 @@ impl DisplaysApp {
     monitor.info_rows()
   }
 
+  /// Executes the `detail_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_rows(&self) -> Vec<String> {
     let Some(index) = self.monitor_index() else {
       return vec![];
@@ -953,6 +986,7 @@ impl DisplaysApp {
     rows
   }
 
+  /// Executes the `bitdepth_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn bitdepth_label(&self, monitor: &Monitor, persisted: &PersistedMonitor) -> String {
     if !monitor.has_10bit() {
       return tr(self.lang, "control_center.unsupported").into();
@@ -965,6 +999,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `picker_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_options(&self) -> Vec<PickerOption> {
     let Some((monitor_index, setting)) = self.monitor_ctx() else {
       return vec![];
@@ -1047,6 +1082,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `primary_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn primary_options(&self) -> Vec<PickerOption> {
     self
       .monitors
@@ -1072,6 +1108,7 @@ impl DisplaysApp {
       .collect()
   }
 
+  /// Executes the `workspace_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn workspace_options(&self, index: usize) -> Vec<PickerOption> {
     let Some(monitor) = self.monitors.get(index) else {
       return vec![];
@@ -1121,6 +1158,7 @@ impl DisplaysApp {
     options
   }
 
+  /// Executes the `position_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn position_options(&self, index: usize) -> Vec<PickerOption> {
     let Some(monitor) = self.monitors.get(index) else {
       return vec![];
@@ -1170,6 +1208,7 @@ impl DisplaysApp {
     options
   }
 
+  /// Applies the `apply_picker_selection` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_picker_selection(&mut self) {
     let Some((monitor_index, setting)) = self.monitor_ctx() else {
       return;
@@ -1248,6 +1287,7 @@ impl DisplaysApp {
     }));
   }
 
+  /// Applies the `apply_persist` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_persist(config: &mut PersistedConfig, name: &str, persist: &PersistChange) {
     match persist {
       PersistChange::Workspace(workspace, target) => {
@@ -1281,6 +1321,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `monitor_ctx` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn monitor_ctx(&self) -> Option<(usize, MonitorSetting)> {
     match self.page {
       DisplayPage::Picker { monitor, setting } => Some((monitor, setting)),
@@ -1291,6 +1332,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `spawn_revert` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn spawn_revert(&mut self, config: PersistedConfig, message: String) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -1302,6 +1344,7 @@ impl DisplaysApp {
     }));
   }
 
+  /// Executes the `spawn_apply_with_config` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn spawn_apply_with_config(&mut self, config: PersistedConfig, message: String) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -1313,14 +1356,17 @@ impl DisplaysApp {
     }));
   }
 
+  /// Executes the `vrr_supported` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn vrr_supported(&self) -> bool {
     self.version >= (0, 31)
   }
 
+  /// Executes the `hdr_supported` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hdr_supported(&self) -> bool {
     self.version >= (0, 42)
   }
 
+  /// Executes the `home_entries` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_entries(&self) -> Vec<HomeEntry> {
     let mut entries: Vec<HomeEntry> = self
       .monitors
@@ -1342,6 +1388,7 @@ impl DisplaysApp {
     entries
   }
 
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let mut rows: Vec<String> = Vec::new();
     for entry in self.home_entries() {
@@ -1408,6 +1455,7 @@ impl DisplaysApp {
     rows
   }
 
+  /// Executes the `profile_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn profile_rows(&self) -> Vec<String> {
     let mut rows = Vec::new();
     for profile in &self.state.profiles {
@@ -1422,6 +1470,7 @@ impl DisplaysApp {
     rows
   }
 
+  /// Executes the `selected_profile_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selected_profile_index(&self) -> Option<usize> {
     let index = self.selected;
     if index < self.state.profiles.len() {
@@ -1431,6 +1480,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Applies the `apply_profile` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_profile(&mut self) {
     let Some(index) = self.selected_profile_index() else {
       self.status = Some(StatusMessage {
@@ -1480,6 +1530,7 @@ impl DisplaysApp {
     self.refresh();
   }
 
+  /// Executes the `delete_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn delete_profile(&mut self, index: usize) {
     if index < self.state.profiles.len() {
       self.state.profiles.remove(index);
@@ -1491,6 +1542,7 @@ impl DisplaysApp {
     }));
   }
 
+  /// Executes the `open_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_prompt(&mut self, goal: PromptGoal) {
     self.prompt_back = Some(self.page);
     self.prompt_buffer = self.prompt_prefill(goal);
@@ -1500,6 +1552,7 @@ impl DisplaysApp {
     self.on_buttons = false;
   }
 
+  /// Executes the `prompt_prefill` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_prefill(&self, goal: PromptGoal) -> String {
     match goal {
       PromptGoal::Position(index) => self
@@ -1560,11 +1613,13 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `reload_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn reload_state(&mut self) {
     self.state = backend::load_state();
     self.selected = self.selected.min(self.selection_len().saturating_sub(1));
   }
 
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(DisplayButton, Button)> {
     let secondary = ButtonKind::Secondary;
     let primary = ButtonKind::Primary;
@@ -1626,6 +1681,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -1643,6 +1699,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -1652,6 +1709,7 @@ impl DisplaysApp {
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
 
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -1691,6 +1749,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `remove_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn remove_button(&mut self) {
     let index = self.monitor_index();
     let name = match index {
@@ -1727,6 +1786,7 @@ impl DisplaysApp {
     self.on_buttons = false;
   }
 
+  /// Executes the `reset_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn reset_button(&mut self) {
     let Some(index) = self.monitor_index() else {
       return;
@@ -1749,6 +1809,7 @@ impl DisplaysApp {
     );
   }
 
+  /// Applies the `apply_button` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_button(&mut self) {
     let Some(index) = self.monitor_index() else {
       return;
@@ -1772,6 +1833,7 @@ impl DisplaysApp {
     );
   }
 
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> String {
     match self.page {
       DisplayPage::Picker { .. } => tr(
@@ -1802,6 +1864,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.displays");
     match self.page {
@@ -1833,10 +1896,12 @@ impl DisplaysApp {
     }
   }
 
+  /// Checks the condition represented by `is_picker` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn is_picker(&self) -> bool {
     matches!(self.page, DisplayPage::Picker { .. })
   }
 
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let body = shell(
@@ -1902,6 +1967,7 @@ impl DisplaysApp {
     }
   }
 
+  /// Renders `draw_detail` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_detail(&mut self, frame: &mut Frame, area: Rect, body: Rect) {
     let info = self.detail_info_rows();
     let buttons = self.buttons();
@@ -1942,6 +2008,7 @@ impl DisplaysApp {
     self.overlays(frame, area);
   }
 
+  /// Renders `draw_prompt` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_prompt(&mut self, frame: &mut Frame, area: Rect, goal: PromptGoal) {
     let width = area.width.saturating_sub(6).clamp(34, 76);
     let height = 9u16.min(area.height);
@@ -1992,6 +2059,7 @@ impl DisplaysApp {
     self.overlays(frame, area);
   }
 
+  /// Executes the `overlays` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn overlays(&self, frame: &mut Frame, area: Rect) {
     if let Some(revert) = &self.revert {
       draw_revert(frame, area, &self.theme, self.lang, revert);
@@ -2029,6 +2097,7 @@ impl DisplaysApp {
   }
 }
 
+/// Executes the `split_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn split_buttons(frame: &mut Frame, body: Rect, raw_buttons: &[Button]) -> (Rect, Option<Rect>) {
   let _ = frame;
   if raw_buttons.is_empty() {
@@ -2039,6 +2108,7 @@ fn split_buttons(frame: &mut Frame, body: Rect, raw_buttons: &[Button]) -> (Rect
   (split[0], Some(split[1]))
 }
 
+/// Renders `draw_buttons` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn draw_buttons(
   frame: &mut Frame,
   button_area: Option<Rect>,
@@ -2056,6 +2126,7 @@ fn draw_buttons(
   }
 }
 
+/// Renders `draw_revert` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn draw_revert(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, revert: &RevertState) {
   let remaining = revert
     .deadline
@@ -2083,6 +2154,7 @@ fn draw_revert(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, revert:
   );
 }
 
+/// Executes the `resolution_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn resolution_options(monitor: &Monitor) -> Vec<PickerOption> {
   let mut unique: Vec<(u32, u32, f64)> = Vec::new();
   for mode in &monitor.modes {
@@ -2112,6 +2184,7 @@ fn resolution_options(monitor: &Monitor) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `refresh_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn refresh_options(monitor: &Monitor) -> Vec<PickerOption> {
   let mut modes = monitor.modes.clone();
   modes.sort_by(|left, right| {
@@ -2136,6 +2209,7 @@ fn refresh_options(monitor: &Monitor) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `scale_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn scale_options(monitor: &Monitor) -> Vec<PickerOption> {
   [1.0_f64, 0.75, 1.1, 1.25, 1.5, 2.0]
     .into_iter()
@@ -2148,6 +2222,7 @@ fn scale_options(monitor: &Monitor) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `enabled_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn enabled_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   vec![
     PickerOption {
@@ -2165,6 +2240,7 @@ fn enabled_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   ]
 }
 
+/// Executes the `orientation_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn orientation_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   (0..8)
     .map(|transform| PickerOption {
@@ -2176,6 +2252,7 @@ fn orientation_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `mirror_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn mirror_options(monitor: &Monitor, monitors: &[Monitor], lang: Lang) -> Vec<PickerOption> {
   let mut options = vec![PickerOption {
     label: tr(lang, "control_center.no_mirror").into(),
@@ -2196,6 +2273,7 @@ fn mirror_options(monitor: &Monitor, monitors: &[Monitor], lang: Lang) -> Vec<Pi
   options
 }
 
+/// Executes the `bitdepth_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn bitdepth_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   let _ = lang;
   [8_i32, 10]
@@ -2209,6 +2287,7 @@ fn bitdepth_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `vrr_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn vrr_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   [0_i32, 1, 2]
     .into_iter()
@@ -2221,6 +2300,7 @@ fn vrr_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `hdr_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hdr_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   [0_i32, 1]
     .into_iter()
@@ -2233,6 +2313,7 @@ fn hdr_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
     .collect()
 }
 
+/// Executes the `dpms_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn dpms_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   let current_on = monitor.dpms_status != "off";
   vec![
@@ -2267,6 +2348,7 @@ fn dpms_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   ]
 }
 
+/// Executes the `sdr_brightness_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn sdr_brightness_options(_lang: Lang, _monitor: &Monitor) -> Vec<PickerOption> {
   [0.25, 0.5, 0.75, 1.0]
     .into_iter()
@@ -2279,6 +2361,7 @@ fn sdr_brightness_options(_lang: Lang, _monitor: &Monitor) -> Vec<PickerOption> 
     .collect()
 }
 
+/// Executes the `sdr_saturation_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn sdr_saturation_options(_lang: Lang, _monitor: &Monitor) -> Vec<PickerOption> {
   [0.5, 1.0, 1.5, 2.0]
     .into_iter()
@@ -2291,6 +2374,7 @@ fn sdr_saturation_options(_lang: Lang, _monitor: &Monitor) -> Vec<PickerOption> 
     .collect()
 }
 
+/// Executes the `option_is_risky` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn option_is_risky(persist: &PersistChange) -> bool {
   matches!(
     persist,
@@ -2302,6 +2386,7 @@ fn option_is_risky(persist: &PersistChange) -> bool {
   )
 }
 
+/// Executes the `rule_from_persisted` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn rule_from_persisted(name: &str, persisted: &PersistedMonitor) -> String {
   let mode = persisted.mode.clone().unwrap_or_else(|| "auto".into());
   let position = persisted.position.clone().unwrap_or_else(|| "auto".into());
@@ -2338,6 +2423,7 @@ fn rule_from_persisted(name: &str, persisted: &PersistedMonitor) -> String {
   body
 }
 
+/// Applies the `apply_wallpapers_hook` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn apply_wallpapers_hook() -> Result<(), String> {
   let script = "/usr/bin/argvus-wallpapers-apply";
   if std::path::Path::new(script).exists() {
@@ -2346,6 +2432,7 @@ fn apply_wallpapers_hook() -> Result<(), String> {
   Ok(())
 }
 
+/// Executes the `fingerprint` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn fingerprint(monitors: &[Monitor]) -> Vec<String> {
   monitors
     .iter()
@@ -2364,6 +2451,7 @@ fn fingerprint(monitors: &[Monitor]) -> Vec<String> {
     .collect()
 }
 
+/// Executes the `trimmed_rate` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn trimmed_rate(rate: f64) -> String {
   let rounded = (rate * 1000.0).round() / 1000.0;
   if rounded.fract() < 0.0005 {
@@ -2373,15 +2461,18 @@ fn trimmed_rate(rate: f64) -> String {
   }
 }
 
+/// Executes the `rate_of` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn rate_of(mode: &str) -> Option<f64> {
   mode.rsplit('@').next()?.parse::<f64>().ok()
 }
 
+/// Converts input data into `parse_position` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_position(buffer: &str) -> Option<(i32, i32)> {
   let (x, y) = buffer.split_once(',')?;
   Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
+/// Converts input data into `parse_number` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_number(buffer: &str) -> Option<f64> {
   buffer
     .trim()
@@ -2390,6 +2481,7 @@ fn parse_number(buffer: &str) -> Option<f64> {
     .filter(|value| value.is_finite())
 }
 
+/// Executes the `prompt_allowed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn prompt_allowed(goal: PromptGoal, character: char) -> bool {
   match goal {
     PromptGoal::Position(_) => {
@@ -2402,6 +2494,7 @@ fn prompt_allowed(goal: PromptGoal, character: char) -> bool {
   }
 }
 
+/// Executes the `setting_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn setting_label(lang: Lang, setting: MonitorSetting) -> String {
   match setting {
     MonitorSetting::Resolution => tr(lang, "control_center.resolution").into(),
@@ -2422,6 +2515,7 @@ fn setting_label(lang: Lang, setting: MonitorSetting) -> String {
   }
 }
 
+/// Executes the `transform_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn transform_label(lang: Lang, transform: i32) -> String {
   match transform {
     0 => tr(lang, "control_center.normal").into(),
@@ -2436,6 +2530,7 @@ fn transform_label(lang: Lang, transform: i32) -> String {
   }
 }
 
+/// Executes the `vrr_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn vrr_label(lang: Lang, vrr: i32) -> String {
   match vrr {
     0 => tr(lang, "control_center.disabled").into(),
@@ -2445,6 +2540,7 @@ fn vrr_label(lang: Lang, vrr: i32) -> String {
   }
 }
 
+/// Executes the `hdr_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hdr_label(lang: Lang, hdr: i32) -> String {
   if hdr != 0 {
     tr(lang, "control_center.forced").into()
@@ -2453,6 +2549,7 @@ fn hdr_label(lang: Lang, hdr: i32) -> String {
   }
 }
 
+/// Processes `on_off` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn on_off(lang: Lang, on: bool) -> String {
   if on {
     tr(lang, "control_center.yes").into()
@@ -2466,6 +2563,7 @@ mod tests {
   use super::*;
   use crate::model::Mode;
 
+  /// Executes the `monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn monitor(name: &str) -> Monitor {
     Monitor {
       id: 0,
@@ -2503,6 +2601,7 @@ mod tests {
     }
   }
 
+  /// Executes the `app_with` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app_with(job: bool) -> DisplaysApp {
     let mut app = DisplaysApp::new(Lang::for_locale("en-US"), Theme::load());
     if !job {
@@ -2515,6 +2614,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `versions_gate_fancy_features` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn versions_gate_fancy_features() {
     let mut app = app_with(true);
     assert!(!app.vrr_supported() && !app.hdr_supported());
@@ -2523,6 +2623,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `home_rows_merge_profiles_entry` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows_merge_profiles_entry() {
     let mut app = app_with(false);
     app.state.profiles.push(MonitorProfile {
@@ -2537,6 +2638,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `risky_persist_changes_arm_revert` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn risky_persist_changes_arm_revert() {
     assert!(option_is_risky(&PersistChange::Mode("x".into())));
     assert!(option_is_risky(&PersistChange::Position(1, 2)));
@@ -2548,6 +2650,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `prompt_validation_rejects_bad_positions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_validation_rejects_bad_positions() {
     assert_eq!(parse_position("1920,0"), Some((1920, 0)));
     assert_eq!(parse_position("0x0"), None);
@@ -2557,6 +2660,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `workspace_binding_persist_moves_workspace` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn workspace_binding_persist_moves_workspace() {
     let mut config = PersistedConfig::default();
     config.set_workspaces("eDP-1", vec![1, 2]);
@@ -2573,6 +2677,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `profile_rule_replays_persisted_fields` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn profile_rule_replays_persisted_fields() {
     let persisted = PersistedMonitor {
       mode: Some("1920x1080@144".into()),
@@ -2601,6 +2706,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `detail_settings_include_supported_and_gated` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_settings_include_supported_and_gated() {
     let mut app = app_with(false);
     app.version = (0, 42);
@@ -2619,6 +2725,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `primary_option_rows_list_every_connected_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn primary_option_rows_list_every_connected_monitor() {
     let mut app = app_with(false);
     app.monitors.push(Monitor {
@@ -2637,6 +2744,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `workspace_editor_marks_this_monitor_and_others` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn workspace_editor_marks_this_monitor_and_others() {
     let mut app = app_with(false);
     app.monitors.push(Monitor {
@@ -2666,6 +2774,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `app_navigates_home_to_detail_picker_and_back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app_navigates_home_to_detail_picker_and_back() {
     let mut app = app_with(false);
     app.handle(KeyCode::Enter);

@@ -1,3 +1,7 @@
+//! Implements executable entry point and terminal lifecycle in crate `argvus control center`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::time::Duration;
 
 use anyhow::Result;
@@ -5,6 +9,7 @@ use argvus_control_center::app::App;
 use argvus_control_center::{cli, event, ui};
 use argvus_tui::terminal::{TerminalGuard, install_panic_hook};
 
+/// Executes the `main` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn main() -> Result<()> {
   let args: Vec<String> = std::env::args().skip(1).collect();
   if args.first().is_some_and(|arg| arg == "system-settings") {

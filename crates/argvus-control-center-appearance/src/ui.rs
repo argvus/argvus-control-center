@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center appearance`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend,
   model::{
@@ -25,15 +29,18 @@ use ratatui::{
 };
 
 #[derive(Debug, Clone)]
+/// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
   Loaded(AppearanceState),
   Action(String),
 }
 
+/// Executes the `icon_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn icon_label(icon: &'static str, label: impl AsRef<str>) -> String {
   argvus_tui::icons::icon_label(AppConfig::icon(icon), label)
 }
 
+/// Represents `AppearanceApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct AppearanceApp {
   pub page: AppearancePage,
   pub lang: Lang,
@@ -52,9 +59,11 @@ pub struct AppearanceApp {
   manager: JobManager,
 }
 impl AppearanceApp {
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
   }
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     let mut app = Self {
       page: AppearancePage::Home,
@@ -77,6 +86,7 @@ impl AppearanceApp {
     app.trigger_first_load();
     app
   }
+  /// Executes the `trigger_first_load` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn trigger_first_load(&mut self) {
     self.status_loading = true;
     self.status = Some(StatusMessage {
@@ -84,6 +94,7 @@ impl AppearanceApp {
       text: tr(self.lang, "control_center.loading_appearance").into(),
     });
   }
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
     if self.job.is_none() {
       self.job = Some(
@@ -93,6 +104,7 @@ impl AppearanceApp {
       );
     }
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -147,6 +159,7 @@ impl AppearanceApp {
     }
     changed
   }
+  /// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply(&mut self, message: String, task: impl FnOnce() -> Result<(), String> + Send + 'static) {
     if self.action.is_some() {
       return;
@@ -157,10 +170,12 @@ impl AppearanceApp {
       Ok(JobData::Action(message))
     }));
   }
+  /// Executes the `go` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn go(&mut self, page: AppearancePage) {
     self.page = page;
     self.selected = 0;
   }
+  /// Applies the `toggle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle(&mut self) {
     let value = if self.state.rounded { "0" } else { "1" };
     let enable = !self.state.rounded;
@@ -177,6 +192,7 @@ impl AppearanceApp {
       },
     );
   }
+  /// Executes the `pick` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn pick(&mut self) {
     match self.page {
       AppearancePage::Themes if self.selected < THEME_FAMILIES.len() => {
@@ -252,12 +268,14 @@ impl AppearanceApp {
       _ => {}
     }
   }
+  /// Executes the `open_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_prompt(&mut self, goal: PromptGoal) {
     self.prompt_back = Some(self.page);
     self.page = AppearancePage::Prompt { goal };
     self.prompt_buffer.clear();
     self.prompt_error = None;
   }
+  /// Executes the `prompt_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_key(&mut self, key: KeyCode) -> bool {
     match key {
       KeyCode::Enter if self.action.is_none() => {
@@ -311,6 +329,7 @@ impl AppearanceApp {
       _ => false,
     }
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.prompt_back.is_some() {
       return self.prompt_key(key);
@@ -335,6 +354,7 @@ impl AppearanceApp {
     }
     false
   }
+  /// Executes the `back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn back(&mut self) -> bool {
     if self.page == AppearancePage::Home {
       return true;
@@ -361,6 +381,7 @@ impl AppearanceApp {
     }
     false
   }
+  /// Executes the `open_or_pick` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_or_pick(&mut self) {
     match self.page {
       AppearancePage::Home => match self.selected {
@@ -392,6 +413,7 @@ impl AppearanceApp {
       AppearancePage::Prompt { .. } => {}
     }
   }
+  /// Applies the `apply_toggle_effects` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_toggle_effects(&mut self) {
     let value = !self.state.effects;
     self.apply(
@@ -399,6 +421,7 @@ impl AppearanceApp {
       move || backend::set_effects(value),
     );
   }
+  /// Applies the `apply_toggle_telemetry` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_toggle_telemetry(&mut self) {
     let value = !self.state.widget_telemetry;
     self.apply(
@@ -406,6 +429,7 @@ impl AppearanceApp {
       move || backend::set_telemetry(value),
     );
   }
+  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
       AppearancePage::Home => 6,
@@ -421,6 +445,7 @@ impl AppearanceApp {
       AppearancePage::Prompt { .. } => 0,
     }
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let enabled = tr(self.lang, "control_center.enabled");
     let disabled = tr(self.lang, "control_center.disabled");
@@ -494,6 +519,7 @@ impl AppearanceApp {
       ),
     ]
   }
+  /// Executes the `prompt_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_label(&self, goal: PromptGoal) -> &'static str {
     match goal {
       PromptGoal::WaybarTop => "control_center.top",
@@ -509,6 +535,7 @@ impl AppearanceApp {
       PromptGoal::Thickness => "control_center.thickness",
     }
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.appearance");
     match self.page {
@@ -560,6 +587,7 @@ impl AppearanceApp {
       ),
     }
   }
+  /// Executes the `breadcrumb_for_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb_for_prompt(&self, _goal: PromptGoal) -> String {
     let root = tr(self.lang, "control_center.appearance");
     let section = match self.prompt_back.unwrap_or(AppearancePage::Home) {
@@ -574,6 +602,7 @@ impl AppearanceApp {
       tr(self.lang, "control_center.spaces_borders_position")
     )
   }
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       AppearancePage::Home => self.home_rows(),
@@ -795,6 +824,7 @@ impl AppearanceApp {
       AppearancePage::Prompt { .. } => Vec::new(),
     }
   }
+  /// Executes the `hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hints(&self) -> String {
     if matches!(self.page, AppearancePage::Prompt { .. }) {
       let (min, max) = if let AppearancePage::Prompt { goal } = self.page {
@@ -820,6 +850,7 @@ impl AppearanceApp {
       .into()
     }
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = shell(
       frame,
@@ -844,6 +875,7 @@ impl AppearanceApp {
       status(frame, area, &self.theme, message);
     }
   }
+  /// Renders `draw_prompt` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_prompt(&mut self, frame: &mut Frame, area: Rect, goal: PromptGoal) {
     let label = tr(self.lang, self.prompt_label(goal));
     let chunks = Layout::vertical([
@@ -884,6 +916,7 @@ impl AppearanceApp {
 #[cfg(test)]
 mod tests {
   use super::*;
+  /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app(page: AppearancePage) -> AppearanceApp {
     AppearanceApp {
       page,
@@ -904,11 +937,13 @@ mod tests {
     }
   }
   #[test]
+  /// Executes the `home_has_categories_and_spacing_is_nested` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_has_categories_and_spacing_is_nested() {
     assert_eq!(app(AppearancePage::Home).rows().len(), 6);
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
   }
   #[test]
+  /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows_follow_the_global_icon_setting() {
     AppConfig::set_session_icons(true);
     let with_icons = app(AppearancePage::Home).home_rows();
@@ -923,6 +958,7 @@ mod tests {
     AppConfig::set_session_icons(true);
   }
   #[test]
+  /// Executes the `selection_bounds_follow_each_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_bounds_follow_each_page() {
     let mut a = app(AppearancePage::WindowSpaces);
     a.handle(KeyCode::End);
@@ -931,6 +967,7 @@ mod tests {
     assert_eq!(a.selected, 4);
   }
   #[test]
+  /// Executes the `disabled_rounding_does_not_open_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn disabled_rounding_does_not_open_prompt() {
     let mut a = app(AppearancePage::GeneralBorders);
     a.selected = 1;

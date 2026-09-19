@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center power`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   hypridle,
   model::{LidContext, PowerBehavior, PowerButtonBehavior, PowerState},
@@ -9,9 +13,12 @@ use argvus_control_center_core::{
 };
 use std::fs;
 
+/// Defines the constant `LOGIND_MAIN`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const LOGIND_MAIN: &str = "/etc/systemd/logind.conf";
+/// Defines the constant `LOGIND_DROP_IN`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const LOGIND_DROP_IN: &str = "/etc/systemd/logind.conf.d/argvus.conf";
 
+/// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load() -> PowerState {
   let lid_battery = logind_value("HandleLidSwitch")
     .as_deref()
@@ -47,6 +54,7 @@ pub fn load() -> PowerState {
   }
 }
 
+/// Executes the `keep_awake_status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keep_awake_status() -> bool {
   SystemProcessRunner
     .run(&ProcessRequest::new("/usr/share/argvus/power/sh/keep-awake.sh").arg("status"))
@@ -54,6 +62,7 @@ fn keep_awake_status() -> bool {
     .is_some_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "enabled")
 }
 
+/// Retrieves data for `detect_is_laptop` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn detect_is_laptop() -> bool {
   if let Ok(chassis) = fs::read_to_string("/sys/class/dmi/id/chassis_type")
     && let Ok(n) = chassis.trim().parse::<u8>()
@@ -82,6 +91,7 @@ fn logind_value(key: &str) -> Option<String> {
   parse_logind_key(&main, key)
 }
 
+/// Converts input data into `parse_logind_key` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_logind_key(content: &str, key: &str) -> Option<String> {
   content.lines().find_map(|line| {
     let line = line.trim();
@@ -93,6 +103,7 @@ fn parse_logind_key(content: &str, key: &str) -> Option<String> {
   })
 }
 
+/// Executes the `systemctl_can` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn systemctl_can(command: &str) -> bool {
   let output = SystemProcessRunner.run(&ProcessRequest::new("systemctl").arg(command));
   output
@@ -100,6 +111,7 @@ fn systemctl_can(command: &str) -> bool {
     .is_some_and(|out| matches!(String::from_utf8_lossy(&out.stdout).trim(), "yes"))
 }
 
+/// Applies the `set_lid` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_lid(context: LidContext, behavior: PowerBehavior) -> Result<(), String> {
   let (context, key) = match context {
     LidContext::Battery => ("battery", "HandleLidSwitch"),
@@ -112,6 +124,7 @@ pub fn set_lid(context: LidContext, behavior: PowerBehavior) -> Result<(), Strin
   )
 }
 
+/// Applies the `set_power_button` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_power_button(behavior: PowerButtonBehavior) -> Result<(), String> {
   privileged_power(
     "set-power-button",
@@ -120,14 +133,17 @@ pub fn set_power_button(behavior: PowerButtonBehavior) -> Result<(), String> {
   )
 }
 
+/// Applies the `apply_idle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_idle(minutes: u32) -> Result<(), String> {
   hypridle::apply_screen_off_minutes(minutes).map(|_| ())
 }
 
+/// Applies the `apply_lock` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_lock(minutes: u32) -> Result<(), String> {
   hypridle::apply_lock_minutes(minutes).map(|_| ())
 }
 
+/// Applies the `set_keep_awake` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_keep_awake(enabled: bool) -> Result<(), String> {
   let value = if enabled { "on" } else { "off" };
   let output = SystemProcessRunner
@@ -138,10 +154,12 @@ pub fn set_keep_awake(enabled: bool) -> Result<(), String> {
     .ok_or_else(|| terminal_text(String::from_utf8_lossy(&output.stderr).trim()).to_string())
 }
 
+/// Executes the `suspend_now` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn suspend_now() -> Result<(), String> {
   privileged_power("suspend-now", Vec::new(), "A operação de suspensão falhou.")
 }
 
+/// Executes the `hibernate_now` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn hibernate_now() -> Result<(), String> {
   privileged_power(
     "hibernate-now",
@@ -150,6 +168,7 @@ pub fn hibernate_now() -> Result<(), String> {
   )
 }
 
+/// Executes the `privileged_power` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn privileged_power(action: &str, arguments: Vec<String>, message: &str) -> Result<(), String> {
   let executable = std::env::current_exe()
     .map_err(|error| error.to_string())?
@@ -165,6 +184,7 @@ fn privileged_power(action: &str, arguments: Vec<String>, message: &str) -> Resu
   }
 }
 
+/// Executes the `privileged_failure` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn privileged_failure(output: &ProcessOutput, message: &str) -> String {
   let stderr = terminal_text(String::from_utf8_lossy(&output.stderr).trim());
   match output.status {
@@ -181,6 +201,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Converts input data into `parses_logind_keys_ignoring_comments` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_logind_keys_ignoring_comments() {
     let content = "\
 # HandleLidSwitch=poweroff
@@ -199,6 +220,7 @@ HandlePowerKey=poweroff
   }
 
   #[test]
+  /// Executes the `drop_in_precedence_over_main_config` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn drop_in_precedence_over_main_config() {
     let field = "HandleLidSwitchExternalPower";
     let drop_in = format!("{field}=ignore");

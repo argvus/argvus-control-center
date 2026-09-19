@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center appearance`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::model::{AppearanceState, TaskbarPosition};
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
@@ -11,10 +15,14 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+/// Defines the constant `WALLPAPERS_DIR`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const WALLPAPERS_DIR: &str = "/usr/share/backgrounds/argvus";
+/// Defines the constant `DEFAULT_THEME`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const DEFAULT_THEME: &str = "argvus-dark-aether";
+/// Defines the constant `DEFAULT_ACCENT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const DEFAULT_ACCENT: &str = "#3590bd";
 
+/// Executes the `script` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn script(name: &str) -> PathBuf {
   let project = match name {
     "effects-toggle.sh" => "session",
@@ -26,6 +34,7 @@ fn script(name: &str) -> PathBuf {
   system_config_root().join(project).join("sh").join(name)
 }
 
+/// Executes the `run_script` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
   if !script_path.is_file() {
     return Err(format!("script não encontrado: {}", script_path.display()));
@@ -57,6 +66,7 @@ fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
   Ok(())
 }
 
+/// Executes the `run_script_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_script_output(script_path: &Path, args: &[&str]) -> Option<String> {
   if !script_path.is_file() {
     return None;
@@ -79,6 +89,7 @@ fn run_script_output(script_path: &Path, args: &[&str]) -> Option<String> {
   Some(terminal_text(&String::from_utf8_lossy(&output.stdout)))
 }
 
+/// Executes the `command_words` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_words(command: &str) -> Vec<String> {
   command
     .split_whitespace()
@@ -87,6 +98,7 @@ fn command_words(command: &str) -> Vec<String> {
     .collect()
 }
 
+/// Checks the condition represented by `is_tui_file_manager` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn is_tui_file_manager(command: &[String]) -> bool {
   matches!(
     command.first().map(String::as_str),
@@ -105,6 +117,7 @@ fn is_tui_file_manager(command: &[String]) -> bool {
   )
 }
 
+/// Executes the `default_app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn default_app(category: &str) -> Option<Vec<String>> {
   let output = run_script_output(
     &system_config_root().join("session/sh/get-default.sh"),
@@ -235,6 +248,7 @@ fn raise_file_manager_window(pid: u32, class: Option<&str>) {
   }
 }
 
+/// Retrieves data for `read_first` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_first(path: &Path, fallback: &str) -> String {
   fs::read_to_string(path)
     .ok()
@@ -243,6 +257,7 @@ fn read_first(path: &Path, fallback: &str) -> String {
     .unwrap_or_else(|| fallback.to_string())
 }
 
+/// Retrieves data for `read_first_or_default` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_first_or_default(path: &Path) -> Option<String> {
   fs::read_to_string(path)
     .ok()
@@ -250,14 +265,17 @@ fn read_first_or_default(path: &Path) -> Option<String> {
     .map(|line| line.trim().to_string())
 }
 
+/// Executes the `active_theme_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn active_theme_file() -> PathBuf {
   argvus_config_home().join(".active-theme")
 }
 
+/// Executes the `accent_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn accent_file() -> PathBuf {
   argvus_config_home().join(".accent-color")
 }
 
+/// Executes the `theme_default_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn theme_default_accent(theme: &str) -> Option<&'static str> {
   match theme {
     "argvus-dark-aether" | "argvus-dark-aether-float" => Some("#3590bd"),
@@ -269,6 +287,7 @@ fn theme_default_accent(theme: &str) -> Option<&'static str> {
   }
 }
 
+/// Converts input data into `parse_pairs` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_pairs(output: &str) -> impl Iterator<Item = (&str, &str)> {
   output.lines().filter_map(|line| {
     line
@@ -277,6 +296,7 @@ fn parse_pairs(output: &str) -> impl Iterator<Item = (&str, &str)> {
   })
 }
 
+/// Converts input data into `parse_spacing_status` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_spacing_status(output: &str, state: &mut AppearanceState) {
   for (key, value) in parse_pairs(output) {
     match key {
@@ -295,6 +315,7 @@ fn parse_spacing_status(output: &str, state: &mut AppearanceState) {
   }
 }
 
+/// Converts input data into `parse_borders_status` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_borders_status(output: &str, state: &mut AppearanceState) {
   for (key, value) in parse_pairs(output) {
     match key {
@@ -306,6 +327,7 @@ fn parse_borders_status(output: &str, state: &mut AppearanceState) {
   }
 }
 
+/// Executes the `effects_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn effects_state() -> bool {
   let path = argvus_config_home().join("state").join("effects");
   match read_first_or_default(&path).as_deref() {
@@ -320,6 +342,7 @@ fn effects_state() -> bool {
   }
 }
 
+/// Executes the `telemetry_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn telemetry_state() -> bool {
   if let Ok(output) = SystemProcessRunner.run(
     &ProcessRequest::new("env")
@@ -350,6 +373,7 @@ fn telemetry_state() -> bool {
   false
 }
 
+/// Executes the `list_wallpapers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list_wallpapers() -> Vec<String> {
   let mut names = fs::read_dir(WALLPAPERS_DIR)
     .map(|entries| {
@@ -364,10 +388,12 @@ pub fn list_wallpapers() -> Vec<String> {
   names
 }
 
+/// Executes the `hyprpaper_config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hyprpaper_config_path() -> PathBuf {
   argvus_config_home().join("hypr").join("hyprpaper.conf")
 }
 
+/// Executes the `active_wallpaper` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn active_wallpaper() -> Option<String> {
   let content = fs::read_to_string(hyprpaper_config_path()).ok()?;
   let path = content.lines().find_map(|line| {
@@ -387,6 +413,7 @@ pub fn active_wallpaper() -> Option<String> {
     .map(|name| name.trim_start_matches('/').to_string())
 }
 
+/// Executes the `first_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn first_monitor() -> Option<String> {
   let output = SystemProcessRunner
     .run(&ProcessRequest::new("hyprctl").arg("monitors"))
@@ -451,6 +478,7 @@ fn write_hyprpaper_config(wallpaper: &Path) -> Result<(), String> {
   write_atomic(&config_path, &text)
 }
 
+/// Applies the `write_atomic` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
   if let Some(parent) = path.parent()
     && !parent.exists()
@@ -462,6 +490,7 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
   fs::rename(&tmp, path).map_err(|error| error.to_string())
 }
 
+/// Retrieves data for `load_state` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load_state() -> AppearanceState {
   let mut state = AppearanceState::default();
   let theme = read_first(&active_theme_file(), DEFAULT_THEME);
@@ -481,14 +510,17 @@ pub fn load_state() -> AppearanceState {
   state
 }
 
+/// Applies the `set_theme` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_theme(name: &str) -> Result<(), String> {
   run_script(&script("theme-switch.sh"), &[name])
 }
 
+/// Applies the `set_accent` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_accent(color: &str) -> Result<(), String> {
   run_script(&script("accent-switch.sh"), &[color])
 }
 
+/// Applies the `set_effects` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_effects(enabled: bool) -> Result<(), String> {
   run_script(
     &script("effects-toggle.sh"),
@@ -496,6 +528,7 @@ pub fn set_effects(enabled: bool) -> Result<(), String> {
   )
 }
 
+/// Applies the `set_telemetry` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_telemetry(enabled: bool) -> Result<(), String> {
   let output = SystemProcessRunner.run(
     &ProcessRequest::new("argvus-widget-telemetry-toggle").arg(if enabled { "on" } else { "off" }),
@@ -516,6 +549,7 @@ pub fn set_telemetry(enabled: bool) -> Result<(), String> {
   }
 }
 
+/// Applies the `set_wallpaper` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_wallpaper(name: &str) -> Result<(), String> {
   if name.is_empty()
     || name
@@ -629,6 +663,7 @@ pub fn choose_wallpaper() -> Result<(), String> {
   Ok(())
 }
 
+/// Applies the `set_spacing` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_spacing(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid spaces key/value".into());
@@ -637,6 +672,7 @@ pub fn set_spacing(key: &str, value: &str) -> Result<(), String> {
   run_script(&script("spaces-switch.sh"), &["--apply"])
 }
 
+/// Applies the `set_waybar_position` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_waybar_position(position: &str) -> Result<(), String> {
   if position != "top" && position != "bottom" {
     return Err("invalid waybar position".into());
@@ -648,6 +684,7 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
   run_script(&script("spaces-switch.sh"), &["--apply"])
 }
 
+/// Applies the `set_border` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_border(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid border key/value".into());
@@ -679,6 +716,7 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `theme_default_accents_exist` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn theme_default_accents_exist() {
     assert_eq!(
       theme_default_accent("argvus-dark-slate-float"),
@@ -688,6 +726,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `status_parsers_ignore_unknown_keys` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn status_parsers_ignore_unknown_keys() {
     let mut state = AppearanceState::default();
     parse_spacing_status(
@@ -705,6 +744,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `gui_file_manager_class_known_apps` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn gui_file_manager_class_known_apps() {
     assert_eq!(
       gui_file_manager_class("nautilus"),

@@ -1,3 +1,7 @@
+//! Implements shared TUI chrome in crate `argvus tui`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use argvus_theme::Theme;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Margin, Rect};
@@ -5,6 +9,7 @@ use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 
+/// Represents `Header`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Header<'a> {
   pub title: &'a str,
   pub version: Option<&'a str>,
@@ -12,12 +17,14 @@ pub struct Header<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Defines `MessageKind`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum MessageKind {
   Info,
   Success,
   Error,
 }
 
+/// Renders `draw_header` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw_header(frame: &mut Frame, area: Rect, theme: &Theme, header: Header<'_>) {
   Block::new()
     .bg(theme.surface)
@@ -63,6 +70,7 @@ pub fn draw_header(frame: &mut Frame, area: Rect, theme: &Theme, header: Header<
   );
 }
 
+/// Renders `draw_footer` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw_footer(
   frame: &mut Frame,
   area: Rect,
@@ -97,6 +105,7 @@ pub fn draw_footer(
   );
 }
 
+/// Renders `draw_help` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw_help(frame: &mut Frame, area: Rect, theme: &Theme, title: &str, lines: &[String]) {
   let width = area.width.saturating_sub(8).clamp(36, 68);
   let height = (lines.len() as u16 + 4).min(area.height).max(5);
@@ -116,6 +125,7 @@ pub fn draw_help(frame: &mut Frame, area: Rect, theme: &Theme, title: &str, line
   );
 }
 
+/// Renders `draw_too_small` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw_too_small(
   frame: &mut Frame,
   area: Rect,
@@ -148,6 +158,7 @@ pub fn draw_too_small(
   );
 }
 
+/// Executes the `centered` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn centered(area: Rect, width: u16, height: u16) -> Rect {
   Rect::new(
     area.x + area.width.saturating_sub(width) / 2,
@@ -163,6 +174,7 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   #[test]
+  /// Executes the `header_does_not_show_theme_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn header_does_not_show_theme_name() {
     let mut theme = argvus_theme::Theme::load();
     theme.name = "argvus-dark-aether".into();

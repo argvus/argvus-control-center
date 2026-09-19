@@ -1,3 +1,7 @@
+//! Implements user and group administration in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -17,6 +21,7 @@ use crate::{
   i18n::{Lang, tr},
 };
 
+/// Defines the constant `FIREWALL_FIELDS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const FIREWALL_FIELDS: [(&str, &str); 15] = [
   ("INTERFACE_WAN", "control_center.wan_interface"),
   ("INTERFACE_LAN", "control_center.lan_interface"),
@@ -41,6 +46,7 @@ const FIREWALL_FIELDS: [(&str, &str); 15] = [
   ("ANTI_SPOOFING", "control_center.anti_spoofing"),
 ];
 
+/// Checks the condition represented by `is_page` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn is_page(page: Page) -> bool {
   matches!(
     page,
@@ -63,9 +69,11 @@ pub fn is_page(page: Page) -> bool {
   )
 }
 
+/// Executes the `text` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn text(value: &Value, key: &str) -> String {
   value[key].as_str().unwrap_or_default().into()
 }
+/// Executes the `strings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn strings(value: &Value) -> Vec<String> {
   value
     .as_array()
@@ -78,6 +86,7 @@ fn strings(value: &Value) -> Vec<String> {
     })
     .unwrap_or_default()
 }
+/// Executes the `row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn row(label: &str, detail: impl Into<String>) -> Row {
   Row {
     label: label.into(),
@@ -85,6 +94,7 @@ fn row(label: &str, detail: impl Into<String>) -> Row {
     current: false,
   }
 }
+/// Executes the `plain` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn plain(label: &str) -> Row {
   Row {
     label: label.into(),
@@ -92,6 +102,7 @@ fn plain(label: &str) -> Row {
     current: false,
   }
 }
+/// Executes the `section` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn section(label: &str) -> Row {
   Row {
     label: format!("-- {label}"),
@@ -102,6 +113,7 @@ fn section(label: &str) -> Row {
 
 pub use argvus_tui::buttons::{Button, ButtonKind};
 
+/// Executes the `request` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, String> {
   let binary = if firewall {
     "/usr/bin/argvus-firewall"
@@ -163,6 +175,7 @@ fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, Stri
   serde_json::from_slice(&output.stdout).map_err(|error| format!("{binary}: {error}"))
 }
 
+/// Represents `Administration`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Administration {
   firewall: Value,
   pub(crate) accounts: Value,
@@ -178,6 +191,7 @@ pub struct Administration {
 }
 
 impl Administration {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(page: Page) -> Self {
     let mut state = Self {
       firewall: Value::Null,
@@ -198,13 +212,16 @@ impl Administration {
     state
   }
 
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn busy(&self) -> bool {
     self.worker.is_some()
   }
+  /// Executes the `cancel_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cancel_pending(&mut self) {
     self.pending = None;
   }
 
+  /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn load(&mut self, firewall: bool) {
     if self.busy() {
       return;
@@ -212,6 +229,7 @@ impl Administration {
     self.start(firewall, json!({"action":"snapshot"}), false);
   }
 
+  /// Executes the `start` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start(&mut self, firewall: bool, value: Value, privileged: bool) {
     self.operation = text(&value, "action");
     let (sender, receiver) = mpsc::channel();
@@ -230,6 +248,7 @@ impl Administration {
     });
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> Option<Result<(), String>> {
     let result = match self.worker.as_ref()?.try_recv() {
       Ok(result) => result,
@@ -270,16 +289,19 @@ impl Administration {
     }))
   }
 
+  /// Executes the `submit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn submit(&mut self) {
     if let Some((firewall, value)) = self.pending.take() {
       self.start(firewall, value, true);
     }
   }
 
+  /// Checks the condition represented by `is_loaded` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn is_loaded(&self) -> bool {
     self.accounts["users"].is_array()
   }
 
+  /// Executes the `users` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn users(&self, include_system: bool) -> Vec<Value> {
     self.accounts["users"]
       .as_array()
@@ -298,6 +320,7 @@ impl Administration {
       .unwrap_or_default()
   }
 
+  /// Executes the `groups` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn groups(&self, include_system: bool) -> Vec<Value> {
     self.accounts["group_details"]
       .as_array()
@@ -317,6 +340,7 @@ impl Administration {
       })
   }
 
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn buttons(&self, page: Page, lang: Lang) -> Vec<Button> {
     if self.busy() {
       return Vec::new();
@@ -397,6 +421,7 @@ impl Administration {
     }
   }
 
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows(&self, page: Page, lang: Lang) -> Vec<Row> {
     if self.busy() {
       return vec![row(
@@ -614,6 +639,7 @@ impl Administration {
     }
   }
 
+  /// Executes the `rows_filtered` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows_filtered(&self, page: Page, lang: Lang, query: &str) -> Vec<Row> {
     let rows = self.rows(page, lang);
     if query.trim().is_empty()
@@ -640,6 +666,7 @@ impl Administration {
       .collect()
   }
 
+  /// Executes the `row_selectable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn row_selectable(&self, page: Page, index: usize) -> bool {
     if self.busy() {
       return false;
@@ -669,6 +696,7 @@ impl Administration {
 }
 
 impl App {
+  /// Executes the `admin_paste` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn admin_paste(&mut self, text: &str) {
     if let Some(editor) = self.admin.editor.as_mut() {
       for character in text.replace("\r\n", "\n").chars() {
@@ -682,12 +710,14 @@ impl App {
       }
     }
   }
+  /// Executes the `admin_confirm` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn admin_confirm(&mut self, firewall: bool, value: Value, message: String) {
     self.admin.pending = Some((firewall, value));
     self.confirm = Some(PendingAction::Administration(message));
     self.confirm_apply_selected = false;
   }
 
+  /// Executes the `admin_open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn admin_open(&mut self) {
     if self.admin.busy() {
       return;
@@ -947,6 +977,7 @@ impl App {
     }
   }
 
+  /// Executes the `admin_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn admin_button(&mut self, button: usize) {
     let page = self.page();
     let user = text(&self.admin.user, "user");
@@ -1083,6 +1114,7 @@ impl App {
     }
   }
 
+  /// Executes the `admin_input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn admin_input(&mut self, key: KeyEvent) {
     let Some(mut editor) = self.admin.editor.take() else {
       return;
@@ -1126,6 +1158,7 @@ impl App {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+/// Defines `EditTarget`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub(crate) enum EditTarget {
   Config(String),
   User(String),
@@ -1136,6 +1169,7 @@ pub(crate) enum EditTarget {
   DateTime,
 }
 
+/// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Editor {
   title: String,
   value: Vec<char>,
@@ -1145,6 +1179,7 @@ pub struct Editor {
 }
 
 impl Editor {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn new(title: String, value: String, target: EditTarget, multiline: bool) -> Self {
     let value: Vec<char> = value.chars().collect();
     Self {
@@ -1156,6 +1191,7 @@ impl Editor {
     }
   }
 
+  /// Executes the `input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn input(&mut self, key: KeyEvent) {
     match key.code {
       KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
@@ -1223,6 +1259,7 @@ impl Editor {
     }
   }
 
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, frame: &mut Frame, area: Rect, app: &App) {
     let area = crate::ui::layout::centered(
       area,
@@ -1275,6 +1312,7 @@ impl Editor {
 mod tests {
   use super::*;
 
+  /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app(page: Page) -> App {
     let mut app = App::with_context(
       Page::Main,
@@ -1296,6 +1334,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `every_firewall_field_is_editable_without_writing` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn every_firewall_field_is_editable_without_writing() {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({"active":false,"enabled":false});
@@ -1322,6 +1361,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `user_group_selection_preserves_primary_group` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn user_group_selection_preserves_primary_group() {
     let mut app = app(Page::UserGroups);
     app.admin_open();
@@ -1334,6 +1374,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `destructive_actions_default_to_cancel_and_never_run_on_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn destructive_actions_default_to_cancel_and_never_run_on_selection() {
     let mut app = app(Page::User);
     app.navigation.current_mut().selected = 17;
@@ -1347,6 +1388,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `password_mismatch_stays_local_and_passwords_are_masked` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn password_mismatch_stays_local_and_passwords_are_masked() {
     let mut app = app(Page::UserPassword);
     app.admin.passwords = ["old secret".into(), "new secret".into(), "different".into()];
@@ -1360,6 +1402,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `multiline_editor_moves_between_lines_and_accepts_paste` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn multiline_editor_moves_between_lines_and_accepts_paste() {
     let mut app = app(Page::Firewall);
     app.admin.editor = Some(Editor::new(
@@ -1388,6 +1431,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `system_users_are_optional_and_own_user_is_visible` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn system_users_are_optional_and_own_user_is_visible() {
     let app = app(Page::Users);
     assert_eq!(app.admin.users(false).len(), 1);
@@ -1395,6 +1439,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `users_overview_is_separate_from_account_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn users_overview_is_separate_from_account_list() {
     let mut app = app(Page::Users);
     let labels = app
@@ -1416,6 +1461,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `create_user_screen_has_masked_password_rows_and_routes_to_editor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn create_user_screen_has_masked_password_rows_and_routes_to_editor() {
     let mut app = app(Page::CreateUser);
     app.normalize_selection();
@@ -1447,6 +1493,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `create_user_button_is_dynamic_and_validates_passwords` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn create_user_button_is_dynamic_and_validates_passwords() {
     let mut app = app(Page::CreateUser);
     assert_eq!(
@@ -1494,6 +1541,7 @@ mod tests {
   }
 
   #[test]
+  /// Retrieves data for `readonly_user_and_group_rows_are_not_selectable` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn readonly_user_and_group_rows_are_not_selectable() {
     let mut user_app = app(Page::User);
     user_app.normalize_selection();
@@ -1513,6 +1561,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `group_actions_are_buttons_outside_the_field_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn group_actions_are_buttons_outside_the_field_list() {
     let app = app(Page::Group);
     let rows = app.admin.rows(Page::Group, Lang::for_locale("pt-BR"));
@@ -1525,6 +1574,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `group_members_picker_toggles_users_in_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn group_members_picker_toggles_users_in_list() {
     let mut app = app(Page::GroupMembers);
     app.admin.accounts = json!({
@@ -1545,6 +1595,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `group_open_keeps_original_name_for_rename_and_delete` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn group_open_keeps_original_name_for_rename_and_delete() {
     let mut app = app(Page::GroupList);
     app.admin.accounts = json!({
@@ -1559,6 +1610,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `firewall_actions_are_buttons_outside_the_config_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn firewall_actions_are_buttons_outside_the_config_rows() {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({"active":false,"enabled":false});
@@ -1578,6 +1630,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `firewall_buttons_route_to_confirm_editor_reload_and_cancel_like_before` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn firewall_buttons_route_to_confirm_editor_reload_and_cancel_like_before() {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({
@@ -1600,6 +1653,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `user_actions_are_buttons_outside_the_field_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn user_actions_are_buttons_outside_the_field_list() {
     let app = app(Page::User);
     let rows = app.admin.rows(Page::User, Lang::for_locale("pt-BR"));
@@ -1617,6 +1671,7 @@ mod tests {
   }
 
   #[test]
+  /// Applies the `save_and_delete_buttons_confirm_without_running` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn save_and_delete_buttons_confirm_without_running() {
     let mut app = app(Page::User);
     app.navigation.current_mut().selected = 10;
@@ -1626,6 +1681,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `down_navigation_reaches_buttons_and_tab_cycles` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn down_navigation_reaches_buttons_and_tab_cycles() {
     let mut app = app(Page::User);
     app.normalize_selection();
@@ -1677,6 +1733,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `tab_cycles_action_buttons_through_key_events` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn tab_cycles_action_buttons_through_key_events() {
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -1722,6 +1779,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `pages_and_password_editor_render_at_minimum_and_large_sizes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn pages_and_password_editor_render_at_minimum_and_large_sizes() {
     use ratatui::{Terminal, backend::TestBackend};
     for (width, height) in [(60, 15), (120, 40)] {

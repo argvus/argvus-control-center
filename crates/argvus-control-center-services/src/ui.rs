@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center services`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend,
   journal::JournalEntry,
@@ -26,10 +30,12 @@ use ratatui::{
 };
 
 #[derive(Debug, Clone)]
+/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Pending {
   Action(String, String),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   Start,
   Stop,
@@ -39,6 +45,7 @@ enum ActionButton {
   NextUnit,
   Priority,
 }
+/// Represents `ServicesApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct ServicesApp {
   pub page: ServicePage,
   detail_parent: ServicePage,
@@ -65,11 +72,13 @@ pub struct ServicesApp {
   filter: UnitFilter,
   log_search: String,
 }
+/// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
   Units(Vec<Unit>),
   Logs(Vec<JournalEntry>),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `UnitFilter`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum UnitFilter {
   All,
   Running,
@@ -79,6 +88,7 @@ enum UnitFilter {
   Disabled,
 }
 impl UnitFilter {
+  /// Executes the `next` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn next(self) -> Self {
     match self {
       Self::All => Self::Running,
@@ -89,6 +99,7 @@ impl UnitFilter {
       Self::Disabled => Self::All,
     }
   }
+  /// Executes the `label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn label(self, lang: Lang) -> &'static str {
     match self {
       Self::All => tr(lang, "control_center.all"),
@@ -101,9 +112,11 @@ impl UnitFilter {
   }
 }
 impl ServicesApp {
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
   }
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     Self {
       page: ServicePage::Home,
@@ -132,6 +145,7 @@ impl ServicesApp {
       log_search: String::new(),
     }
   }
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
     if self.job.is_some() {
       return;
@@ -167,6 +181,7 @@ impl ServicesApp {
       text: tr(self.lang, "control_center.loading_services").into(),
     });
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -216,6 +231,7 @@ impl ServicesApp {
     }
     changed
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_none()
       && !self.searching
@@ -363,6 +379,7 @@ impl ServicesApp {
     self.selected = self.selected.min(count.saturating_sub(1));
     false
   }
+  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
       ServicePage::Home => 4,
@@ -372,6 +389,7 @@ impl ServicesApp {
       ServicePage::LogDetail(_) => 1,
     }
   }
+  /// Executes the `open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open(&mut self) {
     match self.page {
       ServicePage::Home => {
@@ -412,6 +430,7 @@ impl ServicesApp {
       ServicePage::LogDetail(_) => {}
     }
   }
+  /// Executes the `request` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn request(&mut self, a: &str) {
     if matches!(
       self.page,
@@ -422,6 +441,7 @@ impl ServicesApp {
       self.pending = Some(Pending::Action(a.into(), u.name.clone()))
     }
   }
+  /// Executes the `open_logs` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_logs(&mut self) {
     let unit = self
       .detail_unit
@@ -438,6 +458,7 @@ impl ServicesApp {
       self.selected = 0
     }
   }
+  /// Executes the `filtered` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn filtered(&self) -> Vec<&Unit> {
     self
       .units
@@ -464,6 +485,7 @@ impl ServicesApp {
       })
       .collect()
   }
+  /// Executes the `filtered_logs` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn filtered_logs(&self) -> Vec<&JournalEntry> {
     let query = self.log_search.to_ascii_lowercase();
     self
@@ -486,6 +508,7 @@ impl ServicesApp {
       })
       .collect()
   }
+  /// Executes the `cycle_log_unit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cycle_log_unit(&mut self) {
     let mut units: Vec<String> = self
       .logs
@@ -508,6 +531,7 @@ impl ServicesApp {
     self.selected = 0;
     self.refresh();
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.services");
     if self.page == ServicePage::Home {
@@ -516,6 +540,7 @@ impl ServicesApp {
       format!("{root} > {}", self.label(self.page))
     }
   }
+  /// Executes the `label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn label(&self, p: ServicePage) -> &'static str {
     match p {
       ServicePage::System => tr(self.lang, "control_center.system"),
@@ -527,10 +552,12 @@ impl ServicesApp {
       ServicePage::Home => tr(self.lang, "control_center.services"),
     }
   }
+  /// Executes the `cycle_filter` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cycle_filter(&mut self) {
     self.filter = self.filter.next();
     self.selected = 0;
   }
+  /// Executes the `cycle_priority` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cycle_priority(&mut self) {
     self.priority = match self.priority.as_deref() {
       None | Some("7") => None,
@@ -538,6 +565,7 @@ impl ServicesApp {
     };
     self.refresh();
   }
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -554,6 +582,7 @@ impl ServicesApp {
       self.on_buttons = true;
     }
   }
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -562,6 +591,7 @@ impl ServicesApp {
     self.button_selected =
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -583,6 +613,7 @@ impl ServicesApp {
       ActionButton::Priority => self.cycle_priority(),
     }
   }
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     let primary = ButtonKind::Primary;
     let secondary = ButtonKind::Secondary;
@@ -654,6 +685,7 @@ impl ServicesApp {
       ServicePage::Home | ServicePage::Detail | ServicePage::LogDetail(_) => Vec::new(),
     }
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     match self.page {
       ServicePage::Detail => tr(
@@ -671,6 +703,7 @@ impl ServicesApp {
       ),
     }
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let body = shell(
@@ -774,6 +807,7 @@ impl ServicesApp {
       self.draw_pending(frame, area, a, u)
     }
   }
+  /// Renders `draw_pending` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_pending(&self, frame: &mut Frame, area: ratatui::layout::Rect, action: &str, unit: &str) {
     draw_confirmation(
       frame,
@@ -788,6 +822,7 @@ impl ServicesApp {
       },
     )
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let (system_active, system_enabled) = self.counts("system");
     let (user_active, user_enabled) = self.counts("user");
@@ -834,6 +869,7 @@ impl ServicesApp {
       ),
     ]
   }
+  /// Executes the `counts` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn counts(&self, scope: &str) -> (usize, usize) {
     let active = self
       .units
@@ -849,6 +885,7 @@ impl ServicesApp {
       .count();
     (active, enabled)
   }
+  /// Executes the `logs_header` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn logs_header(&self) -> String {
     let boot = if self.previous_boot {
       tr(self.lang, "control_center.previous")
@@ -867,6 +904,7 @@ impl ServicesApp {
       self.logs_unit.as_deref().unwrap_or("—"),
     )
   }
+  /// Executes the `unit_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn unit_rows(&self) -> Vec<String> {
     self
       .filtered()
@@ -874,6 +912,7 @@ impl ServicesApp {
       .map(|unit| self.unit_row(unit))
       .collect()
   }
+  /// Executes the `unit_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn unit_row(&self, u: &Unit) -> String {
     let mut row = u.name.clone();
     if let Some(badge) = self.active_badge(u) {
@@ -888,6 +927,7 @@ impl ServicesApp {
     }
     row
   }
+  /// Executes the `active_badge` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn active_badge(&self, u: &Unit) -> Option<String> {
     let (symbol, label) = match u.active.as_str() {
       "active" => ("●", tr(self.lang, "control_center.active_095d39")),
@@ -900,6 +940,7 @@ impl ServicesApp {
     };
     Some(format!("   {symbol} {label}"))
   }
+  /// Executes the `file_badge` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn file_badge(&self, u: &Unit) -> String {
     match u.file_state.as_str() {
       "enabled" | "static" | "indirect" => {
@@ -911,6 +952,7 @@ impl ServicesApp {
       _ => String::new(),
     }
   }
+  /// Executes the `detail_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_lines(&self) -> Vec<Line<'static>> {
     let filtered = self.filtered();
     let Some(u) = self
@@ -965,6 +1007,7 @@ impl ServicesApp {
     ];
     rows
   }
+  /// Executes the `detail_actions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_actions(&self) -> Vec<(&'static str, String)> {
     let Some(unit) = self.detail_or_selected_unit() else {
       return Vec::new();
@@ -985,6 +1028,7 @@ impl ServicesApp {
     actions.push(("logs", tr(self.lang, "control_center.logs").into()));
     actions
   }
+  /// Executes the `detail_or_selected_unit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_or_selected_unit(&self) -> Option<&Unit> {
     self
       .detail_unit
@@ -992,6 +1036,7 @@ impl ServicesApp {
       .and_then(|name| self.units.iter().find(|unit| unit.name == name))
       .or_else(|| self.filtered().get(self.selected).copied())
   }
+  /// Executes the `log_detail_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn log_detail_lines(&self, index: usize) -> Vec<Line<'static>> {
     let filtered = self.filtered_logs();
     let Some(entry) = filtered.get(index) else {
@@ -1036,6 +1081,7 @@ impl ServicesApp {
     ]
   }
 }
+/// Checks the condition represented by `can_action` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn can_action(action: &str, unit: &Unit) -> bool {
   match action {
     "start" => !matches!(unit.active.as_str(), "active" | "activating"),
@@ -1048,6 +1094,7 @@ fn can_action(action: &str, unit: &Unit) -> bool {
     _ => false,
   }
 }
+/// Executes the `action_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn action_label(lang: Lang, action: &str) -> String {
   match action {
     "start" => tr(lang, "control_center.start"),
@@ -1061,9 +1108,11 @@ fn action_label(lang: Lang, action: &str) -> String {
   }
   .into()
 }
+/// Executes the `state_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn state_value(u: &Unit) -> String {
   format!("{} / {}", u.active, u.sub)
 }
+/// Executes the `file_state_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn file_state_label(lang: Lang, state: &str) -> String {
   match state {
     "enabled" | "static" | "indirect" => tr(lang, "control_center.enabled_78438d").into(),
@@ -1071,6 +1120,7 @@ fn file_state_label(lang: Lang, state: &str) -> String {
     _ => state.into(),
   }
 }
+/// Executes the `log_line` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn log_line(e: &JournalEntry) -> Line<'static> {
   Line::from(format!(
     "{:8} {:24} {:7} {}",
@@ -1080,6 +1130,7 @@ fn log_line(e: &JournalEntry) -> Line<'static> {
     e.message.as_deref().unwrap_or("")
   ))
 }
+/// Executes the `run_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_action(user: bool, action: &str, unit: &str) -> Result<String, String> {
   let args = backend::action_args(action, unit)?;
   if !user {
@@ -1110,6 +1161,7 @@ fn run_action(user: bool, action: &str, unit: &str) -> Result<String, String> {
     Err(terminal_text(String::from_utf8_lossy(&out.stderr).trim()))
   }
 }
+/// Executes the `privileged_failure` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn privileged_failure(output: &argvus_control_center_core::process::ProcessOutput) -> String {
   let stderr = terminal_text(String::from_utf8_lossy(&output.stderr).trim());
   match output.status {
@@ -1124,6 +1176,7 @@ fn privileged_failure(output: &argvus_control_center_core::process::ProcessOutpu
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `failed_filter_is_explicit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn failed_filter_is_explicit() {
     let mut a = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     a.page = ServicePage::Failed;
@@ -1143,6 +1196,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `actions_are_structured_and_user_actions_are_not_elevated` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn actions_are_structured_and_user_actions_are_not_elevated() {
     assert_eq!(
       backend::action_args("enable-now", "NetworkManager.service").unwrap(),
@@ -1152,6 +1206,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `service_list_filter_and_selection_stay_bounded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn service_list_filter_and_selection_stay_bounded() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
@@ -1182,6 +1237,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `service_details_expose_actions_and_confirmation_defaults_to_cancel` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn service_details_expose_actions_and_confirmation_defaults_to_cancel() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::Detail;
@@ -1209,6 +1265,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `polkit_exit_codes_are_not_collapsed_into_a_generic_error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn polkit_exit_codes_are_not_collapsed_into_a_generic_error() {
     let output = argvus_control_center_core::process::ProcessOutput {
       stdout: Vec::new(),
@@ -1220,6 +1277,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `services_expose_action_buttons_on_lists_but_not_home_or_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn services_expose_action_buttons_on_lists_but_not_home_or_detail() {
     let home = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(home.buttons().len(), 0);
@@ -1232,6 +1290,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `services_tab_cycles_between_list_and_buttons_and_backtab_lands_last` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn services_tab_cycles_between_list_and_buttons_and_backtab_lands_last() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
@@ -1252,6 +1311,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `services_renders_button_bar_on_list_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn services_renders_button_bar_on_list_pages() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
@@ -1269,6 +1329,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `services_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn services_home_rows_act_as_a_status_dashboard() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.units = vec![
@@ -1303,6 +1364,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `services_unit_rows_render_state_badges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn services_unit_rows_render_state_badges() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
@@ -1335,6 +1397,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `services_detail_lines_use_section_header_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn services_detail_lines_use_section_header_and_aligned_rows() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::Detail;
@@ -1363,6 +1426,7 @@ mod tests {
   }
 
   #[test]
+  /// Retrieves data for `loading_status_is_cleared_once_units_arrive` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn loading_status_is_cleared_once_units_arrive() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
@@ -1388,6 +1452,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `arrows_are_blocked_while_services_are_loading` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn arrows_are_blocked_while_services_are_loading() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;

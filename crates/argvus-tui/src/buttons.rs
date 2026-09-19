@@ -1,3 +1,7 @@
+//! Implements shared button rendering in crate `argvus tui`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use argvus_theme::Theme;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -6,6 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ButtonKind`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum ButtonKind {
   Primary,
   Secondary,
@@ -13,12 +18,14 @@ pub enum ButtonKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Button`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Button {
   pub label: String,
   pub kind: ButtonKind,
 }
 
 impl Button {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(label: impl Into<String>, kind: ButtonKind) -> Self {
     Self {
       label: label.into(),
@@ -27,6 +34,7 @@ impl Button {
   }
 }
 
+/// Executes the `height` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn height(buttons: &[Button], width: u16) -> u16 {
   if buttons.is_empty() {
     return 0;
@@ -47,6 +55,7 @@ pub fn height(buttons: &[Button], width: u16) -> u16 {
   lines as u16
 }
 
+/// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(frame: &mut Frame, area: Rect, buttons: &[Button], selected: usize, theme: &Theme) {
   if buttons.is_empty() || area.width == 0 || area.height == 0 {
     return;
@@ -82,10 +91,12 @@ pub fn draw(frame: &mut Frame, area: Rect, buttons: &[Button], selected: usize, 
   );
 }
 
+/// Executes the `item_width` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn item_width(button: &Button) -> usize {
   crate::text::display_width(&button.label) + 4
 }
 
+/// Executes the `style_for` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn style_for(button: &Button, focused: bool, theme: &Theme) -> Style {
   if focused {
     return Style::new()
@@ -104,11 +115,13 @@ fn style_for(button: &Button, focused: bool, theme: &Theme) -> Style {
 mod tests {
   use super::*;
 
+  /// Executes the `theme` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn theme() -> Theme {
     Theme::load()
   }
 
   #[test]
+  /// Executes the `height_accounts_for_wrapping` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn height_accounts_for_wrapping() {
     let buttons = vec![
       Button::new("Salvar alterações", ButtonKind::Primary),
@@ -121,6 +134,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `button_kinds_style_differs` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn button_kinds_style_differs() {
     let theme = theme();
     let primary = style_for(&Button::new("a", ButtonKind::Primary), false, &theme);
@@ -131,6 +145,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `button_bar_uses_the_same_background_as_the_footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn button_bar_uses_the_same_background_as_the_footer() {
     let theme = theme();
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 4)).unwrap();

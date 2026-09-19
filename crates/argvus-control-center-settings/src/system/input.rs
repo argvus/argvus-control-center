@@ -1,3 +1,7 @@
+//! Implements input-device configuration in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -9,6 +13,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
+/// Represents `InputSettings`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct InputSettings {
   pub mouse: MouseSettings,
   pub touchpad: TouchpadSettings,
@@ -20,6 +25,7 @@ pub struct InputSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
+/// Represents `MouseSettings`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct MouseSettings {
   pub sensitivity: f64,
   pub accel_profile: String,
@@ -30,6 +36,7 @@ pub struct MouseSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
+/// Represents `TouchpadSettings`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct TouchpadSettings {
   pub natural_scroll: bool,
   pub tap_to_click: bool,
@@ -39,12 +46,14 @@ pub struct TouchpadSettings {
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
+/// Represents `Devices`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Devices {
   pub mouse: bool,
   pub touchpad: bool,
 }
 
 impl Default for MouseSettings {
+  /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default() -> Self {
     Self {
       sensitivity: 0.0,
@@ -56,6 +65,7 @@ impl Default for MouseSettings {
   }
 }
 impl Default for TouchpadSettings {
+  /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default() -> Self {
     Self {
       natural_scroll: true,
@@ -66,10 +76,12 @@ impl Default for TouchpadSettings {
     }
   }
 }
+/// Executes the `path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn path() -> PathBuf {
   argvus_control_center_core::paths::argvus_config_home().join("input.toml")
 }
 
+/// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load() -> InputSettings {
   let persisted = fs::read_to_string(path());
   let mut settings: InputSettings = persisted
@@ -87,6 +99,7 @@ pub fn load() -> InputSettings {
 }
 
 impl InputSettings {
+  /// Retrieves data for `load_runtime_values` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn load_runtime_values(&mut self) {
     self.mouse.sensitivity = query_float("input:sensitivity").unwrap_or(self.mouse.sensitivity);
     self.mouse.scroll_factor =
@@ -110,6 +123,7 @@ impl InputSettings {
   }
 }
 
+/// Applies the `save` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn save(settings: &InputSettings) -> Result<(), String> {
   let target = path();
   fs::create_dir_all(target.parent().ok_or("invalid input configuration path")?)
@@ -124,14 +138,17 @@ fn save(settings: &InputSettings) -> Result<(), String> {
   write_generated_hypr_input(settings)
 }
 
+/// Executes the `generated_hypr_input_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn generated_hypr_input_path() -> PathBuf {
   argvus_control_center_core::paths::argvus_config_home().join("generated/hypr/input-settings.lua")
 }
 
+/// Executes the `lua_escape` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn lua_escape(value: &str) -> String {
   value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Applies the `write_generated_hypr_input` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn write_generated_hypr_input(settings: &InputSettings) -> Result<(), String> {
   let path = generated_hypr_input_path();
   fs::create_dir_all(path.parent().ok_or("invalid generated input path")?)
@@ -159,6 +176,7 @@ fn write_generated_hypr_input(settings: &InputSettings) -> Result<(), String> {
 }
 
 impl InputSettings {
+  /// Applies the `toggle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn toggle(&mut self, index: usize) -> Result<(), String> {
     let (key, value) = match index {
       3 => ("input:natural_scroll", !self.mouse.natural_scroll),
@@ -193,6 +211,7 @@ impl InputSettings {
     save(self)
   }
 
+  /// Executes the `cycle` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cycle(&mut self, index: usize, direction: i8) -> Result<(), String> {
     self.cycle_by(index, direction)
   }
@@ -226,11 +245,13 @@ impl InputSettings {
     save(self)
   }
 
+  /// Applies the `set_bool` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn set_bool(&self, key: &str, value: bool) -> Result<(), String> {
     apply(key, if value { "true" } else { "false" })
   }
 }
 
+/// Executes the `validate_sensitivity` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_sensitivity(value: f64) -> Result<f64, String> {
   if (-1.0..=1.0).contains(&value) {
     Ok((value * 10.0).round() / 10.0)
@@ -238,6 +259,7 @@ pub fn validate_sensitivity(value: f64) -> Result<f64, String> {
     Err("sensitivity must be between -1.0 and 1.0".into())
   }
 }
+/// Executes the `validate_scroll_factor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_scroll_factor(value: f64) -> Result<f64, String> {
   if (0.1..=10.0).contains(&value) {
     Ok((value * 10.0).round() / 10.0)
@@ -245,13 +267,17 @@ pub fn validate_scroll_factor(value: f64) -> Result<f64, String> {
     Err("scroll factor must be between 0.1 and 10.0".into())
   }
 }
+/// Executes the `speed_display` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn speed_display(value: f64) -> String {
   format!("{value:+.1}  [{}]", slider_bar(value, -1.0, 1.0))
 }
+/// Executes the `factor_display` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn factor_display(value: f64) -> String {
   format!("{value:.1}  [{}]", slider_bar(value, 0.1, 10.0))
 }
+/// Executes the `slider_bar` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn slider_bar(value: f64, minimum: f64, maximum: f64) -> String {
+  /// Defines the constant `SLOTS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const SLOTS: usize = 15;
   let position = (((value - minimum) / (maximum - minimum)) * (SLOTS - 1) as f64)
     .round()
@@ -260,6 +286,7 @@ fn slider_bar(value: f64, minimum: f64, maximum: f64) -> String {
     .map(|index| if index == position { '●' } else { '─' })
     .collect()
 }
+/// Executes the `accel_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn accel_label(value: &str) -> &str {
   match value {
     "flat" => "control_center.input_acceleration_flat",
@@ -267,6 +294,7 @@ pub fn accel_label(value: &str) -> &str {
   }
 }
 
+/// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn apply(key: &str, value: &str) -> Result<(), String> {
   let output = Command::new("hyprctl")
     .args(["keyword", key, value])
@@ -279,6 +307,7 @@ fn apply(key: &str, value: &str) -> Result<(), String> {
   }
 }
 
+/// Retrieves data for `detect_devices` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn detect_devices() -> Devices {
   let output = Command::new("hyprctl")
     .args(["devices", "-j"])
@@ -293,6 +322,7 @@ pub fn detect_devices() -> Devices {
   devices_from_json(&root)
 }
 
+/// Executes the `devices_from_json` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn devices_from_json(root: &Value) -> Devices {
   let mice = root
     .get("mice")
@@ -309,6 +339,7 @@ fn devices_from_json(root: &Value) -> Devices {
   }
 }
 
+/// Executes the `query_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn query_value(key: &str) -> Option<Value> {
   let output = Command::new("hyprctl")
     .args(["getoption", key, "-j"])
@@ -316,9 +347,11 @@ fn query_value(key: &str) -> Option<Value> {
     .ok()?;
   serde_json::from_slice(&output.stdout).ok()
 }
+/// Executes the `query_float` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn query_float(key: &str) -> Option<f64> {
   query_value(key)?.get("float").and_then(Value::as_f64)
 }
+/// Executes the `query_bool` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn query_bool(key: &str) -> Option<bool> {
   query_value(key)?
     .get("int")
@@ -326,6 +359,7 @@ fn query_bool(key: &str) -> Option<bool> {
     .map(|v| v != 0)
     .or_else(|| query_value(key)?.get("bool").and_then(Value::as_bool))
 }
+/// Executes the `query_string` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn query_string(key: &str) -> Option<String> {
   query_value(key)?
     .get("str")
@@ -337,6 +371,7 @@ fn query_string(key: &str) -> Option<String> {
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `validates_ranges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn validates_ranges() {
     assert!(validate_sensitivity(-1.0).is_ok());
     assert!(validate_sensitivity(1.1).is_err());
@@ -344,6 +379,7 @@ mod tests {
     assert!(validate_scroll_factor(10.1).is_err());
   }
   #[test]
+  /// Executes the `normalizes_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalizes_profile() {
     assert_eq!(
       accel_label("flat"),
@@ -356,6 +392,7 @@ mod tests {
   }
 
   #[test]
+  /// Retrieves data for `detects_current_hyprland_touch_device_key` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detects_current_hyprland_touch_device_key() {
     let devices = devices_from_json(&serde_json::json!({
       "mice": [],
@@ -366,6 +403,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `accepts_legacy_touchpads_device_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn accepts_legacy_touchpads_device_key() {
     let devices = devices_from_json(&serde_json::json!({
       "mice": [{"name": "test-mouse"}],
@@ -376,6 +414,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `slider_display_tracks_normalized_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn slider_display_tracks_normalized_value() {
     assert!(speed_display(-1.0).contains("●──────────────"));
     assert!(speed_display(1.0).contains("──────────────●"));

@@ -1,3 +1,7 @@
+//! Implements domain state and models consumed by the UI in crate `argvus control center session`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionPage {
   Home,
@@ -9,6 +13,7 @@ pub enum SessionPage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ComponentStatus`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum ComponentStatus {
   Running,
   Stopped,
@@ -16,12 +21,14 @@ pub enum ComponentStatus {
 }
 
 impl ComponentStatus {
+  /// Executes the `running` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn running(&self) -> bool {
     matches!(self, Self::Running)
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Component`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Component {
   pub id: String,
   pub display_name: String,
@@ -34,6 +41,7 @@ pub struct Component {
 }
 
 impl Component {
+  /// Executes the `valid_id` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
       && id.len() <= 64
@@ -44,6 +52,7 @@ impl Component {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `AutostartEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct AutostartEntry {
   /// Desktop entry ID (basename of the .desktop file).
   pub id: String,
@@ -57,6 +66,7 @@ pub struct AutostartEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `DiagnosticsEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct DiagnosticsEntry {
   pub ok: bool,
   pub warn: bool,
@@ -65,6 +75,7 @@ pub struct DiagnosticsEntry {
 }
 
 impl DiagnosticsEntry {
+  /// Executes the `good` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn good(label: impl Into<String>, detail: impl Into<String>) -> Self {
     Self {
       ok: true,
@@ -74,6 +85,7 @@ impl DiagnosticsEntry {
     }
   }
 
+  /// Executes the `warning` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn warning(label: impl Into<String>, detail: impl Into<String>) -> Self {
     Self {
       ok: true,
@@ -83,6 +95,7 @@ impl DiagnosticsEntry {
     }
   }
 
+  /// Executes the `bad` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn bad(label: impl Into<String>, detail: impl Into<String>) -> Self {
     Self {
       ok: false,
@@ -188,6 +201,7 @@ pub fn manifest() -> Vec<Component> {
   ]
 }
 
+/// Executes the `component` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn component(
   id: &str,
   display_name: &str,
@@ -213,6 +227,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `manifest_contains_essential_components` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn manifest_contains_essential_components() {
     let components = manifest();
     assert!(
@@ -225,6 +240,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `component_ids_are_strict` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn component_ids_are_strict() {
     assert!(Component::valid_id("keyboard-layout"));
     assert!(Component::valid_id("polkit-agent"));
@@ -233,6 +249,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_entry_has_three_kinds` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_entry_has_three_kinds() {
     assert!(DiagnosticsEntry::good("a", "b").ok);
     assert!(DiagnosticsEntry::warning("a", "b").warn);

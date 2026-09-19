@@ -1,8 +1,14 @@
+//! Implements resource loading in crate `argvus theme`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Defines the constant `DEFAULT_THEME`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const DEFAULT_THEME: &str = "argvus-dark-aether";
 
+/// Represents `Loader`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Loader {
   resource_dir: PathBuf,
   active_file: PathBuf,
@@ -10,6 +16,7 @@ pub struct Loader {
 }
 
 impl Loader {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new() -> Self {
     let explicit = std::env::var_os("ARGVUS_CONTROL_CENTER_RESOURCE_DIR").map(PathBuf::from);
     let installed = std::env::var_os("ARGVUS_SYSTEM_CONFIG")
@@ -34,6 +41,7 @@ impl Loader {
     }
   }
 
+  /// Executes the `active_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn active_name(&self) -> String {
     fs::read_to_string(&self.active_file)
       .ok()
@@ -42,6 +50,7 @@ impl Loader {
       .unwrap_or_else(|| DEFAULT_THEME.to_string())
   }
 
+  /// Executes the `sources` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn sources(&self) -> Vec<PathBuf> {
     let active = self.active_name();
     vec![
@@ -57,11 +66,13 @@ impl Loader {
 }
 
 impl Default for Loader {
+  /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default() -> Self {
     Self::new()
   }
 }
 
+/// Executes the `argvus_config_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn argvus_config_home() -> PathBuf {
   std::env::var_os("ARGVUS_CONFIG_HOME")
     .map(PathBuf::from)
@@ -73,12 +84,14 @@ fn argvus_config_home() -> PathBuf {
     .join("argvus")
 }
 
+/// Executes the `home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn home() -> PathBuf {
   std::env::var_os("HOME")
     .map(PathBuf::from)
     .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
+/// Executes the `development_resources_dir` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn development_resources_dir() -> PathBuf {
   let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     .join("../../src/usr/share/argvus/control-center/config");
@@ -101,6 +114,7 @@ fn development_resources_dir() -> PathBuf {
     .unwrap_or_else(|| PathBuf::from("resources"))
 }
 
+/// Retrieves data for `read_recursive` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn read_recursive(path: &Path, stack: &mut Vec<PathBuf>) -> Option<String> {
   let contents = fs::read_to_string(path).ok()?;
   let mut output = String::new();
@@ -133,6 +147,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `every_official_theme_exposes_the_shared_palette` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn every_official_theme_exposes_the_shared_palette() {
     let themes = development_resources_dir().join("themes");
     let entries = fs::read_dir(themes).expect("official theme directory");

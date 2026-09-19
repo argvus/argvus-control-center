@@ -1,3 +1,7 @@
+//! Implements module declarations for the `system` subsystem in crate `argvus about`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::fs;
 use std::process::Command;
 
@@ -8,6 +12,7 @@ pub mod os;
 pub mod session;
 
 #[derive(Debug, Clone)]
+/// Represents `SystemInfo`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct SystemInfo {
   pub hostname: String,
   pub os_name: String,
@@ -21,6 +26,7 @@ pub struct SystemInfo {
 }
 
 impl SystemInfo {
+  /// Executes the `gather` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn gather(na: &str) -> Self {
     let os_release = read_to_string("/etc/os-release").unwrap_or_default();
     let (os_name, distributor) = os::os_names(&os_release);
@@ -50,15 +56,18 @@ impl SystemInfo {
   }
 }
 
+/// Executes the `argvus_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn argvus_version(na: &str) -> String {
   installed_package_version("argvus").unwrap_or_else(|| na.to_string())
 }
 
+/// Executes the `installed_package_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn installed_package_version(package: &str) -> Option<String> {
   command_output("pacman", &["-Q", package])
     .and_then(|line| line.split_whitespace().nth(1).map(str::to_string))
 }
 
+/// Executes the `gtk_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn gtk_version(na: &str) -> String {
   ["gtk4", "gtk4.0", "gtk+-3.0"]
     .iter()
@@ -66,6 +75,7 @@ pub fn gtk_version(na: &str) -> String {
     .unwrap_or_else(|| na.to_string())
 }
 
+/// Executes the `pc_file_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn pc_file_version(name: &str) -> Option<String> {
   for dir in pc_dirs() {
     let path = dir.join(format!("{name}.pc"));
@@ -78,6 +88,7 @@ pub fn pc_file_version(name: &str) -> Option<String> {
   None
 }
 
+/// Converts input data into `parse_pc_version` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_pc_version(contents: &str) -> Option<String> {
   contents.lines().find_map(|line| {
     let (key, value) = line.split_once(':')?;
@@ -85,6 +96,7 @@ fn parse_pc_version(contents: &str) -> Option<String> {
   })
 }
 
+/// Executes the `pc_dirs` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn pc_dirs() -> Vec<std::path::PathBuf> {
   let mut dirs = Vec::new();
   if let Some(path) = std::env::var_os("PKG_CONFIG_PATH") {
@@ -102,6 +114,7 @@ fn pc_dirs() -> Vec<std::path::PathBuf> {
   dirs
 }
 
+/// Executes the `hostname` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hostname() -> Option<String> {
   read_to_string("/etc/hostname")
     .map(|value| value.trim().to_string())
@@ -109,10 +122,12 @@ fn hostname() -> Option<String> {
     .or_else(|| command_output("hostname", &[]))
 }
 
+/// Retrieves data for `read_to_string` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_to_string(path: &str) -> Option<String> {
   fs::read_to_string(path).ok()
 }
 
+/// Executes the `command_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_output(command: &str, args: &[&str]) -> Option<String> {
   let output = Command::new(command).args(args).output().ok()?;
   output
@@ -126,6 +141,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Converts input data into `parses_pkgconfig_version` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_pkgconfig_version() {
     assert_eq!(
       parse_pc_version("prefix=/usr\ndescription=GTK\nVersion: 4.22.4\n"),
@@ -135,6 +151,7 @@ mod tests {
   }
 
   #[test]
+  /// Converts input data into `parses_pacman_query_line` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_pacman_query_line() {
     let parsed = installed_package_version("argvus");
     let _ = parsed;

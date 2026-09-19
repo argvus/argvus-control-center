@@ -1,3 +1,7 @@
+//! Implements domain state and models consumed by the UI in crate `argvus control center packages`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackagesPage {
   Home,
@@ -14,6 +18,7 @@ pub enum PackagesPage {
   Mirrors,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `Package`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Package {
   pub name: String,
   pub version: String,
@@ -26,6 +31,7 @@ pub struct Package {
   pub update: Option<String>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `Update`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Update {
   pub name: String,
   pub current: String,
@@ -34,6 +40,7 @@ pub struct Update {
   pub download_size: Option<u64>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `CachePackage`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct CachePackage {
   pub name: String,
   pub version: String,
@@ -42,6 +49,7 @@ pub struct CachePackage {
   pub installed: bool,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `HistoryEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct HistoryEntry {
   pub timestamp: String,
   pub action: String,
@@ -51,6 +59,7 @@ pub struct HistoryEntry {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `PackageDetails`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PackageDetails {
   pub package: Package,
   pub architecture: Option<String>,
@@ -69,6 +78,7 @@ pub struct PackageDetails {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `TransactionPlan`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct TransactionPlan {
   pub install: Vec<Package>,
   pub remove: Vec<Package>,
@@ -81,12 +91,14 @@ pub struct TransactionPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `PackageReplacement`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PackageReplacement {
   pub removed: Package,
   pub installed: Package,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Defines `TransactionDecision`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum TransactionDecision {
   ProviderSelection {
     dependency: String,
@@ -107,6 +119,7 @@ pub enum TransactionDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ConflictKind`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum ConflictKind {
   Dependency,
   Package,
@@ -114,6 +127,7 @@ pub enum ConflictKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `SignatureErrorKind`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum SignatureErrorKind {
   InvalidSignature,
   UnknownKey,
@@ -122,6 +136,7 @@ pub enum SignatureErrorKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `CachePreview`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct CachePreview {
   pub policy: CachePolicy,
   pub candidates: Vec<CachePackage>,
@@ -129,6 +144,7 @@ pub struct CachePreview {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `ReflectorOptions`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct ReflectorOptions {
   pub countries: Vec<String>,
   pub protocols: Vec<String>,
@@ -138,6 +154,7 @@ pub struct ReflectorOptions {
 }
 
 impl Default for ReflectorOptions {
+  /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default() -> Self {
     Self {
       countries: Vec::new(),
@@ -150,6 +167,7 @@ impl Default for ReflectorOptions {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `PackageFilter`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PackageFilter {
   All,
   Explicit,
@@ -159,6 +177,7 @@ pub enum PackageFilter {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `CachePolicy`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum CachePolicy {
   KeepThree,
   KeepOne,
@@ -166,6 +185,7 @@ pub enum CachePolicy {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `Mirror`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Mirror {
   pub server: String,
   pub protocol: String,
@@ -174,6 +194,7 @@ pub struct Mirror {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `AurPackage`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct AurPackage {
   pub name: String,
   pub version: String,

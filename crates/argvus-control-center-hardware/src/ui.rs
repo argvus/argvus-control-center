@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center hardware`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend,
   model::{HardwarePage, HardwareSnapshot, format_kib},
@@ -27,22 +31,26 @@ use ratatui::{
 };
 
 #[derive(Debug, Clone)]
+/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Pending {
   Action(HardwareAction),
 }
 
 #[derive(Debug, Clone)]
+/// Defines `HardwareAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum HardwareAction {
   SetGovernor(String),
   SetProfile(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   ApplyGovernor,
   ApplyProfile,
 }
 
+/// Represents `HardwareApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct HardwareApp {
   pub page: HardwarePage,
   selected: Selection,
@@ -62,6 +70,7 @@ pub struct HardwareApp {
 }
 
 impl HardwareApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, cap: Capabilities) -> Self {
     let mut app = Self {
       page: HardwarePage::Home,
@@ -84,6 +93,7 @@ impl HardwareApp {
     app
   }
 
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn refresh(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -96,6 +106,7 @@ impl HardwareApp {
     });
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.action
@@ -144,14 +155,17 @@ impl HardwareApp {
     changed
   }
 
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn busy(&self) -> bool {
     self.job.is_some() || self.action.is_some()
   }
 
+  /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
     self.selected.normalize(self.selection_len());
   }
 
+  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
       HardwarePage::Home => 6,
@@ -163,6 +177,7 @@ impl HardwareApp {
     }
   }
 
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_some() {
       match self.confirmation.handle(key) {
@@ -292,6 +307,7 @@ impl HardwareApp {
     false
   }
 
+  /// Executes the `navigate_back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn navigate_back(&mut self) {
     self.page = match self.page {
       HardwarePage::DeviceDetail(_) => HardwarePage::Devices,
@@ -302,6 +318,7 @@ impl HardwareApp {
     self.on_buttons = false;
   }
 
+  /// Executes the `execute_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn execute_action(&mut self, action: HardwareAction) {
     let cap = self.cap.clone();
     match action {
@@ -331,6 +348,7 @@ impl HardwareApp {
     }
   }
 
+  /// Executes the `trigger_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn trigger_button(&mut self, btn: ActionButton) {
     match btn {
       ActionButton::ApplyGovernor => {
@@ -348,6 +366,7 @@ impl HardwareApp {
     }
   }
 
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     match self.page {
       HardwarePage::Cpu if !self.snapshot.cpu.governors.is_empty() => vec![(
@@ -368,6 +387,7 @@ impl HardwareApp {
     }
   }
 
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.hardware");
     if self.page == HardwarePage::Home {
@@ -377,6 +397,7 @@ impl HardwareApp {
     }
   }
 
+  /// Executes the `label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn label(&self, page: HardwarePage) -> &'static str {
     match page {
       HardwarePage::Summary => tr(self.lang, "control_center.summary"),
@@ -391,6 +412,7 @@ impl HardwareApp {
     }
   }
 
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let hints = if self.on_buttons {
@@ -494,6 +516,7 @@ impl HardwareApp {
     }
   }
 
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       HardwarePage::Home => self.home_rows(),
@@ -554,6 +577,7 @@ impl HardwareApp {
     }
   }
 
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let summary_label = tr(self.lang, "control_center.summary");
     let cpu_label = "CPU";
@@ -633,6 +657,7 @@ impl HardwareApp {
   }
 }
 
+/// Executes the `detail_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
   let s = &app.snapshot;
   let mut lines = Vec::new();
@@ -906,6 +931,7 @@ fn detail_lines(app: &HardwareApp) -> Vec<Line<'static>> {
   lines
 }
 
+/// Executes the `run_governor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_governor(value: &str) -> Result<String, String> {
   let request = PrivilegedRequest::new("governor", "set", vec![value.into()])?;
   let executable = std::env::current_exe()
@@ -920,6 +946,7 @@ fn run_governor(value: &str) -> Result<String, String> {
     .ok_or_else(|| String::from_utf8_lossy(&output.stderr).trim().into())
 }
 
+/// Executes the `field_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn field_label(lang: Lang, key: &str) -> String {
   let label = match key {
     "Manufacturer" => "control_center.hardware_manufacturer",
@@ -972,10 +999,12 @@ fn field_label(lang: Lang, key: &str) -> String {
   tr(lang, label).into()
 }
 
+/// Executes the `na` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn na(lang: Lang) -> String {
   tr(lang, "control_center.unavailable_6a8fc3").into()
 }
 
+/// Executes the `run_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_profile(value: &str) -> Result<String, String> {
   let output = SystemProcessRunner
     .run(
@@ -996,6 +1025,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `home_selection_opens_cpu_without_render_time_probe` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_selection_opens_cpu_without_render_time_probe() {
     let mut app = HardwareApp::new(
       Lang::for_locale("en-US"),
@@ -1009,6 +1039,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cpu_governor_selection_is_bounded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cpu_governor_selection_is_bounded() {
     let mut app = HardwareApp::new(
       Lang::for_locale("en-US"),
@@ -1025,6 +1056,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cpu_governor_enter_dispatches_even_with_power_profiles_daemon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cpu_governor_enter_dispatches_even_with_power_profiles_daemon() {
     let cap = Capabilities {
       has_power_profiles_daemon: true,
@@ -1043,6 +1075,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cpu_governor_enter_does_not_dispatch_when_no_governors` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cpu_governor_enter_does_not_dispatch_when_no_governors() {
     let mut app = HardwareApp::new(
       Lang::for_locale("en-US"),

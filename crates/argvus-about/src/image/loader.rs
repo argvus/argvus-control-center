@@ -1,7 +1,13 @@
+//! Implements resource loading in crate `argvus about`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use image::{Rgba, RgbaImage};
 
+/// Defines the constant `MAX_DIMENSION`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const MAX_DIMENSION: u32 = 512;
 
+/// Retrieves data for `load_svg` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load_svg(path: &std::path::Path) -> Option<RgbaImage> {
   let data = std::fs::read(path).ok()?;
   let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
@@ -21,6 +27,7 @@ pub fn load_svg(path: &std::path::Path) -> Option<RgbaImage> {
   unpremultiply(&pixmap)
 }
 
+/// Executes the `unpremultiply` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn unpremultiply(pixmap: &resvg::tiny_skia::Pixmap) -> Option<RgbaImage> {
   let mut image = RgbaImage::new(pixmap.width(), pixmap.height());
   let data = pixmap.data();
@@ -44,6 +51,7 @@ fn unpremultiply(pixmap: &resvg::tiny_skia::Pixmap) -> Option<RgbaImage> {
   Some(image)
 }
 
+/// Executes the `multiply_back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn multiply_back(channel: u8, alpha: u8) -> Option<u8> {
   if alpha == 0 {
     return Some(0);
@@ -54,6 +62,7 @@ fn multiply_back(channel: u8, alpha: u8) -> Option<u8> {
   })
 }
 
+/// Executes the `find_logo_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn find_logo_path() -> Option<std::path::PathBuf> {
   let mut candidates = vec![
     std::path::PathBuf::from("/usr/share/argvus-control-center/argvus-about.svg"),
@@ -79,6 +88,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `multiplies_back_premultiplied_alpha` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn multiplies_back_premultiplied_alpha() {
     assert_eq!(multiply_back(0x80, 0xff), Some(0x80));
     assert_eq!(multiply_back(0x40, 0x80), Some(0x80));

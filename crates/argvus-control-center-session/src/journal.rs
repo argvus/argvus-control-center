@@ -1,6 +1,11 @@
+//! Implements journal parsing and presentation in crate `argvus control center session`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use argvus_control_center_core::sanitize::terminal_text;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `JournalEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct JournalEntry {
   /// Raw `__REALTIME_TIMESTAMP` value in microseconds.
   pub timestamp_micros: Option<u64>,
@@ -10,6 +15,7 @@ pub struct JournalEntry {
 }
 
 impl JournalEntry {
+  /// Renders `rendered_timestamp` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rendered_timestamp(&self) -> String {
     self
       .timestamp_micros
@@ -18,7 +24,7 @@ impl JournalEntry {
   }
 }
 
-/// Formats the journal timestamp as a compact relative age ("agora", "5 min",
+/// Formats the journal timestamp as a compact relative age ("now", "5 min",
 /// "2 h", "3 d"), which is the clearest without pulling in a calendar crate.
 fn relative_timestamp(micros: u64) -> String {
   let now = std::time::SystemTime::now()
@@ -64,6 +70,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Converts input data into `parses_journal_lines_and_sanitizes` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_journal_lines_and_sanitizes() {
     let entry = parse_line(
       r#"{"__REALTIME_TIMESTAMP":"1700000000000000","_SYSTEMD_UNIT":"waybar.service","_PID":"1234","MESSAGE":"bad\u001b[31m text"}"#,
@@ -76,11 +83,13 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `rejects_invalid_json` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rejects_invalid_json() {
     assert!(parse_line("not json").is_err());
   }
 
   #[test]
+  /// Executes the `recent_entries_render_as_relative_time` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn recent_entries_render_as_relative_time() {
     let now = std::time::SystemTime::now()
       .duration_since(std::time::UNIX_EPOCH)

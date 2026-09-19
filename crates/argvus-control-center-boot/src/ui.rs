@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center boot`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend::BootBackend,
   model::{BootPage, BootSnapshot, BootloaderKind},
@@ -32,10 +36,12 @@ use ratatui::{
 };
 
 #[derive(Debug, Clone)]
+/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Pending {
   Action(BootAction),
 }
 #[derive(Debug, Clone)]
+/// Defines `BootAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum BootAction {
   SystemdDefault(String),
   SystemdTimeout(u32),
@@ -46,20 +52,27 @@ enum BootAction {
   Plymouth(String),
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Defines `ActionResult`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionResult {
   Success,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `InputMode`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum InputMode {
   Timeout,
   GrubCmdline,
 }
 
+/// Defines the constant `TRANSACTION_POPUP_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_POPUP_WIDTH: u16 = 100;
+/// Defines the constant `TRANSACTION_POPUP_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_POPUP_HEIGHT: u16 = 20;
+/// Defines the constant `TRANSACTION_CONTENT_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_CONTENT_WIDTH: usize = TRANSACTION_POPUP_WIDTH as usize - 2;
+/// Defines the constant `TRANSACTION_CONTENT_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_CONTENT_HEIGHT: usize = TRANSACTION_POPUP_HEIGHT as usize - 2;
 
+/// Executes the `transaction_wrapped_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn transaction_wrapped_lines(output: &str) -> usize {
   output
     .lines()
@@ -67,11 +80,13 @@ fn transaction_wrapped_lines(output: &str) -> usize {
     .sum()
 }
 
+/// Executes the `transaction_bottom_offset` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn transaction_bottom_offset(output: &str) -> u16 {
   transaction_wrapped_lines(output).saturating_sub(TRANSACTION_CONTENT_HEIGHT) as u16
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   SetDefault,
   Timeout,
@@ -80,6 +95,7 @@ enum ActionButton {
   ApplyTheme,
 }
 
+/// Represents `BootApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct BootApp {
   pub page: BootPage,
   selected: Selection,
@@ -105,6 +121,7 @@ pub struct BootApp {
 }
 
 impl BootApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: BootPage::Home,
@@ -130,6 +147,7 @@ impl BootApp {
       status: None,
     }
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -145,6 +163,7 @@ impl BootApp {
       text: tr(self.lang, "control_center.loading_boot").into(),
     });
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -190,24 +209,29 @@ impl BootApp {
     }
     changed
   }
+  /// Executes the `success` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn success(&mut self, text: impl Into<String>) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Success,
       text: text.into(),
     });
   }
+  /// Executes the `error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn error(&mut self, text: impl Into<String>) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Error,
       text: text.into(),
     });
   }
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn busy(&self) -> bool {
     self.job.is_some() || self.action.is_some()
   }
+  /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
     self.selected.normalize(self.selection_len());
   }
+  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
       BootPage::Home => 5,
@@ -218,6 +242,7 @@ impl BootApp {
       _ => 1,
     }
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_some() {
       match self.confirmation.handle(key) {
@@ -348,6 +373,7 @@ impl BootApp {
     }
     false
   }
+  /// Executes the `open_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_selected(&mut self) {
     match self.page {
       BootPage::Home => {
@@ -392,6 +418,7 @@ impl BootApp {
       _ => {}
     }
   }
+  /// Executes the `request_default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn request_default(&mut self) {
     let action = match self.page {
       BootPage::Kernel => self
@@ -431,6 +458,7 @@ impl BootApp {
       ));
     }
   }
+  /// Executes the `entry_for_kernel` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn entry_for_kernel(
     &self,
     kernel: &crate::model::KernelInfo,
@@ -446,6 +474,7 @@ impl BootApp {
         })
       })
   }
+  /// Applies the `apply_timeout_input` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_timeout_input(&mut self) {
     let value = self.timeout_input.take().unwrap_or_default();
     let Ok(seconds) = value.parse::<u32>() else {
@@ -472,6 +501,7 @@ impl BootApp {
     };
     self.pending = Some(Pending::Action(action));
   }
+  /// Applies the `apply_input` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_input(&mut self) {
     if self.input_mode == Some(InputMode::GrubCmdline) {
       let value = self.timeout_input.take().unwrap_or_default();
@@ -490,6 +520,7 @@ impl BootApp {
       self.input_mode = None;
     }
   }
+  /// Executes the `grub_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn grub_value(&self, key: &str) -> String {
     self
       .snapshot
@@ -499,11 +530,13 @@ impl BootApp {
       .find_map(|(name, value)| (name == key).then(|| value.clone()))
       .unwrap_or_default()
   }
+  /// Executes the `request_plymouth` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn request_plymouth(&mut self) {
     if let Some(theme) = self.snapshot.plymouth.themes.get(self.selected.index) {
       self.pending = Some(Pending::Action(BootAction::Plymouth(theme.clone())));
     }
   }
+  /// Executes the `start_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending(&mut self) {
     let Some(Pending::Action(action)) = self.pending.take() else {
       return;
@@ -519,6 +552,7 @@ impl BootApp {
     self.transaction_follow = true;
     self.action = Some(self.jobs.spawn(move |_| run_action(action, live)));
   }
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -535,6 +569,7 @@ impl BootApp {
       self.on_buttons = true;
     }
   }
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -543,6 +578,7 @@ impl BootApp {
     self.button_selected =
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.busy() {
       return;
@@ -574,6 +610,7 @@ impl BootApp {
       ActionButton::ApplyTheme => self.request_plymouth(),
     }
   }
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     match self.page {
       BootPage::Kernel if !self.snapshot.kernels.is_empty() => vec![(
@@ -633,6 +670,7 @@ impl BootApp {
       _ => Vec::new(),
     }
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     let action = tr(
       self.lang,
@@ -651,6 +689,7 @@ impl BootApp {
       readonly
     }
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, frame: &mut Frame) {
     let area = frame.area();
     let body = shell(
@@ -777,6 +816,7 @@ impl BootApp {
       );
     }
   }
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       BootPage::Home => self.home_rows(),
@@ -912,6 +952,7 @@ impl BootApp {
         .collect(),
     }
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let secure = match self.snapshot.secure_boot {
       Some(value) => format!(
@@ -987,6 +1028,7 @@ impl BootApp {
       ),
     ]
   }
+  /// Executes the `kernel_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn kernel_detail(&self, index: usize) -> Vec<String> {
     let Some(k) = self.snapshot.kernels.get(index) else {
       return vec![tr(self.lang, "control_center.kernel_not_found").into()];
@@ -1061,6 +1103,7 @@ impl BootApp {
       .into(),
     ]
   }
+  /// Executes the `bootloader_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn bootloader_detail(&self, index: usize) -> Vec<String> {
     let Some(e) = self.snapshot.bootloader_info.entries.get(index) else {
       return vec![tr(self.lang, "control_center.entry_not_found").into()];
@@ -1105,6 +1148,7 @@ impl BootApp {
       tr(self.lang, "control_center.d_set_default_t_change_timeout").into(),
     ]
   }
+  /// Executes the `initramfs_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn initramfs_detail(&self, index: usize) -> Vec<String> {
     let preset = self
       .snapshot
@@ -1164,6 +1208,7 @@ impl BootApp {
       .into(),
     ]
   }
+  /// Retrieves data for `loader_label` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn loader_label(&self) -> &'static str {
     match self.snapshot.bootloader {
       BootloaderKind::SystemdBoot => "systemd-boot",
@@ -1171,6 +1216,7 @@ impl BootApp {
       BootloaderKind::Unknown => tr(self.lang, "control_center.unknown"),
     }
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.boot");
     if self.page == BootPage::Home {
@@ -1179,6 +1225,7 @@ impl BootApp {
       format!("{root} > {}", self.page_label())
     }
   }
+  /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn page_label(&self) -> &'static str {
     match self.page {
       BootPage::Summary => tr(self.lang, "control_center.summary"),
@@ -1195,6 +1242,7 @@ impl BootApp {
   }
 }
 
+/// Executes the `yes_no` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn yes_no(lang: Lang, value: bool) -> String {
   tr(
     lang,
@@ -1206,6 +1254,7 @@ fn yes_no(lang: Lang, value: bool) -> String {
   )
   .into()
 }
+/// Executes the `action_message` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn action_message(lang: Lang, action: &BootAction) -> String {
   match action {
     BootAction::SystemdDefault(id) => format!(
@@ -1236,6 +1285,7 @@ fn action_message(lang: Lang, action: &BootAction) -> String {
     ),
   }
 }
+/// Executes the `run_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_action(action: BootAction, live: LiveProcess) -> Result<(ActionResult, String), String> {
   let executable = std::env::current_exe()
     .map_err(|error| error.to_string())?
@@ -1302,6 +1352,7 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   #[test]
+  /// Executes the `boot_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_home_rows_act_as_a_status_dashboard() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1327,6 +1378,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_kernel_rows_render_clean_current_and_default_badges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_kernel_rows_render_clean_current_and_default_badges() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1363,6 +1415,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_detail_pages_render_section_headers_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_detail_pages_render_section_headers_and_aligned_rows() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1385,6 +1438,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_home_and_details_are_keyboard_navigable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_home_and_details_are_keyboard_navigable() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1409,6 +1463,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `systemd_entry_default_requires_a_real_entry` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn systemd_entry_default_requires_a_real_entry() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1442,6 +1497,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `timeout_input_is_bounded_and_cancelable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn timeout_input_is_bounded_and_cancelable() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1468,6 +1524,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_uses_shared_chrome_and_contextual_footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_uses_shared_chrome_and_contextual_footer() {
     let app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1490,6 +1547,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_detail_and_info_pages_expose_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_detail_and_info_pages_expose_buttons() {
     let app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1508,6 +1566,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_tab_cycles_between_list_and_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_tab_cycles_between_list_and_buttons() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1531,6 +1590,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_left_right_move_buttons_while_focused_and_no_back_out` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_left_right_move_buttons_while_focused_and_no_back_out() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1558,6 +1618,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_renders_button_bar_only_on_action_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_renders_button_bar_only_on_action_pages() {
     let mut list = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1596,6 +1657,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_start_pending_opens_the_process_window_immediately` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_start_pending_opens_the_process_window_immediately() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1616,6 +1678,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_transaction_window_scrolls_and_closes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_transaction_window_scrolls_and_closes() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1648,6 +1711,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_transaction_window_renders_process_title_and_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_transaction_window_renders_process_title_and_output() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
@@ -1674,6 +1738,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `boot_home_dashboard_uses_theme_and_falls_back_to_installed_flag` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_home_dashboard_uses_theme_and_falls_back_to_installed_flag() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),

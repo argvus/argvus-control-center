@@ -1,4 +1,4 @@
-//! Read/write the single `defaults.json` state file consumed by Argvus.
+//! Implements persistent application state in crate `argvus control center apps`. This separation keeps external effects from contaminating models, routes, or rendering.
 
 use std::fs;
 use std::path::PathBuf;
@@ -38,6 +38,7 @@ pub struct AppState {
 }
 
 impl AppState {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new() -> Self {
     AppState {
       version: Some(STATE_VERSION),
@@ -45,6 +46,7 @@ impl AppState {
     }
   }
 
+  /// Executes the `field` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn field(&mut self, cat: Category) -> &mut Option<String> {
     macro_rules! field {
       ($c:expr, $name:ident) => {
@@ -67,6 +69,7 @@ impl AppState {
     unreachable!("category {} not covered", cat.key())
   }
 
+  /// Executes the `field_ref` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn field_ref(&self, cat: Category) -> Option<&String> {
     match cat {
       Category::Terminal => self.terminal.as_ref(),
@@ -183,8 +186,10 @@ mod tests {
   use std::env;
   use std::fs;
 
+  /// Defines the constant `DIR`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const DIR: &str = "target/test-state";
 
+  /// Executes the `tmp_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn tmp_file(name: &str) -> PathBuf {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .join(DIR)
@@ -196,6 +201,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `round_trip` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn round_trip() {
     let mut state = AppState::new();
     state.set(Category::Browser, "firefox");
@@ -210,6 +216,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `missing_file_yields_empty_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn missing_file_yields_empty_state() {
     let path = tmp_file("missing.json");
     let _ = fs::remove_file(&path);
@@ -219,6 +226,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `invalid_json_yields_empty_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn invalid_json_yields_empty_state() {
     let path = tmp_file("invalid.json");
     fs::write(&path, "not json {").unwrap();
@@ -227,6 +235,7 @@ mod tests {
   }
 
   #[test]
+  /// Applies the `set_clears_on_empty` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn set_clears_on_empty() {
     let mut state = AppState::new();
     state.set(Category::Browser, "firefox");
@@ -237,6 +246,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `explicit_only_lists_differences` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn explicit_only_lists_differences() {
     let mut state = AppState::new();
     state.set(Category::Browser, "chromium");
@@ -247,6 +257,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `env_config_home_is_respected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn env_config_home_is_respected() {
     let p = PathBuf::from("/tmp/argvus-default-apps-test-config");
     unsafe {

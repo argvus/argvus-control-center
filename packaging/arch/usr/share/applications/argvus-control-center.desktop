@@ -1,5 +1,7 @@
 [Desktop Entry]
 Type=Application
+# The desktop entry launches the keyboard-first TUI through Foot so the ARGVUS
+# window rules can identify it by the stable application ID.
 Name=ARGVUS Control Center
 Name[pt_BR]=Central de Controle ARGVUS
 Comment=Configure ARGVUS from the terminal

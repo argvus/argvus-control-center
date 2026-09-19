@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center packages`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend::{PackageBackend, parse_reflector_countries, reflector_args},
   model::{
@@ -32,6 +36,7 @@ use ratatui::{
   widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
+/// Defines `Loaded`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Loaded {
   Packages(Vec<Package>),
   Updates(Vec<Update>),
@@ -45,6 +50,7 @@ enum Loaded {
   Dashboard(PackageDashboard),
 }
 #[derive(Clone)]
+/// Defines `Action`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Action {
   Install(Vec<String>),
   Remove(Vec<String>),
@@ -59,12 +65,14 @@ enum Action {
 }
 
 #[derive(Debug, Clone)]
+/// Represents `MirrorEditor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct MirrorEditor {
   selected: usize,
   options: ReflectorOptions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   Install,
   Remove,
@@ -78,6 +86,7 @@ enum ActionButton {
   Downgrade,
 }
 
+/// Represents `PackagesApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PackagesApp {
   pub page: PackagesPage,
   selected: Selection,
@@ -116,11 +125,16 @@ pub struct PackagesApp {
   transaction_follow: bool,
 }
 
+/// Defines the constant `TRANSACTION_POPUP_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_POPUP_WIDTH: u16 = 100;
+/// Defines the constant `TRANSACTION_POPUP_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_POPUP_HEIGHT: u16 = 20;
+/// Defines the constant `TRANSACTION_CONTENT_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_CONTENT_WIDTH: usize = TRANSACTION_POPUP_WIDTH as usize - 2;
+/// Defines the constant `TRANSACTION_CONTENT_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const TRANSACTION_CONTENT_HEIGHT: usize = TRANSACTION_POPUP_HEIGHT as usize - 2;
 
+/// Executes the `transaction_wrapped_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn transaction_wrapped_lines(output: &str) -> usize {
   output
     .lines()
@@ -128,11 +142,13 @@ fn transaction_wrapped_lines(output: &str) -> usize {
     .sum()
 }
 
+/// Executes the `transaction_bottom_offset` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn transaction_bottom_offset(output: &str) -> u16 {
   transaction_wrapped_lines(output).saturating_sub(TRANSACTION_CONTENT_HEIGHT) as u16
 }
 
 impl PackagesApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: PackagesPage::Home,
@@ -172,12 +188,15 @@ impl PackagesApp {
       transaction_follow: false,
     }
   }
+  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn busy(&self) -> bool {
     self.job.is_some() || self.plan.is_some() || self.action.is_some()
   }
+  /// Executes the `destructive` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn destructive(&self) -> bool {
     self.plan.is_some() || self.action.is_some()
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     if self.destructive() {
       return;
@@ -225,6 +244,7 @@ impl PackagesApp {
       text: tr(self.lang, "control_center.loading_packages").into(),
     });
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     if let Some(plan) = self.plan.take() {
       match plan.try_state() {
@@ -264,6 +284,7 @@ impl PackagesApp {
     }
     self.poll_action()
   }
+  /// Executes the `poll_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn poll_action(&mut self) -> bool {
     let Some(job) = self.action.take() else {
       return false;
@@ -298,6 +319,7 @@ impl PackagesApp {
       }
     }
   }
+  /// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply(&mut self, d: Loaded) -> bool {
     let mut reported_error = false;
     match d {
@@ -338,18 +360,21 @@ impl PackagesApp {
     self.selected.normalize(self.item_count());
     reported_error
   }
+  /// Executes the `error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn error(&mut self, e: impl Into<String>) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Error,
       text: terminal_text(&e.into()),
     });
   }
+  /// Executes the `success` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn success(&mut self, e: impl Into<String>) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Success,
       text: e.into(),
     });
   }
+  /// Executes the `selected_package_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selected_package_name(&self) -> Option<String> {
     if matches!(self.page, PackagesPage::Details(_)) {
       if let Some(name) = self
@@ -391,6 +416,7 @@ impl PackagesApp {
       })
       .or_else(|| self.aur.get(self.selected.index).map(|p| p.name.clone()))
   }
+  /// Executes the `home_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_pages(&self) -> Vec<PackagesPage> {
     let mut pages = vec![
       PackagesPage::Search,
@@ -407,6 +433,7 @@ impl PackagesApp {
     }
     pages
   }
+  /// Executes the `visible_packages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn visible_packages(&self) -> Vec<&Package> {
     let query = self.query.trim().to_ascii_lowercase();
     self
@@ -419,12 +446,14 @@ impl PackagesApp {
       })
       .collect()
   }
+  /// Executes the `matches_query` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn matches_query(&self, name: &str, description: &str) -> bool {
     let query = self.query.trim().to_ascii_lowercase();
     query.is_empty()
       || name.to_ascii_lowercase().contains(&query)
       || description.to_ascii_lowercase().contains(&query)
   }
+  /// Executes the `visible_updates` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn visible_updates(&self) -> Vec<&Update> {
     self
       .updates
@@ -432,6 +461,7 @@ impl PackagesApp {
       .filter(|update| self.matches_query(&update.name, ""))
       .collect()
   }
+  /// Executes the `item_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn item_count(&self) -> usize {
     match self.page {
       PackagesPage::Home => self.home_pages().len(),
@@ -458,6 +488,7 @@ impl PackagesApp {
         .map_or(0, |details| detail_rows(self.lang, details).len()),
     }
   }
+  /// Executes the `selected_names` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selected_names(&self) -> Vec<String> {
     if self.page == PackagesPage::Orphans && !self.multi.is_empty() {
       self
@@ -470,6 +501,7 @@ impl PackagesApp {
       self.selected_package_name().into_iter().collect()
     }
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.mirror_editor.is_some() {
       return self.handle_mirror_editor(key);
@@ -693,6 +725,7 @@ impl PackagesApp {
     }
     false
   }
+  /// Executes the `open_mirror_editor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_mirror_editor(&mut self) {
     if self.capabilities.has_reflector {
       let default_country = self
@@ -721,6 +754,7 @@ impl PackagesApp {
       self.error(tr(self.lang, "control_center.reflector_is_unavailable"));
     }
   }
+  /// Executes the `spawn_country_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn spawn_country_list(&mut self) {
     let capabilities = self.capabilities.clone();
     self.job = Some(
@@ -729,6 +763,7 @@ impl PackagesApp {
         .spawn(move |_| Ok(fetch_reflector_countries(capabilities).map(Loaded::MirrorCountries))),
     );
   }
+  /// Processes `handle_mirror_editor` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_mirror_editor(&mut self, key: KeyCode) -> bool {
     let Some(editor) = self.mirror_editor.as_mut() else {
       return false;
@@ -768,6 +803,7 @@ impl PackagesApp {
     }
     false
   }
+  /// Executes the `start_mirror_preview` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_mirror_preview(&mut self, options: ReflectorOptions) {
     if self.busy() {
       return;
@@ -783,6 +819,7 @@ impl PackagesApp {
         .spawn(move |_| Ok(generate_mirror_preview(options, caps).map(Loaded::MirrorPreview))),
     );
   }
+  /// Processes `handle_input` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_input(&mut self, key: KeyCode) -> bool {
     match key {
       KeyCode::Char(c) if !c.is_control() && self.input.as_ref().is_some_and(|v| v.len() < 128) => {
@@ -824,6 +861,7 @@ impl PackagesApp {
     }
     false
   }
+  /// Executes the `start_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending(&mut self) {
     let Some(a) = self.pending.take() else { return };
     let caps = self.capabilities.clone();
@@ -839,6 +877,7 @@ impl PackagesApp {
     self.transaction_follow = true;
     self.action = Some(self.jobs.spawn(move |_| Ok(run_action(a, caps, live))));
   }
+  /// Executes the `begin_plan` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn begin_plan(&mut self, action: Action) {
     if self.busy() {
       return;
@@ -866,6 +905,7 @@ impl PackagesApp {
       Ok(Ok((action, preview)))
     }));
   }
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     match self.page {
       PackagesPage::Home => self.home_rows(),
@@ -972,6 +1012,7 @@ impl PackagesApp {
         .unwrap_or_default(),
     }
   }
+  /// Executes the `search_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn search_row(&self) -> String {
     format!(
       "{} {}: {}_",
@@ -980,6 +1021,7 @@ impl PackagesApp {
       self.query
     )
   }
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let dashboard = &self.dashboard;
     let pending = tr(self.lang, "control_center.pending");
@@ -1060,6 +1102,7 @@ impl PackagesApp {
       })
       .collect()
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, f: &mut Frame) {
     let rows = self.rows();
     let breadcrumb = self.breadcrumb();
@@ -1246,6 +1289,7 @@ impl PackagesApp {
       );
     }
   }
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     if self.page == PackagesPage::Home {
       tr(self.lang, "control_center.packages").into()
@@ -1257,6 +1301,7 @@ impl PackagesApp {
       )
     }
   }
+  /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn page_label(&self) -> &'static str {
     match self.page {
       PackagesPage::Search | PackagesPage::Details(_) => {
@@ -1275,6 +1320,7 @@ impl PackagesApp {
       PackagesPage::Home => tr(self.lang, "control_center.packages"),
     }
   }
+  /// Applies the `toggle_multi` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_multi(&mut self) {
     if let Some(p) = self.multi.iter().position(|v| *v == self.selected.index) {
       self.multi.remove(p);
@@ -1282,6 +1328,7 @@ impl PackagesApp {
       self.multi.push(self.selected.index)
     }
   }
+  /// Executes the `install_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn install_selected(&mut self) {
     let Some(name) = self.selected_package_name() else {
       return;
@@ -1295,6 +1342,7 @@ impl PackagesApp {
       Action::Install(vec![name])
     });
   }
+  /// Executes the `remove_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn remove_selected(&mut self) {
     let installed = self.selection_installed();
     let v = self.selected_names();
@@ -1302,6 +1350,7 @@ impl PackagesApp {
       self.begin_plan(Action::Remove(v))
     }
   }
+  /// Executes the `selection_installed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_installed(&self) -> bool {
     match self.page {
       PackagesPage::Details(_) => self
@@ -1322,6 +1371,7 @@ impl PackagesApp {
         .unwrap_or(false),
     }
   }
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -1338,6 +1388,7 @@ impl PackagesApp {
       self.on_buttons = true;
     }
   }
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -1346,6 +1397,7 @@ impl PackagesApp {
     self.button_selected =
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.busy() {
       return;
@@ -1379,6 +1431,7 @@ impl PackagesApp {
       }
     }
   }
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     let install = Button::new(tr(self.lang, "control_center.install"), ButtonKind::Primary);
     let reinstall = Button::new(
@@ -1477,6 +1530,7 @@ impl PackagesApp {
       _ => Vec::new(),
     }
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     let home = tr(
       self.lang,
@@ -1500,6 +1554,7 @@ impl PackagesApp {
     }
   }
 }
+/// Executes the `detail_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
   let status = if d.package.installed {
     format!("● {}", tr(lang, "control_center.installed"))
@@ -1623,6 +1678,7 @@ fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
     tr(lang, "control_center.tab_actions_r_refresh").into(),
   ]
 }
+/// Executes the `join_or_dash` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn join_or_dash(values: &[String]) -> String {
   if values.is_empty() {
     "—".into()
@@ -1630,10 +1686,12 @@ fn join_or_dash(values: &[String]) -> String {
     values.join(" ")
   }
 }
+/// Executes the `cached_display_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn cached_display_name(package: &CachePackage) -> String {
   if !package.version.is_empty() {
     return format!("{} {}", package.name, package.version);
   }
+  /// Defines the constant `SUFFIXES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const SUFFIXES: &[&str] = &[
     ".pkg.tar.zst",
     ".pkg.tar.xz",
@@ -1652,10 +1710,15 @@ fn cached_display_name(package: &CachePackage) -> String {
   }
   name.to_owned()
 }
+/// Executes the `human_bytes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn human_bytes(bytes: u64) -> String {
+  /// Defines the constant `KIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const KIB: u64 = 1024;
+  /// Defines the constant `MIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const MIB: u64 = 1024 * 1024;
+  /// Defines the constant `GIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const GIB: u64 = 1024 * 1024 * 1024;
+  /// Defines the constant `TIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const TIB: u64 = 1024 * 1024 * 1024 * 1024;
   if bytes >= TIB {
     format!("{:.1} TiB", bytes as f64 / TIB as f64)
@@ -1669,6 +1732,7 @@ fn human_bytes(bytes: u64) -> String {
     format!("{bytes} B")
   }
 }
+/// Executes the `action_message` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn action_message(lang: Lang, a: &Action) -> String {
   match a {
     Action::Install(v) => format!("{}: {}", tr(lang, "control_center.install"), v.join(", ")),
@@ -1694,6 +1758,7 @@ fn action_message(lang: Lang, a: &Action) -> String {
     ),
   }
 }
+/// Executes the `preview_message` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn preview_message(lang: Lang, plan: &TransactionPlan) -> String {
   format!(
     "\n\n{}: {}\n{}: {}\n{}: {}",
@@ -1705,6 +1770,7 @@ fn preview_message(lang: Lang, plan: &TransactionPlan) -> String {
     plan.download_bytes
   )
 }
+/// Executes the `run_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_action(a: Action, caps: Capabilities, live: LiveProcess) -> Result<String, String> {
   let executable = std::env::current_exe()
     .map_err(|error| error.to_string())?
@@ -1785,6 +1851,7 @@ fn run_action(a: Action, caps: Capabilities, live: LiveProcess) -> Result<String
   }
 }
 
+/// Executes the `generate_mirror_preview` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn generate_mirror_preview(
   options: ReflectorOptions,
   caps: Capabilities,
@@ -1814,6 +1881,7 @@ fn generate_mirror_preview(
   Ok(content)
 }
 
+/// Retrieves data for `fetch_reflector_countries` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn fetch_reflector_countries(caps: Capabilities) -> Result<Vec<String>, String> {
   if !caps.has_reflector {
     return Err("reflector is unavailable".into());
@@ -1830,6 +1898,7 @@ fn fetch_reflector_countries(caps: Capabilities) -> Result<Vec<String>, String> 
   )))
 }
 
+/// Executes the `mirror_preview_summary` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn mirror_preview_summary(content: &str) -> String {
   let mirrors = content
     .lines()
@@ -1843,7 +1912,9 @@ fn mirror_preview_summary(content: &str) -> String {
   summary
 }
 
+/// Executes the `cycle_country` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn cycle_country(options: &mut ReflectorOptions, countries: &[String]) {
+  /// Defines the constant `FALLBACK`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const FALLBACK: &[Option<&str>] = &[
     None,
     Some("Brazil"),
@@ -1878,7 +1949,9 @@ fn cycle_country(options: &mut ReflectorOptions, countries: &[String]) {
     .unwrap_or_default();
 }
 
+/// Executes the `cycle_protocol` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn cycle_protocol(options: &mut ReflectorOptions) {
+  /// Defines the constant `PROTOCOLS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const PROTOCOLS: &[&str] = &["https", "http", "rsync"];
   let current = options
     .protocols
@@ -1892,7 +1965,9 @@ fn cycle_protocol(options: &mut ReflectorOptions) {
   options.protocols = vec![PROTOCOLS[(index + 1) % PROTOCOLS.len()].into()];
 }
 
+/// Executes the `cycle_sort` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn cycle_sort(options: &mut ReflectorOptions) {
+  /// Defines the constant `SORTS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const SORTS: &[&str] = &["rate", "age", "score", "delay", "country"];
   let index = SORTS
     .iter()
@@ -1907,6 +1982,7 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
 
   #[test]
+  /// Executes the `package_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn package_home_rows_act_as_a_status_dashboard() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -1952,6 +2028,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `package_detail_pages_render_section_headers_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn package_detail_pages_render_section_headers_and_aligned_rows() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -1984,6 +2061,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cache_rows_strip_package_suffixes_and_humanize_bytes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cache_rows_strip_package_suffixes_and_humanize_bytes() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2001,6 +2079,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `package_home_is_navigable_and_uses_shared_chrome` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn package_home_is_navigable_and_uses_shared_chrome() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2028,6 +2107,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `empty_selection_does_not_create_package_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn empty_selection_does_not_create_package_action() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2045,6 +2125,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `enter_opens_selected_package_details` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn enter_opens_selected_package_details() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2062,6 +2143,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `search_pages_do_not_spawn_until_a_valid_query_is_confirmed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn search_pages_do_not_spawn_until_a_valid_query_is_confirmed() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2082,6 +2164,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `cancelling_package_search_clears_the_query` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cancelling_package_search_clears_the_query() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2098,6 +2181,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `opening_package_details_keeps_the_selected_name_until_metadata_arrives` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn opening_package_details_keeps_the_selected_name_until_metadata_arrives() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2116,6 +2200,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `package_confirmation_cancel_does_not_start_an_operation` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn package_confirmation_cancel_does_not_start_an_operation() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2129,6 +2214,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `mirror_editor_is_visible_and_configurable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn mirror_editor_is_visible_and_configurable() {
     let caps = Capabilities {
       has_reflector: true,
@@ -2160,6 +2246,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `country_cycling_falls_back_to_a_small_static_list_until_reflector_loads` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn country_cycling_falls_back_to_a_small_static_list_until_reflector_loads() {
     let mut options = ReflectorOptions {
       countries: vec!["Brazil".into()],
@@ -2174,6 +2261,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `packages_expose_action_buttons_per_page_and_none_on_history` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn packages_expose_action_buttons_per_page_and_none_on_history() {
     let app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2220,6 +2308,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `stale_details_do_not_block_removal_on_list_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn stale_details_do_not_block_removal_on_list_pages() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2248,6 +2337,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `install_selected_follows_list_state_not_stale_details` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn install_selected_follows_list_state_not_stale_details() {
     let mut installed_list = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2301,6 +2391,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `transaction_window_scrolls_closes_and_generates_action_plans` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_window_scrolls_closes_and_generates_action_plans() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2334,6 +2425,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `start_pending_opens_the_process_window_immediately` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending_opens_the_process_window_immediately() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2354,6 +2446,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `transaction_bottom_offset_is_zero_for_short_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_bottom_offset_is_zero_for_short_output() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2370,6 +2463,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `transaction_window_uses_theme_background_and_border` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_window_uses_theme_background_and_border() {
     let theme = Theme::load();
     let mut app = PackagesApp::new(
@@ -2394,6 +2488,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `packages_tab_cycles_between_list_and_buttons_and_backtab_lands_last` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn packages_tab_cycles_between_list_and_buttons_and_backtab_lands_last() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),
@@ -2413,6 +2508,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `packages_renders_button_bar_on_action_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn packages_renders_button_bar_on_action_pages() {
     let mut app = PackagesApp::new(
       Lang::for_locale("en-US"),

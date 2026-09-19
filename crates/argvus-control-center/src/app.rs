@@ -1,3 +1,12 @@
+//! Implements application state and main-flow coordination in crate `argvus control center`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! `Route` represents the currently displayed page; `InitialRoute` preserves the
+//! intent of a direct route until application initialization completes. This
+//! distinction lets the CLI, global search, and shortcuts share the same
+//! navigation authority without duplicating screens or creating parallel paths.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::config_app::ConfigApp;
 #[cfg(feature = "about")]
 use argvus_control_center_about::{App as AboutState, Tab};
@@ -38,6 +47,7 @@ use argvus_theme::Theme;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `Route`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum Route {
   Home,
   Settings,
@@ -73,6 +83,7 @@ pub enum Route {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `InitialRoute`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum InitialRoute {
   Home,
   Config,
@@ -117,18 +128,27 @@ pub enum InitialRoute {
   Appearance(AppearancePage),
 }
 
+/// Represents `App`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct App {
+  /// Language detected by the shared i18n infrastructure.
   pub lang: Lang,
+  /// Semantic theme used by every page during this TUI cycle.
   pub theme: Theme,
+  /// Currently active page; rendering and events read this field.
   pub route: Route,
+  /// Home selection index, kept separate from the route to support returning.
   pub home_selected: usize,
   pub settings: SettingsState,
   pub config: ConfigApp,
   #[cfg(feature = "about")]
   pub about: AboutState,
+  /// Requests contextual help without replacing the current route.
   pub help: bool,
+  /// Signal consumed by the main loop to restore the terminal and exit.
   pub quit: bool,
+  /// Current dimensions used by responsive layouts.
   pub width: u16,
+  /// Current height used by responsive layouts.
   pub height: u16,
   #[cfg(feature = "hardware")]
   pub hardware: HardwareApp,
@@ -156,24 +176,33 @@ pub struct App {
   pub displays: DisplaysApp,
   #[cfg(feature = "appearance")]
   pub appearance: AppearanceApp,
+  /// Capabilities detected once and shared by optional domains.
   pub capabilities: Capabilities,
+  /// Single registry used by Home global search.
   pub search_registry: SearchRegistry,
+  /// Text entered in the global search field.
   pub search_query: String,
+  /// Indicates whether keyboard events should go to the search editor.
   pub search_active: bool,
+  /// Selected result index, independent of the Home index.
   pub search_selected: usize,
+  /// Registered IDs used to open the real route after selection.
   pub search_result_ids: Vec<String>,
+  /// Controls cursor blinking without changing entered text.
   pub search_cursor_visible: bool,
   search_cursor_last_blink: Instant,
   pub jobs: JobManager,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `HomeRow`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum HomeRow {
   Header(&'static str),
   Item { label: &'static str, action: usize },
 }
 
 impl App {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(initial: InitialRoute) -> Self {
     let lang = Lang::detect();
     let theme = Theme::load();
@@ -1084,6 +1113,7 @@ impl App {
   }
 
   #[allow(clippy::vec_init_then_push)]
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn home_rows(&self) -> Vec<HomeRow> {
     let mut rows = Vec::new();
     #[cfg(feature = "locale")]
@@ -1240,6 +1270,7 @@ impl App {
     rows
   }
 
+  /// Executes the `home_item_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn home_item_count(&self) -> usize {
     self
       .home_rows()
@@ -1248,11 +1279,13 @@ impl App {
       .count()
   }
 
+  /// Executes the `move_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn move_home(&mut self, delta: isize) {
     let last = self.home_item_count().saturating_sub(1);
     self.home_selected = (self.home_selected as isize + delta).clamp(0, last as isize) as usize;
   }
 
+  /// Executes the `open_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn open_home(&mut self) {
     let Some(action) = self
       .home_rows()
@@ -1347,12 +1380,14 @@ impl App {
     }
   }
 
+  /// Executes the `open_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn open_settings(&mut self, page: Page) {
     self.settings.navigation = argvus_control_center_settings::navigation::Navigation::new(page);
     self.settings.select_current();
     self.route = Route::Settings;
   }
 
+  /// Executes the `begin_global_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn begin_global_search(&mut self) {
     self.search_active = true;
     self.search_cursor_visible = true;
@@ -1362,6 +1397,7 @@ impl App {
     self.search_result_ids.clear();
   }
 
+  /// Applies the `update_global_search` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn update_global_search(&mut self, query: String) {
     self.search_query = query;
     self.search_selected = 0;
@@ -1373,17 +1409,20 @@ impl App {
       .collect();
   }
 
+  /// Executes the `pop_global_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn pop_global_search(&mut self) {
     let mut query = self.search_query.clone();
     query.pop();
     self.update_global_search(query);
   }
 
+  /// Executes the `move_global_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn move_global_search(&mut self, delta: isize) {
     let last = self.search_result_ids.len().saturating_sub(1);
     self.search_selected = (self.search_selected as isize + delta).clamp(0, last as isize) as usize;
   }
 
+  /// Executes the `clear_global_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn clear_global_search(&mut self) {
     self.search_active = false;
     self.search_cursor_visible = false;
@@ -1392,6 +1431,7 @@ impl App {
     self.search_result_ids.clear();
   }
 
+  /// Executes the `poll_search_cursor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll_search_cursor(&mut self) -> bool {
     if !self.search_active || self.search_cursor_last_blink.elapsed() < Duration::from_millis(500) {
       return false;
@@ -1401,6 +1441,7 @@ impl App {
     true
   }
 
+  /// Executes the `open_global_search_result` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn open_global_search_result(&mut self) {
     let Some(id) = self.search_result_ids.get(self.search_selected).cloned() else {
       return;
@@ -1418,6 +1459,7 @@ impl App {
     self.open_search_route(&route);
   }
 
+  /// Executes the `open_search_route` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_search_route(&mut self, route: &str) {
     let Some((domain, page)) = route.split_once('/') else {
       return;
@@ -1593,77 +1635,90 @@ impl App {
   }
 
   #[cfg(feature = "hardware")]
+  /// Executes the `open_hardware_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_hardware_page(&mut self, page: HardwarePage) {
     self.hardware.page = page;
     self.route = Route::Hardware;
   }
   #[cfg(feature = "services")]
+  /// Executes the `open_services_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_services_page(&mut self, page: ServicePage) {
     self.services.page = page;
     self.services.reload();
     self.route = Route::Services;
   }
   #[cfg(feature = "network")]
+  /// Executes the `open_network_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_network_page(&mut self, page: NetworkPage) {
     self.network.page = page;
     self.network.reload();
     self.route = Route::Network;
   }
   #[cfg(feature = "audio")]
+  /// Executes the `open_audio_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_audio_page(&mut self, page: AudioPage) {
     self.audio.page = page;
     self.audio.reload();
     self.route = Route::Audio;
   }
   #[cfg(feature = "bluetooth")]
+  /// Executes the `open_bluetooth_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_bluetooth_page(&mut self, page: BluetoothPage) {
     self.bluetooth.page = page;
     self.bluetooth.reload();
     self.route = Route::Bluetooth;
   }
   #[cfg(feature = "boot")]
+  /// Executes the `open_boot_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_boot_page(&mut self, page: BootPage) {
     self.boot.page = page;
     self.boot.reload();
     self.route = Route::Boot;
   }
   #[cfg(feature = "packages")]
+  /// Executes the `open_packages_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_packages_page(&mut self, page: PackagesPage) {
     self.packages.page = page;
     self.packages.reload();
     self.route = Route::Packages;
   }
   #[cfg(feature = "storage")]
+  /// Executes the `open_storage_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_storage_page(&mut self, page: StoragePage) {
     self.storage.page = page;
     self.storage.reload();
     self.route = Route::Storage;
   }
   #[cfg(feature = "diagnostics")]
+  /// Executes the `open_diagnostics_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_diagnostics_page(&mut self, page: DiagnosticPage) {
     self.diagnostics.page = page;
     self.diagnostics.reload();
     self.route = Route::Diagnostics;
   }
   #[cfg(feature = "session")]
+  /// Executes the `open_session_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_session_page(&mut self, page: SessionPage) {
     self.session.page = page;
     self.session.reload();
     self.route = Route::Session;
   }
   #[cfg(feature = "displays")]
+  /// Executes the `open_displays_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_displays_page(&mut self, page: DisplayPage) {
     self.displays.page = page;
     self.displays.reload();
     self.route = Route::Displays;
   }
   #[cfg(feature = "appearance")]
+  /// Executes the `open_appearance_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_appearance_page(&mut self, page: AppearancePage) {
     self.appearance.page = page;
     self.appearance.reload();
     self.route = Route::Appearance;
   }
 
+  /// Executes the `back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn back(&mut self) {
     match self.route {
       Route::Home => {}
@@ -1757,6 +1812,7 @@ impl App {
     }
   }
 
+  /// Executes the `resize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn resize(&mut self, width: u16, height: u16) {
     self.width = width;
     self.height = height;
@@ -1765,6 +1821,7 @@ impl App {
     self.about.resize(width, height);
   }
 
+  /// Executes the `help_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn help_lines(&self) -> Vec<String> {
     let mut lines: Vec<&str> = vec![
       tr(self.lang, "control_center.global"),
@@ -1889,6 +1946,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `home_navigation_is_bounded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_navigation_is_bounded() {
     let mut app = App::new(InitialRoute::Home);
     app.move_home(-1);
@@ -1898,6 +1956,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `home_navigation_never_selects_a_header` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_navigation_never_selects_a_header() {
     let mut app = App::new(InitialRoute::Home);
     let rows = app.home_rows();
@@ -1915,6 +1974,7 @@ mod tests {
 
   #[cfg(feature = "hardware")]
   #[test]
+  /// Executes the `mouse_touchpad_is_in_the_hardware_group` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn mouse_touchpad_is_in_the_hardware_group() {
     let app = App::new(InitialRoute::Home);
     let rows = app.home_rows();
@@ -1938,6 +1998,7 @@ mod tests {
 
   #[cfg(feature = "about")]
   #[test]
+  /// Executes the `entering_and_leaving_about_preserves_tab` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn entering_and_leaving_about_preserves_tab() {
     let mut app = App::new(InitialRoute::About(Tab::Credits));
     app.back();
@@ -1957,6 +2018,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `home_lists_and_opens_the_configuration_screen` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_lists_and_opens_the_configuration_screen() {
     let mut app = App::new(InitialRoute::Home);
     app.home_selected = app

@@ -1,3 +1,7 @@
+//! Implements module declarations for the `ui` subsystem in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 pub mod buttons;
 pub mod footer;
 pub mod header;
@@ -15,6 +19,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 use crate::app::{App, MIN_HEIGHT, MIN_WIDTH};
 use crate::i18n::tr;
 
+/// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(app: &mut App, frame: &mut Frame) {
   let area = frame.area();
   app.resize(area.width, area.height);
@@ -79,6 +84,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   draw_task_window(app, frame, area);
 }
 
+/// Renders `draw_task_window` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn draw_task_window(app: &App, frame: &mut Frame, area: Rect) {
   if !app.task_open {
     return;
@@ -128,6 +134,7 @@ fn draw_task_window(app: &App, frame: &mut Frame, area: Rect) {
   );
 }
 
+/// Renders `draw_too_small` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn draw_too_small(app: &App, frame: &mut Frame, area: Rect) {
   let width = area.width.min(52);
   let height = area.height.min(7);
@@ -163,6 +170,7 @@ mod tests {
   use ratatui::{Terminal, backend::TestBackend};
   use serde_json::json;
 
+  /// Executes the `user_app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn user_app() -> App {
     let mut app = App::with_context(
       Page::Main,
@@ -184,6 +192,7 @@ mod tests {
     app
   }
 
+  /// Executes the `button_cell` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn button_cell(terminal: &Terminal<TestBackend>, label: &str) -> (u16, u16) {
     let width = terminal.backend().buffer().area.width as usize;
     for (y, row) in terminal
@@ -203,6 +212,7 @@ mod tests {
     (0, 0)
   }
 
+  /// Executes the `button_bg` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn button_bg(terminal: &Terminal<TestBackend>, label: &str) -> ratatui::style::Color {
     let (x, y) = button_cell(terminal, label);
     let width = terminal.backend().buffer().area.width;
@@ -210,6 +220,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `button_bar_highlights_only_the_focused_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn button_bar_highlights_only_the_focused_action() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     let mut app = user_app();
@@ -231,6 +242,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `main_page_renders_brand_menu_and_footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn main_page_renders_brand_menu_and_footer() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     let mut app = App::new(Page::Main);
@@ -249,6 +261,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `mouse_touchpad_page_renders_integrated_input_controls` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn mouse_touchpad_page_renders_integrated_input_controls() {
     let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
     let mut app = App::new(Page::MouseTouchpad);
@@ -272,6 +285,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `reset_pages_render_a_reset_defaults_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn reset_pages_render_a_reset_defaults_button() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     for page in [Page::DefaultApps, Page::Fonts] {
@@ -292,6 +306,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `hostname_editing_renders_popup_with_typed_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hostname_editing_renders_popup_with_typed_value() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     let mut app = App::new(Page::Hostname);
@@ -318,6 +333,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `tab_enters_reset_button_and_enter_opens_confirm` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn tab_enters_reset_button_and_enter_opens_confirm() {
     let mut app = App::new(Page::DefaultApps);
     app.error_modal = None;
@@ -342,6 +358,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `font_selector_page_has_reset_button_and_search_still_works` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn font_selector_page_has_reset_button_and_search_still_works() {
     let mut app = App::new(Page::Fonts);
     app.error_modal = None;
@@ -359,6 +376,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `minimum_size_message_renders` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn minimum_size_message_renders() {
     let mut terminal = Terminal::new(TestBackend::new(42, 10)).unwrap();
     let mut app = App::new(Page::Main);
@@ -376,6 +394,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `task_window_renders_while_open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn task_window_renders_while_open() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     let mut app = App::new(Page::Main);

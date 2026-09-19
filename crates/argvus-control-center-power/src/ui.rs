@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center power`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend,
   model::{LidContext, PowerBehavior, PowerButtonBehavior, PowerPage, PowerState},
@@ -22,6 +26,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
+/// Defines the constant `LID_BEHAVIORS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const LID_BEHAVIORS: [PowerBehavior; 5] = [
   PowerBehavior::Suspend,
   PowerBehavior::Hibernate,
@@ -30,6 +35,7 @@ const LID_BEHAVIORS: [PowerBehavior; 5] = [
   PowerBehavior::Poweroff,
 ];
 
+/// Defines the constant `BUTTON_BEHAVIORS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const BUTTON_BEHAVIORS: [PowerButtonBehavior; 4] = [
   PowerButtonBehavior::Poweroff,
   PowerButtonBehavior::Suspend,
@@ -37,11 +43,14 @@ const BUTTON_BEHAVIORS: [PowerButtonBehavior; 4] = [
   PowerButtonBehavior::Ignore,
 ];
 
+/// Defines the constant `IDLE_OPTIONS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const IDLE_OPTIONS: [u32; 7] = [5, 10, 15, 30, 60, 120, 0];
 
+/// Defines the constant `LOCK_OPTIONS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const LOCK_OPTIONS: [u32; 6] = [1, 5, 10, 15, 30, 0];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `PickerTarget`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum PickerTarget {
   LidBattery,
   LidAc,
@@ -51,12 +60,14 @@ enum PickerTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Represents `Picker`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct Picker {
   target: PickerTarget,
   selected: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `PowerButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum PowerButton {
   Suspend,
   Hibernate,
@@ -64,17 +75,20 @@ enum PowerButton {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Pending {
   Suspend,
   Hibernate,
 }
 
 #[derive(Debug, Clone)]
+/// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
   State(PowerState),
   Action(String),
 }
 
+/// Represents `PowerApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PowerApp {
   pub page: PowerPage,
   selected: usize,
@@ -94,10 +108,12 @@ pub struct PowerApp {
 }
 
 impl PowerApp {
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
   }
 
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     let mut app = Self {
       page: PowerPage::Home,
@@ -120,6 +136,7 @@ impl PowerApp {
     app
   }
 
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
     if self.job.is_some() {
       return;
@@ -135,6 +152,7 @@ impl PowerApp {
     });
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -189,6 +207,7 @@ impl PowerApp {
     changed
   }
 
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.picker.is_some() {
       self.handle_picker(key);
@@ -288,6 +307,7 @@ impl PowerApp {
     false
   }
 
+  /// Executes the `row_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_count(&self) -> usize {
     let Some(state) = &self.state else {
       return 0;
@@ -295,6 +315,7 @@ impl PowerApp {
     if state.is_laptop { 7 } else { 3 }
   }
 
+  /// Processes `handle_picker` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_picker(&mut self, key: KeyCode) {
     let mut apply: Option<(PickerTarget, usize)> = None;
     let mut close = false;
@@ -328,6 +349,7 @@ impl PowerApp {
     }
   }
 
+  /// Executes the `open_row_picker` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_row_picker(&mut self) {
     let Some(state) = &self.state else {
       return;
@@ -360,6 +382,7 @@ impl PowerApp {
     });
   }
 
+  /// Executes the `picker_apply` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_apply(&mut self, target: PickerTarget, selected: usize) {
     match target {
       PickerTarget::LidBattery => {
@@ -410,6 +433,7 @@ impl PowerApp {
     }
   }
 
+  /// Applies the `apply_lid` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_lid(&mut self, context: LidContext, behavior: PowerBehavior) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -426,6 +450,7 @@ impl PowerApp {
     }));
   }
 
+  /// Applies the `apply_button` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_button(&mut self, behavior: PowerButtonBehavior) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -442,6 +467,7 @@ impl PowerApp {
     }));
   }
 
+  /// Applies the `apply_idle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_idle(&mut self, minutes: u32) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -458,6 +484,7 @@ impl PowerApp {
     }));
   }
 
+  /// Applies the `apply_lock` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_lock(&mut self, minutes: u32) {
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -474,6 +501,7 @@ impl PowerApp {
     }));
   }
 
+  /// Applies the `apply_keep_awake` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_keep_awake(&mut self, enabled: bool) {
     if let Some(state) = &mut self.state {
       state.keep_awake = enabled;
@@ -492,6 +520,7 @@ impl PowerApp {
     }));
   }
 
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rows(&self) -> Vec<String> {
     let Some(state) = &self.state else {
       return vec![tr(self.lang, "control_center.loading").into()];
@@ -572,6 +601,7 @@ impl PowerApp {
     rows
   }
 
+  /// Executes the `capabilities_line` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn capabilities_line(&self) -> String {
     let Some(state) = &self.state else {
       return String::new();
@@ -590,6 +620,7 @@ impl PowerApp {
     )
   }
 
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(PowerButton, Button)> {
     let primary = ButtonKind::Primary;
     let danger = ButtonKind::Danger;
@@ -615,6 +646,7 @@ impl PowerApp {
     buttons
   }
 
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -632,6 +664,7 @@ impl PowerApp {
     }
   }
 
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -641,6 +674,7 @@ impl PowerApp {
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
 
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -656,6 +690,7 @@ impl PowerApp {
     }
   }
 
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let mut lines = self.rows();
@@ -730,6 +765,7 @@ impl PowerApp {
   }
 }
 
+/// Executes the `behavior_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn behavior_label(lang: Lang, value: &str) -> String {
   match value {
     "ignore" => tr(lang, "control_center.ignore").into(),
@@ -744,6 +780,7 @@ fn behavior_label(lang: Lang, value: &str) -> String {
   }
 }
 
+/// Executes the `idle_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn idle_label(minutes: u32) -> String {
   if minutes == 0 {
     String::from("Nunca")
@@ -754,6 +791,7 @@ fn idle_label(minutes: u32) -> String {
   }
 }
 
+/// Executes the `picker_target_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn picker_target_len(target: PickerTarget) -> usize {
   match target {
     PickerTarget::LidBattery | PickerTarget::LidAc => LID_BEHAVIORS.len(),
@@ -795,6 +833,7 @@ fn picker_default(target: PickerTarget, state: &PowerState) -> usize {
   }
 }
 
+/// Executes the `picker_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn picker_options(target: PickerTarget, lang: Lang) -> Vec<String> {
   match target {
     PickerTarget::LidBattery | PickerTarget::LidAc => LID_BEHAVIORS
@@ -816,6 +855,7 @@ fn picker_options(target: PickerTarget, lang: Lang) -> Vec<String> {
   }
 }
 
+/// Executes the `picker_title` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn picker_title(lang: Lang, target: PickerTarget) -> String {
   match target {
     PickerTarget::LidBattery => tr(lang, "control_center.lid_close_battery").into(),
@@ -826,6 +866,7 @@ fn picker_title(lang: Lang, target: PickerTarget) -> String {
   }
 }
 
+/// Renders `draw_picker` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn draw_picker(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, picker: &Picker) {
   let options = picker_options(picker.target, lang);
   let title = picker_title(lang, picker.target);
@@ -867,6 +908,7 @@ fn draw_picker(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, picker:
 mod tests {
   use super::*;
 
+  /// Executes the `laptop_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn laptop_state() -> PowerState {
     PowerState {
       lid: [PowerBehavior::Suspend, PowerBehavior::Hibernate],
@@ -882,6 +924,7 @@ mod tests {
     }
   }
 
+  /// Executes the `desktop_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn desktop_state() -> PowerState {
     PowerState {
       lid: [PowerBehavior::Suspend, PowerBehavior::Hibernate],
@@ -898,6 +941,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `energy_app_loads_in_the_background` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn energy_app_loads_in_the_background() {
     let app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert!(app.job.is_some());
@@ -905,6 +949,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `row_count_laptop` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_count_laptop() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(app.row_count(), 0);
@@ -913,6 +958,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `row_count_desktop` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_count_desktop() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     assert_eq!(app.row_count(), 0);
@@ -921,6 +967,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `picker_opens_closes_and_applies_screen_off` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_opens_closes_and_applies_screen_off() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -939,6 +986,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `picker_escape_cancels_without_change` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_escape_cancels_without_change() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -955,6 +1003,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `picker_nunca_clears_screen_off` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_nunca_clears_screen_off() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -971,6 +1020,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `picker_navigation_is_bounded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_navigation_is_bounded() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -987,6 +1037,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `lid_picker_applies_selected_behavior` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn lid_picker_applies_selected_behavior() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -1003,6 +1054,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `picker_defaults_match_current_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_defaults_match_current_state() {
     let state = laptop_state();
     assert_eq!(picker_default(PickerTarget::LidBattery, &state), 0);
@@ -1016,6 +1068,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `lock_picker_opens_on_desktop_row_after_screen_off` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn lock_picker_opens_on_desktop_row_after_screen_off() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -1036,6 +1089,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `lock_picker_nunca_clears_lock` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn lock_picker_nunca_clears_lock() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -1053,6 +1107,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `power_app_navigates_and_toggles_button_focus` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn power_app_navigates_and_toggles_button_focus() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.job = None;
@@ -1069,6 +1124,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `idle_label_handles_hours_and_minutes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn idle_label_handles_hours_and_minutes() {
     assert_eq!(idle_label(0), "Nunca");
     assert_eq!(idle_label(15), "15 min");
@@ -1077,6 +1133,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `power_app_renders_without_panic` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn power_app_renders_without_panic() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.state = Some(laptop_state());
@@ -1085,6 +1142,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `power_app_desktop_renders_without_panic` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn power_app_desktop_renders_without_panic() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.state = Some(desktop_state());
@@ -1093,6 +1151,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `power_app_renders_with_picker_open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn power_app_renders_with_picker_open() {
     let mut app = PowerApp::new(Lang::for_locale("en-US"), Theme::load());
     app.state = Some(desktop_state());

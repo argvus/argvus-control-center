@@ -1,3 +1,7 @@
+//! Implements domain state and models consumed by the UI in crate `argvus control center storage`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoragePage {
   Home,
@@ -16,6 +20,7 @@ pub enum StoragePage {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `StorageSnapshot`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct StorageSnapshot {
   pub devices: Vec<StorageDevice>,
   pub filesystems: Vec<Filesystem>,
@@ -26,6 +31,7 @@ pub struct StorageSnapshot {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `StorageDevice`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct StorageDevice {
   pub name: String,
   pub kind: String,
@@ -47,6 +53,7 @@ pub struct StorageDevice {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `Filesystem`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Filesystem {
   pub source: String,
   pub fstype: String,
@@ -60,6 +67,7 @@ pub struct Filesystem {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `Mount`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Mount {
   pub target: String,
   pub source: String,
@@ -69,6 +77,7 @@ pub struct Mount {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `SwapDevice`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct SwapDevice {
   pub source: String,
   pub kind: String,
@@ -77,6 +86,7 @@ pub struct SwapDevice {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Represents `SmartStatus`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct SmartStatus {
   pub device: String,
   pub health: SmartHealth,
@@ -89,6 +99,7 @@ pub struct SmartStatus {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Defines `SmartHealth`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum SmartHealth {
   Passed,
   Warning,
@@ -99,12 +110,14 @@ pub enum SmartHealth {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `UsageLevel`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum UsageLevel {
   Ok,
   Warning,
   Critical,
 }
 
+/// Executes the `usage_level` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn usage_level(total: u64, available: u64) -> UsageLevel {
   if total == 0 {
     return UsageLevel::Ok;

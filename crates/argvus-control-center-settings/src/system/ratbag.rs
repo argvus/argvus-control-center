@@ -1,20 +1,34 @@
+//! Implements mouse-device integration in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::collections::HashMap;
 
 use zbus::blocking::{Connection, connection::Builder};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
+/// Defines the constant `SERVICE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const SERVICE: &str = "org.freedesktop.ratbag1";
+/// Defines the constant `MANAGER_PATH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const MANAGER_PATH: &str = "/org/freedesktop/ratbag1";
+/// Defines the constant `MANAGER`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const MANAGER: &str = "org.freedesktop.ratbag1.Manager";
+/// Defines the constant `PROPERTIES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const PROPERTIES: &str = "org.freedesktop.DBus.Properties";
+/// Defines the constant `DEVICE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const DEVICE: &str = "org.freedesktop.ratbag1.Device";
+/// Defines the constant `PROFILE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const PROFILE: &str = "org.freedesktop.ratbag1.Profile";
+/// Defines the constant `RESOLUTION`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const RESOLUTION: &str = "org.freedesktop.ratbag1.Resolution";
 
+/// Names the type `Properties`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 type Properties = HashMap<String, OwnedValue>;
+/// Names the type `ManagedObjects`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, Properties>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Device`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Device {
   pub path: String,
   pub name: String,
@@ -22,12 +36,14 @@ pub struct Device {
 }
 
 impl Device {
+  /// Executes the `active_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn active_profile(&self) -> Option<&Profile> {
     self.profiles.iter().find(|profile| profile.active)
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Profile`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Profile {
   pub path: String,
   pub name: String,
@@ -40,10 +56,12 @@ pub struct Profile {
 }
 
 impl Profile {
+  /// Executes the `active_resolution` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn active_resolution(&self) -> Option<&Resolution> {
     self.resolutions.iter().find(|resolution| resolution.active)
   }
 
+  /// Executes the `supports_dpi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn supports_dpi(&self) -> bool {
     self.resolutions.len() > 1
       || self
@@ -51,12 +69,14 @@ impl Profile {
         .is_some_and(|resolution| resolution.supported.len() > 1)
   }
 
+  /// Executes the `supports_report_rate` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn supports_report_rate(&self) -> bool {
     self.report_rates.len() > 1
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Resolution`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Resolution {
   pub path: String,
   pub index: u32,
@@ -68,36 +88,44 @@ pub struct Resolution {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `Change`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum Change {
   Profile(i8),
   Dpi(i8),
   ReportRate(i8),
 }
 
+/// Executes the `connection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn connection() -> Option<Connection> {
   Builder::system().ok()?.build().ok()
 }
 
+/// Executes the `string_property` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn string_property(properties: &Properties, name: &str) -> Option<String> {
   properties.get(name)?.downcast_ref::<String>().ok()
 }
 
+/// Executes the `u32_property` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn u32_property(properties: &Properties, name: &str) -> Option<u32> {
   properties.get(name)?.downcast_ref::<u32>().ok()
 }
 
+/// Executes the `bool_property` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn bool_property(properties: &Properties, name: &str) -> Option<bool> {
   properties.get(name)?.downcast_ref::<bool>().ok()
 }
 
+/// Executes the `object_paths_property` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn object_paths_property(properties: &Properties, name: &str) -> Option<Vec<OwnedObjectPath>> {
   properties.get(name)?.try_clone().ok()?.try_into().ok()
 }
 
+/// Executes the `u32s_property` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn u32s_property(properties: &Properties, name: &str) -> Option<Vec<u32>> {
   properties.get(name)?.try_clone().ok()?.try_into().ok()
 }
 
+/// Executes the `interface` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn interface<'a>(
   objects: &'a ManagedObjects,
   path: &str,
@@ -109,6 +137,7 @@ fn interface<'a>(
     .and_then(|(_, interfaces)| interfaces.get(interface))
 }
 
+/// Executes the `profile_from_objects` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn profile_from_objects(objects: &ManagedObjects, path: &str) -> Option<Profile> {
   let properties = interface(objects, path, PROFILE)?;
   let resolution_paths = object_paths_property(properties, "Resolutions")?;
@@ -128,6 +157,7 @@ fn profile_from_objects(objects: &ManagedObjects, path: &str) -> Option<Profile>
   })
 }
 
+/// Executes the `resolution_from_objects` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn resolution_from_objects(objects: &ManagedObjects, path: &str) -> Option<Resolution> {
   let properties = interface(objects, path, RESOLUTION)?;
   let dpi = u32_property(properties, "Resolution")?;
@@ -142,6 +172,7 @@ fn resolution_from_objects(objects: &ManagedObjects, path: &str) -> Option<Resol
   })
 }
 
+/// Converts input data into `parse_devices` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_devices(objects: ManagedObjects) -> Vec<Device> {
   objects
     .iter()
@@ -160,6 +191,7 @@ fn parse_devices(objects: ManagedObjects) -> Vec<Device> {
     .collect()
 }
 
+/// Executes the `devices` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn devices() -> Vec<Device> {
   let Some(connection) = connection() else {
     return Vec::new();
@@ -208,6 +240,7 @@ pub fn devices() -> Vec<Device> {
   devices
 }
 
+/// Executes the `properties` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn properties(connection: &Connection, path: &str, interface: &str) -> Result<Properties, String> {
   let reply = connection
     .call_method(
@@ -224,6 +257,7 @@ fn properties(connection: &Connection, path: &str, interface: &str) -> Result<Pr
     .map_err(|error| error.to_string())
 }
 
+/// Executes the `commit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn commit(connection: &Connection, device: &Device) -> Result<(), String> {
   let reply = connection
     .call_method(
@@ -245,6 +279,7 @@ fn commit(connection: &Connection, device: &Device) -> Result<(), String> {
   }
 }
 
+/// Applies the `set_property` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn set_property(
   connection: &Connection,
   path: &str,
@@ -270,6 +305,7 @@ fn set_property(
     .map_err(|error| error.to_string())
 }
 
+/// Applies the `set_active` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn set_active(connection: &Connection, path: &str, interface: &str) -> Result<(), String> {
   let reply = connection
     .call_method(Some(SERVICE), path, Some(interface), "SetActive", &())
@@ -285,6 +321,7 @@ fn set_active(connection: &Connection, path: &str, interface: &str) -> Result<()
   }
 }
 
+/// Executes the `next_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn next_index(current: usize, length: usize, direction: i8) -> Option<usize> {
   if length == 0 {
     return None;
@@ -302,10 +339,12 @@ fn next_index(current: usize, length: usize, direction: i8) -> Option<usize> {
   })
 }
 
+/// Executes the `next_device_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn next_device_index(current: usize, length: usize, direction: i8) -> Option<usize> {
   next_index(current, length, direction)
 }
 
+/// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply(device: &Device, change: Change) -> Result<Vec<Device>, String> {
   let connection = connection().ok_or_else(|| "ratbagd is unavailable".to_string())?;
   match change {
@@ -396,6 +435,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `next_index_wraps_without_assuming_profile_zero` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn next_index_wraps_without_assuming_profile_zero() {
     assert_eq!(next_index(1, 3, 1), Some(2));
     assert_eq!(next_index(0, 3, -1), Some(2));
@@ -404,10 +444,12 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `service_is_optional` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn service_is_optional() {
     assert_eq!(SERVICE, "org.freedesktop.ratbag1");
   }
 
+  /// Executes the `profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn profile(
     index: u32,
     active: bool,
@@ -426,6 +468,7 @@ mod tests {
     }
   }
 
+  /// Executes the `resolution` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn resolution(index: u32, active: bool, supported: Vec<u32>) -> Resolution {
     let dpi = supported.first().copied().unwrap_or_default();
     Resolution {
@@ -440,6 +483,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `capability_helpers_use_active_profile_and_resolution` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn capability_helpers_use_active_profile_and_resolution() {
     let device = Device {
       path: "/device/second".into(),
@@ -469,6 +513,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `capability_helpers_hide_unsupported_controls` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn capability_helpers_hide_unsupported_controls() {
     let device = Device {
       path: "/device/basic".into(),
@@ -487,6 +532,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `zero_devices_are_a_valid_ratbag_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn zero_devices_are_a_valid_ratbag_state() {
     let devices: Vec<Device> = Vec::new();
     assert!(devices.is_empty());

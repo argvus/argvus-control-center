@@ -1,9 +1,14 @@
+//! Implements input event normalization and dispatch in crate `argvus control center`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crossterm::event::{
   Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 
 use crate::app::{App, Route};
 
+/// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn handle(app: &mut App, event: Event) {
   if let Event::Paste(text) = event {
     if app.route == Route::Settings {
@@ -175,6 +180,7 @@ pub fn handle(app: &mut App, event: Event) {
   }
 }
 
+/// Processes `handle_mouse` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn handle_mouse(app: &mut App, mouse: crossterm::event::MouseEvent) {
   if app.route != Route::Home || !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
     return;
@@ -202,10 +208,12 @@ fn handle_mouse(app: &mut App, mouse: crossterm::event::MouseEvent) {
   feature = "displays",
   feature = "appearance"
 ))]
+/// Executes the `domain_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn domain_key(key: KeyCode) -> KeyCode {
   key
 }
 
+/// Processes `handle_home` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn handle_home(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Char('/') => app.begin_global_search(),
@@ -222,6 +230,7 @@ fn handle_home(app: &mut App, key: KeyEvent) {
 }
 
 #[cfg(feature = "about")]
+/// Processes `handle_about` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn handle_about(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Esc => app.back(),
@@ -246,6 +255,7 @@ mod tests {
   use argvus_control_center_about::Tab;
   use crossterm::event::{KeyEventState, KeyModifiers};
 
+  /// Executes the `press` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn press(code: KeyCode) -> Event {
     Event::Key(KeyEvent::new_with_kind_and_state(
       code,
@@ -257,6 +267,7 @@ mod tests {
 
   #[cfg(feature = "apps")]
   #[test]
+  /// Executes the `escape_cancels_settings_confirmation_without_leaving_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn escape_cancels_settings_confirmation_without_leaving_page() {
     let mut app = App::new(InitialRoute::Apps);
     app.settings.confirm = Some(argvus_control_center_settings::app::PendingAction::ResetApps);
@@ -271,6 +282,7 @@ mod tests {
 
   #[cfg(feature = "about")]
   #[test]
+  /// Executes the `q_quits_from_about` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn q_quits_from_about() {
     let mut app = App::new(InitialRoute::About(Tab::System));
     handle(&mut app, press(KeyCode::Char('q')));
@@ -278,6 +290,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `account_editor_receives_quit_and_help_characters` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn account_editor_receives_quit_and_help_characters() {
     let mut app = App::new(InitialRoute::Home);
     app.route = Route::Settings;
@@ -302,6 +315,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `home_global_search_updates_live_and_clears_before_canceling` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_global_search_updates_live_and_clears_before_canceling() {
     let mut app = App::new(InitialRoute::Home);
     handle(&mut app, press(KeyCode::Char('/')));
@@ -319,6 +333,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `clicking_home_search_field_focuses_global_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn clicking_home_search_field_focuses_global_search() {
     let mut app = App::new(InitialRoute::Home);
     handle(
@@ -335,6 +350,7 @@ mod tests {
 
   #[cfg(feature = "network")]
   #[test]
+  /// Executes the `global_search_opens_a_real_deep_link` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn global_search_opens_a_real_deep_link() {
     let mut app = App::new(InitialRoute::Home);
     app.begin_global_search();
@@ -349,6 +365,7 @@ mod tests {
 
   #[cfg(feature = "fonts")]
   #[test]
+  /// Executes the `q_quits_during_settings_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn q_quits_during_settings_search() {
     let mut app = App::new(InitialRoute::Fonts);
     app.settings.searching = true;
@@ -358,6 +375,7 @@ mod tests {
 
   #[cfg(feature = "about")]
   #[test]
+  /// Executes the `escape_returns_from_about_to_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn escape_returns_from_about_to_home() {
     let mut app = App::new(InitialRoute::About(Tab::System));
     handle(&mut app, press(KeyCode::Esc));
@@ -366,6 +384,7 @@ mod tests {
 
   #[cfg(feature = "about")]
   #[test]
+  /// Executes the `arrows_switch_about_tabs` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn arrows_switch_about_tabs() {
     let mut app = App::new(InitialRoute::About(Tab::System));
     handle(&mut app, press(KeyCode::Right));
@@ -373,6 +392,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `all_domain_subpages_return_one_level_with_escape_and_left` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn all_domain_subpages_return_one_level_with_escape_and_left() {
     let cases = [
       #[cfg(feature = "network")]
@@ -423,6 +443,7 @@ mod tests {
 
   #[cfg(feature = "network")]
   #[test]
+  /// Executes the `home_opens_network_and_back_returns_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_opens_network_and_back_returns_home() {
     let mut app = App::new(InitialRoute::Home);
     app.home_selected = app
@@ -442,6 +463,7 @@ mod tests {
 
   #[cfg(feature = "boot")]
   #[test]
+  /// Executes the `boot_home_enter_uses_the_selected_item` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_home_enter_uses_the_selected_item() {
     let mut app = App::new(InitialRoute::Boot(
       argvus_control_center_boot::BootPage::Home,
@@ -452,6 +474,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `s_opens_config_and_escape_returns_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn s_opens_config_and_escape_returns_home() {
     let mut app = App::new(InitialRoute::Home);
     handle(&mut app, press(KeyCode::Char('s')));
@@ -461,6 +484,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `domain_home_lists_open_the_selected_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn domain_home_lists_open_the_selected_page() {
     #[cfg(feature = "network")]
     {
@@ -513,6 +537,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `hardware_and_services_nested_pages_back_out_one_level` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hardware_and_services_nested_pages_back_out_one_level() {
     #[cfg(feature = "hardware")]
     {
@@ -550,6 +575,7 @@ mod tests {
 
   #[cfg(feature = "hardware")]
   #[test]
+  /// Executes the `hardware_route_initialization_is_reachable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hardware_route_initialization_is_reachable() {
     let app = App::new(InitialRoute::Hardware(
       argvus_control_center_hardware::HardwarePage::Cpu,

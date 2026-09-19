@@ -1,8 +1,13 @@
+//! Implements `donate` responsibilities in crate `argvus about`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::app::App;
 use crate::i18n::tr;
 
 use super::{DONATE_URL, Doc, Row, simple_doc};
 
+/// Executes the `doc` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let rows = vec![
@@ -32,6 +37,7 @@ mod tests {
   use crate::app::App;
 
   #[test]
+  /// Executes the `donate_has_link_to_support` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn donate_has_link_to_support() {
     let app = App::test();
     let doc = doc(&app, 100, 0);

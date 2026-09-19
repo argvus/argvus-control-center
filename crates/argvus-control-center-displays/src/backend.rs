@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center displays`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::model::{
   DisplayState, Mode, Monitor, MonitorInfo, MonitorProfile, PersistedConfig, PersistedMonitor,
 };
@@ -11,6 +15,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
+/// Executes the `hyprctl_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn hyprctl_version() -> (u32, u32) {
   match SystemProcessRunner.run(&ProcessRequest::new("hyprctl").arg("version")) {
     Ok(out) => {
@@ -25,6 +30,7 @@ pub fn hyprctl_version() -> (u32, u32) {
   }
 }
 
+/// Converts input data into `parse_version` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_version(text: &str) -> (u32, u32) {
   let mut digits = String::new();
   for character in text.chars() {
@@ -76,6 +82,7 @@ pub fn list_monitors() -> Result<Vec<Monitor>, String> {
     .collect::<Result<Vec<_>, String>>()
 }
 
+/// Executes the `monitor_from` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn monitor_from(row: &Value) -> Result<Monitor, String> {
   let name = row
     .get("name")
@@ -201,6 +208,7 @@ fn monitor_from(row: &Value) -> Result<Monitor, String> {
   })
 }
 
+/// Executes the `mode_from` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn mode_from(mode: &Value) -> Option<Mode> {
   if let Some(s) = mode.as_str() {
     return parse_mode_string(s);
@@ -221,6 +229,7 @@ fn mode_from(mode: &Value) -> Option<Mode> {
   })
 }
 
+/// Converts input data into `parse_mode_string` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_mode_string(s: &str) -> Option<Mode> {
   let s = s.trim_end_matches("Hz");
   let (res, rate_str) = s.split_once('@')?;
@@ -237,6 +246,7 @@ fn parse_mode_string(s: &str) -> Option<Mode> {
   })
 }
 
+/// Executes the `run_hyprctl` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_hyprctl(arguments: &[&str]) -> Result<(), String> {
   if arguments.iter().any(|argument| {
     argument.is_empty()
@@ -279,6 +289,7 @@ pub fn apply_keyword(arguments: &str) -> Result<(), String> {
   run_hyprctl(&["keyword", "monitor", arguments])
 }
 
+/// Applies the `apply_workspace` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_workspace(workspace: u32, monitor: Option<&str>) -> Result<(), String> {
   match monitor {
     Some(monitor) => {
@@ -292,6 +303,7 @@ pub fn apply_workspace(workspace: u32, monitor: Option<&str>) -> Result<(), Stri
   }
 }
 
+/// Applies the `set_dpms` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_dpms(name: &str, on: bool) -> Result<(), String> {
   run_hyprctl(&["dispatch", "dpms", if on { "on" } else { "off" }, name])
 }
@@ -303,6 +315,7 @@ pub fn apply_all(config: &PersistedConfig) -> Result<(), String> {
   run_hyprctl(&["reload"])
 }
 
+/// Executes the `config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn config_path() -> PathBuf {
   argvus_config_home()
     .join("generated")
@@ -310,6 +323,7 @@ fn config_path() -> PathBuf {
     .join("monitors.lua")
 }
 
+/// Executes the `state_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn state_path() -> PathBuf {
   argvus_config_home().join("display").join("config.toml")
 }
@@ -330,6 +344,7 @@ pub fn load_config() -> PersistedConfig {
   }
 }
 
+/// Converts input data into `parse_generated` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_generated(content: &str) -> PersistedConfig {
   let mut config = PersistedConfig::default();
   for block in lua_call_bodies(content, "hl.monitor") {
@@ -368,6 +383,7 @@ fn parse_generated(content: &str) -> PersistedConfig {
   config
 }
 
+/// Converts input data into `parse_monitor_block` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_monitor_block(block: &str) -> Option<(String, PersistedMonitor)> {
   let fields = entry_fields(block);
   let name = fields
@@ -418,6 +434,7 @@ fn parse_monitor_block(block: &str) -> Option<(String, PersistedMonitor)> {
   Some((name, persisted))
 }
 
+/// Converts input data into `parse_legacy` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_legacy(content: &str) -> PersistedConfig {
   let primary_monitor = content.lines().find_map(|line| {
     line
@@ -441,6 +458,7 @@ fn parse_legacy(content: &str) -> PersistedConfig {
   }
 }
 
+/// Converts input data into `parse_monitor_entry` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_monitor_entry(block: &str) -> Option<(String, PersistedMonitor)> {
   let fields = entry_fields(block);
   let name = fields.iter().find(|(key, _)| *key == "name")?.1.to_string();
@@ -545,6 +563,7 @@ fn entry_bodies(block: &str) -> Vec<&str> {
   entries
 }
 
+/// Executes the `quoted_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn quoted_value(line: &str, key: &str) -> Option<String> {
   let (_, value) = line.split_once(&format!("{key} ="))?;
   let value = value.trim();
@@ -622,6 +641,7 @@ pub fn save_config(config: &PersistedConfig) -> Result<(), String> {
   Ok(())
 }
 
+/// Executes the `append_workspace_rules` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn append_workspace_rules(text: &mut String, config: &PersistedConfig) {
   let mut emitted = Vec::new();
   for (monitor, ids) in &config.workspaces {
@@ -657,6 +677,7 @@ pub fn load_state() -> DisplayState {
   }
 }
 
+/// Applies the `save_state` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn save_state(state: &DisplayState) -> Result<(), String> {
   let path = state_path();
   let content =
@@ -680,6 +701,7 @@ pub fn primary_monitor() -> Option<String> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents `StoredState`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct StoredState {
   #[serde(skip_serializing_if = "Option::is_none")]
   primary_monitor: Option<String>,
@@ -690,6 +712,7 @@ struct StoredState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents `StoredProfile`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct StoredProfile {
   name: String,
   #[serde(default)]
@@ -703,6 +726,7 @@ struct StoredProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents `StoredWorkspace`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct StoredWorkspace {
   monitor: String,
   #[serde(default)]
@@ -710,6 +734,7 @@ struct StoredWorkspace {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents `StoredMonitor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct StoredMonitor {
   name: String,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -738,6 +763,7 @@ struct StoredMonitor {
   dpms: Option<bool>,
 }
 
+/// Executes the `persisted_to_stored` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn persisted_to_stored(persisted: &PersistedMonitor) -> StoredMonitor {
   StoredMonitor {
     name: String::new(),
@@ -756,6 +782,7 @@ fn persisted_to_stored(persisted: &PersistedMonitor) -> StoredMonitor {
   }
 }
 
+/// Executes the `stored_to_persisted` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn stored_to_persisted(stored: &StoredMonitor) -> PersistedMonitor {
   PersistedMonitor {
     mode: stored.mode.clone(),
@@ -774,6 +801,7 @@ fn stored_to_persisted(stored: &StoredMonitor) -> PersistedMonitor {
 }
 
 impl StoredState {
+  /// Converts input data into `from_model` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn from_model(state: &DisplayState) -> StoredState {
     StoredState {
       primary_monitor: state.primary_monitor.clone(),
@@ -786,6 +814,7 @@ impl StoredState {
     }
   }
 
+  /// Executes the `into_model` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn into_model(self) -> DisplayState {
     DisplayState {
       primary_monitor: self.primary_monitor,
@@ -800,6 +829,7 @@ impl StoredState {
 }
 
 impl StoredProfile {
+  /// Converts input data into `from_model` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn from_model(profile: &MonitorProfile) -> StoredProfile {
     StoredProfile {
       name: profile.name.clone(),
@@ -827,6 +857,7 @@ impl StoredProfile {
     }
   }
 
+  /// Executes the `into_model` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn into_model(self) -> MonitorProfile {
     let mut config = PersistedConfig {
       primary_monitor: self.primary_monitor,
@@ -854,6 +885,7 @@ impl StoredProfile {
 mod tests {
   use super::*;
 
+  /// Defines the constant `SAMPLE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const SAMPLE: &str = r#"[
   {
     "id": 0,
@@ -882,6 +914,7 @@ mod tests {
 ]"#;
 
   #[test]
+  /// Converts input data into `parses_hyprctl_monitor_json` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_hyprctl_monitor_json() {
     let value: Value = serde_json::from_str(SAMPLE).unwrap();
     let monitor = monitor_from(&value[0]).unwrap();
@@ -898,6 +931,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `vrr_field_accepts_boolean_and_integer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn vrr_field_accepts_boolean_and_integer() {
     let value: Value = serde_json::from_str(SAMPLE).unwrap();
     assert_eq!(monitor_from(&value[0]).unwrap().vrr, 1);
@@ -905,6 +939,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `versions_are_extracted_from_text` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn versions_are_extracted_from_text() {
     assert_eq!(parse_version("Hyprland 0.42.0, commit..."), (0, 42));
     assert_eq!(parse_version("0.44.1"), (0, 44));
@@ -912,6 +947,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `generated_lua_round_trips` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn generated_lua_round_trips() {
     let config = PersistedConfig {
       primary_monitor: Some("eDP-1".into()),
@@ -964,6 +1000,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `multiline_lua_calls_parse` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn multiline_lua_calls_parse() {
     let text = "\
 hl.monitor({
@@ -989,6 +1026,7 @@ hl.workspace_rule({
   }
 
   #[test]
+  /// Executes the `legacy_configs_still_parse` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn legacy_configs_still_parse() {
     let config = parse_legacy(
       "-- old\nreturn {\n  primary_monitor = \"eDP-1\"\n  monitors = { { name = \"eDP-1\", mode = \"1920x1080@60\", pos = \"0x0\", scale = 1.25, hdr = 1 } }\n}\n",
@@ -999,6 +1037,7 @@ hl.workspace_rule({
   }
 
   #[test]
+  /// Executes the `foreign_configs_parse_to_defaults` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn foreign_configs_parse_to_defaults() {
     let config = parse_generated("-- not ours\nreturn { }\n");
     assert_eq!(config.primary_monitor, None);
@@ -1006,6 +1045,7 @@ hl.workspace_rule({
   }
 
   #[test]
+  /// Executes the `workspace_rules_add_primary_default_rule_when_unbound` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn workspace_rules_add_primary_default_rule_when_unbound() {
     let config = PersistedConfig {
       primary_monitor: Some("DP-1".into()),
@@ -1021,9 +1061,11 @@ hl.workspace_rule({
 
   use std::sync::Mutex;
 
+  /// Maintains the static state `ENV_LOCK`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   static ENV_LOCK: Mutex<()> = Mutex::new(());
 
   #[test]
+  /// Executes the `state_round_trips_profiles_through_toml` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn state_round_trips_profiles_through_toml() {
     let state = DisplayState {
       primary_monitor: Some("eDP-1".into()),
@@ -1073,6 +1115,7 @@ hl.workspace_rule({
   }
 
   #[test]
+  /// Executes the `primary_monitor_accessor_reads_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn primary_monitor_accessor_reads_state() {
     let dir = std::env::temp_dir().join(format!("argvus-displays-primary-{}", std::process::id()));
     let _guard = ENV_LOCK.lock().unwrap();
@@ -1094,6 +1137,7 @@ hl.workspace_rule({
     let _ = fs::remove_dir_all(&dir);
   }
 
+  /// Executes the `serialize_config` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn serialize_config(config: &PersistedConfig) -> String {
     let mut text = String::from("-- Generated by ARGVUS Control Center. Do not edit.\n");
     for (name, monitor) in &config.monitors {

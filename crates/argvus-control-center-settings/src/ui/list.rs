@@ -1,3 +1,7 @@
+//! Implements list rendering in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -10,8 +14,10 @@ use crate::app::App;
 use crate::i18n::tr;
 use crate::navigation::Page;
 
+/// Defines the constant `RIGHT_GUTTER`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const RIGHT_GUTTER: usize = 1;
 
+/// Represents `RowLayout`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 struct RowLayout {
   marker: String,
   label: String,
@@ -20,6 +26,7 @@ struct RowLayout {
   right_gutter: usize,
 }
 
+/// Executes the `row_render_area` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn row_render_area(area: Rect) -> Rect {
   // Keep the final terminal cell completely outside the Paragraph. A VS16
   // width disagreement in affected Ratatui/crossterm combinations can drift
@@ -32,6 +39,7 @@ fn row_render_area(area: Rect) -> Rect {
   }
 }
 
+/// Renders `layout_row` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn layout_row(
   width: usize,
   marker: &str,
@@ -67,6 +75,7 @@ fn layout_row(
   }
 }
 
+/// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
   let rows = app.rows();
   let location = app.navigation.current();
@@ -152,6 +161,7 @@ mod tests {
   use super::*;
   use ratatui::{Terminal, backend::TestBackend};
 
+  /// Executes the `locale_region_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn locale_region_rows() -> Vec<(String, String)> {
     vec![
       ("🌍 Time Zone".to_string(), "America/Sao_Paulo".to_string()),
@@ -174,6 +184,7 @@ mod tests {
     ]
   }
 
+  /// Renders `render_lines` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn render_lines(rows: &[(String, String)], width: u16) -> String {
     let lines: Vec<Line<'static>> = rows
       .iter()
@@ -211,6 +222,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `wide_emoji_icons_no_longer_push_details_off_screen` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn wide_emoji_icons_no_longer_push_details_off_screen() {
     let rows = locale_region_rows();
     let rendered = render_lines(&rows, 100);
@@ -228,6 +240,7 @@ mod tests {
   }
 
   #[test]
+  /// Renders `layout_row_keeps_wide_size_fit_in_columns` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn layout_row_keeps_wide_size_fit_in_columns() {
     let rows = locale_region_rows();
     for (label, detail) in &rows {
@@ -244,6 +257,7 @@ mod tests {
   }
 
   #[test]
+  /// Renders `layout_row_reserves_one_column_after_detail` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn layout_row_reserves_one_column_after_detail() {
     let width = 100;
     let layout = layout_row(width, ">", "Fonte da Taskbar", "IBM Plex Mono · 13", false);
@@ -259,6 +273,7 @@ mod tests {
   }
 
   #[test]
+  /// Renders `rendered_row_keeps_last_cell_blank` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rendered_row_keeps_last_cell_blank() {
     let width = 40u16;
     let layout = layout_row(
@@ -301,6 +316,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `row_render_area_keeps_a_hard_right_guard_cell` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_render_area_keeps_a_hard_right_guard_cell() {
     let outer = Rect::new(4, 2, 40, 3);
     let render = row_render_area(outer);
@@ -312,6 +328,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `hard_guard_cell_is_not_painted_by_selected_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hard_guard_cell_is_not_painted_by_selected_row() {
     let width = 40u16;
     let area = Rect::new(0, 0, width, 1);

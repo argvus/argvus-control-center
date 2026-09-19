@@ -1,3 +1,7 @@
+//! Implements keyboard-layout discovery and application in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write as _;
@@ -8,12 +12,14 @@ use crate::error::SettingsError;
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Layout`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Layout {
   pub code: String,
   pub description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents `Variant`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Variant {
   pub code: String,
   pub layout: String,
@@ -21,6 +27,7 @@ pub struct Variant {
 }
 
 #[derive(Debug, Clone, Default)]
+/// Represents `KeyboardInfo`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct KeyboardInfo {
   pub x11_layout: String,
   pub x11_variant: String,
@@ -32,6 +39,7 @@ pub struct KeyboardInfo {
   pub hypr_options: String,
 }
 
+/// Executes the `info` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn info() -> KeyboardInfo {
   let mut info =
     parse_localectl_status(&command_stdout("localectl", &["status"]).unwrap_or_default());
@@ -53,14 +61,17 @@ pub fn info() -> KeyboardInfo {
   info
 }
 
+/// Renders `layouts` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn layouts() -> Vec<Layout> {
   parse_xkb_layouts(&read_xkb_rules().unwrap_or_default())
 }
 
+/// Executes the `variants` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn variants(layout: &str) -> Vec<Variant> {
   parse_xkb_variants(&read_xkb_rules().unwrap_or_default(), layout)
 }
 
+/// Executes the `console_keymaps` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn console_keymaps() -> Vec<String> {
   command_stdout("localectl", &["list-keymaps"])
     .unwrap_or_default()
@@ -73,6 +84,7 @@ pub fn console_keymaps() -> Vec<String> {
     .collect()
 }
 
+/// Applies the `set_x11_layout` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_x11_layout(layout: &str, valid: &[Layout]) -> Result<(), SettingsError> {
   if !valid.iter().any(|candidate| candidate.code == layout) {
     return Err(SettingsError::System(format!(
@@ -84,6 +96,7 @@ pub fn set_x11_layout(layout: &str, valid: &[Layout]) -> Result<(), SettingsErro
   set_x11_layouts(layout, &layouts, valid)
 }
 
+/// Applies the `set_x11_layouts` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_x11_layouts(
   default_layout: &str,
   layouts: &[String],
@@ -120,6 +133,7 @@ pub fn set_x11_layouts(
   Ok(())
 }
 
+/// Applies the `set_x11_variant` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_x11_variant(
   _layout: &str,
   variant: &str,
@@ -138,6 +152,7 @@ pub fn set_x11_variant(
   Ok(())
 }
 
+/// Applies the `set_console_keymap` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_console_keymap(keymap: &str, valid: &[String]) -> Result<(), SettingsError> {
   if !valid.iter().any(|candidate| candidate == keymap) {
     return Err(SettingsError::System(format!(
@@ -147,6 +162,7 @@ pub fn set_console_keymap(keymap: &str, valid: &[String]) -> Result<(), Settings
   super::privileged::run(&["keyboard", "console-keymap", keymap]).map(|_| ())
 }
 
+/// Converts input data into `parse_localectl_status` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_localectl_status(contents: &str) -> KeyboardInfo {
   let mut info = KeyboardInfo::default();
   for line in contents.lines().map(str::trim) {
@@ -166,6 +182,7 @@ pub fn parse_localectl_status(contents: &str) -> KeyboardInfo {
   info
 }
 
+/// Converts input data into `parse_xkb_layouts` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_xkb_layouts(contents: &str) -> Vec<Layout> {
   let mut in_layout = false;
   let mut out = Vec::new();
@@ -193,6 +210,7 @@ pub fn parse_xkb_layouts(contents: &str) -> Vec<Layout> {
   out
 }
 
+/// Converts input data into `parse_xkb_variants` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_xkb_variants(contents: &str, layout: &str) -> Vec<Variant> {
   let mut in_variant = false;
   let mut out = vec![Variant {
@@ -230,6 +248,7 @@ pub fn parse_xkb_variants(contents: &str, layout: &str) -> Vec<Variant> {
   out
 }
 
+/// Converts input data into `parse_hypr_keyboard_config` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_hypr_keyboard_config() -> (String, String, String) {
   let generated = generated_hypr_input_path();
   let generated_contents = fs::read_to_string(generated).unwrap_or_default();
@@ -246,6 +265,7 @@ fn parse_hypr_keyboard_config() -> (String, String, String) {
   (layout, variant, options)
 }
 
+/// Executes the `hypr_config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hypr_config_path() -> PathBuf {
   let user = argvus_control_center_core::paths::config_home().join("hypr/hyprland.lua");
   if user.exists() {
@@ -255,10 +275,12 @@ fn hypr_config_path() -> PathBuf {
   }
 }
 
+/// Executes the `generated_hypr_input_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn generated_hypr_input_path() -> PathBuf {
   argvus_control_center_core::paths::argvus_config_home().join("generated/hypr/input.lua")
 }
 
+/// Executes the `extract_lua_string` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn extract_lua_string(contents: &str, key: &str) -> Option<String> {
   contents.lines().find_map(|line| {
     let trimmed = line.trim();
@@ -271,6 +293,7 @@ fn extract_lua_string(contents: &str, key: &str) -> Option<String> {
   })
 }
 
+/// Executes the `first_csv_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn first_csv_value(value: &str) -> String {
   value
     .split(',')
@@ -280,6 +303,7 @@ fn first_csv_value(value: &str) -> String {
     .to_string()
 }
 
+/// Executes the `active_layout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn active_layout(layouts: &str) -> String {
   let fallback = first_csv_value(layouts);
   let Some(output) = command_stdout("hyprctl", &["devices", "-j"]) else {
@@ -308,6 +332,7 @@ fn active_layout(layouts: &str) -> String {
     .to_string()
 }
 
+/// Applies the `write_generated_hypr_input` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn write_generated_hypr_input(
   layout: Option<&str>,
   variant: Option<&str>,
@@ -350,6 +375,7 @@ fn write_generated_hypr_input(
   fs::rename(&tmp, &path).map_err(|error| SettingsError::System(error.to_string()))
 }
 
+/// Retrieves data for `read_xkb_rules` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn read_xkb_rules() -> Option<String> {
   [
     "/usr/share/X11/xkb/rules/base.lst",
@@ -361,6 +387,7 @@ fn read_xkb_rules() -> Option<String> {
   .and_then(|path| fs::read_to_string(path).ok())
 }
 
+/// Checks the condition represented by `is_xkb_name` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn is_xkb_name(value: &str) -> bool {
   !value.is_empty()
     && value
@@ -368,6 +395,7 @@ pub fn is_xkb_name(value: &str) -> bool {
       .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
 }
 
+/// Checks the condition represented by `is_keymap_name` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn is_keymap_name(value: &str) -> bool {
   is_xkb_name(value)
     || value
@@ -375,6 +403,7 @@ pub fn is_keymap_name(value: &str) -> bool {
       .all(|b| matches!(b, b'/' | b'.') || b.is_ascii_alphanumeric() || b == b'-')
 }
 
+/// Executes the `command_stdout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
   let output = Command::new(command)
     .args(args)
@@ -387,6 +416,7 @@ fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
     .then(|| String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Applies the `apply_hypr_keyword` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn apply_hypr_keyword(key: &str, value: &str) {
   let _ = Command::new("hyprctl")
     .args(["keyword", key, value])
@@ -396,6 +426,7 @@ fn apply_hypr_keyword(key: &str, value: &str) {
     .status();
 }
 
+/// Executes the `merged_layout_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn merged_layout_list(current: &str, layout: &str) -> String {
   let mut parts: Vec<String> = current
     .split(',')
@@ -413,6 +444,7 @@ fn merged_layout_list(current: &str, layout: &str) -> String {
   merged.join(",")
 }
 
+/// Executes the `switch_active_layout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn switch_active_layout(layout: &str, layouts: &str) {
   let index = layouts
     .split(',')
@@ -426,6 +458,7 @@ fn switch_active_layout(layout: &str, layouts: &str) {
     .status();
 }
 
+/// Executes the `reload_taskbar` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn reload_taskbar() {
   // Keep this identical to SUPER+SHIFT+R, which is the supported ARGVUS
   // session reload and is required for the managed Waybar configuration.
@@ -437,6 +470,7 @@ fn reload_taskbar() {
     .status();
 }
 
+/// Executes the `lua_escape` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn lua_escape(value: &str) -> String {
   value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -446,6 +480,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Converts input data into `parses_localectl_keyboard_status` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_localectl_keyboard_status() {
     let parsed =
       parse_localectl_status("VC Keymap: br-abnt2\nX11 Layout: br\nX11 Variant: abnt2\n");
@@ -455,6 +490,7 @@ mod tests {
   }
 
   #[test]
+  /// Converts input data into `parses_xkb_layouts_and_variants` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn parses_xkb_layouts_and_variants() {
     let data = "! layout\n  br Portuguese (Brazil)\n  us English (US)\n! variant\n  abnt2 br: ABNT2\n  intl us: English intl\n";
     let layouts = parse_xkb_layouts(data);
@@ -465,6 +501,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `rejects_invalid_xkb_names` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn rejects_invalid_xkb_names() {
     assert!(is_xkb_name("br"));
     assert!(is_xkb_name("br_abnt2"));
@@ -472,6 +509,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `merged_layout_list_moves_the_chosen_layout_first` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn merged_layout_list_moves_the_chosen_layout_first() {
     assert_eq!(merged_layout_list("", "br"), "br");
     assert_eq!(merged_layout_list("br", "br"), "br");
@@ -481,6 +519,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `first_csv_value_reads_the_active_layout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn first_csv_value_reads_the_active_layout() {
     assert_eq!(first_csv_value("us,br"), "us");
     assert_eq!(first_csv_value("  br  "), "br");
@@ -488,6 +527,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `active_layout_falls_back_to_the_first_configured_layout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn active_layout_falls_back_to_the_first_configured_layout() {
     assert_eq!(active_layout("br,us"), "br");
   }

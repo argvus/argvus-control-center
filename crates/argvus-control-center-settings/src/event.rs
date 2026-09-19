@@ -1,7 +1,12 @@
+//! Implements input event normalization and dispatch in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::app::App;
 
+/// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn handle(app: &mut App, event: Event) {
   match event {
     Event::Resize(width, height) => app.resize(width, height),
@@ -10,6 +15,7 @@ pub fn handle(app: &mut App, event: Event) {
   }
 }
 
+/// Processes `handle_key` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn handle_key(app: &mut App, key: KeyEvent) {
   if app.task_open {
     match key.code {
@@ -143,6 +149,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
   handle_regular_key(app, key);
 }
 
+/// Processes `handle_regular_key` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn handle_regular_key(app: &mut App, key: KeyEvent) {
   match key.code {
     KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
@@ -184,6 +191,7 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `resize_is_forwarded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn resize_is_forwarded() {
     let mut app = App::new(crate::navigation::Page::Main);
     handle(&mut app, Event::Resize(100, 30));

@@ -1,18 +1,25 @@
+//! Implements `about` responsibilities in crate `argvus about`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::app::App;
 use crate::i18n::tr;
 
 use super::{ARGVUS_URL, DONATE_URL, Doc, Row, simple_doc};
 
+/// Represents `Module`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Module {
   pub name: &'static str,
   pub key: &'static str,
 }
 
+/// Represents `Group`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Group {
   pub key: &'static str,
   pub modules: &'static [Module],
 }
 
+/// Executes the `doc` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   let lang = app.lang;
   let mut rows = vec![
@@ -61,6 +68,7 @@ pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
   simple_doc(&rows, &app.theme, width, selected)
 }
 
+/// Executes the `kv_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn kv_row(lang: crate::i18n::Lang, key: &str, value: String) -> Row {
   Row::KeyValue {
     key: format!("{:<8}", tr(lang, key)),
@@ -68,6 +76,7 @@ fn kv_row(lang: crate::i18n::Lang, key: &str, value: String) -> Row {
   }
 }
 
+/// Executes the `groups` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn groups() -> [Group; 4] {
   [
     Group {
@@ -163,6 +172,7 @@ mod tests {
   use crate::app::App;
 
   #[test]
+  /// Executes the `about_doc_mentions_all_modules` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn about_doc_mentions_all_modules() {
     use crate::app::Tab;
     let mut app = App::test();
@@ -175,6 +185,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `every_group_is_represented_in_both_languages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn every_group_is_represented_in_both_languages() {
     use crate::i18n::Lang;
     for lang in [Lang::for_locale("pt-BR"), Lang::for_locale("en-US")] {
@@ -195,6 +206,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `about_offers_site_and_support_links` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn about_offers_site_and_support_links() {
     let doc = doc(&App::test(), 80, 0);
     assert!(doc.actions.iter().any(|a| a.url == ARGVUS_URL));
@@ -202,6 +214,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `groups_cover_every_module_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn groups_cover_every_module_name() {
     let names = groups()
       .iter()

@@ -1,5 +1,9 @@
 [workspace]
+# Resolver 2 prevents features from leaking between independent crates and keeps each
+# domain buildable with its explicitly declared dependency set.
 resolver = "2"
+# The order groups the executable, shared infrastructure, TUI, and domains;
+# adding a crate here makes it part of full-workspace validation.
 members = [
   "crates/argvus-control-center",
   "crates/argvus-tui",
@@ -34,6 +38,8 @@ homepage = "https://github.com/argvus/argvus-control-center"
 description = "Keyboard-first terminal control center for the ARGVUS desktop"
 
 [workspace.dependencies]
+# Common dependencies are centralized so versions and features remain
+# compatible across the crates that compose the Control Center.
 anyhow = "1.0"
 crossterm = "0.29"
 image = { version = "0.25", default-features = false }
@@ -50,5 +56,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 argvus-i18n = { package = "argvus-i18n-core", path = "../argvus-i18n/crates/core" }
 
 [profile.release]
+# LTO reduces the final executable size; strip avoids shipping debug symbols in the
+# distributed package. Development builds remain incremental.
 lto = true
 strip = true

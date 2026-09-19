@@ -1,3 +1,7 @@
+//! Implements search interaction in crate `argvus control center core`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchEntry {
   pub id: String,
@@ -8,11 +12,13 @@ pub struct SearchEntry {
 }
 
 #[derive(Debug, Default, Clone)]
+/// Represents `SearchRegistry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct SearchRegistry {
   entries: Vec<SearchEntry>,
 }
 
 impl SearchRegistry {
+  /// Executes the `register` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn register(&mut self, entry: SearchEntry) -> Result<(), String> {
     if entry.id.trim().is_empty() || self.entries.iter().any(|current| current.id == entry.id) {
       return Err("search entry id must be unique and non-empty".into());
@@ -20,9 +26,11 @@ impl SearchRegistry {
     self.entries.push(entry);
     Ok(())
   }
+  /// Executes the `entries` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn entries(&self) -> &[SearchEntry] {
     &self.entries
   }
+  /// Executes the `search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn search(&self, query: &str) -> Vec<&SearchEntry> {
     let query = normalize(query);
     if query.is_empty() {
@@ -42,6 +50,7 @@ impl SearchRegistry {
   }
 }
 
+/// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn normalize(value: &str) -> String {
   value
     .trim()
@@ -58,6 +67,7 @@ fn normalize(value: &str) -> String {
     .collect()
 }
 
+/// Executes the `match_rank` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn match_rank(query: &str, entry: &SearchEntry) -> Option<u8> {
   let title = normalize(&entry.title);
   let category = normalize(&entry.category);
@@ -103,6 +113,7 @@ fn match_rank(query: &str, entry: &SearchEntry) -> Option<u8> {
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `finds_by_keyword_and_rejects_duplicate_ids` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn finds_by_keyword_and_rejects_duplicate_ids() {
     let mut registry = SearchRegistry::default();
     let entry = SearchEntry {
@@ -118,6 +129,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `ranks_exact_title_before_keyword_and_empty_query_is_empty` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn ranks_exact_title_before_keyword_and_empty_query_is_empty() {
     let mut registry = SearchRegistry::default();
     registry

@@ -1,3 +1,7 @@
+//! Implements application state and main-flow coordination in crate `argvus control center settings`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
@@ -18,18 +22,24 @@ use argvus_control_center_core::{
   process::{LiveProcess, ProcessRequest, ProcessRunner, SystemProcessRunner},
 };
 
+/// Defines the constant `MIN_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const MIN_WIDTH: u16 = 60;
+/// Defines the constant `MIN_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const MIN_HEIGHT: u16 = 15;
 
+/// Defines the constant `LANGUAGE_INFO_ROWS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const LANGUAGE_INFO_ROWS: usize = 3;
+/// Defines the constant `REGIONAL_LOCALE_INFO_ROWS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const REGIONAL_LOCALE_INFO_ROWS: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
+/// Defines `StatusKind`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum StatusKind {
   Success,
   Error,
 }
 
+/// Represents `Status`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Status {
   pub text: String,
   pub kind: StatusKind,
@@ -37,6 +47,7 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone)]
+/// Represents `Row`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Row {
   pub label: String,
   pub detail: Option<String>,
@@ -44,6 +55,7 @@ pub struct Row {
 }
 
 #[derive(Debug, Clone)]
+/// Defines `PendingAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PendingAction {
   Administration(String),
   ResetApps,
@@ -57,6 +69,7 @@ pub enum PendingAction {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Defines `RatbagRowAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum RatbagRowAction {
   Device,
   Profile,
@@ -64,6 +77,7 @@ enum RatbagRowAction {
   ReportRate,
 }
 
+/// Represents `App`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct App {
   pub admin: crate::administration::Administration,
   pub lang: Lang,
@@ -129,11 +143,13 @@ pub struct App {
 }
 
 impl App {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(initial: Page) -> Self {
     let lang = Lang::detect();
     Self::with_context(initial, lang, Theme::load())
   }
 
+  /// Constructs `with_context` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn with_context(initial: Page, lang: Lang, theme: Theme) -> Self {
     let (system_fonts, error_modal) = match fonts::list() {
       Ok(fonts) => (fonts, None),
@@ -218,10 +234,12 @@ impl App {
     app
   }
 
+  /// Executes the `page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn page(&self) -> Page {
     self.navigation.current().page
   }
 
+  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows(&self) -> Vec<Row> {
     if crate::administration::is_page(self.page()) {
       return self
@@ -595,6 +613,7 @@ impl App {
     }
   }
 
+  /// Executes the `input_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn input_rows(&self) -> Vec<Row> {
     if self.input_loading {
       let loading = tr(self.lang, "control_center.input_loading").to_string();
@@ -763,6 +782,7 @@ impl App {
     rows
   }
 
+  /// Executes the `ratbag_row_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn ratbag_row_action(&self, index: usize) -> Option<RatbagRowAction> {
     if self.input.ratbag.is_empty() {
       return None;
@@ -796,6 +816,7 @@ impl App {
     None
   }
 
+  /// Executes the `system_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn system_rows(&self) -> Vec<Row> {
     let hostname = if self.hostname.is_empty() {
       na(self.lang).to_string()
@@ -857,6 +878,7 @@ impl App {
     ]
   }
 
+  /// Executes the `language_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn language_rows(&self) -> Vec<Row> {
     let current_lang = locale::current_lang();
     let current_language = if self.lang.locale() == "pt-BR" {
@@ -910,6 +932,7 @@ impl App {
     rows
   }
 
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.argvus_control_center");
     match self.page() {
@@ -1054,6 +1077,7 @@ impl App {
     }
   }
 
+  /// Executes the `footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn footer(&self) -> &'static str {
     if self.confirm.is_some() {
       return tr(self.lang, "control_center.enter_confirm_esc_cancel");
@@ -1125,6 +1149,7 @@ impl App {
     }
   }
 
+  /// Executes the `move_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn move_selection(&mut self, delta: isize) {
     let count = self.item_count();
     if count == 0 {
@@ -1175,12 +1200,14 @@ impl App {
     self.ensure_visible(count);
   }
 
+  /// Processes `on_buttons` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn on_buttons(&self) -> bool {
     let buttons = self.page_buttons();
     let rows = self.rows().len();
     !buttons.is_empty() && self.navigation.current().selected >= rows
   }
 
+  /// Executes the `row_selectable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn row_selectable(&self, index: usize) -> bool {
     if self.page() == Page::Keybindings {
       let rows = self.rows();
@@ -1266,11 +1293,13 @@ impl App {
     rows.get(index).is_some()
   }
 
+  /// Executes the `keybinding_row_is_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn keybinding_row_is_accent(&self, row: &Row) -> bool {
     self.page() == Page::Keybindings
       && (row.label.ends_with('»') || self.is_keybinding_column_header(row))
   }
 
+  /// Checks the condition represented by `is_keybinding_column_header` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn is_keybinding_column_header(&self, row: &Row) -> bool {
     self.page() == Page::Keybindings
       && row.label == tr(self.lang, "control_center.keybindings_column_shortcut")
@@ -1281,6 +1310,7 @@ impl App {
         ))
   }
 
+  /// Executes the `normalize_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn normalize_selection(&mut self) {
     let count = self.item_count();
     if count == 0 {
@@ -1294,6 +1324,7 @@ impl App {
     }
   }
 
+  /// Executes the `item_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn item_count(&self) -> usize {
     if crate::administration::is_page(self.page()) {
       let rows = self
@@ -1306,6 +1337,7 @@ impl App {
     }
   }
 
+  /// Executes the `cycle_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cycle_selection(&mut self, delta: isize) {
     if delta == 0 {
       return;
@@ -1337,6 +1369,7 @@ impl App {
     self.ensure_visible(self.item_count());
   }
 
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn move_button(&mut self, delta: isize) {
     let page = self.page();
     if (!crate::administration::is_page(page) && !self.reset_page()) || delta == 0 {
@@ -1361,10 +1394,12 @@ impl App {
     self.ensure_visible(self.item_count());
   }
 
+  /// Executes the `admin_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn admin_buttons(&self, page: Page) -> Vec<crate::administration::Button> {
     self.admin.buttons(page, self.lang)
   }
 
+  /// Executes the `reset_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reset_page(&self) -> bool {
     matches!(
       self.page(),
@@ -1377,6 +1412,7 @@ impl App {
     )
   }
 
+  /// Executes the `page_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn page_buttons(&self) -> Vec<crate::administration::Button> {
     let page = self.page();
     if crate::administration::is_page(page) {
@@ -1395,6 +1431,7 @@ impl App {
     }
   }
 
+  /// Executes the `open_or_apply` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn open_or_apply(&mut self) {
     if crate::administration::is_page(self.page()) {
       self.admin_open();
@@ -1513,6 +1550,7 @@ impl App {
     }
   }
 
+  /// Executes the `reset_current` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reset_current(&mut self) {
     match self.page() {
       Page::DefaultApps => self.open_confirm(PendingAction::ResetApps),
@@ -1537,12 +1575,14 @@ impl App {
     }
   }
 
+  /// Executes the `refresh_system` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn refresh_system(&mut self) {
     self.hostname = host::current();
     self.admin.load(false);
     self.success(tr(self.lang, "control_center.data_updated").to_string());
   }
 
+  /// Executes the `refresh_dnd` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh_dnd(&mut self) {
     if self.dnd_job.is_some() {
       return;
@@ -1558,6 +1598,7 @@ impl App {
     self.dnd_last_refresh = Instant::now();
   }
 
+  /// Applies the `toggle_dnd` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_dnd(&mut self) {
     if self.dnd_job.is_some() {
       return;
@@ -1572,6 +1613,7 @@ impl App {
     }));
   }
 
+  /// Retrieves data for `read_dnd_command` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn read_dnd_command(request: &ProcessRequest) -> Result<bool, String> {
     let output = SystemProcessRunner
       .run(&request.clone().timeout(Duration::from_secs(2)))
@@ -1591,6 +1633,7 @@ impl App {
     }
   }
 
+  /// Applies the `toggle_current` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn toggle_current(&mut self) {
     if crate::administration::is_page(self.page()) {
       self.admin_open();
@@ -1630,6 +1673,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_input` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_input(&mut self, selected: usize) {
     if let Some(action) = self.ratbag_row_action(selected) {
       match action {
@@ -1654,6 +1698,7 @@ impl App {
     }
   }
 
+  /// Executes the `input_cycle` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn input_cycle(&mut self, selected: usize, direction: i8) {
     if let Some(action) = self.ratbag_row_action(selected) {
       match action {
@@ -1689,15 +1734,18 @@ impl App {
     });
   }
 
+  /// Executes the `input_success` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn input_success(&mut self) {
     self.success(tr(self.lang, "control_center.input_applied").to_string());
   }
 
+  /// Executes the `input_failure` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn input_failure(&mut self, error: String) {
     eprintln!("argvus-control-center: input setting failed: {error}");
     self.fail(tr(self.lang, "control_center.input_apply_failed"));
   }
 
+  /// Executes the `cycle_ratbag_device` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cycle_ratbag_device(&mut self, direction: i8) {
     let Some(next) = crate::system::ratbag::next_device_index(
       self.ratbag_device,
@@ -1709,6 +1757,7 @@ impl App {
     self.ratbag_device = next;
   }
 
+  /// Executes the `queue_ratbag` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn queue_ratbag(&mut self, change: crate::system::ratbag::Change) {
     if self.ratbag_job.is_some() {
       return;
@@ -1736,6 +1785,7 @@ impl App {
     self.ratbag_pending_path = Some(device_path);
   }
 
+  /// Applies the `toggle_keyboard_layout` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_keyboard_layout(&mut self) {
     let layouts: Vec<keyboard::Layout> = self
       .keyboard_layouts
@@ -1780,6 +1830,7 @@ impl App {
     }
   }
 
+  /// Executes the `confirm_accept` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn confirm_accept(&mut self) {
     if !self.confirm_apply_selected {
       self.cancel_modal();
@@ -1845,18 +1896,21 @@ impl App {
     }
   }
 
+  /// Executes the `cancel_modal` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cancel_modal(&mut self) {
     self.admin.cancel_pending();
     self.confirm = None;
     self.confirm_apply_selected = false;
   }
 
+  /// Applies the `toggle_confirm_button` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn toggle_confirm_button(&mut self) {
     if self.confirm.is_some() {
       self.confirm_apply_selected = !self.confirm_apply_selected;
     }
   }
 
+  /// Executes the `hostname_input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn hostname_input(&mut self, key: crossterm::event::KeyCode) {
     match key {
       crossterm::event::KeyCode::Esc => self.hostname_editing = false,
@@ -1886,6 +1940,7 @@ impl App {
     }
   }
 
+  /// Executes the `back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn back(&mut self) {
     if self.searching || !self.search.is_empty() {
       self.searching = false;
@@ -1900,6 +1955,7 @@ impl App {
     self.normalize_selection();
   }
 
+  /// Executes the `begin_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn begin_search(&mut self) {
     if matches!(
       self.page(),
@@ -1923,33 +1979,39 @@ impl App {
     }
   }
 
+  /// Executes the `push_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn push_search(&mut self, character: char) {
     self.search.push(character);
     self.navigation.current_mut().selected = 0;
     self.navigation.current_mut().scroll = 0;
   }
 
+  /// Executes the `pop_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn pop_search(&mut self) {
     self.search.pop();
     self.navigation.current_mut().selected = 0;
     self.navigation.current_mut().scroll = 0;
   }
 
+  /// Executes the `adjust_size` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn adjust_size(&mut self, delta: i16) {
     if matches!(self.page(), Page::FontSelector(_)) && !self.searching {
       self.pending_size = (self.pending_size as i16 + delta).clamp(8, 32) as u16;
     }
   }
 
+  /// Executes the `resize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn resize(&mut self, width: u16, height: u16) {
     self.width = width;
     self.height = height;
   }
 
+  /// Executes the `too_small` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn too_small(&self) -> bool {
     self.width < MIN_WIDTH || self.height < MIN_HEIGHT
   }
 
+  /// Applies the `set_viewport` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn set_viewport(&mut self, viewport: usize) {
     self.viewport = viewport.max(1);
     let location = self.navigation.current_mut();
@@ -1961,6 +2023,7 @@ impl App {
     self.ensure_visible(self.rows().len());
   }
 
+  /// Executes the `expire_status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn expire_status(&mut self) -> bool {
     if let Some(result) = self.admin.poll() {
       match result {
@@ -1993,6 +2056,7 @@ impl App {
     }
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if self
@@ -2173,6 +2237,7 @@ impl App {
     changed
   }
 
+  /// Executes the `open_system_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_system_page(&mut self, page: Page) {
     if page == Page::SystemLocales && self.distro.id != "arch" {
       let name = if self.distro.pretty_name.is_empty() {
@@ -2193,11 +2258,13 @@ impl App {
     self.select_current();
   }
 
+  /// Executes the `open_confirm` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_confirm(&mut self, action: PendingAction) {
     self.confirm = Some(action);
     self.confirm_apply_selected = false;
   }
 
+  /// Applies the `apply_app` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_app(&mut self, category: Category, selected: usize) {
     let apps: Vec<(String, String)> = self
       .apps
@@ -2217,6 +2284,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_font` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_font(&mut self, target: FontTarget, selected: usize) {
     let fonts: Vec<FontEntry> = self
       .system_fonts
@@ -2237,6 +2305,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_font_setting` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_font_setting(&mut self, setting: SettingKind, selected: usize) {
     if let Some(row) = self.setting_options(setting).get(selected) {
       let value = row.detail.as_deref().unwrap_or(&row.label).to_string();
@@ -2247,6 +2316,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_timezone` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_timezone(&mut self, selected: usize) {
     let zones: Vec<String> = self
       .timezones
@@ -2268,6 +2338,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_regional_locale` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_regional_locale(&mut self, selected: usize) {
     let locales: Vec<String> = self
       .generated_locales
@@ -2286,6 +2357,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_system_locales` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_system_locales(&mut self) {
     let valid: BTreeSet<String> = self
       .locale_gen_entries
@@ -2338,6 +2410,7 @@ impl App {
     }));
   }
 
+  /// Applies the `apply_keyboard_layout` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_keyboard_layout(&mut self, selected: usize) {
     let layouts: Vec<keyboard::Layout> = self
       .keyboard_layouts
@@ -2360,6 +2433,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_keyboard_variant` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_keyboard_variant(&mut self, selected: usize) {
     let variants: Vec<keyboard::Variant> = self
       .keyboard_variants
@@ -2383,6 +2457,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_console_keymap` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_console_keymap(&mut self, selected: usize) {
     let keymaps: Vec<String> = self
       .console_keymaps
@@ -2404,6 +2479,7 @@ impl App {
     }
   }
 
+  /// Applies the `apply_language` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_language(&mut self, selected: usize) {
     self.lang = language_from_selected(selected);
     let path = crate::config::paths::argvus_config_home().join("language");
@@ -2423,15 +2499,18 @@ impl App {
     }
   }
 
+  /// Executes the `refresh_time` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn refresh_time(&mut self) {
     self.datetime = time::datetime_info();
   }
 
+  /// Executes the `refresh_keyboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh_keyboard(&mut self) {
     self.keyboard_info = keyboard::info();
     self.keyboard_variants = keyboard::variants(&self.keyboard_info.x11_layout);
   }
 
+  /// Executes the `select_current` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn select_current(&mut self) {
     if let Some(index) = self.rows().iter().position(|row| row.current) {
       self.navigation.current_mut().selected = index;
@@ -2441,6 +2520,7 @@ impl App {
     }
   }
 
+  /// Executes the `visible_keybindings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn visible_keybindings(&self) -> Vec<&keybindings::Binding> {
     let mut bindings: Vec<_> = self
       .keybindings
@@ -2471,6 +2551,7 @@ impl App {
     bindings
   }
 
+  /// Executes the `selected_keybinding` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selected_keybinding(&self) -> Option<&keybindings::Binding> {
     let selected = self.navigation.current().selected;
     let row_count = self
@@ -2483,6 +2564,7 @@ impl App {
     self.visible_keybindings().get(row_count).copied()
   }
 
+  /// Executes the `keybinding_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn keybinding_rows(&self) -> Vec<Row> {
     let mut rows = vec![Row {
       label: format!(
@@ -2529,6 +2611,7 @@ impl App {
     rows
   }
 
+  /// Executes the `edited_binding` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn edited_binding(&self) -> Option<&keybindings::Binding> {
     self
       .keybinding_edit_id
@@ -2536,6 +2619,7 @@ impl App {
       .and_then(|id| self.keybindings.iter().find(|b| b.id == id))
   }
 
+  /// Executes the `open_keybinding_edit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_keybinding_edit(&mut self) {
     let Some(id) = self.selected_keybinding().map(|binding| binding.id.clone()) else {
       return;
@@ -2548,6 +2632,7 @@ impl App {
     self.status = None;
   }
 
+  /// Executes the `keybinding_edit_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn keybinding_edit_rows(&self) -> Vec<Row> {
     let Some(binding) = self.edited_binding() else {
       return Vec::new();
@@ -2585,6 +2670,7 @@ impl App {
     ]
   }
 
+  /// Executes the `keybinding_capture_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn keybinding_capture_rows(&self) -> Vec<Row> {
     let Some(binding) = self.edited_binding() else {
       return Vec::new();
@@ -2631,6 +2717,7 @@ impl App {
   }
 
   #[allow(dead_code)]
+  /// Executes the `keybinding_picker_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn keybinding_picker_rows(&self) -> Vec<Row> {
     let mouse = self
       .edited_binding()
@@ -2687,6 +2774,7 @@ impl App {
       .collect()
   }
 
+  /// Applies the `apply_keybinding_capture_selection` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_keybinding_capture_selection(&mut self) {
     match self.navigation.current().selected {
       2 if self.keybinding_detected => self.apply_keybinding_editor(),
@@ -2699,6 +2787,7 @@ impl App {
     }
   }
 
+  /// Executes the `captured_shortcut` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn captured_shortcut(&self) -> String {
     let mut parts = Vec::new();
     for (enabled, modifier) in self
@@ -2714,6 +2803,7 @@ impl App {
     keybindings::display_keys(&parts.join(" + "))
   }
 
+  /// Applies the `apply_keybinding_edit_selection` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_keybinding_edit_selection(&mut self) {
     match self.navigation.current().selected {
       2 => {
@@ -2737,6 +2827,7 @@ impl App {
   }
 
   #[allow(dead_code)]
+  /// Executes the `select_keybinding_picker` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn select_keybinding_picker(&mut self) {
     let Some(binding) = self.edited_binding() else {
       return;
@@ -2791,6 +2882,7 @@ impl App {
     self.navigation.back();
   }
 
+  /// Applies the `toggle_keybinding` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_keybinding(&mut self, enabled: bool) {
     let binding = self.edited_binding().or_else(|| self.selected_keybinding());
     let Some(binding) = binding else {
@@ -2812,6 +2904,7 @@ impl App {
     self.success(tr(self.lang, "control_center.keybindings_applied").to_string());
   }
 
+  /// Executes the `restore_keybinding` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn restore_keybinding(&mut self) {
     let binding = self.edited_binding().or_else(|| self.selected_keybinding());
     let Some(binding) = binding else {
@@ -2828,6 +2921,7 @@ impl App {
     self.success(tr(self.lang, "control_center.keybindings_restored").to_string());
   }
 
+  /// Executes the `begin_keybinding_capture` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn begin_keybinding_capture(&mut self) {
     if let Some(keys) = self
       .edited_binding()
@@ -2849,18 +2943,22 @@ impl App {
     self.keybinding_detected = false;
     self.success(tr(self.lang, "control_center.keybindings_press_key").to_string());
   }
+  /// Checks the condition represented by `is_keybinding_capturing` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn is_keybinding_capturing(&self) -> bool {
     self.keybinding_capturing
   }
+  /// Checks the condition represented by `has_keybinding_conflict` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn has_keybinding_conflict(&self) -> bool {
     self.keybinding_conflict.is_some()
   }
+  /// Executes the `keybinding_conflict_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn keybinding_conflict_state(&self) -> Option<(&str, &str, Vec<String>)> {
     self
       .keybinding_conflict
       .as_ref()
       .map(|(id, keys, conflicts)| (id.as_str(), keys.as_str(), conflicts.clone()))
   }
+  /// Executes the `keybinding_label_for` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn keybinding_label_for(&self, id: &str) -> String {
     self
       .keybindings
@@ -2869,9 +2967,11 @@ impl App {
       .map(|binding| keybinding_label(self.lang, binding))
       .unwrap_or_else(|| id.to_string())
   }
+  /// Executes the `cancel_keybinding_conflict` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cancel_keybinding_conflict(&mut self) {
     self.keybinding_conflict = None;
   }
+  /// Executes the `replace_keybinding_conflict` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn replace_keybinding_conflict(&mut self) {
     let Some((id, keys, conflicts)) = self.keybinding_conflict.take() else {
       return;
@@ -2893,6 +2993,7 @@ impl App {
     }
     self.navigation.back();
   }
+  /// Executes the `capture_keybinding` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn capture_keybinding(&mut self, key: crossterm::event::KeyEvent) {
     if key.code == crossterm::event::KeyCode::Esc {
       self.keybinding_capturing = false;
@@ -2922,6 +3023,7 @@ impl App {
     }
   }
 
+  /// Executes the `capture_keybinding_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn capture_keybinding_key(&mut self, key: crossterm::event::KeyEvent) {
     if key.code == crossterm::event::KeyCode::Enter {
       self.apply_keybinding_editor();
@@ -2975,6 +3077,7 @@ impl App {
     self.keybinding_editor_key = raw;
   }
 
+  /// Applies the `apply_keybinding_editor` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_keybinding_editor(&mut self) {
     let mut parts = Vec::new();
     for (enabled, modifier) in self
@@ -3031,6 +3134,7 @@ impl App {
     self.navigation.back();
   }
 
+  /// Executes the `keybinding_editor_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn keybinding_editor_state(&self) -> ([bool; 4], &str, usize) {
     (
       self.keybinding_editor_modifiers,
@@ -3039,6 +3143,7 @@ impl App {
     )
   }
 
+  /// Executes the `ensure_visible` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn ensure_visible(&mut self, count: usize) {
     let buttons = self.page_buttons().len();
     let rows = if buttons > 0 {
@@ -3057,6 +3162,7 @@ impl App {
     }
   }
 
+  /// Executes the `setting_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn setting_options(&self, setting: SettingKind) -> Vec<Row> {
     let values: Vec<&str> = match setting {
       SettingKind::Antialiasing => vec!["enabled", "disabled"],
@@ -3087,6 +3193,7 @@ impl App {
       .collect()
   }
 
+  /// Executes the `default_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default_detail(&self, value: String, default: bool) -> String {
     if default {
       format!(
@@ -3098,6 +3205,7 @@ impl App {
     }
   }
 
+  /// Executes the `success` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn success(&mut self, text: String) {
     self.status = Some(Status {
       text,
@@ -3106,6 +3214,7 @@ impl App {
     });
   }
 
+  /// Executes the `fail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub(crate) fn fail(&mut self, error: impl ToString) {
     let error = error.to_string();
     self.status = Some(Status {
@@ -3117,6 +3226,7 @@ impl App {
   }
 }
 
+/// Executes the `keybinding_is_cheatsheet_entry` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keybinding_is_cheatsheet_entry(binding: &keybindings::Binding) -> bool {
   !matches!(
     binding.id.as_str(),
@@ -3133,6 +3243,7 @@ fn keybinding_is_cheatsheet_entry(binding: &keybindings::Binding) -> bool {
   )
 }
 
+/// Executes the `keybinding_section` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keybinding_section(lang: Lang, binding: &keybindings::Binding) -> String {
   let software = matches!(
     binding.id.as_str(),
@@ -3170,6 +3281,7 @@ fn keybinding_section(lang: Lang, binding: &keybindings::Binding) -> String {
   tr(lang, section_key).to_string()
 }
 
+/// Executes the `keybinding_section_order` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keybinding_section_order(binding: &keybindings::Binding) -> usize {
   if matches!(
     binding.id.as_str(),
@@ -3203,6 +3315,7 @@ fn keybinding_section_order(binding: &keybindings::Binding) -> usize {
   }
 }
 
+/// Executes the `keybinding_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keybinding_label(lang: Lang, binding: &keybindings::Binding) -> String {
   if let Some(description) = keybindings::cheatsheet_description(lang, binding) {
     return description;
@@ -3240,6 +3353,7 @@ fn keybinding_label(lang: Lang, binding: &keybindings::Binding) -> String {
   }
 }
 
+/// Executes the `keybinding_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keybinding_category(lang: Lang, category: &str) -> String {
   let key = format!("control_center.keybindings.category.{category}");
   let translated = tr(lang, &key);
@@ -3250,6 +3364,7 @@ fn keybinding_category(lang: Lang, category: &str) -> String {
   }
 }
 
+/// Executes the `keybinding_category_order` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn keybinding_category_order(category: &str) -> usize {
   [
     "applications",
@@ -3269,6 +3384,7 @@ fn keybinding_category_order(category: &str) -> usize {
 }
 
 impl Row {
+  /// Executes the `plain` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn plain(label: &str) -> Self {
     Self {
       label: label.to_string(),
@@ -3278,6 +3394,7 @@ impl Row {
   }
 }
 
+/// Executes the `search_matches` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn search_matches(query: &str, values: &[&str]) -> bool {
   query.is_empty()
     || values
@@ -3285,6 +3402,7 @@ pub fn search_matches(query: &str, values: &[&str]) -> bool {
       .any(|value| value.to_lowercase().contains(&query.to_lowercase()))
 }
 
+/// Executes the `category_icon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn category_icon(category: Category) -> &'static str {
   match category {
     Category::Terminal => argvus_tui::icons::MONITOR,
@@ -3301,6 +3419,7 @@ pub fn category_icon(category: Category) -> &'static str {
   }
 }
 
+/// Executes the `category_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn category_label(lang: Lang, category: Category) -> &'static str {
   let key = match category {
     Category::Terminal => "control_center.terminal",
@@ -3318,6 +3437,7 @@ pub fn category_label(lang: Lang, category: Category) -> &'static str {
   crate::i18n::tr(lang, key)
 }
 
+/// Executes the `font_target_icon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn font_target_icon(target: FontTarget) -> &'static str {
   match target {
     FontTarget::Taskbar => argvus_tui::icons::MONITOR,
@@ -3330,6 +3450,7 @@ pub fn font_target_icon(target: FontTarget) -> &'static str {
   }
 }
 
+/// Executes the `setting_icon` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn setting_icon(setting: SettingKind) -> &'static str {
   match setting {
     SettingKind::Antialiasing => argvus_tui::icons::SUCCESS,
@@ -3339,6 +3460,7 @@ pub fn setting_icon(setting: SettingKind) -> &'static str {
   }
 }
 
+/// Executes the `font_target_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn font_target_label(lang: Lang, target: FontTarget) -> &'static str {
   match target {
     FontTarget::Taskbar => tr(lang, "control_center.taskbar_font"),
@@ -3351,6 +3473,7 @@ pub fn font_target_label(lang: Lang, target: FontTarget) -> &'static str {
   }
 }
 
+/// Executes the `setting_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn setting_label(lang: Lang, setting: SettingKind) -> &'static str {
   match setting {
     SettingKind::Antialiasing => tr(lang, "control_center.antialiasing"),
@@ -3360,6 +3483,7 @@ pub fn setting_label(lang: Lang, setting: SettingKind) -> &'static str {
   }
 }
 
+/// Executes the `pending_action_text` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, String) {
   match action {
     PendingAction::Administration(body) => (
@@ -3413,6 +3537,7 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
   }
 }
 
+/// Executes the `setting_value_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn setting_value_label(lang: Lang, value: &str) -> String {
   match value {
     "enabled" => tr(lang, "control_center.enabled_16b283").to_string(),
@@ -3426,6 +3551,7 @@ fn setting_value_label(lang: Lang, value: &str) -> String {
   }
 }
 
+/// Executes the `enabled_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn enabled_label(lang: Lang, enabled: bool) -> &'static str {
   if enabled {
     tr(lang, "control_center.enabled")
@@ -3434,6 +3560,7 @@ fn enabled_label(lang: Lang, enabled: bool) -> &'static str {
   }
 }
 
+/// Executes the `non_empty` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn non_empty(value: &str) -> String {
   if value.is_empty() {
     "-".to_string()
@@ -3442,11 +3569,16 @@ fn non_empty(value: &str) -> String {
   }
 }
 
+/// Defines the constant `TASK_POPUP_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub(crate) const TASK_POPUP_WIDTH: u16 = 100;
+/// Defines the constant `TASK_POPUP_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub(crate) const TASK_POPUP_HEIGHT: u16 = 20;
+/// Defines the constant `TASK_CONTENT_WIDTH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub(crate) const TASK_CONTENT_WIDTH: usize = TASK_POPUP_WIDTH as usize - 2;
+/// Defines the constant `TASK_CONTENT_HEIGHT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub(crate) const TASK_CONTENT_HEIGHT: usize = TASK_POPUP_HEIGHT as usize - 2;
 
+/// Executes the `task_wrapped_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub(crate) fn task_wrapped_lines(output: &str) -> usize {
   output
     .lines()
@@ -3461,10 +3593,12 @@ pub(crate) fn task_wrapped_lines(output: &str) -> usize {
     .sum()
 }
 
+/// Executes the `task_bottom_offset` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub(crate) fn task_bottom_offset(output: &str) -> u16 {
   task_wrapped_lines(output).saturating_sub(TASK_CONTENT_HEIGHT) as u16
 }
 
+/// Executes the `language_from_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn language_from_selected(selected: usize) -> Lang {
   if selected.saturating_sub(LANGUAGE_INFO_ROWS) == 1 {
     Lang::for_locale("pt-BR")
@@ -3478,12 +3612,14 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Executes the `search_is_case_insensitive` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn search_is_case_insensitive() {
     assert!(search_matches("nOtO", &["Noto Sans", "Regular"]));
     assert!(!search_matches("Roboto", &["Noto Sans"]));
   }
 
   #[test]
+  /// Executes the `hardware_rows_follow_ratbag_capabilities` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hardware_rows_follow_ratbag_capabilities() {
     let mut app = App::with_context(
       Page::MouseTouchpad,
@@ -3528,6 +3664,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `labels_cover_every_backend_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn labels_cover_every_backend_category() {
     for category in Category::ORDER {
       assert!(!category_label(Lang::for_locale("en-US"), category).is_empty());
@@ -3536,6 +3673,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `language_page_shows_status_lines_and_selectable_choices` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn language_page_shows_status_lines_and_selectable_choices() {
     let app = App::with_context(Page::Language, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
@@ -3558,6 +3696,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `language_selection_maps_to_languages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn language_selection_maps_to_languages() {
     assert_eq!(
       language_from_selected(LANGUAGE_INFO_ROWS),
@@ -3571,6 +3710,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `fonts_dashboard_uses_icons_and_status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn fonts_dashboard_uses_icons_and_status() {
     let app = App::with_context(Page::Fonts, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
@@ -3594,6 +3734,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `fonts_dashboard_icons_are_distinct` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn fonts_dashboard_icons_are_distinct() {
     let mut seen = std::collections::HashSet::new();
     for target in FontTarget::ALL {
@@ -3608,6 +3749,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `default_apps_dashboard_uses_icons_and_status` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default_apps_dashboard_uses_icons_and_status() {
     let app = App::with_context(Page::DefaultApps, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
@@ -3627,6 +3769,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `default_apps_dashboard_icons_are_distinct` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default_apps_dashboard_icons_are_distinct() {
     let mut seen = std::collections::HashSet::new();
     for category in Category::ORDER {
@@ -3636,6 +3779,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `system_dashboard_uses_icons_and_live_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn system_dashboard_uses_icons_and_live_state() {
     let app = App::with_context(Page::System, Lang::for_locale("en-US"), Theme::load());
     let rows = app.rows();
@@ -3661,6 +3805,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `hostname_page_row_keeps_current_value_while_editing` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hostname_page_row_keeps_current_value_while_editing() {
     let mut app = App::with_context(Page::Hostname, Lang::for_locale("en-US"), Theme::load());
     app.hostname = "current-machine".into();
@@ -3677,6 +3822,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `system_dashboard_counts_match_loaded_accounts` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn system_dashboard_counts_match_loaded_accounts() {
     let mut app = App::with_context(Page::System, Lang::for_locale("en-US"), Theme::load());
     app.admin.accounts = serde_json::json!({
@@ -3701,6 +3847,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `task_window_scrolls_and_closes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn task_window_scrolls_and_closes() {
     let mut app = App::with_context(Page::Main, Lang::for_locale("en-US"), Theme::load());
     let live = LiveProcess::new();
@@ -3735,6 +3882,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `task_bottom_offset_is_zero_for_short_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn task_bottom_offset_is_zero_for_short_output() {
     let mut app = App::with_context(Page::Main, Lang::for_locale("en-US"), Theme::load());
     let live = LiveProcess::new();
@@ -3752,6 +3900,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `empty_poll_returns_false` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn empty_poll_returns_false() {
     let mut app = App::with_context(Page::Main, Lang::for_locale("en-US"), Theme::load());
     assert!(!app.poll());

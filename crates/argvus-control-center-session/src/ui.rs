@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center session`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   backend,
   journal::JournalEntry,
@@ -21,12 +25,14 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Line;
 
 #[derive(Debug, Clone)]
+/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Pending {
   Restart(String),
   ToggleAutostart(String, bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `SessionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum SessionButton {
   Restart,
   Enable,
@@ -36,6 +42,7 @@ enum SessionButton {
 }
 
 #[derive(Debug, Clone)]
+/// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
   HomeSummary(Vec<Component>, Vec<AutostartEntry>),
   Components(Vec<Component>),
@@ -45,6 +52,7 @@ enum JobData {
   Action(String),
 }
 
+/// Represents `SessionApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct SessionApp {
   pub page: SessionPage,
   selected: usize,
@@ -67,10 +75,12 @@ pub struct SessionApp {
 }
 
 impl SessionApp {
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
   }
 
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     Self {
       page: SessionPage::Home,
@@ -94,6 +104,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
     if self.job.is_some() {
       return;
@@ -124,6 +135,7 @@ impl SessionApp {
     });
   }
 
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if let Some(job) = &self.job
@@ -199,6 +211,7 @@ impl SessionApp {
     changed
   }
 
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_none() && self.action.is_none() && self.job.is_none() && self.on_buttons {
       match key {
@@ -302,6 +315,7 @@ impl SessionApp {
     false
   }
 
+  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
       SessionPage::Home => 4,
@@ -313,6 +327,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open(&mut self) {
     match self.page {
       SessionPage::Home => {
@@ -344,6 +359,7 @@ impl SessionApp {
     }
   }
 
+  /// Applies the `toggle_log_filter` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_log_filter(&mut self) {
     let mut units: Vec<String> = self
       .components
@@ -367,6 +383,7 @@ impl SessionApp {
     self.refresh();
   }
 
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -384,6 +401,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -393,6 +411,7 @@ impl SessionApp {
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
 
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -422,6 +441,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(SessionButton, Button)> {
     let primary = ButtonKind::Primary;
     let secondary = ButtonKind::Secondary;
@@ -471,6 +491,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     match self.page {
       SessionPage::Home | SessionPage::Diagnostics => tr(
@@ -485,6 +506,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.session");
     if self.page == SessionPage::Home {
@@ -494,6 +516,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn page_label(&self) -> String {
     match self.page {
       SessionPage::Home => tr(self.lang, "control_center.session").into(),
@@ -505,6 +528,7 @@ impl SessionApp {
     }
   }
 
+  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
     let running = self
       .components
@@ -547,6 +571,7 @@ impl SessionApp {
     ]
   }
 
+  /// Executes the `diagnostics_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_rows(&self) -> Vec<String> {
     if self.job.is_some() && self.diagnostics.is_empty() {
       return vec![tr(self.lang, "control_center.loading_diagnostics").into()];
@@ -567,6 +592,7 @@ impl SessionApp {
       .collect()
   }
 
+  /// Executes the `component_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn component_rows(&self) -> Vec<String> {
     self
       .components
@@ -575,6 +601,7 @@ impl SessionApp {
       .collect()
   }
 
+  /// Executes the `autostart_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn autostart_rows(&self) -> Vec<String> {
     self
       .autostart
@@ -583,10 +610,12 @@ impl SessionApp {
       .collect()
   }
 
+  /// Executes the `log_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn log_rows(&self) -> Vec<String> {
     self.logs.iter().map(log_line).collect()
   }
 
+  /// Executes the `log_detail_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn log_detail_lines(&self, index: usize) -> Vec<Line<'static>> {
     let Some(entry) = self.logs.get(index) else {
       return vec![Line::from(tr(self.lang, "control_center.log_not_found"))];
@@ -608,6 +637,7 @@ impl SessionApp {
     ]
   }
 
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
     let body = shell(
@@ -662,6 +692,7 @@ impl SessionApp {
     }
   }
 
+  /// Renders `draw_pending` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_pending(&self, frame: &mut Frame, area: Rect, pending: &Pending) {
     let (title, message) = match pending {
       Pending::Restart(id) => (
@@ -698,6 +729,7 @@ impl SessionApp {
   }
 }
 
+/// Executes the `merge_component_order` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn merge_component_order(components: Vec<Component>) -> Vec<Component> {
   let order: Vec<String> = manifest()
     .into_iter()
@@ -713,6 +745,7 @@ fn merge_component_order(components: Vec<Component>) -> Vec<Component> {
   sorted
 }
 
+/// Executes the `component_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn component_row(lang: Lang, component: &Component) -> String {
   let (symbol, label) = match component.status {
     ComponentStatus::Running => ("●", tr(lang, "control_center.active_095d39")),
@@ -734,6 +767,7 @@ fn component_row(lang: Lang, component: &Component) -> String {
   )
 }
 
+/// Executes the `autostart_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn autostart_row(lang: Lang, entry: &AutostartEntry) -> String {
   let symbol = if entry.enabled { "●" } else { "○" };
   let state = if entry.enabled {
@@ -756,6 +790,7 @@ fn autostart_row(lang: Lang, entry: &AutostartEntry) -> String {
   )
 }
 
+/// Executes the `log_line` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn log_line(entry: &JournalEntry) -> String {
   format!(
     "{:8} {:28} {:7} {}",
@@ -770,6 +805,7 @@ fn log_line(entry: &JournalEntry) -> String {
 mod tests {
   use super::*;
 
+  /// Executes the `component` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn component(id: &str, status: ComponentStatus) -> Component {
     Component {
       id: id.into(),
@@ -784,6 +820,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `home_rows_act_as_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows_act_as_dashboard() {
     let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.components = vec![
@@ -807,6 +844,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `component_rows_show_state_badges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn component_rows_show_state_badges() {
     let rows = [
       component("a", ComponentStatus::Running),
@@ -820,6 +858,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `autostart_rows_show_origin` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn autostart_rows_show_origin() {
     let entry = AutostartEntry {
       id: "sys".into(),
@@ -835,6 +874,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `order_follows_manifest` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn order_follows_manifest() {
     let components = merge_component_order(vec![
       component("hyprpaper", ComponentStatus::Running),
@@ -844,6 +884,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `session_app_navigates_and_opens_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn session_app_navigates_and_opens_pages() {
     let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.handle(KeyCode::Down);
@@ -854,6 +895,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `session_app_renders_components_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn session_app_renders_components_page() {
     let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = SessionPage::Components;
@@ -874,6 +916,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `session_app_renders_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn session_app_renders_home() {
     let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(110, 25)).unwrap();
@@ -881,6 +924,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `diagnostics_rows_render_symbols` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_rows_render_symbols() {
     let mut app = SessionApp::new(Lang::for_locale("en-US"), Theme::load());
     app.diagnostics = vec![

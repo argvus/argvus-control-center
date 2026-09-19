@@ -1,3 +1,7 @@
+//! Implements domain state and models consumed by the UI in crate `argvus control center appearance`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppearancePage {
   Home,
@@ -15,17 +19,20 @@ pub enum AppearancePage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `TaskbarPosition`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum TaskbarPosition {
   Top,
   Bottom,
 }
 impl TaskbarPosition {
+  /// Executes the `value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn value(self) -> &'static str {
     match self {
       Self::Top => "top",
       Self::Bottom => "bottom",
     }
   }
+  /// Converts input data into `from_value` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn from_value(value: &str) -> Self {
     if value.trim() == "bottom" {
       Self::Bottom
@@ -36,6 +43,7 @@ impl TaskbarPosition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `PromptGoal`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PromptGoal {
   WaybarTop,
   WaybarLeft,
@@ -50,6 +58,7 @@ pub enum PromptGoal {
   Thickness,
 }
 impl PromptGoal {
+  /// Executes the `key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn key(self) -> &'static str {
     match self {
       Self::WaybarTop => "waybar_top",
@@ -65,6 +74,7 @@ impl PromptGoal {
       Self::Thickness => "thickness",
     }
   }
+  /// Executes the const function documented in this module. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   pub const fn range(self) -> (i32, i32) {
     match self {
       Self::Rounding => (2, 10),
@@ -74,6 +84,7 @@ impl PromptGoal {
   }
 }
 
+/// Defines the constant `THEMES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEMES: &[(&str, &str)] = &[
   ("argvus-dark-aether", "Argvus Dark Aether"),
   ("argvus-dark-aether-float", "Argvus Dark Aether Float"),
@@ -86,6 +97,7 @@ pub const THEMES: &[(&str, &str)] = &[
   ("argvus-light-veil", "Argvus Light Veil"),
   ("argvus-light-veil-float", "Argvus Light Veil Float"),
 ];
+/// Defines the constant `THEME_FAMILIES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEME_FAMILIES: &[(&str, &str)] = &[
   ("argvus-dark-aether", "ARGVUS Dark Aether"),
   ("argvus-dark-silver", "ARGVUS Dark Silver"),
@@ -93,6 +105,7 @@ pub const THEME_FAMILIES: &[(&str, &str)] = &[
   ("argvus-dark-universe", "ARGVUS Dark Universe"),
   ("argvus-light-veil", "ARGVUS Light Veil"),
 ];
+/// Executes the `theme_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn theme_label(name: &str) -> String {
   THEMES
     .iter()
@@ -100,6 +113,7 @@ pub fn theme_label(name: &str) -> String {
     .map(|(_, label)| (*label).to_string())
     .unwrap_or_else(|| name.to_string())
 }
+/// Executes the `theme_family_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn theme_family_label(name: &str) -> String {
   let family = name.strip_suffix("-float").unwrap_or(name);
   THEME_FAMILIES
@@ -108,6 +122,7 @@ pub fn theme_family_label(name: &str) -> String {
     .map(|(_, label)| (*label).to_string())
     .unwrap_or_else(|| theme_label(family))
 }
+/// Defines the constant `ACCENTS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const ACCENTS: &[(&str, &str)] = &[
   ("Blue", "#3590bd"),
   ("Slate Blue", "#7391a5"),
@@ -119,6 +134,7 @@ pub const ACCENTS: &[(&str, &str)] = &[
   ("Purple", "#9617d1"),
   ("Silver", "#595959"),
 ];
+/// Executes the `accent_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn accent_label(color: &str) -> String {
   ACCENTS
     .iter()
@@ -128,6 +144,7 @@ pub fn accent_label(color: &str) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents `AppearanceState`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct AppearanceState {
   pub theme: String,
   pub accent: String,
@@ -150,6 +167,7 @@ pub struct AppearanceState {
   pub thickness: i32,
 }
 impl Default for AppearanceState {
+  /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default() -> Self {
     Self {
       theme: "argvus-dark-aether".into(),
@@ -175,6 +193,7 @@ impl Default for AppearanceState {
   }
 }
 impl AppearanceState {
+  /// Checks the condition represented by `is_float_theme` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn is_float_theme(&self) -> bool {
     self.theme.ends_with("-float")
   }
@@ -184,6 +203,7 @@ impl AppearanceState {
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `prompt_metadata_is_explicit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_metadata_is_explicit() {
     assert_eq!(
       (PromptGoal::WaybarTop.key(), PromptGoal::WaybarTop.range()),
@@ -206,6 +226,7 @@ mod tests {
     );
   }
   #[test]
+  /// Executes the `position_is_type_safe` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn position_is_type_safe() {
     assert_eq!(
       TaskbarPosition::from_value("bottom"),
@@ -214,6 +235,7 @@ mod tests {
     assert_eq!(TaskbarPosition::Top.value(), "top");
   }
   #[test]
+  /// Executes the `float_theme_detection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn float_theme_detection() {
     assert!(
       AppearanceState {

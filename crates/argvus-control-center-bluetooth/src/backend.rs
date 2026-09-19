@@ -1,3 +1,7 @@
+//! Implements isolated integration with system tools and APIs in crate `argvus control center bluetooth`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::model::*;
 use argvus_control_center_core::{
   capabilities::Capabilities,
@@ -9,6 +13,7 @@ use std::time::Duration;
 use thiserror::Error;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 #[derive(Debug, Error)]
+/// Defines `BluetoothError`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum BluetoothError {
   #[error("bluetooth backend unavailable")]
   BackendUnavailable,
@@ -19,17 +24,20 @@ pub enum BluetoothError {
   #[error("invalid bluetooth address")]
   InvalidAddress,
 }
+/// Represents `BluetoothBackend`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct BluetoothBackend<R> {
   pub runner: R,
   pub capabilities: Capabilities,
 }
 impl<R: ProcessRunner> BluetoothBackend<R> {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(runner: R, capabilities: Capabilities) -> Self {
     Self {
       runner,
       capabilities,
     }
   }
+  /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn run(&self, args: &[&str]) -> Result<String, BluetoothError> {
     if !self.capabilities.has_bluetoothctl {
       return Err(BluetoothError::BackendUnavailable);
@@ -49,6 +57,7 @@ impl<R: ProcessRunner> BluetoothBackend<R> {
     }
     Ok(terminal_text(&String::from_utf8_lossy(&o.stdout)))
   }
+  /// Retrieves data for `snapshot` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn snapshot(&self) -> Result<BluetoothSnapshot, BluetoothError> {
     let show = match self.run(&["show"]) {
       Ok(value) => value,
@@ -75,6 +84,7 @@ impl<R: ProcessRunner> BluetoothBackend<R> {
       discovering: show.lines().any(|line| line.trim() == "Discovering: yes"),
     })
   }
+  /// Executes the `action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn action(&self, address: &str, action: &str) -> Result<(), BluetoothError> {
     validate_address(address)?;
     if !matches!(
@@ -85,6 +95,7 @@ impl<R: ProcessRunner> BluetoothBackend<R> {
     }
     self.run(&[action, address]).map(|_| ())
   }
+  /// Executes the `pair` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn pair(&self, address: &str, via_dbus: bool) -> Result<(), BluetoothError> {
     validate_address(address)?;
     if via_dbus {
@@ -92,27 +103,35 @@ impl<R: ProcessRunner> BluetoothBackend<R> {
     }
     self.run(&["pair", address]).map(|_| ())
   }
+  /// Executes the `power` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn power(&self, on: bool) -> Result<(), BluetoothError> {
     self
       .run(&["power", if on { "on" } else { "off" }])
       .map(|_| ())
   }
+  /// Executes the `scan` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn scan(&self, on: bool) -> Result<(), BluetoothError> {
     self
       .run(&["scan", if on { "on" } else { "off" }])
       .map(|_| ())
   }
+  /// Executes the `discoverable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn discoverable(&self, on: bool) -> Result<(), BluetoothError> {
     self
       .run(&["discoverable", if on { "on" } else { "off" }])
       .map(|_| ())
   }
 }
+/// Defines the constant `BLUEZ`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const BLUEZ: &str = "org.bluez";
+/// Defines the constant `OBJECT_MANAGER`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const OBJECT_MANAGER: &str = "org.freedesktop.DBus.ObjectManager";
+/// Defines the constant `DEVICE_INTERFACE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const DEVICE_INTERFACE: &str = "org.bluez.Device1";
+/// Defines the constant `PAIR_TIMEOUT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const PAIR_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Executes the `pair_device_via_dbus` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn pair_device_via_dbus(address: &str) -> Result<(), BluetoothError> {
   validate_address(address)?;
   let connection = match zbus::blocking::connection::Builder::system() {
@@ -127,6 +146,7 @@ pub fn pair_device_via_dbus(address: &str) -> Result<(), BluetoothError> {
   Ok(())
 }
 
+/// Executes the `find_device` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn find_device(
   connection: &zbus::blocking::Connection,
   address: &str,
@@ -158,6 +178,7 @@ fn find_device(
     .ok_or_else(|| BluetoothError::Command("device not found on the bus".into()))
 }
 
+/// Executes the `pair_error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn pair_error(error: zbus::Error) -> BluetoothError {
   match error {
     zbus::Error::MethodError(name, message, _) => BluetoothError::Command(normalize_pair_error(
@@ -171,6 +192,7 @@ fn pair_error(error: zbus::Error) -> BluetoothError {
   }
 }
 
+/// Executes the `normalize_pair_error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn normalize_pair_error(name: &str, message: &str) -> String {
   let label = match name.rsplit('.').next().unwrap_or("") {
     "AlreadyPaired" | "AlreadyExists" => "device is already paired",
@@ -197,6 +219,7 @@ fn normalize_pair_error(name: &str, message: &str) -> String {
   }
 }
 
+/// Converts input data into `parse_adapter` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_adapter(input: &str) -> Option<Adapter> {
   let mut a = Adapter::default();
   for line in input.lines() {
@@ -217,6 +240,7 @@ pub fn parse_adapter(input: &str) -> Option<Adapter> {
   }
   (!a.address.is_empty()).then_some(a)
 }
+/// Converts input data into `parse_devices` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn parse_devices(input: &str) -> Vec<Device> {
   input
     .lines()
@@ -237,6 +261,7 @@ pub fn parse_devices(input: &str) -> Vec<Device> {
     .collect()
 }
 
+/// Executes the `merge_device_info` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn merge_device_info(device: &mut Device, input: &str) {
   for line in input.lines() {
     let line = line.trim();
@@ -260,6 +285,7 @@ pub fn merge_device_info(device: &mut Device, input: &str) {
     }
   }
 }
+/// Executes the `validate_address` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn validate_address(v: &str) -> Result<(), BluetoothError> {
   if v.len() == 17
     && v.chars().enumerate().all(|(i, c)| {
@@ -279,6 +305,7 @@ pub fn validate_address(v: &str) -> Result<(), BluetoothError> {
 mod tests {
   use super::*;
   #[test]
+  /// Executes the `adapter` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn adapter() {
     let a = parse_adapter(
       "Controller AA:BB:CC:DD:EE:FF Laptop\n\tPowered: yes\n\tDiscoverable: no\n\tPairable: yes",
@@ -288,12 +315,14 @@ mod tests {
     assert!(!a.discoverable)
   }
   #[test]
+  /// Executes the `address_is_strict` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn address_is_strict() {
     assert!(validate_address("AA:BB:CC:DD:EE:FF").is_ok());
     assert!(validate_address("bad").is_err())
   }
 
   #[test]
+  /// Executes the `device_info_is_normalized_without_exposing_extra_fields` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn device_info_is_normalized_without_exposing_extra_fields() {
     let mut device = Device {
       address: "AA:BB:CC:DD:EE:FF".into(),
@@ -309,6 +338,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `pairing_errors_are_mapped_to_friendly_messages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn pairing_errors_are_mapped_to_friendly_messages() {
     assert_eq!(
       normalize_pair_error("org.bluez.Error.AlreadyPaired", "already done"),
@@ -329,6 +359,7 @@ mod tests {
   }
 
   #[test]
+  /// Executes the `pair_requires_strict_address` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn pair_requires_strict_address() {
     assert!(pair_device_via_dbus("bad").is_err());
   }

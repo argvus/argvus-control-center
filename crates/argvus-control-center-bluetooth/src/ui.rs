@@ -1,3 +1,7 @@
+//! Implements terminal UI rendering and interaction in crate `argvus control center bluetooth`. This separation keeps external effects from contaminating models, routes, or rendering.
+//!
+//! External tool dependencies remain in backend layers;
+//! the UI consumes normalized models and results.
 use crate::{
   agent::AgentHandle,
   backend::BluetoothBackend,
@@ -30,6 +34,7 @@ use ratatui::{
   widgets::{Block, Clear, Paragraph, Wrap},
 };
 
+/// Represents `BluetoothApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct BluetoothApp {
   pub page: BluetoothPage,
   selected: Selection,
@@ -54,6 +59,7 @@ pub struct BluetoothApp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
   Power,
   Discoverable,
@@ -65,6 +71,7 @@ enum ActionButton {
 }
 
 impl BluetoothApp {
+  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: BluetoothPage::Home,
@@ -89,6 +96,7 @@ impl BluetoothApp {
       prompt_confirm: false,
     }
   }
+  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     if self.job.is_some() || self.action.is_some() {
       return;
@@ -102,6 +110,7 @@ impl BluetoothApp {
       )
     }));
   }
+  /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     let mut events = Vec::new();
@@ -179,6 +188,7 @@ impl BluetoothApp {
     }
     changed
   }
+  /// Executes the `row_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn row_count(&self) -> usize {
     match self.page {
       BluetoothPage::Home => 3,
@@ -186,9 +196,11 @@ impl BluetoothApp {
       BluetoothPage::Devices | BluetoothPage::Pair => self.snapshot.devices.len(),
     }
   }
+  /// Executes the `selected_device` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selected_device(&self) -> Option<&Device> {
     self.snapshot.devices.get(self.selected.index)
   }
+  /// Executes the `start_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_action(
     &mut self,
     operation: impl FnOnce(
@@ -214,6 +226,7 @@ impl BluetoothApp {
       )
     }));
   }
+  /// Executes the `act_device` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn act_device(&mut self, action: &'static str) {
     if let Some(d) = self.selected_device() {
       let address = d.address.clone();
@@ -221,6 +234,7 @@ impl BluetoothApp {
       self.start_action(move |b| b.action(&address, action), msg);
     }
   }
+  /// Executes the `act_pair` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn act_pair(&mut self) {
     if self.action.is_some() {
       return;
@@ -233,6 +247,7 @@ impl BluetoothApp {
     let msg = tr(self.lang, "control_center.device_paired").into();
     self.start_action(move |b| b.pair(&address, via_agent), msg);
   }
+  /// Executes the `open_agent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_agent(&mut self) {
     if self.agent.is_some() {
       return;
@@ -240,6 +255,7 @@ impl BluetoothApp {
     self.agent_ready = false;
     self.agent = Some(AgentHandle::start());
   }
+  /// Executes the `stop_agent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn stop_agent(&mut self) {
     self.prompt = None;
     self.prompt_confirm = false;
@@ -248,6 +264,7 @@ impl BluetoothApp {
       agent.unregister();
     }
   }
+  /// Executes the `open_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_prompt(&mut self, event: AgentEvent) {
     if self.prompt.is_some() {
       return;
@@ -257,6 +274,7 @@ impl BluetoothApp {
       self.prompt_confirm = false;
     }
   }
+  /// Executes the `start_scan` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_scan(&mut self) {
     if self.action.is_some() || self.scanning {
       return;
@@ -276,6 +294,7 @@ impl BluetoothApp {
       Ok(Ok("Scan concluído.".into()))
     }));
   }
+  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if let Some(mut prompt) = self.prompt.take() {
       let step = prompt.handle_key(key, &mut self.prompt_confirm);
@@ -397,6 +416,7 @@ impl BluetoothApp {
     }
     false
   }
+  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_buttons(&mut self, backwards: bool) {
     let count = self.buttons().len();
     if count == 0 {
@@ -413,6 +433,7 @@ impl BluetoothApp {
       self.on_buttons = true;
     }
   }
+  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn move_button(&mut self, delta: isize) {
     let count = self.buttons().len();
     if count == 0 {
@@ -421,6 +442,7 @@ impl BluetoothApp {
     self.button_selected =
       (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
   }
+  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn activate_button(&mut self) {
     let actions = self.buttons();
     let Some((action, _)) = actions.get(self.button_selected) else {
@@ -465,6 +487,7 @@ impl BluetoothApp {
       ActionButton::Remove => self.confirm_remove = true,
     }
   }
+  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
     match self.page {
       BluetoothPage::State => vec![
@@ -535,6 +558,7 @@ impl BluetoothApp {
       BluetoothPage::Home => Vec::new(),
     }
   }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn footer_hints(&self) -> &'static str {
     match self.page {
       BluetoothPage::Home => tr(
@@ -547,6 +571,7 @@ impl BluetoothApp {
       ),
     }
   }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, f: &mut Frame) {
     let breadcrumb = match self.page {
       BluetoothPage::Home => tr(self.lang, "control_center.bluetooth"),
@@ -675,6 +700,7 @@ impl BluetoothApp {
       self.draw_agent_prompt(f, prompt);
     }
   }
+  /// Renders `draw_agent_prompt` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_agent_prompt(&self, f: &mut Frame, prompt: &AgentPrompt) {
     let device_name = prompt.device();
     let selected = |label: &str, active: bool| {
