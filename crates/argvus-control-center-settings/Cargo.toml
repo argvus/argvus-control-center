@@ -7,8 +7,8 @@ rust-version.workspace = true
 
 [dependencies]
 argvus-i18n.workspace = true
-argvus-theme = { path = "../argvus-theme" }
-argvus-tui = { path = "../argvus-tui" }
+argvus-theme = { path = "../../../argvus-tui/crates/argvus-theme" }
+argvus-tui = { path = "../../../argvus-tui/crates/argvus-tui" }
 argvus-control-center-apps = { path = "../argvus-control-center-apps" }
 argvus-control-center-core = { path = "../argvus-control-center-core" }
 crossterm.workspace = true

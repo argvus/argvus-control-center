@@ -6,8 +6,6 @@ resolver = "2"
 # adding a crate here makes it part of full-workspace validation.
 members = [
   "crates/argvus-control-center",
-  "crates/argvus-tui",
-  "crates/argvus-theme",
   "crates/argvus-control-center-settings",
   "crates/argvus-control-center-apps",
   "crates/argvus-control-center-core",

@@ -43,6 +43,10 @@ prepare() {
     printf '%s\n' "argvus-i18n source is missing from the local source archive" >&2
     return 1
   fi
+  if [[ ! -f "$srcdir/argvus-tui/Cargo.toml" ]]; then
+    printf '%s\n' "argvus-tui source is missing from the local source archive" >&2
+    return 1
+  fi
   cd "$(_source_dir)"
   cargo fetch --locked --target "${CARCH}-unknown-linux-gnu"
 }

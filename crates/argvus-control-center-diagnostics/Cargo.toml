@@ -9,7 +9,7 @@ rust-version.workspace = true
 argvus-control-center-core = { path = "../argvus-control-center-core" }
 argvus-control-center-storage = { path = "../argvus-control-center-storage" }
 argvus-i18n.workspace = true
-argvus-theme = { path = "../argvus-theme" }
-argvus-tui = { path = "../argvus-tui" }
+argvus-theme = { path = "../../../argvus-tui/crates/argvus-theme" }
+argvus-tui = { path = "../../../argvus-tui/crates/argvus-tui" }
 crossterm.workspace = true
 ratatui.workspace = true

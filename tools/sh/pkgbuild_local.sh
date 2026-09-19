@@ -24,7 +24,7 @@ archive="$ARTIFACTS_DIR/${pkgname}-${pkgver}.tar.gz"
 staging_dir="$(mktemp -d)"
 trap 'rm -rf -- "$staging_dir"' EXIT
 
-mkdir -p "$staging_dir/${pkgname}-${pkgver}" "$staging_dir/argvus-i18n"
+mkdir -p "$staging_dir/${pkgname}-${pkgver}" "$staging_dir/argvus-i18n" "$staging_dir/argvus-tui"
 
 tar -cf - \
   --exclude='./.git' \
@@ -65,8 +65,25 @@ tar -cf - \
   -C "$i18n_root" . \
   | tar -xf - -C "$staging_dir/argvus-i18n"
 
+tui_root="$ROOT_DIR/../argvus-tui"
+if [[ ! -f "$tui_root/Cargo.toml" ]]; then
+  echo "argvus-tui checkout not found beside argvus-control-center: $tui_root" >&2
+  exit 1
+fi
+
+tar -cf - \
+  --exclude='./.git' \
+  --exclude='./build' \
+  --exclude='*/build' \
+  --exclude='./dist' \
+  --exclude='*/dist' \
+  --exclude='./target' \
+  --exclude='*/target' \
+  -C "$tui_root" . \
+  | tar -xf - -C "$staging_dir/argvus-tui"
+
 echo "Creating local source archive: $archive"
-tar -czf "$archive" -C "$staging_dir" "${pkgname}-${pkgver}" argvus-i18n
+tar -czf "$archive" -C "$staging_dir" "${pkgname}-${pkgver}" argvus-i18n argvus-tui
 
 cd "$PKGBUILD_DIR"
 export BUILDDIR="$ARTIFACTS_DIR"

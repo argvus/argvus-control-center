@@ -348,7 +348,10 @@ dependencies = [
  "argvus-i18n-core",
  "argvus-theme",
  "crossterm",
+ "image",
  "ratatui",
+ "ratatui-image",
+ "resvg",
  "unicode-width",
 ]
 
