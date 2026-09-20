@@ -9,6 +9,7 @@ pub enum AppearancePage {
   ThemeModes { family: usize },
   Wallpapers,
   Accents,
+  Effects,
   SpacesBordersPosition,
   TaskbarPosition,
   TaskbarSpaces,

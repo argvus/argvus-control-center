@@ -19,7 +19,7 @@ use argvus_theme::Theme;
 use argvus_tui::buttons::{Button, ButtonKind};
 use argvus_tui::components::{
   ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-  draw_confirmation,
+  draw_confirmation, draw_loading_splash,
 };
 use argvus_tui::page::{list, readonly, shell, status};
 use crossterm::event::KeyCode;
@@ -731,6 +731,15 @@ impl ServicesApp {
       if let Some(s) = &self.status {
         status(frame, area, &self.theme, s)
       }
+      if self.job.is_some() {
+        draw_loading_splash(
+          frame,
+          area,
+          &self.theme,
+          &self.breadcrumb(),
+          tr(self.lang, "control_center.loading_services"),
+        );
+      }
       if let Some(Pending::Action(a, u)) = &self.pending {
         self.draw_pending(frame, area, a, u);
       }
@@ -802,6 +811,15 @@ impl ServicesApp {
     }
     if let Some(s) = &self.status {
       status(frame, area, &self.theme, s)
+    }
+    if self.job.is_some() {
+      draw_loading_splash(
+        frame,
+        area,
+        &self.theme,
+        &self.breadcrumb(),
+        tr(self.lang, "control_center.loading_services"),
+      );
     }
     if let Some(Pending::Action(a, u)) = &self.pending {
       self.draw_pending(frame, area, a, u)

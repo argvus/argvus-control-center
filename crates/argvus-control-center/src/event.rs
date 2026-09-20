@@ -223,7 +223,11 @@ fn handle_home(app: &mut App, key: KeyEvent) {
     KeyCode::End => app.home_selected = app.home_item_count().saturating_sub(1),
     KeyCode::PageUp => app.move_home(-5),
     KeyCode::PageDown => app.move_home(5),
-    KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.open_home(),
+    KeyCode::Tab => app.move_home(1),
+    KeyCode::BackTab => app.move_home(-1),
+    KeyCode::Left | KeyCode::Char('h') => app.move_home_category(-1),
+    KeyCode::Right | KeyCode::Char('l') => app.move_home_category(1),
+    KeyCode::Enter => app.open_home(),
     KeyCode::Char('s') => app.route = Route::Config,
     _ => {}
   }
@@ -459,6 +463,15 @@ mod tests {
     assert_eq!(app.route, Route::Network);
     handle(&mut app, press(KeyCode::Esc));
     assert_eq!(app.route, Route::Home);
+  }
+
+  #[test]
+  fn home_tab_moves_between_grid_options() {
+    let mut app = App::new(InitialRoute::Home);
+    handle(&mut app, press(KeyCode::Tab));
+    assert_eq!(app.home_selected, 1);
+    handle(&mut app, press(KeyCode::BackTab));
+    assert_eq!(app.home_selected, 0);
   }
 
   #[cfg(feature = "boot")]

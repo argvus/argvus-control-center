@@ -23,7 +23,7 @@ use argvus_tui::{
   buttons::{Button, ButtonKind},
   components::{
     ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-    draw_confirmation,
+    draw_confirmation, draw_loading_splash,
   },
   page::{Selection, list, readonly, shell, status},
 };
@@ -992,6 +992,15 @@ impl NetworkApp {
     }
     if let Some(status_message) = &self.status {
       status(f, body, &self.theme, status_message);
+    }
+    if self.job.is_some() {
+      draw_loading_splash(
+        f,
+        area,
+        &self.theme,
+        &self.breadcrumb(),
+        tr(self.lang, "control_center.refreshing_network"),
+      );
     }
   }
   /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

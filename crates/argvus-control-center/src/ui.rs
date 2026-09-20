@@ -8,7 +8,7 @@ use argvus_tui::chrome::{Header, draw_footer, draw_header, draw_help, draw_too_s
 use argvus_tui::text::ellipsize;
 use argvus_tui::{MIN_HEIGHT, MIN_WIDTH};
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Margin};
+use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Widget};
@@ -76,7 +76,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
 }
 
 /// Renders `draw_home` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn draw_home(app: &App, frame: &mut Frame) {
+fn draw_home(app: &mut App, frame: &mut Frame) {
   let area = frame.area();
   Block::new()
     .borders(Borders::ALL)
@@ -102,9 +102,8 @@ fn draw_home(app: &App, frame: &mut Frame) {
     },
   );
   draw_search(app, frame, rows[1]);
-  let mut selected = 0;
-  let lines: Vec<Line<'static>> = if app.search_active && !app.search_query.is_empty() {
-    let mut lines = vec![Line::from(Span::styled(
+  if app.search_active && !app.search_query.is_empty() {
+    let mut lines: Vec<Line<'static>> = vec![Line::from(Span::styled(
       format!("  {}", tr(app.lang, "control_center.search_results")),
       Style::new()
         .fg(app.theme.accent)
@@ -151,51 +150,10 @@ fn draw_home(app: &App, frame: &mut Frame) {
         }
       }
     }
-    lines
+    frame.render_widget(Paragraph::new(lines), rows[2].inner(Margin::new(2, 1)));
   } else {
-    app
-      .home_rows()
-      .into_iter()
-      .map(|row| match row {
-        HomeRow::Header(label) => {
-          let style = Style::new()
-            .fg(app.theme.accent)
-            .bg(app.theme.background)
-            .add_modifier(Modifier::BOLD);
-          Line::from(Span::styled(
-            format!("{}{}", home_icon_for_header(app, label), label),
-            style,
-          ))
-          .style(style)
-        }
-        HomeRow::Item { label, action } => {
-          let is_selected = selected == app.home_selected;
-          selected += 1;
-          let style = if is_selected {
-            Style::new()
-              .fg(app.theme.selected_foreground)
-              .bg(app.theme.selected_background)
-              .add_modifier(Modifier::BOLD)
-          } else {
-            Style::new()
-              .fg(app.theme.foreground)
-              .bg(app.theme.background)
-          };
-          Line::from(vec![Span::styled(
-            format!(
-              " {} {}{}",
-              if is_selected { ">" } else { " " },
-              home_icon_for_item(action),
-              label
-            ),
-            style,
-          )])
-          .style(style)
-        }
-      })
-      .collect()
-  };
-  frame.render_widget(Paragraph::new(lines), rows[2].inner(Margin::new(2, 1)));
+    draw_home_grid(app, frame, rows[2]);
+  }
   draw_footer(
     frame,
     rows[3],
@@ -209,6 +167,392 @@ fn draw_home(app: &App, frame: &mut Frame) {
   );
 }
 
+#[derive(Debug, Clone)]
+enum HomeGridRow {
+  Header(&'static str),
+  Items(Vec<(usize, &'static str, usize)>),
+}
+
+fn draw_home_grid(app: &mut App, frame: &mut Frame, area: Rect) {
+  draw_home_cards(app, frame, area);
+}
+
+#[allow(dead_code)]
+fn draw_home_grid_legacy(app: &mut App, frame: &mut Frame, area: Rect) {
+  let content = area.inner(Margin::new(1, 0));
+  let columns = ((content.width as usize + 2) / 25).max(1);
+  let grid_rows = home_grid_rows(app, columns);
+  let row_heights: Vec<u16> = grid_rows
+    .iter()
+    .map(|row| match row {
+      HomeGridRow::Header(_) => 1,
+      HomeGridRow::Items(_) => 3,
+    })
+    .collect();
+  let selected_row = grid_rows
+    .iter()
+    .position(|row| matches!(row, HomeGridRow::Items(items) if items.iter().any(|(index, _, _)| *index == app.home_selected)))
+    .unwrap_or(0);
+  let visible_height = content.height.max(1);
+  let mut scroll = app.home_scroll.min(grid_rows.len().saturating_sub(1));
+  while selected_row < scroll {
+    scroll = scroll.saturating_sub(1);
+  }
+  while selected_row > scroll
+    && row_heights[scroll..=selected_row]
+      .iter()
+      .map(|height| *height as usize)
+      .sum::<usize>()
+      > visible_height as usize
+  {
+    scroll += 1;
+  }
+  app.home_scroll = scroll.min(grid_rows.len().saturating_sub(1));
+
+  let mut y = content.y;
+  for (index, row) in grid_rows.iter().enumerate().skip(app.home_scroll) {
+    let height = row_heights[index];
+    if y >= content.bottom() || y + height > content.bottom() {
+      break;
+    }
+    let row_area = Rect::new(content.x, y, content.width, height);
+    match row {
+      HomeGridRow::Header(label) => {
+        let style = Style::new()
+          .fg(app.theme.accent)
+          .add_modifier(Modifier::BOLD);
+        frame.render_widget(
+          Paragraph::new(Line::from(Span::styled(
+            format!("{}{}", home_icon_for_header(app, label), label),
+            style,
+          ))),
+          row_area,
+        );
+      }
+      HomeGridRow::Items(items) => {
+        let constraints = vec![Constraint::Ratio(1, columns as u32); items.len()];
+        for (tile, item) in Layout::horizontal(constraints)
+          .split(row_area)
+          .iter()
+          .zip(items)
+        {
+          let (item_index, label, action) = *item;
+          let is_selected = item_index == app.home_selected;
+          let style = if is_selected {
+            Style::new()
+              .fg(app.theme.selected_foreground)
+              .bg(app.theme.selected_background)
+              .add_modifier(Modifier::BOLD)
+          } else {
+            Style::new()
+              .fg(app.theme.foreground)
+              .bg(app.theme.background)
+          };
+          let text = format!(
+            "{}{}{}",
+            if is_selected { "> " } else { "  " },
+            home_icon_for_item(action),
+            label
+          );
+          frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+              ellipsize(&text, tile.width.saturating_sub(2) as usize),
+              style,
+            )))
+            .block(
+              Block::new()
+                .borders(Borders::ALL)
+                .border_style(style)
+                .bg(style.bg.unwrap_or(app.theme.background)),
+            ),
+            *tile,
+          );
+        }
+      }
+    }
+    y += height;
+  }
+}
+
+#[allow(dead_code)]
+fn home_grid_rows(app: &App, columns: usize) -> Vec<HomeGridRow> {
+  let mut rows = Vec::new();
+  let mut item_index = 0;
+  let mut items = Vec::new();
+  for row in app.home_rows() {
+    match row {
+      HomeRow::Header(label) => {
+        if !items.is_empty() {
+          rows.extend(
+            items
+              .chunks(columns)
+              .map(|chunk| HomeGridRow::Items(chunk.to_vec())),
+          );
+          items.clear();
+        }
+        rows.push(HomeGridRow::Header(label));
+      }
+      HomeRow::Item { label, action } => {
+        items.push((item_index, label, action));
+        item_index += 1;
+      }
+    }
+  }
+  rows.extend(
+    items
+      .chunks(columns)
+      .map(|chunk| HomeGridRow::Items(chunk.to_vec())),
+  );
+  rows
+}
+
+#[derive(Debug, Clone)]
+struct HomeCard {
+  category: &'static str,
+  description: &'static str,
+  items: Vec<(usize, &'static str, usize)>,
+  wide: bool,
+}
+
+fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
+  let content = area.inner(Margin::new(1, 0));
+  let columns = App::home_grid_columns(content.width);
+  let cards = home_cards(app);
+  let mut rows: Vec<Vec<&HomeCard>> = Vec::new();
+  let mut current = Vec::new();
+  for card in &cards {
+    if card.wide {
+      if !current.is_empty() {
+        rows.push(current);
+        current = Vec::new();
+      }
+      rows.push(vec![card]);
+    } else {
+      current.push(card);
+      if current.len() == columns {
+        rows.push(current);
+        current = Vec::new();
+      }
+    }
+  }
+  if !current.is_empty() {
+    rows.push(current);
+  }
+
+  let row_heights: Vec<u16> = rows
+    .iter()
+    .map(|row| {
+      row
+        .iter()
+        .map(|card| card_height(card, columns))
+        .max()
+        .unwrap_or(1)
+    })
+    .collect();
+  let selected_row = rows
+    .iter()
+    .position(|row| {
+      row.iter().any(|card| {
+        card
+          .items
+          .iter()
+          .any(|(index, _, _)| *index == app.home_selected)
+      })
+    })
+    .unwrap_or(0);
+  let visible_height = content.height.max(1);
+  let mut scroll = app.home_scroll.min(rows.len().saturating_sub(1));
+  while selected_row < scroll {
+    scroll = scroll.saturating_sub(1);
+  }
+  while selected_row > scroll
+    && row_heights[scroll..=selected_row]
+      .iter()
+      .map(|height| *height as usize)
+      .sum::<usize>()
+      > visible_height as usize
+  {
+    scroll += 1;
+  }
+  app.home_scroll = scroll.min(rows.len().saturating_sub(1));
+
+  let mut y = content.y;
+  for (row_index, row) in rows.iter().enumerate().skip(app.home_scroll) {
+    let height = row_heights[row_index];
+    if y >= content.bottom() || y + height > content.bottom() {
+      break;
+    }
+    let row_area = Rect::new(content.x, y, content.width, height);
+    let constraints = if row.len() == 1 && row[0].wide {
+      vec![Constraint::Percentage(100)]
+    } else {
+      vec![Constraint::Ratio(1, row.len() as u32); row.len()]
+    };
+    for (card_area, card) in Layout::horizontal(constraints)
+      .split(row_area)
+      .iter()
+      .zip(row)
+    {
+      draw_home_card(app, frame, *card_area, card, columns);
+    }
+    y += height;
+  }
+}
+
+fn home_cards(app: &App) -> Vec<HomeCard> {
+  let mut cards = Vec::new();
+  let mut item_index = 0;
+  let mut current: Option<HomeCard> = None;
+  for row in app.home_rows() {
+    match row {
+      HomeRow::Header(label) => {
+        if let Some(card) = current.take() {
+          cards.push(card);
+        }
+        current = Some(HomeCard {
+          category: label,
+          description: home_category_description(app, label),
+          items: Vec::new(),
+          wide: label == tr(app.lang, "control_center.system"),
+        });
+      }
+      HomeRow::Item { label, action } => {
+        if let Some(card) = current.as_mut() {
+          card.items.push((item_index, label, action));
+        }
+        item_index += 1;
+      }
+    }
+  }
+  if let Some(card) = current {
+    cards.push(card);
+  }
+  cards
+}
+
+fn card_height(card: &HomeCard, columns: usize) -> u16 {
+  let item_rows = if card.wide && columns > 2 {
+    1
+  } else {
+    card.items.len()
+  };
+  3 + item_rows.max(1) as u16 * 2
+}
+
+fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, columns: usize) {
+  let selected = card
+    .items
+    .iter()
+    .any(|(index, _, _)| *index == app.home_selected);
+  let border = if selected {
+    app.theme.border_active
+  } else {
+    app.theme.border
+  };
+  let header_style = Style::new()
+    .fg(app.theme.accent)
+    .add_modifier(Modifier::BOLD);
+  let title = format!(
+    "{}{}",
+    home_icon_for_header(app, card.category),
+    card.category
+  );
+  let header_lines = vec![
+    Line::from(Span::styled(
+      ellipsize(&title, area.width.saturating_sub(2) as usize),
+      header_style,
+    )),
+    Line::from(Span::styled(
+      ellipsize(card.description, area.width.saturating_sub(2) as usize),
+      Style::new().fg(app.theme.muted),
+    )),
+  ];
+  frame.render_widget(
+    Block::bordered()
+      .border_style(Style::new().fg(border))
+      .bg(app.theme.background),
+    area,
+  );
+  let header_area = Rect::new(
+    area.x + 1,
+    area.y + 1,
+    area.width.saturating_sub(2),
+    2.min(area.height.saturating_sub(2)),
+  );
+  frame.render_widget(Paragraph::new(header_lines), header_area);
+  let item_area = Rect::new(
+    area.x + 1,
+    area.y + 3,
+    area.width.saturating_sub(2),
+    area.height.saturating_sub(4),
+  );
+  let item_columns = if card.wide && columns > 2 {
+    card.items.len().max(1)
+  } else {
+    1
+  };
+  for (index, item) in card.items.iter().enumerate() {
+    let row = index / item_columns.max(1);
+    let column = index % item_columns.max(1);
+    let item_width = item_area.width / item_columns.max(1) as u16;
+    let item_rect = Rect::new(
+      item_area.x + column as u16 * item_width,
+      item_area.y + row as u16 * 2,
+      item_width,
+      1,
+    );
+    let is_selected = item.0 == app.home_selected;
+    let style = if is_selected {
+      Style::new()
+        .fg(app.theme.selected_foreground)
+        .bg(app.theme.selected_background)
+        .add_modifier(Modifier::BOLD)
+    } else {
+      Style::new().fg(app.theme.foreground)
+    };
+    let text = format!(
+      "{}{}{}",
+      if is_selected { "> " } else { "  " },
+      home_icon_for_item(item.2),
+      item.1
+    );
+    frame.render_widget(
+      Paragraph::new(Line::from(Span::styled(
+        ellipsize(&text, item_width.saturating_sub(1) as usize),
+        style,
+      ))),
+      item_rect,
+    );
+  }
+}
+
+fn home_category_description(app: &App, label: &str) -> &'static str {
+  let key = match label {
+    value if value == tr(app.lang, "control_center.language_region") => {
+      "control_center.language_region_description"
+    }
+    value if value == tr(app.lang, "control_center.appearance") => {
+      "control_center.appearance_description"
+    }
+    value if value == tr(app.lang, "control_center.applications") => {
+      "control_center.applications_description"
+    }
+    value if value == tr(app.lang, "control_center.hardware") => {
+      "control_center.hardware_description"
+    }
+    value if value == tr(app.lang, "control_center.power_session") => {
+      "control_center.power_session_description"
+    }
+    value if value == tr(app.lang, "control_center.connectivity") => {
+      "control_center.connectivity_description"
+    }
+    value if value == tr(app.lang, "control_center.audio") => "control_center.audio_description",
+    value if value == tr(app.lang, "control_center.system") => "control_center.system_description",
+    _ => "control_center.preferences_description",
+  };
+  tr(app.lang, key)
+}
+
 /// Renders `draw_search` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn draw_search(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
   let value = &app.search_query;
@@ -220,11 +564,7 @@ fn draw_search(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
     Style::new().fg(app.theme.muted).bg(app.theme.background)
   };
   let width = area.width.saturating_sub(4) as usize;
-  let prefix = format!(
-    "{}{}: ",
-    AppConfig::icon(argvus_tui::icons::SEARCH),
-    tr(app.lang, "control_center.search_2c43ee")
-  );
+  let prefix = format!("{}: ", tr(app.lang, "control_center.search_2c43ee"));
   let prefix_width = argvus_tui::text::display_width(&prefix);
   let cursor_width = usize::from(app.search_active && app.search_cursor_visible);
   let value_width = width.saturating_sub(prefix_width + cursor_width);

@@ -138,6 +138,8 @@ pub struct App {
   pub route: Route,
   /// Home selection index, kept separate from the route to support returning.
   pub home_selected: usize,
+  /// First visible visual row in the home grid; rendering keeps it in range.
+  pub home_scroll: usize,
   pub settings: SettingsState,
   pub config: ConfigApp,
   #[cfg(feature = "about")]
@@ -1082,6 +1084,7 @@ impl App {
       theme: theme.clone(),
       route,
       home_selected: 0,
+      home_scroll: 0,
       settings: SettingsState::with_context(page, lang, theme.clone()),
       config: ConfigApp::new(lang, theme.clone()),
       #[cfg(feature = "about")]
@@ -1299,6 +1302,55 @@ impl App {
   pub fn move_home(&mut self, delta: isize) {
     let last = self.home_item_count().saturating_sub(1);
     self.home_selected = (self.home_selected as isize + delta).clamp(0, last as isize) as usize;
+  }
+
+  /// Moves focus to the first item in the adjacent home category.
+  pub fn move_home_category(&mut self, delta: isize) {
+    let categories = self.home_category_items();
+    let Some(current) = categories
+      .iter()
+      .position(|items| items.contains(&self.home_selected))
+    else {
+      return;
+    };
+    let target =
+      (current as isize + delta).clamp(0, categories.len().saturating_sub(1) as isize) as usize;
+    if let Some(item) = categories[target].first() {
+      self.home_selected = *item;
+    }
+  }
+
+  fn home_category_items(&self) -> Vec<Vec<usize>> {
+    let mut categories = Vec::new();
+    let mut current = Vec::new();
+    let mut item_index = 0;
+    for row in self.home_rows() {
+      match row {
+        HomeRow::Header(_) => {
+          if !current.is_empty() {
+            categories.push(std::mem::take(&mut current));
+          }
+        }
+        HomeRow::Item { .. } => {
+          current.push(item_index);
+          item_index += 1;
+        }
+      }
+    }
+    if !current.is_empty() {
+      categories.push(current);
+    }
+    categories
+  }
+
+  /// Returns the responsive number of dashboard columns for a terminal width.
+  pub const fn home_grid_columns(width: u16) -> usize {
+    match width {
+      140..=u16::MAX => 4,
+      100..=139 => 3,
+      70..=99 => 2,
+      _ => 1,
+    }
   }
 
   /// Executes the `open_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1994,6 +2046,25 @@ mod tests {
         Some(HomeRow::Item { .. })
       ));
     }
+  }
+
+  #[test]
+  fn home_grid_columns_follow_responsive_breakpoints() {
+    assert_eq!(App::home_grid_columns(60), 1);
+    assert_eq!(App::home_grid_columns(80), 2);
+    assert_eq!(App::home_grid_columns(120), 3);
+    assert_eq!(App::home_grid_columns(160), 4);
+  }
+
+  #[test]
+  fn home_category_navigation_moves_between_category_items() {
+    let mut app = App::new(InitialRoute::Home);
+    app.move_home_category(1);
+    assert_eq!(app.home_selected, 1);
+    app.move_home(1);
+    assert_eq!(app.home_selected, 2);
+    app.move_home_category(-1);
+    assert_eq!(app.home_selected, 0);
   }
 
   #[cfg(feature = "hardware")]

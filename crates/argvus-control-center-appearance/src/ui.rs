@@ -17,7 +17,8 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  components::{StatusKind, StatusMessage},
+  buttons::{Button, ButtonKind},
+  components::{StatusKind, StatusMessage, draw_loading_splash},
   page::{list, shell, status},
 };
 use crossterm::event::KeyCode;
@@ -58,6 +59,9 @@ pub struct AppearanceApp {
   action: Option<JobHandle<JobData>>,
   reload_requested: bool,
   control_panel_draft: Option<ControlPanelCards>,
+  on_buttons: bool,
+  button_selected: usize,
+  button_from: Option<usize>,
   manager: JobManager,
 }
 impl AppearanceApp {
@@ -83,6 +87,9 @@ impl AppearanceApp {
       action: None,
       reload_requested: false,
       control_panel_draft: None,
+      on_buttons: false,
+      button_selected: 0,
+      button_from: None,
       manager: JobManager::default(),
     };
     app.refresh();
@@ -100,6 +107,11 @@ impl AppearanceApp {
   /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
     if self.job.is_none() {
+      self.status_loading = true;
+      self.status = Some(StatusMessage {
+        kind: StatusKind::Info,
+        text: tr(self.lang, "control_center.loading_appearance").into(),
+      });
       self.job = Some(
         self
           .manager
@@ -180,6 +192,8 @@ impl AppearanceApp {
     }
     self.page = page;
     self.selected = 0;
+    self.on_buttons = false;
+    self.button_from = None;
     if page == AppearancePage::ControlPanel {
       self.control_panel_draft = Some(self.state.control_panel_cards.clone());
     }
@@ -302,19 +316,14 @@ impl AppearanceApp {
         }
       }
       AppearancePage::ControlPanel => {
-        if self.selected == 0 {
-          self.apply_control_panel_changes();
-        } else if let Some(card) = self
-          .control_panel_cards()
-          .get(self.selected.saturating_sub(1))
-          .copied()
-        {
+        if let Some(card) = self.control_panel_cards().get(self.selected).copied() {
           let draft = self
             .control_panel_draft
             .get_or_insert_with(|| self.state.control_panel_cards.clone());
           draft.set(card, !draft.enabled(card));
         }
       }
+      AppearancePage::Effects if self.selected == 0 => self.apply_toggle_effects(),
       AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
       AppearancePage::TaskbarSpaces => self.open_prompt(
         [
@@ -409,6 +418,24 @@ impl AppearanceApp {
     if self.job.is_some() || self.action.is_some() {
       return false;
     }
+    if self.page == AppearancePage::ControlPanel && !self.buttons().is_empty() {
+      if self.on_buttons {
+        match key {
+          KeyCode::Tab => self.toggle_buttons(false),
+          KeyCode::BackTab => self.toggle_buttons(true),
+          KeyCode::Left | KeyCode::Char('h') => self.move_button(-1),
+          KeyCode::Right | KeyCode::Char('l') => self.move_button(1),
+          KeyCode::Enter | KeyCode::Char(' ') => self.activate_button(),
+          KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => {}
+          _ => {}
+        }
+        return false;
+      }
+      if matches!(key, KeyCode::Tab | KeyCode::BackTab) {
+        self.toggle_buttons(key == KeyCode::BackTab);
+        return false;
+      }
+    }
     if matches!(key, KeyCode::Esc | KeyCode::Left) {
       return self.back();
     }
@@ -436,6 +463,7 @@ impl AppearanceApp {
       AppearancePage::Themes
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
+      | AppearancePage::Effects
       | AppearancePage::SpacesBordersPosition
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel => {
@@ -464,7 +492,7 @@ impl AppearanceApp {
         1 => self.go(AppearancePage::Accents),
         2 => self.go(AppearancePage::Wallpapers),
         3 => self.go(AppearancePage::SpacesBordersPosition),
-        4 => self.apply_toggle_effects(),
+        4 => self.go(AppearancePage::Effects),
         5 => self.go(AppearancePage::WidgetTelemetry),
         6 => self.go(AppearancePage::ControlPanel),
         _ => {}
@@ -482,6 +510,7 @@ impl AppearanceApp {
       | AppearancePage::ThemeModes { .. }
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
+      | AppearancePage::Effects
       | AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarUtilityGroup
       | AppearancePage::WidgetTelemetry
@@ -515,11 +544,12 @@ impl AppearanceApp {
       AppearancePage::Home => 7,
       AppearancePage::Themes => THEME_FAMILIES.len(),
       AppearancePage::Accents => ACCENTS.len(),
+      AppearancePage::Effects => 1,
       AppearancePage::ThemeModes { .. }
       | AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarUtilityGroup => 2,
       AppearancePage::WidgetTelemetry => 2 + WidgetTelemetryBlock::ALL.len(),
-      AppearancePage::ControlPanel => self.control_panel_cards().len() + 1,
+      AppearancePage::ControlPanel => self.control_panel_cards().len(),
       AppearancePage::Wallpapers => self.state.wallpapers.len() + 1,
       AppearancePage::SpacesBordersPosition => 6,
       AppearancePage::TaskbarSpaces => 4,
@@ -531,8 +561,6 @@ impl AppearanceApp {
   }
   /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_rows(&self) -> Vec<String> {
-    let enabled = tr(self.lang, "control_center.enabled");
-    let disabled = tr(self.lang, "control_center.disabled");
     vec![
       format!(
         "{} · {} [{}]",
@@ -571,18 +599,9 @@ impl AppearanceApp {
         argvus_tui::icons::STORAGE,
         tr(self.lang, "control_center.spaces_borders_position"),
       ),
-      format!(
-        "[{}] {} · {}",
-        if self.state.effects { "x" } else { " " },
-        icon_label(
-          argvus_tui::icons::SUCCESS,
-          tr(self.lang, "control_center.interface_effects")
-        ),
-        if self.state.effects {
-          enabled
-        } else {
-          disabled
-        }
+      icon_label(
+        argvus_tui::icons::SUCCESS,
+        tr(self.lang, "control_center.effects"),
       ),
       icon_label(
         argvus_tui::icons::WIDGET,
@@ -626,6 +645,9 @@ impl AppearanceApp {
         "{root} › {}",
         tr(self.lang, "control_center.highlight_color")
       ),
+      AppearancePage::Effects => {
+        format!("{root} › {}", tr(self.lang, "control_center.effects"))
+      }
       AppearancePage::SpacesBordersPosition => format!(
         "{root} › {}",
         tr(self.lang, "control_center.spaces_borders_position")
@@ -754,6 +776,19 @@ impl AppearanceApp {
           format!("{label} ({color}){suffix}")
         })
         .collect(),
+      AppearancePage::Effects => vec![format!(
+        "[{}] {} · {}",
+        if self.state.effects { "x" } else { " " },
+        icon_label(
+          argvus_tui::icons::SUCCESS,
+          tr(self.lang, "control_center.animations")
+        ),
+        if self.state.effects {
+          tr(self.lang, "control_center.enabled")
+        } else {
+          tr(self.lang, "control_center.disabled")
+        }
+      )],
       AppearancePage::SpacesBordersPosition => vec![
         icon_label(
           argvus_tui::icons::INFO,
@@ -979,19 +1014,58 @@ impl AppearanceApp {
   }
 
   fn control_panel_rows(&self) -> Vec<String> {
-    let mut rows = vec![format!("{}", tr(self.lang, "control_center.apply_bc01e2"))];
-    rows.extend(self.control_panel_cards().into_iter().map(|card| {
-      format!(
-        "[{}] {}",
-        if self.control_panel_view().enabled(card) {
-          "x"
-        } else {
-          " "
-        },
-        tr(self.lang, card.label_key())
-      )
-    }));
-    rows
+    self
+      .control_panel_cards()
+      .into_iter()
+      .map(|card| {
+        format!(
+          "[{}] {}",
+          if self.control_panel_view().enabled(card) {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, card.label_key())
+        )
+      })
+      .collect()
+  }
+
+  fn buttons(&self) -> Vec<Button> {
+    if self.page != AppearancePage::ControlPanel {
+      return Vec::new();
+    }
+    vec![Button::new(
+      tr(self.lang, "control_center.apply_bc01e2"),
+      ButtonKind::Primary,
+    )]
+  }
+
+  fn toggle_buttons(&mut self, backwards: bool) {
+    if self.on_buttons {
+      self.on_buttons = false;
+      if let Some(index) = self.button_from.take() {
+        self.selected = index;
+      }
+    } else {
+      self.button_from = Some(self.selected);
+      self.button_selected = usize::from(backwards);
+      self.on_buttons = true;
+    }
+  }
+
+  fn move_button(&mut self, delta: isize) {
+    let count = self.buttons().len();
+    if count > 0 {
+      self.button_selected =
+        (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
+    }
+  }
+
+  fn activate_button(&mut self) {
+    if self.button_selected == 0 {
+      self.apply_control_panel_changes();
+    }
   }
   /// Executes the `hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hints(&self) -> String {
@@ -1002,6 +1076,12 @@ impl AppearanceApp {
         (0, 100)
       };
       format!("0-9 edit · Enter confirm · Esc back · {min}..{max}")
+    } else if self.page == AppearancePage::ControlPanel {
+      tr(
+        self.lang,
+        "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
+      )
+      .into()
     } else if matches!(
       self.page,
       AppearancePage::Home | AppearancePage::SpacesBordersPosition
@@ -1032,16 +1112,42 @@ impl AppearanceApp {
       self.draw_prompt(frame, area, goal);
     } else {
       let rows = self.rows();
+      let buttons = self.buttons();
+      let (list_area, button_area) = if buttons.is_empty() {
+        (area, None)
+      } else {
+        let button_height = argvus_tui::buttons::height(&buttons, area.width).min(area.height);
+        let split =
+          Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(area);
+        (split[0], Some(split[1]))
+      };
       list(
         frame,
-        area,
+        list_area,
         &self.theme,
         &rows,
         self.selected.min(rows.len().saturating_sub(1)),
       );
+      if let Some(button_area) = button_area {
+        let focus = if self.on_buttons {
+          self.button_selected
+        } else {
+          usize::MAX
+        };
+        argvus_tui::buttons::draw(frame, button_area, &buttons, focus, &self.theme);
+      }
     }
     if let Some(message) = &self.status {
       status(frame, area, &self.theme, message);
+    }
+    if self.status_loading {
+      draw_loading_splash(
+        frame,
+        frame.area(),
+        &self.theme,
+        &self.breadcrumb(),
+        tr(self.lang, "control_center.loading_appearance"),
+      );
     }
   }
   /// Renders `draw_prompt` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1103,6 +1209,9 @@ mod tests {
       action: None,
       reload_requested: false,
       control_panel_draft: None,
+      on_buttons: false,
+      button_selected: 0,
+      button_from: None,
       manager: JobManager::default(),
     }
   }
@@ -1113,7 +1222,8 @@ mod tests {
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 6);
     assert_eq!(app(AppearancePage::TaskbarUtilityGroup).rows().len(), 2);
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 9);
-    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 15);
+    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 14);
+    assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
   }
   #[test]
   /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1146,5 +1256,16 @@ mod tests {
     a.selected = 1;
     a.handle(KeyCode::Enter);
     assert!(a.prompt_back.is_none());
+  }
+
+  #[test]
+  fn control_panel_apply_is_reached_through_tab_actions() {
+    let mut a = app(AppearancePage::ControlPanel);
+    assert!(!a.rows().iter().any(|row| row.contains("Apply")));
+    a.handle(KeyCode::Tab);
+    assert!(a.on_buttons);
+    assert_eq!(a.button_selected, 0);
+    a.handle(KeyCode::BackTab);
+    assert!(!a.on_buttons);
   }
 }
