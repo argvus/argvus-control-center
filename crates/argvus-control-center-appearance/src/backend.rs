@@ -519,6 +519,18 @@ fn hyprpaper_config_path() -> PathBuf {
   argvus_config_home().join("hypr").join("hyprpaper.conf")
 }
 
+/// Returns the user-owned marker for a wallpaper selected independently of
+/// the active theme.
+fn custom_wallpaper_state_path() -> PathBuf {
+  argvus_config_home().join(".wallpaper-custom")
+}
+
+/// Persists the selected wallpaper for the session service and future logins.
+fn persist_custom_wallpaper(wallpaper: &Path) -> Result<(), String> {
+  let path = custom_wallpaper_state_path();
+  write_atomic(&path, &format!("{}\n", wallpaper.display()))
+}
+
 /// Executes the `active_wallpaper` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn active_wallpaper() -> Option<String> {
   let content = fs::read_to_string(hyprpaper_config_path()).ok()?;
@@ -716,6 +728,7 @@ pub fn set_wallpaper(name: &str) -> Result<(), String> {
     return Err(format!("papel de parede não encontrado: {name}"));
   }
   write_hyprpaper_config(&path)?;
+  persist_custom_wallpaper(&path)?;
   let _ = SystemProcessRunner.run(
     &ProcessRequest::new("systemctl")
       .arg("--user")
@@ -806,6 +819,7 @@ pub fn choose_wallpaper() -> Result<(), String> {
     return Err("o arquivo selecionado não existe".into());
   }
   write_hyprpaper_config(selected)?;
+  persist_custom_wallpaper(selected)?;
   let _ = SystemProcessRunner.run(
     &ProcessRequest::new("systemctl")
       .arg("--user")
