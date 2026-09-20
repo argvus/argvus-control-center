@@ -7,6 +7,8 @@ mod model;
 mod ui;
 
 pub use model::{
-  ACCENTS, AppearancePage, AppearanceState, PromptGoal, THEME_FAMILIES, THEMES, TaskbarPosition,
+  ACCENTS, AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, PromptGoal,
+  THEME_FAMILIES, THEMES, TaskbarPosition, TaskbarUtilityGroupMode, WidgetTelemetryBlock,
+  WidgetTelemetryBlocks,
 };
 pub use ui::AppearanceApp;

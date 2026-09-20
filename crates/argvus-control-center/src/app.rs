@@ -1051,6 +1051,22 @@ impl App {
         "taskbar barra posicao position gaps espacamento margin margem",
         "appearance/taskbar",
       ),
+      #[cfg(feature = "appearance")]
+      (
+        "appearance.taskbar_utility_group",
+        "appearance",
+        "Taskbar utility group",
+        "taskbar barra grupo utilitarios utility group hover expandido automatico",
+        "appearance/taskbar-group",
+      ),
+      #[cfg(feature = "appearance")]
+      (
+        "appearance.widget_telemetry",
+        "appearance",
+        "Widget Telemetry",
+        "widget telemetry system cpu gpu memory storage processes network shortcuts",
+        "appearance/widget-telemetry",
+      ),
     ];
     for (id, category, title, keywords, route) in entries {
       let _ = search_registry.register(SearchEntry {
@@ -1625,6 +1641,14 @@ impl App {
       ("appearance", "accents") => self.open_appearance_page(AppearancePage::Accents),
       #[cfg(feature = "appearance")]
       ("appearance", "taskbar") => self.open_appearance_page(AppearancePage::TaskbarPosition),
+      #[cfg(feature = "appearance")]
+      ("appearance", "taskbar-group") => {
+        self.open_appearance_page(AppearancePage::TaskbarUtilityGroup)
+      }
+      #[cfg(feature = "appearance")]
+      ("appearance", "widget-telemetry") => {
+        self.open_appearance_page(AppearancePage::WidgetTelemetry)
+      }
       #[cfg(feature = "power")]
       ("power", "summary") => {
         self.route = Route::Power;

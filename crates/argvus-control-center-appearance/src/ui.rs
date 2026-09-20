@@ -5,8 +5,9 @@
 use crate::{
   backend,
   model::{
-    ACCENTS, AppearancePage, AppearanceState, PromptGoal, THEME_FAMILIES, TaskbarPosition,
-    accent_label, theme_family_label,
+    ACCENTS, AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, PromptGoal,
+    THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, WidgetTelemetryBlock, accent_label,
+    theme_family_label,
   },
 };
 use argvus_control_center_core::{
@@ -56,6 +57,7 @@ pub struct AppearanceApp {
   job: Option<JobHandle<JobData>>,
   action: Option<JobHandle<JobData>>,
   reload_requested: bool,
+  control_panel_draft: Option<ControlPanelCards>,
   manager: JobManager,
 }
 impl AppearanceApp {
@@ -80,6 +82,7 @@ impl AppearanceApp {
       job: None,
       action: None,
       reload_requested: false,
+      control_panel_draft: None,
       manager: JobManager::default(),
     };
     app.refresh();
@@ -172,8 +175,36 @@ impl AppearanceApp {
   }
   /// Executes the `go` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn go(&mut self, page: AppearancePage) {
+    if self.page == AppearancePage::ControlPanel && page != AppearancePage::ControlPanel {
+      self.control_panel_draft = None;
+    }
     self.page = page;
     self.selected = 0;
+    if page == AppearancePage::ControlPanel {
+      self.control_panel_draft = Some(self.state.control_panel_cards.clone());
+    }
+  }
+
+  /// Applies all pending Control Panel checkbox changes with one panel reload.
+  fn apply_control_panel_changes(&mut self) {
+    let Some(draft) = self.control_panel_draft.clone() else {
+      return;
+    };
+    let changes = ControlPanelCard::ALL
+      .into_iter()
+      .filter_map(|card| {
+        (draft.enabled(card) != self.state.control_panel_cards.enabled(card))
+          .then_some((card, draft.enabled(card)))
+      })
+      .collect::<Vec<_>>();
+    if changes.is_empty() {
+      return;
+    }
+    self.control_panel_draft = None;
+    self.apply(
+      tr(self.lang, "control_center.control_panel_changed").into(),
+      move || backend::set_control_panel_cards(changes),
+    );
   }
   /// Applies the `toggle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle(&mut self) {
@@ -242,6 +273,47 @@ impl AppearanceApp {
           tr(self.lang, "control_center.taskbar_position_changed").into(),
           move || backend::set_waybar_position(position),
         );
+      }
+      AppearancePage::TaskbarUtilityGroup => {
+        let mode = if self.selected == 0 {
+          TaskbarUtilityGroupMode::Auto
+        } else {
+          TaskbarUtilityGroupMode::AlwaysExpanded
+        };
+        self.apply(
+          tr(self.lang, "control_center.taskbar_utility_group_changed").into(),
+          move || backend::set_taskbar_utility_group(mode),
+        );
+      }
+      AppearancePage::WidgetTelemetry => {
+        if self.selected == 0 {
+          self.apply_toggle_telemetry();
+        } else if let Some(block) = self
+          .selected
+          .checked_sub(2)
+          .and_then(|index| WidgetTelemetryBlock::ALL.get(index))
+          .copied()
+        {
+          let enabled = !self.state.widget_telemetry_blocks.enabled(block);
+          self.apply(
+            tr(self.lang, "control_center.widget_telemetry_block_changed").into(),
+            move || backend::set_telemetry_block(block, enabled),
+          );
+        }
+      }
+      AppearancePage::ControlPanel => {
+        if self.selected == 0 {
+          self.apply_control_panel_changes();
+        } else if let Some(card) = self
+          .control_panel_cards()
+          .get(self.selected.saturating_sub(1))
+          .copied()
+        {
+          let draft = self
+            .control_panel_draft
+            .get_or_insert_with(|| self.state.control_panel_cards.clone());
+          draft.set(card, !draft.enabled(card));
+        }
       }
       AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
       AppearancePage::TaskbarSpaces => self.open_prompt(
@@ -364,7 +436,9 @@ impl AppearanceApp {
       AppearancePage::Themes
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
-      | AppearancePage::SpacesBordersPosition => {
+      | AppearancePage::SpacesBordersPosition
+      | AppearancePage::WidgetTelemetry
+      | AppearancePage::ControlPanel => {
         self.go(AppearancePage::Home);
       }
       AppearancePage::ThemeModes { .. } => {
@@ -372,6 +446,7 @@ impl AppearanceApp {
       }
       AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarSpaces
+      | AppearancePage::TaskbarUtilityGroup
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness => {
@@ -390,15 +465,17 @@ impl AppearanceApp {
         2 => self.go(AppearancePage::Wallpapers),
         3 => self.go(AppearancePage::SpacesBordersPosition),
         4 => self.apply_toggle_effects(),
-        5 => self.apply_toggle_telemetry(),
+        5 => self.go(AppearancePage::WidgetTelemetry),
+        6 => self.go(AppearancePage::ControlPanel),
         _ => {}
       },
       AppearancePage::SpacesBordersPosition => match self.selected {
         0 => self.go(AppearancePage::TaskbarPosition),
         1 => self.go(AppearancePage::TaskbarSpaces),
-        2 => self.go(AppearancePage::WindowSpaces),
-        3 => self.go(AppearancePage::GeneralBorders),
-        4 => self.go(AppearancePage::EdgeThickness),
+        2 => self.go(AppearancePage::TaskbarUtilityGroup),
+        3 => self.go(AppearancePage::WindowSpaces),
+        4 => self.go(AppearancePage::GeneralBorders),
+        5 => self.go(AppearancePage::EdgeThickness),
         _ => {}
       },
       AppearancePage::Themes
@@ -406,6 +483,9 @@ impl AppearanceApp {
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
       | AppearancePage::TaskbarPosition
+      | AppearancePage::TaskbarUtilityGroup
+      | AppearancePage::WidgetTelemetry
+      | AppearancePage::ControlPanel
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
@@ -432,12 +512,16 @@ impl AppearanceApp {
   /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
-      AppearancePage::Home => 6,
+      AppearancePage::Home => 7,
       AppearancePage::Themes => THEME_FAMILIES.len(),
       AppearancePage::Accents => ACCENTS.len(),
-      AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
+      AppearancePage::ThemeModes { .. }
+      | AppearancePage::TaskbarPosition
+      | AppearancePage::TaskbarUtilityGroup => 2,
+      AppearancePage::WidgetTelemetry => 2 + WidgetTelemetryBlock::ALL.len(),
+      AppearancePage::ControlPanel => self.control_panel_cards().len() + 1,
       AppearancePage::Wallpapers => self.state.wallpapers.len() + 1,
-      AppearancePage::SpacesBordersPosition => 5,
+      AppearancePage::SpacesBordersPosition => 6,
       AppearancePage::TaskbarSpaces => 4,
       AppearancePage::WindowSpaces => 5,
       AppearancePage::GeneralBorders => 2,
@@ -500,22 +584,13 @@ impl AppearanceApp {
           disabled
         }
       ),
-      format!(
-        "[{}] {} · {}",
-        if self.state.widget_telemetry {
-          "x"
-        } else {
-          " "
-        },
-        icon_label(
-          argvus_tui::icons::DIAGNOSTICS,
-          tr(self.lang, "control_center.widget_telemetry")
-        ),
-        if self.state.widget_telemetry {
-          enabled
-        } else {
-          disabled
-        }
+      icon_label(
+        argvus_tui::icons::WIDGET,
+        tr(self.lang, "control_center.widget_telemetry"),
+      ),
+      icon_label(
+        argvus_tui::icons::WIDGET,
+        tr(self.lang, "control_center.control_panel"),
       ),
     ]
   }
@@ -565,6 +640,18 @@ impl AppearanceApp {
         tr(self.lang, "control_center.spaces_borders_position"),
         tr(self.lang, "control_center.taskbar_spaces")
       ),
+      AppearancePage::TaskbarUtilityGroup => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.spaces_borders_position"),
+        tr(self.lang, "control_center.taskbar_utility_group")
+      ),
+      AppearancePage::WidgetTelemetry => format!(
+        "{root} › {}",
+        tr(self.lang, "control_center.widget_telemetry")
+      ),
+      AppearancePage::ControlPanel => {
+        format!("{root} › {}", tr(self.lang, "control_center.control_panel"))
+      }
       AppearancePage::WindowSpaces => format!(
         "{root} › {} › {}",
         tr(self.lang, "control_center.spaces_borders_position"),
@@ -677,6 +764,10 @@ impl AppearanceApp {
           tr(self.lang, "control_center.taskbar_spaces"),
         ),
         icon_label(
+          argvus_tui::icons::INFO,
+          tr(self.lang, "control_center.taskbar_utility_group"),
+        ),
+        icon_label(
           argvus_tui::icons::STORAGE,
           tr(self.lang, "control_center.window_spaces"),
         ),
@@ -743,6 +834,51 @@ impl AppearanceApp {
           self.state.waybar_bottom
         ),
       ],
+      AppearancePage::TaskbarUtilityGroup => [
+        (
+          "control_center.taskbar_utility_group_auto",
+          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::Auto,
+        ),
+        (
+          "control_center.taskbar_utility_group_always_expanded",
+          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::AlwaysExpanded,
+        ),
+      ]
+      .into_iter()
+      .map(|(key, current)| {
+        let suffix = if current {
+          format!(" · {}", tr(self.lang, "control_center.current"))
+        } else {
+          String::new()
+        };
+        format!("{}{}", tr(self.lang, key), suffix)
+      })
+      .collect(),
+      AppearancePage::WidgetTelemetry => std::iter::once(format!(
+        "[{}] {}",
+        if self.state.widget_telemetry {
+          "x"
+        } else {
+          " "
+        },
+        tr(self.lang, "control_center.enable")
+      ))
+      .chain(std::iter::once(
+        tr(self.lang, "control_center.options").to_string(),
+      ))
+      .chain(WidgetTelemetryBlock::ALL.into_iter().map(|block| {
+        format!(
+          "[{}] {}",
+          if self.state.widget_telemetry_blocks.enabled(block) {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, block.label_key())
+        )
+      }))
+      .collect(),
+      AppearancePage::ControlPanel => self.control_panel_rows(),
       AppearancePage::WindowSpaces => vec![
         format!(
           "{} · {}",
@@ -823,6 +959,39 @@ impl AppearanceApp {
       )],
       AppearancePage::Prompt { .. } => Vec::new(),
     }
+  }
+
+  /// Returns only cards whose required hardware is available on this host.
+  fn control_panel_cards(&self) -> Vec<ControlPanelCard> {
+    ControlPanelCard::ALL
+      .into_iter()
+      .filter(|card| self.state.control_panel_cards.available(*card))
+      .collect()
+  }
+
+  /// Uses the uncommitted draft while editing, leaving persisted state intact
+  /// until the user activates the Apply row.
+  fn control_panel_view(&self) -> &ControlPanelCards {
+    self
+      .control_panel_draft
+      .as_ref()
+      .unwrap_or(&self.state.control_panel_cards)
+  }
+
+  fn control_panel_rows(&self) -> Vec<String> {
+    let mut rows = vec![format!("{}", tr(self.lang, "control_center.apply_bc01e2"))];
+    rows.extend(self.control_panel_cards().into_iter().map(|card| {
+      format!(
+        "[{}] {}",
+        if self.control_panel_view().enabled(card) {
+          "x"
+        } else {
+          " "
+        },
+        tr(self.lang, card.label_key())
+      )
+    }));
+    rows
   }
   /// Executes the `hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hints(&self) -> String {
@@ -933,14 +1102,18 @@ mod tests {
       job: None,
       action: None,
       reload_requested: false,
+      control_panel_draft: None,
       manager: JobManager::default(),
     }
   }
   #[test]
   /// Executes the `home_has_categories_and_spacing_is_nested` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_has_categories_and_spacing_is_nested() {
-    assert_eq!(app(AppearancePage::Home).rows().len(), 6);
-    assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
+    assert_eq!(app(AppearancePage::Home).rows().len(), 7);
+    assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 6);
+    assert_eq!(app(AppearancePage::TaskbarUtilityGroup).rows().len(), 2);
+    assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 9);
+    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 15);
   }
   #[test]
   /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

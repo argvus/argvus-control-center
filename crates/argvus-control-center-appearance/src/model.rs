@@ -12,6 +12,9 @@ pub enum AppearancePage {
   SpacesBordersPosition,
   TaskbarPosition,
   TaskbarSpaces,
+  TaskbarUtilityGroup,
+  WidgetTelemetry,
+  ControlPanel,
   WindowSpaces,
   GeneralBorders,
   EdgeThickness,
@@ -23,6 +26,259 @@ pub enum AppearancePage {
 pub enum TaskbarPosition {
   Top,
   Bottom,
+}
+
+/// Identifies a separately configurable Widget Telemetry section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WidgetTelemetryBlock {
+  System,
+  CpuGpu,
+  Memory,
+  Storage,
+  Processes,
+  Network,
+  Shortcuts,
+}
+
+impl WidgetTelemetryBlock {
+  pub const ALL: [Self; 7] = [
+    Self::System,
+    Self::CpuGpu,
+    Self::Memory,
+    Self::Storage,
+    Self::Processes,
+    Self::Network,
+    Self::Shortcuts,
+  ];
+
+  /// Returns the stable command-line identifier owned by the widget package.
+  pub fn key(self) -> &'static str {
+    match self {
+      Self::System => "system",
+      Self::CpuGpu => "cpu_gpu",
+      Self::Memory => "memory",
+      Self::Storage => "storage",
+      Self::Processes => "processes",
+      Self::Network => "network",
+      Self::Shortcuts => "keys",
+    }
+  }
+
+  /// Returns the localization key for the Control Center row.
+  pub fn label_key(self) -> &'static str {
+    match self {
+      Self::System => "control_center.widget_telemetry_system",
+      Self::CpuGpu => "control_center.widget_telemetry_cpu_gpu",
+      Self::Memory => "control_center.widget_telemetry_memory",
+      Self::Storage => "control_center.widget_telemetry_storage",
+      Self::Processes => "control_center.widget_telemetry_processes",
+      Self::Network => "control_center.widget_telemetry_network",
+      Self::Shortcuts => "control_center.widget_telemetry_shortcuts",
+    }
+  }
+}
+
+/// Stores the sparse Widget Telemetry preferences represented by the UI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WidgetTelemetryBlocks {
+  pub system: bool,
+  pub cpu_gpu: bool,
+  pub memory: bool,
+  pub storage: bool,
+  pub processes: bool,
+  pub network: bool,
+  pub shortcuts: bool,
+}
+
+impl Default for WidgetTelemetryBlocks {
+  fn default() -> Self {
+    Self {
+      system: true,
+      cpu_gpu: true,
+      memory: true,
+      storage: true,
+      processes: true,
+      network: true,
+      shortcuts: true,
+    }
+  }
+}
+
+impl WidgetTelemetryBlocks {
+  pub fn enabled(&self, block: WidgetTelemetryBlock) -> bool {
+    match block {
+      WidgetTelemetryBlock::System => self.system,
+      WidgetTelemetryBlock::CpuGpu => self.cpu_gpu,
+      WidgetTelemetryBlock::Memory => self.memory,
+      WidgetTelemetryBlock::Storage => self.storage,
+      WidgetTelemetryBlock::Processes => self.processes,
+      WidgetTelemetryBlock::Network => self.network,
+      WidgetTelemetryBlock::Shortcuts => self.shortcuts,
+    }
+  }
+
+  pub fn set(&mut self, block: WidgetTelemetryBlock, enabled: bool) {
+    match block {
+      WidgetTelemetryBlock::System => self.system = enabled,
+      WidgetTelemetryBlock::CpuGpu => self.cpu_gpu = enabled,
+      WidgetTelemetryBlock::Memory => self.memory = enabled,
+      WidgetTelemetryBlock::Storage => self.storage = enabled,
+      WidgetTelemetryBlock::Processes => self.processes = enabled,
+      WidgetTelemetryBlock::Network => self.network = enabled,
+      WidgetTelemetryBlock::Shortcuts => self.shortcuts = enabled,
+    }
+  }
+}
+
+/// Identifies a configurable Control Panel card using its stable helper ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlPanelCard {
+  User,
+  Notifications,
+  Calendar,
+  Weather,
+  Volume,
+  Brightness,
+  Network,
+  Bluetooth,
+  System,
+  Appearance,
+  Session,
+  Display,
+  SpacesBordersPosition,
+  Power,
+}
+
+impl ControlPanelCard {
+  pub const ALL: [Self; 14] = [
+    Self::User,
+    Self::Notifications,
+    Self::Calendar,
+    Self::Weather,
+    Self::Volume,
+    Self::Brightness,
+    Self::Network,
+    Self::Bluetooth,
+    Self::System,
+    Self::Appearance,
+    Self::Session,
+    Self::Display,
+    Self::SpacesBordersPosition,
+    Self::Power,
+  ];
+
+  /// Returns the machine-readable ID owned by the Control Panel helper.
+  pub fn key(self) -> &'static str {
+    match self {
+      Self::User => "user",
+      Self::Notifications => "notifications",
+      Self::Calendar => "calendar",
+      Self::Weather => "weather",
+      Self::Volume => "volume",
+      Self::Brightness => "brightness",
+      Self::Network => "network",
+      Self::Bluetooth => "bluetooth",
+      Self::System => "system",
+      Self::Appearance => "appearance",
+      Self::Session => "session",
+      Self::Display => "display",
+      Self::SpacesBordersPosition => "spaces-borders-position",
+      Self::Power => "power",
+    }
+  }
+
+  /// Returns the shared catalog key for the Control Center row.
+  pub fn label_key(self) -> &'static str {
+    match self {
+      Self::User => "control_center.control_panel_card_user",
+      Self::Notifications => "control_center.control_panel_card_notifications",
+      Self::Calendar => "control_center.control_panel_card_calendar",
+      Self::Weather => "control_center.control_panel_card_weather",
+      Self::Volume => "control_center.control_panel_card_volume",
+      Self::Brightness => "control_center.control_panel_card_brightness",
+      Self::Network => "control_center.control_panel_card_network",
+      Self::Bluetooth => "control_center.control_panel_card_bluetooth",
+      Self::System => "control_center.control_panel_card_system",
+      Self::Appearance => "control_center.control_panel_card_appearance",
+      Self::Session => "control_center.control_panel_card_session",
+      Self::Display => "control_center.control_panel_card_display",
+      Self::SpacesBordersPosition => "control_center.control_panel_card_spaces_borders_position",
+      Self::Power => "control_center.control_panel_card_power",
+    }
+  }
+}
+
+/// Stores effective Control Panel visibility while its package owns ordering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlPanelCards {
+  enabled: [bool; 14],
+  available: [bool; 14],
+}
+
+impl Default for ControlPanelCards {
+  fn default() -> Self {
+    Self {
+      enabled: [true; 14],
+      available: [true; 14],
+    }
+  }
+}
+
+impl ControlPanelCards {
+  pub fn enabled(&self, card: ControlPanelCard) -> bool {
+    self.enabled[ControlPanelCard::ALL
+      .iter()
+      .position(|candidate| *candidate == card)
+      .expect("all Control Panel cards have a stable index")]
+  }
+
+  pub fn set(&mut self, card: ControlPanelCard, enabled: bool) {
+    let index = ControlPanelCard::ALL
+      .iter()
+      .position(|candidate| *candidate == card)
+      .expect("all Control Panel cards have a stable index");
+    self.enabled[index] = enabled;
+  }
+
+  /// Reports whether the card's required hardware is present on this host.
+  pub fn available(&self, card: ControlPanelCard) -> bool {
+    self.available[ControlPanelCard::ALL
+      .iter()
+      .position(|candidate| *candidate == card)
+      .expect("all Control Panel cards have a stable index")]
+  }
+
+  /// Updates hardware availability while preserving the user's enabled state.
+  pub fn set_available(&mut self, card: ControlPanelCard, available: bool) {
+    let index = ControlPanelCard::ALL
+      .iter()
+      .position(|candidate| *candidate == card)
+      .expect("all Control Panel cards have a stable index");
+    self.available[index] = available;
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Defines the presentation mode for the taskbar utility group.
+pub enum TaskbarUtilityGroupMode {
+  Auto,
+  AlwaysExpanded,
+}
+impl TaskbarUtilityGroupMode {
+  pub fn value(self) -> &'static str {
+    match self {
+      Self::Auto => "auto",
+      Self::AlwaysExpanded => "always-expanded",
+    }
+  }
+
+  pub fn from_value(value: &str) -> Self {
+    if value.trim() == "always-expanded" {
+      Self::AlwaysExpanded
+    } else {
+      Self::Auto
+    }
+  }
 }
 impl TaskbarPosition {
   /// Executes the `value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -152,7 +408,10 @@ pub struct AppearanceState {
   pub wallpaper_active: Option<String>,
   pub effects: bool,
   pub widget_telemetry: bool,
+  pub widget_telemetry_blocks: WidgetTelemetryBlocks,
+  pub control_panel_cards: ControlPanelCards,
   pub waybar_pos: TaskbarPosition,
+  pub taskbar_utility_group: TaskbarUtilityGroupMode,
   pub waybar_top: i32,
   pub waybar_left: i32,
   pub waybar_right: i32,
@@ -176,7 +435,10 @@ impl Default for AppearanceState {
       wallpaper_active: None,
       effects: true,
       widget_telemetry: true,
+      widget_telemetry_blocks: WidgetTelemetryBlocks::default(),
+      control_panel_cards: ControlPanelCards::default(),
       waybar_pos: TaskbarPosition::Top,
+      taskbar_utility_group: TaskbarUtilityGroupMode::Auto,
       waybar_top: 0,
       waybar_left: 0,
       waybar_right: 0,
@@ -233,6 +495,21 @@ mod tests {
       TaskbarPosition::Bottom
     );
     assert_eq!(TaskbarPosition::Top.value(), "top");
+    assert_eq!(
+      TaskbarUtilityGroupMode::from_value("always-expanded"),
+      TaskbarUtilityGroupMode::AlwaysExpanded
+    );
+    assert_eq!(
+      TaskbarUtilityGroupMode::from_value("unknown"),
+      TaskbarUtilityGroupMode::Auto
+    );
+    assert_eq!(WidgetTelemetryBlock::CpuGpu.key(), "cpu_gpu");
+    assert!(WidgetTelemetryBlocks::default().enabled(WidgetTelemetryBlock::Network));
+    assert_eq!(
+      ControlPanelCard::SpacesBordersPosition.key(),
+      "spaces-borders-position"
+    );
+    assert!(ControlPanelCards::default().enabled(ControlPanelCard::Power));
   }
   #[test]
   /// Executes the `float_theme_detection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

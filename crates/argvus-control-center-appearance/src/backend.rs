@@ -2,7 +2,10 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
-use crate::model::{AppearanceState, TaskbarPosition};
+use crate::model::{
+  AppearanceState, ControlPanelCard, ControlPanelCards, TaskbarPosition, TaskbarUtilityGroupMode,
+  WidgetTelemetryBlock, WidgetTelemetryBlocks,
+};
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
   process::{ProcessRequest, ProcessRunner, SystemProcessRunner},
@@ -26,12 +29,26 @@ const DEFAULT_ACCENT: &str = "#3590bd";
 fn script(name: &str) -> PathBuf {
   let project = match name {
     "effects-toggle.sh" => "session",
-    "theme-switch.sh" | "accent-switch.sh" | "hypr-wallpaper-pick.sh" => "appearance",
+    "theme-switch.sh"
+    | "accent-switch.sh"
+    | "hypr-wallpaper-pick.sh"
+    | "taskbar-right-2-mode.sh"
+    | "brightness-switch.sh" => "appearance",
+    "bluetooth-control.sh" => "network",
     "hyprlock-theme.sh" => "lock",
     "spaces-switch.sh" | "borders-switch.sh" => "hyprland",
     _ => "session",
   };
   system_config_root().join(project).join("sh").join(name)
+}
+
+/// Returns the Control Panel-owned preference helper without duplicating its
+/// persistence rules in the Control Center.
+fn control_panel_cards_script() -> PathBuf {
+  system_config_root()
+    .join("control-panel")
+    .join("sh")
+    .join("cards-config.sh")
 }
 
 /// Executes the `run_script` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -373,6 +390,115 @@ fn telemetry_state() -> bool {
   false
 }
 
+/// Reads the widget-owned machine format while retaining enabled defaults when
+/// an older package does not yet expose block preferences.
+fn telemetry_blocks() -> WidgetTelemetryBlocks {
+  let mut blocks = WidgetTelemetryBlocks::default();
+  let Ok(output) = SystemProcessRunner.run(
+    &ProcessRequest::new("env")
+      .arg("ARGVUS_MACHINE_OUTPUT=1")
+      .arg("argvus-widget-telemetry-toggle")
+      .arg("blocks")
+      .arg("status"),
+  ) else {
+    return blocks;
+  };
+  if output.status.is_some_and(|status| status != 0) {
+    return blocks;
+  }
+  for line in terminal_text(&String::from_utf8_lossy(&output.stdout)).lines() {
+    let Some((key, value)) = line.split_once('=') else {
+      continue;
+    };
+    let block = match key.trim() {
+      "system" => WidgetTelemetryBlock::System,
+      "cpu_gpu" => WidgetTelemetryBlock::CpuGpu,
+      "memory" => WidgetTelemetryBlock::Memory,
+      "storage" => WidgetTelemetryBlock::Storage,
+      "processes" => WidgetTelemetryBlock::Processes,
+      "network" => WidgetTelemetryBlock::Network,
+      "keys" => WidgetTelemetryBlock::Shortcuts,
+      _ => continue,
+    };
+    match value.trim() {
+      "enabled" => blocks.set(block, true),
+      "disabled" => blocks.set(block, false),
+      _ => {}
+    }
+  }
+  blocks
+}
+
+/// Decodes the Control Panel helper status and keeps package defaults when an
+/// older installation does not provide the helper or returns malformed data.
+fn control_panel_cards() -> ControlPanelCards {
+  let mut cards = run_script_output(&control_panel_cards_script(), &["status"])
+    .as_deref()
+    .map(parse_control_panel_cards)
+    .unwrap_or_default();
+  // Keep the Control Center list identical to the cards' own runtime checks.
+  // These probes are intentionally independent: a disabled card remains disabled
+  // when hardware is temporarily disconnected and becomes available again later.
+  // Hardware probes can invoke external tools (including short timeouts), so
+  // run them concurrently on the worker thread instead of serializing them.
+  let (bluetooth_available, brightness_available) = std::thread::scope(|scope| {
+    let bluetooth = scope.spawn(|| {
+      run_script_output(&script("bluetooth-control.sh"), &["status"])
+        .is_some_and(|status| status.lines().any(|line| line.trim() == "available=yes"))
+    });
+    let brightness = scope.spawn(|| {
+      run_script_output(&script("brightness-switch.sh"), &["--status"])
+        .is_some_and(|backend| matches!(backend.trim(), "brightnessctl" | "ddcutil"))
+    });
+    (
+      bluetooth.join().unwrap_or(false),
+      brightness.join().unwrap_or(false),
+    )
+  });
+  cards.set_available(ControlPanelCard::Bluetooth, bluetooth_available);
+  cards.set_available(ControlPanelCard::Brightness, brightness_available);
+  cards
+}
+
+/// Parses helper JSON independently from process execution for deterministic
+/// coverage of compatibility and malformed-status fallbacks.
+fn parse_control_panel_cards(output: &str) -> ControlPanelCards {
+  let mut cards = ControlPanelCards::default();
+  let Ok(value) = serde_json::from_str::<Value>(output) else {
+    return cards;
+  };
+  let Some(entries) = value.get("cards").and_then(Value::as_array) else {
+    return cards;
+  };
+  for entry in entries {
+    let Some(key) = entry.get("id").and_then(Value::as_str) else {
+      continue;
+    };
+    let Some(enabled) = entry.get("enabled").and_then(Value::as_bool) else {
+      continue;
+    };
+    let card = match key {
+      "user" => ControlPanelCard::User,
+      "notifications" => ControlPanelCard::Notifications,
+      "calendar" => ControlPanelCard::Calendar,
+      "weather" => ControlPanelCard::Weather,
+      "volume" => ControlPanelCard::Volume,
+      "brightness" => ControlPanelCard::Brightness,
+      "network" => ControlPanelCard::Network,
+      "bluetooth" => ControlPanelCard::Bluetooth,
+      "system" => ControlPanelCard::System,
+      "appearance" => ControlPanelCard::Appearance,
+      "session" => ControlPanelCard::Session,
+      "display" => ControlPanelCard::Display,
+      "spaces-borders-position" => ControlPanelCard::SpacesBordersPosition,
+      "power" => ControlPanelCard::Power,
+      _ => continue,
+    };
+    cards.set(card, enabled);
+  }
+  cards
+}
+
 /// Executes the `list_wallpapers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list_wallpapers() -> Vec<String> {
   let mut names = fs::read_dir(WALLPAPERS_DIR)
@@ -501,6 +627,11 @@ pub fn load_state() -> AppearanceState {
   state.wallpaper_active = active_wallpaper();
   state.effects = effects_state();
   state.widget_telemetry = telemetry_state();
+  state.widget_telemetry_blocks = telemetry_blocks();
+  state.control_panel_cards = control_panel_cards();
+  if let Some(output) = run_script_output(&script("taskbar-right-2-mode.sh"), &["status"]) {
+    state.taskbar_utility_group = TaskbarUtilityGroupMode::from_value(output.trim());
+  }
   if let Some(output) = run_script_output(&script("spaces-switch.sh"), &["--status"]) {
     parse_spacing_status(&output, &mut state);
   }
@@ -546,6 +677,28 @@ pub fn set_telemetry(enabled: bool) -> Result<(), String> {
         .join("widget-telemetry-state");
       write_atomic(&path, if enabled { "enabled\n" } else { "disabled\n" })
     }
+  }
+}
+
+/// Persists one Widget Telemetry block and lets the widget package regenerate
+/// its managed Waybar file before restarting the service.
+pub fn set_telemetry_block(block: WidgetTelemetryBlock, enabled: bool) -> Result<(), String> {
+  let output = SystemProcessRunner.run(
+    &ProcessRequest::new("argvus-widget-telemetry-toggle")
+      .arg("blocks")
+      .arg("set")
+      .arg(block.key())
+      .arg(if enabled { "enabled" } else { "disabled" }),
+  );
+  match output {
+    Ok(output) if output.status.is_none_or(|status| status != 0) => Err(format!(
+      "argvus-widget-telemetry-toggle blocks falhou: {}",
+      terminal_text(&String::from_utf8_lossy(&output.stderr)).trim()
+    )),
+    Ok(_) => Ok(()),
+    Err(error) => Err(format!(
+      "argvus-widget-telemetry-toggle blocks falhou: {error}"
+    )),
   }
 }
 
@@ -684,18 +837,57 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
   run_script(&script("spaces-switch.sh"), &["--apply"])
 }
 
-/// Applies the `set_border` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn set_border(key: &str, value: &str) -> Result<(), String> {
-  if key.is_empty() || value.is_empty() {
-    return Err("invalid border key/value".into());
-  }
-  run_script(&script("borders-switch.sh"), &["--set-persist", key, value])?;
-  run_script(&script("borders-switch.sh"), &["--apply"])?;
+/// Persists the taskbar utility-group mode, regenerates its managed Waybar
+/// configuration, and restarts the session components that consume it.
+pub fn set_taskbar_utility_group(mode: TaskbarUtilityGroupMode) -> Result<(), String> {
+  run_script(&script("taskbar-right-2-mode.sh"), &["set", mode.value()])?;
+  reload_session()
+}
 
-  // `borders-switch.sh --apply` updates the current Hyprland process and
-  // generated styles. Session reload is still required for the managed
-  // components to consume the persisted border contract, and the Control
-  // Center is not one of the components restarted by argvus-sessionctl.
+/// Persists a complete batch of Control Panel preferences and performs one
+/// targeted restart after all writes have succeeded.
+pub fn set_control_panel_cards(changes: Vec<(ControlPanelCard, bool)>) -> Result<(), String> {
+  for &(card, enabled) in &changes {
+    run_script(
+      &control_panel_cards_script(),
+      &[
+        "set",
+        card.key(),
+        if enabled { "enabled" } else { "disabled" },
+      ],
+    )?;
+  }
+  if changes.is_empty() {
+    return Ok(());
+  }
+  reload_control_panel()
+}
+
+/// Restarts only the Control Panel consumer instead of reapplying every
+/// mutable session component. This keeps rapid card toggles responsive while
+/// preserving the required immediate panel reload.
+fn reload_control_panel() -> Result<(), String> {
+  let output = SystemProcessRunner
+    .run(
+      &ProcessRequest::new("argvus-sessionctl")
+        .arg("restart")
+        .arg("control-panel"),
+    )
+    .map_err(|error| error.to_string())?;
+  if output.status.is_none_or(|status| status != 0) {
+    let stderr = terminal_text(&String::from_utf8_lossy(&output.stderr))
+      .trim()
+      .to_string();
+    return Err(if stderr.is_empty() {
+      "argvus-sessionctl restart control-panel falhou".into()
+    } else {
+      stderr
+    });
+  }
+  Ok(())
+}
+
+fn reload_session() -> Result<(), String> {
   let output = SystemProcessRunner
     .run(&ProcessRequest::new("argvus-sessionctl").arg("reload"))
     .map_err(|error| error.to_string())?;
@@ -710,6 +902,21 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
     });
   }
   Ok(())
+}
+
+/// Applies the `set_border` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+pub fn set_border(key: &str, value: &str) -> Result<(), String> {
+  if key.is_empty() || value.is_empty() {
+    return Err("invalid border key/value".into());
+  }
+  run_script(&script("borders-switch.sh"), &["--set-persist", key, value])?;
+  run_script(&script("borders-switch.sh"), &["--apply"])?;
+
+  // `borders-switch.sh --apply` updates the current Hyprland process and
+  // generated styles. Session reload is still required for the managed
+  // components to consume the persisted border contract, and the Control
+  // Center is not one of the components restarted by argvus-sessionctl.
+  reload_session()
 }
 
 #[cfg(test)]
@@ -741,6 +948,21 @@ mod tests {
     assert_eq!(state.gaps_out_left, 10);
     assert!(state.rounded);
     assert_eq!(state.rounding, 4);
+  }
+
+  #[test]
+  fn control_panel_status_keeps_defaults_and_applies_known_cards() {
+    let cards = parse_control_panel_cards(
+      r#"{"cards":[
+        {"id":"weather","enabled":false},
+        {"id":"future-card","enabled":false},
+        {"id":"power","enabled":true}
+      ]}"#,
+    );
+    assert!(!cards.enabled(ControlPanelCard::Weather));
+    assert!(cards.enabled(ControlPanelCard::Power));
+    assert!(cards.enabled(ControlPanelCard::User));
+    assert!(parse_control_panel_cards("invalid").enabled(ControlPanelCard::User));
   }
 
   #[test]
