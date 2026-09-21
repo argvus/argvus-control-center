@@ -18,7 +18,12 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-pub use crate::profile::{export as export_theme_profile, import as import_theme_profile};
+pub use crate::profile::{
+  active_custom_theme, apply_custom_theme, custom_themes, delete_custom_theme,
+  export_named as export_theme_profile, import_archive as import_theme_profile,
+  inspect_archive as inspect_theme_profile, list_import_archives,
+  preview_export_path as preview_theme_profile_path,
+};
 
 /// Defines the constant `WALLPAPERS_DIR`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const WALLPAPERS_DIR: &str = "/usr/share/backgrounds/argvus";
@@ -661,6 +666,8 @@ pub fn load_state() -> AppearanceState {
   state.widget_telemetry = telemetry_state();
   state.widget_telemetry_blocks = telemetry_blocks();
   state.control_panel_cards = control_panel_cards();
+  state.custom_themes = custom_themes();
+  state.active_custom_theme = active_custom_theme();
   if let Some(output) = run_script_output(&script("taskbar-right-2-mode.sh"), &["status"]) {
     state.taskbar_utility_group = TaskbarUtilityGroupMode::from_value(output.trim());
   }
@@ -675,7 +682,9 @@ pub fn load_state() -> AppearanceState {
 
 /// Applies the `set_theme` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_theme(name: &str) -> Result<(), String> {
-  run_script(&script("theme-switch.sh"), &[name])
+  run_script(&script("theme-switch.sh"), &[name])?;
+  let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
+  Ok(())
 }
 
 /// Applies the `set_accent` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

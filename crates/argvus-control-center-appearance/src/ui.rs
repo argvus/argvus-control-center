@@ -5,9 +5,9 @@
 use crate::{
   backend,
   model::{
-    AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, HexColor, PromptGoal,
-    THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, WidgetTelemetryBlock, accent_label,
-    normalize_hex_color, theme_family_label,
+    AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme, HexColor,
+    PromptGoal, THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, WidgetTelemetryBlock,
+    accent_label, normalize_hex_color, theme_family_label,
   },
 };
 use argvus_control_center_core::{
@@ -28,13 +28,19 @@ use ratatui::{
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
+  widgets::{Block, Borders},
 };
 
 #[derive(Debug, Clone)]
 /// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
-  Loaded(AppearanceState),
+  Loaded(Box<AppearanceState>),
   Action(String),
+  ImportReady {
+    path: std::path::PathBuf,
+    name: String,
+    duplicate: bool,
+  },
 }
 
 /// Executes the `icon_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -62,6 +68,10 @@ pub struct AppearanceApp {
   on_buttons: bool,
   button_selected: usize,
   button_from: Option<usize>,
+  delete_theme: Option<CustomTheme>,
+  import_archives: Vec<std::path::PathBuf>,
+  pending_import: Option<std::path::PathBuf>,
+  pending_import_name: Option<String>,
   manager: JobManager,
 }
 impl AppearanceApp {
@@ -103,6 +113,10 @@ impl AppearanceApp {
       on_buttons: false,
       button_selected: 0,
       button_from: None,
+      delete_theme: None,
+      import_archives: Vec::new(),
+      pending_import: None,
+      pending_import_name: None,
       manager: JobManager::default(),
     };
     app.refresh();
@@ -128,7 +142,7 @@ impl AppearanceApp {
       self.job = Some(
         self
           .manager
-          .spawn(|_| Ok(JobData::Loaded(backend::load_state()))),
+          .spawn(|_| Ok(JobData::Loaded(Box::new(backend::load_state())))),
       );
     }
   }
@@ -141,7 +155,7 @@ impl AppearanceApp {
       self.job = None;
       match result {
         Ok(JobData::Loaded(state)) => {
-          self.state = state;
+          self.state = *state;
           self.loaded = true;
           let was_loading = self.status_loading;
           self.status_loading = false;
@@ -157,6 +171,7 @@ impl AppearanceApp {
           });
         }
         Ok(JobData::Action(_)) => {}
+        Ok(JobData::ImportReady { .. }) => {}
       }
       changed = true;
     }
@@ -175,6 +190,21 @@ impl AppearanceApp {
             text: text.clone(),
           })
         }
+        Ok(JobData::ImportReady {
+          path,
+          name,
+          duplicate,
+        }) => {
+          self.pending_import = Some(path);
+          self.pending_import_name = Some(name);
+          if duplicate {
+            self.status = None;
+            self.go(AppearancePage::ThemeImportConfirm);
+          } else {
+            self.start_pending_import();
+            self.go(AppearancePage::Themes);
+          }
+        }
         Err(error) => {
           self.status = Some(StatusMessage {
             kind: StatusKind::Error,
@@ -187,6 +217,16 @@ impl AppearanceApp {
     }
     changed
   }
+
+  fn start_pending_import(&mut self) {
+    let Some(path) = self.pending_import.take() else {
+      return;
+    };
+    self.apply(
+      tr(self.lang, "control_center.theme_profile_imported").into(),
+      move || backend::import_theme_profile(&path).map(|_| ()),
+    );
+  }
   /// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply(&mut self, message: String, task: impl FnOnce() -> Result<(), String> + Send + 'static) {
     if self.action.is_some() {
@@ -196,6 +236,17 @@ impl AppearanceApp {
     self.action = Some(self.manager.spawn(move |_| {
       task()?;
       Ok(JobData::Action(message))
+    }));
+  }
+
+  fn apply_result(&mut self, task: impl FnOnce() -> Result<String, String> + Send + 'static) {
+    if self.action.is_some() {
+      return;
+    }
+    self.reload_requested = true;
+    self.action = Some(self.manager.spawn(move |_| {
+      let text = task()?;
+      Ok(JobData::Action(text))
     }));
   }
   /// Executes the `go` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -258,11 +309,65 @@ impl AppearanceApp {
           family: self.selected,
         })
       }
-      AppearancePage::Themes if self.selected == THEME_FAMILIES.len() => {
+      AppearancePage::Themes
+        if self.selected == THEME_FAMILIES.len() + self.state.custom_themes.len() =>
+      {
         self.open_prompt(PromptGoal::ExportProfile)
       }
-      AppearancePage::Themes if self.selected == THEME_FAMILIES.len() + 1 => {
-        self.open_prompt(PromptGoal::ImportProfile)
+      AppearancePage::Themes
+        if self.selected == THEME_FAMILIES.len() + self.state.custom_themes.len() + 1 =>
+      {
+        self.import_archives = backend::list_import_archives();
+        self.go(AppearancePage::ThemeImport)
+      }
+      AppearancePage::Themes => {
+        let custom_index = self.selected.saturating_sub(THEME_FAMILIES.len());
+        let Some(custom) = self.state.custom_themes.get(custom_index).cloned() else {
+          return;
+        };
+        self.apply(
+          tr(self.lang, "control_center.theme_profile_applied").into(),
+          move || backend::apply_custom_theme(&custom),
+        );
+      }
+      AppearancePage::ThemeImport => {
+        if let Some(path) = self.import_archives.get(self.selected).cloned() {
+          self.status = Some(StatusMessage {
+            kind: StatusKind::Info,
+            text: tr(self.lang, "control_center.theme_profile_importing").into(),
+          });
+          self.action = Some(self.manager.spawn(move |_| {
+            let (name, duplicate) = backend::inspect_theme_profile(&path)?;
+            Ok(JobData::ImportReady {
+              path,
+              name,
+              duplicate,
+            })
+          }));
+        }
+      }
+      AppearancePage::ThemeImportConfirm => {
+        if self.selected == 0 {
+          self.start_pending_import();
+          self.go(AppearancePage::Themes);
+        } else {
+          self.pending_import = None;
+          self.pending_import_name = None;
+          self.go(AppearancePage::Themes);
+        }
+      }
+      AppearancePage::ThemeDeleteConfirm => {
+        if self.selected == 0 {
+          if let Some(theme) = self.delete_theme.clone() {
+            self.apply(
+              tr(self.lang, "control_center.theme_profile_deleted").into(),
+              move || backend::delete_custom_theme(&theme),
+            );
+          }
+          self.go(AppearancePage::Themes);
+        } else {
+          self.go(AppearancePage::Themes);
+        }
       }
       AppearancePage::ThemeModes { family } => {
         if let Some((base, _)) = THEME_FAMILIES.get(family) {
@@ -413,32 +518,19 @@ impl AppearanceApp {
         let AppearancePage::Prompt { goal } = self.page else {
           return false;
         };
-        let mut value = self.prompt_buffer.trim().to_string();
-        if matches!(goal, PromptGoal::ExportProfile | PromptGoal::ImportProfile) {
+        let value = self.prompt_buffer.trim().to_string();
+        if matches!(goal, PromptGoal::ExportProfile) {
           let back = self.prompt_back.take().unwrap_or(AppearancePage::Themes);
-          if matches!(goal, PromptGoal::ExportProfile) && !value.ends_with(".tar.gz") {
-            value.push_str(".tar.gz");
-          }
-          if value.is_empty()
-            || (matches!(goal, PromptGoal::ImportProfile) && !value.ends_with(".tar.gz"))
-          {
+          if value.is_empty() {
             self.prompt_error =
-              Some(tr(self.lang, "control_center.theme_profile_invalid_archive").into());
+              Some(tr(self.lang, "control_center.theme_profile_invalid_name").into());
             self.prompt_back = Some(back);
             return false;
           }
-          let path = std::path::PathBuf::from(value);
-          let message = if matches!(goal, PromptGoal::ExportProfile) {
-            tr(self.lang, "control_center.theme_profile_exported")
-          } else {
-            tr(self.lang, "control_center.theme_profile_imported")
-          };
-          self.apply(message.into(), move || {
-            if matches!(goal, PromptGoal::ExportProfile) {
-              backend::export_theme_profile(&path)
-            } else {
-              backend::import_theme_profile(&path).map(|_| ())
-            }
+          let message = tr(self.lang, "control_center.theme_profile_exported").to_string();
+          self.apply_result(move || {
+            backend::export_theme_profile(&value)
+              .map(|path| format!("{message}: {}", path.display()))
           });
           self.go(back);
           return false;
@@ -509,6 +601,29 @@ impl AppearanceApp {
     if self.job.is_some() || self.action.is_some() {
       return false;
     }
+    if self.page == AppearancePage::Themes {
+      if key == KeyCode::Char('e') {
+        self.open_prompt(PromptGoal::ExportProfile);
+        return false;
+      }
+      if key == KeyCode::Char('i') {
+        self.import_archives = backend::list_import_archives();
+        self.go(AppearancePage::ThemeImport);
+        return false;
+      }
+      let custom_start = THEME_FAMILIES.len();
+      if key == KeyCode::Char('d')
+        && self.selected >= custom_start
+        && self.selected < custom_start + self.state.custom_themes.len()
+      {
+        let index = self.selected - custom_start;
+        if let Some(theme) = self.state.custom_themes.get(index).cloned() {
+          self.delete_theme = Some(theme);
+          self.go(AppearancePage::ThemeDeleteConfirm);
+        }
+        return false;
+      }
+    }
     if self.page == AppearancePage::ControlPanel && !self.buttons().is_empty() {
       if self.on_buttons {
         match key {
@@ -563,6 +678,11 @@ impl AppearanceApp {
       AppearancePage::ThemeModes { .. } => {
         self.go(AppearancePage::Themes);
       }
+      AppearancePage::ThemeImport
+      | AppearancePage::ThemeImportConfirm
+      | AppearancePage::ThemeDeleteConfirm => {
+        self.go(AppearancePage::Themes);
+      }
       AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarSpaces
       | AppearancePage::TaskbarUtilityGroup
@@ -611,6 +731,9 @@ impl AppearanceApp {
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness => self.pick(),
+      AppearancePage::ThemeImport
+      | AppearancePage::ThemeImportConfirm
+      | AppearancePage::ThemeDeleteConfirm => self.pick(),
       AppearancePage::AccentEdit => {}
       AppearancePage::Prompt { .. } => {}
     }
@@ -635,7 +758,7 @@ impl AppearanceApp {
   fn selection_len(&self) -> usize {
     match self.page {
       AppearancePage::Home => 7,
-      AppearancePage::Themes => THEME_FAMILIES.len() + 2,
+      AppearancePage::Themes => THEME_FAMILIES.len() + self.state.custom_themes.len() + 2,
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
       AppearancePage::Effects => 1,
@@ -651,6 +774,9 @@ impl AppearanceApp {
       AppearancePage::GeneralBorders => 2,
       AppearancePage::EdgeThickness => 1,
       AppearancePage::Prompt { .. } => 0,
+      AppearancePage::ThemeImport => self.import_archives.len(),
+      AppearancePage::ThemeImportConfirm => 2,
+      AppearancePage::ThemeDeleteConfirm => 2,
     }
   }
   /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -710,7 +836,7 @@ impl AppearanceApp {
   /// Executes the `prompt_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_label(&self, goal: PromptGoal) -> &'static str {
     match goal {
-      PromptGoal::ExportProfile => "control_center.theme_profile_export_path",
+      PromptGoal::ExportProfile => "control_center.theme_profile_export_name",
       PromptGoal::ImportProfile => "control_center.theme_profile_import_path",
       PromptGoal::WaybarTop => "control_center.top",
       PromptGoal::WaybarLeft => "control_center.left",
@@ -731,6 +857,17 @@ impl AppearanceApp {
     match self.page {
       AppearancePage::Home => root.into(),
       AppearancePage::Themes => format!("{root} › {}", tr(self.lang, "control_center.themes")),
+      AppearancePage::ThemeImport => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.themes"),
+        tr(self.lang, "control_center.theme_profile_import")
+      ),
+      AppearancePage::ThemeImportConfirm => {
+        tr(self.lang, "control_center.theme_profile_duplicate_title").into()
+      }
+      AppearancePage::ThemeDeleteConfirm => {
+        tr(self.lang, "control_center.theme_profile_delete_title").into()
+      }
       AppearancePage::ThemeModes { .. } => {
         format!("{root} › {}", tr(self.lang, "control_center.themes"))
       }
@@ -816,22 +953,33 @@ impl AppearanceApp {
   fn rows(&self) -> Vec<String> {
     match self.page {
       AppearancePage::Home => self.home_rows(),
-      AppearancePage::Themes => THEME_FAMILIES
-        .iter()
-        .map(|(name, label)| {
-          let current = self
-            .state
-            .theme
-            .strip_suffix("-float")
-            .unwrap_or(&self.state.theme);
-          let suffix = if current == *name {
+      AppearancePage::Themes => {
+        let current = self
+          .state
+          .theme
+          .strip_suffix("-float")
+          .unwrap_or(&self.state.theme);
+        let mut rows = THEME_FAMILIES
+          .iter()
+          .map(|(name, label)| {
+            let is_current = self.state.active_custom_theme.is_none() && current == *name;
+            let suffix = if is_current {
+              format!(" · {}", tr(self.lang, "control_center.current"))
+            } else {
+              String::new()
+            };
+            format!("{label}{suffix} >")
+          })
+          .collect::<Vec<_>>();
+        rows.extend(self.state.custom_themes.iter().map(|theme| {
+          let suffix = if self.state.active_custom_theme.as_deref() == Some(theme.id.as_str()) {
             format!(" · {}", tr(self.lang, "control_center.current"))
           } else {
             String::new()
           };
-          format!("{label}{suffix} >")
-        })
-        .chain([
+          format!("{}{} >", theme.name, suffix)
+        }));
+        rows.extend([
           icon_label(
             argvus_tui::icons::STORAGE,
             tr(self.lang, "control_center.theme_profile_export"),
@@ -840,8 +988,28 @@ impl AppearanceApp {
             argvus_tui::icons::STORAGE,
             tr(self.lang, "control_center.theme_profile_import"),
           ),
-        ])
+        ]);
+        rows
+      }
+      AppearancePage::ThemeImport => self
+        .import_archives
+        .iter()
+        .map(|path| {
+          path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string()
+        })
         .collect(),
+      AppearancePage::ThemeDeleteConfirm => vec![
+        tr(self.lang, "control_center.theme_profile_delete").into(),
+        tr(self.lang, "control_center.cancel").into(),
+      ],
+      AppearancePage::ThemeImportConfirm => vec![
+        tr(self.lang, "control_center.theme_profile_duplicate_replace").into(),
+        tr(self.lang, "control_center.cancel").into(),
+      ],
       AppearancePage::ThemeModes { .. } => [
         (
           argvus_tui::icons::FOLDER,
@@ -1184,6 +1352,14 @@ impl AppearanceApp {
         tr(self.lang, "control_center.apply"),
         tr(self.lang, "control_center.back")
       )
+    } else if self.page == AppearancePage::Themes {
+      tr(self.lang, "control_center.theme_profile_themes_help").into()
+    } else if self.page == AppearancePage::ThemeImport {
+      tr(self.lang, "control_center.theme_profile_import_help").into()
+    } else if self.page == AppearancePage::ThemeImportConfirm {
+      tr(self.lang, "control_center.theme_profile_duplicate_help").into()
+    } else if self.page == AppearancePage::ThemeDeleteConfirm {
+      tr(self.lang, "control_center.theme_profile_delete_help").into()
     } else if matches!(self.page, AppearancePage::Prompt { .. }) {
       let (min, max) = if let AppearancePage::Prompt { goal } = self.page {
         goal.range()
@@ -1225,6 +1401,99 @@ impl AppearanceApp {
     );
     if self.page == AppearancePage::AccentEdit {
       self.draw_accent_editor(frame, area);
+    } else if self.page == AppearancePage::Themes {
+      self.draw_theme_page(frame, area);
+    } else if self.page == AppearancePage::ThemeDeleteConfirm {
+      let name = self
+        .delete_theme
+        .as_ref()
+        .map(|theme| theme.name.as_str())
+        .unwrap_or_default();
+      frame.render_widget(
+        Paragraph::new(vec![
+          Line::from(tr(self.lang, "control_center.theme_profile_delete_title")),
+          Line::from(name),
+          Line::from(tr(
+            self.lang,
+            "control_center.theme_profile_delete_description",
+          )),
+          Line::from(Span::styled(
+            format!(
+              "{}  {}",
+              if self.selected == 0 { ">" } else { " " },
+              tr(self.lang, "control_center.theme_profile_delete")
+            ),
+            if self.selected == 0 {
+              Style::new()
+                .fg(self.theme.selected_foreground)
+                .bg(self.theme.selected_background)
+            } else {
+              Style::new().fg(self.theme.foreground)
+            },
+          )),
+          Line::from(Span::styled(
+            format!(
+              "{}  {}",
+              if self.selected == 1 { ">" } else { " " },
+              tr(self.lang, "control_center.cancel")
+            ),
+            if self.selected == 1 {
+              Style::new()
+                .fg(self.theme.selected_foreground)
+                .bg(self.theme.selected_background)
+            } else {
+              Style::new().fg(self.theme.foreground)
+            },
+          )),
+        ])
+        .block(Block::default().borders(Borders::ALL)),
+        area,
+      );
+    } else if self.page == AppearancePage::ThemeImportConfirm {
+      let name = self.pending_import_name.as_deref().unwrap_or_default();
+      frame.render_widget(
+        Paragraph::new(vec![
+          Line::from(tr(
+            self.lang,
+            "control_center.theme_profile_duplicate_title",
+          )),
+          Line::from(name),
+          Line::from(tr(
+            self.lang,
+            "control_center.theme_profile_duplicate_description",
+          )),
+          Line::from(Span::styled(
+            format!(
+              "{}  {}",
+              if self.selected == 0 { ">" } else { " " },
+              tr(self.lang, "control_center.theme_profile_duplicate_replace")
+            ),
+            if self.selected == 0 {
+              Style::new()
+                .fg(self.theme.selected_foreground)
+                .bg(self.theme.selected_background)
+            } else {
+              Style::new().fg(self.theme.foreground)
+            },
+          )),
+          Line::from(Span::styled(
+            format!(
+              "{}  {}",
+              if self.selected == 1 { ">" } else { " " },
+              tr(self.lang, "control_center.cancel")
+            ),
+            if self.selected == 1 {
+              Style::new()
+                .fg(self.theme.selected_foreground)
+                .bg(self.theme.selected_background)
+            } else {
+              Style::new().fg(self.theme.foreground)
+            },
+          )),
+        ])
+        .block(Block::default().borders(Borders::ALL)),
+        area,
+      );
     } else if let AppearancePage::Prompt { goal } = self.page {
       self.draw_prompt(frame, area, goal);
     } else {
@@ -1273,6 +1542,7 @@ impl AppearanceApp {
     let chunks = Layout::vertical([
       Constraint::Length(3),
       Constraint::Length(1),
+      Constraint::Length(1),
       Constraint::Min(1),
     ])
     .split(area);
@@ -1286,6 +1556,12 @@ impl AppearanceApp {
       chunks[0],
     );
     let text = self.prompt_error.clone().unwrap_or_else(|| {
+      if matches!(goal, PromptGoal::ExportProfile) {
+        return format!(
+          "{} · Enter confirm · Esc back",
+          tr(self.lang, "control_center.theme_profile_export_name")
+        );
+      }
       let (min, max) = goal.range();
       format!("{min}..{max} · Enter confirm · Esc back")
     });
@@ -1302,6 +1578,20 @@ impl AppearanceApp {
       ))),
       chunks[1],
     );
+    if matches!(goal, PromptGoal::ExportProfile) {
+      let output = backend::preview_theme_profile_path(&self.prompt_buffer)
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "—".into());
+      frame.render_widget(
+        Paragraph::new(format!(
+          "{}: {}",
+          tr(self.lang, "control_center.theme_profile_output"),
+          output
+        ))
+        .style(Style::new().fg(self.theme.muted)),
+        chunks[2],
+      );
+    }
   }
 
   fn draw_accent_editor(&mut self, frame: &mut Frame, area: Rect) {
@@ -1352,6 +1642,112 @@ impl AppearanceApp {
       );
     }
   }
+
+  fn draw_theme_page(&mut self, frame: &mut Frame, area: Rect) {
+    let official_height = (THEME_FAMILIES.len() as u16 + 2).min(area.height);
+    let custom_rows = self.state.custom_themes.len().max(1) as u16;
+    let custom_height = (custom_rows + 2).min(area.height.saturating_sub(official_height));
+    let sections = Layout::vertical([
+      Constraint::Length(official_height),
+      Constraint::Length(custom_height),
+      Constraint::Min(4),
+    ])
+    .split(area);
+    let official = THEME_FAMILIES
+      .iter()
+      .map(|(name, _)| {
+        let current = self.state.active_custom_theme.is_none()
+          && self
+            .state
+            .theme
+            .strip_suffix("-float")
+            .unwrap_or(&self.state.theme)
+            == *name;
+        (name.to_string(), current)
+      })
+      .collect::<Vec<_>>();
+    self.draw_theme_section(
+      frame,
+      sections[0],
+      tr(self.lang, "control_center.theme_profile_official"),
+      &official,
+      0,
+    );
+    let custom = self
+      .state
+      .custom_themes
+      .iter()
+      .map(|theme| {
+        (
+          theme.name.clone(),
+          self.state.active_custom_theme.as_deref() == Some(theme.id.as_str()),
+        )
+      })
+      .collect::<Vec<_>>();
+    self.draw_theme_section(
+      frame,
+      sections[1],
+      tr(self.lang, "control_center.theme_profile_custom"),
+      &custom,
+      THEME_FAMILIES.len(),
+    );
+    let actions = vec![
+      (
+        tr(self.lang, "control_center.theme_profile_export").to_string(),
+        false,
+      ),
+      (
+        tr(self.lang, "control_center.theme_profile_import").to_string(),
+        false,
+      ),
+    ];
+    self.draw_theme_section(
+      frame,
+      sections[2],
+      tr(self.lang, "control_center.theme_profile_export_import"),
+      &actions,
+      THEME_FAMILIES.len() + self.state.custom_themes.len(),
+    );
+  }
+
+  fn draw_theme_section(
+    &self,
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    rows: &[(String, bool)],
+    offset: usize,
+  ) {
+    let mut lines = Vec::new();
+    if rows.is_empty() {
+      lines.push(Line::from(Span::styled(
+        tr(self.lang, "control_center.theme_profile_custom_empty"),
+        Style::new().fg(self.theme.muted),
+      )));
+    } else {
+      for (index, (label, current)) in rows.iter().enumerate() {
+        let selected = self.selected == offset + index;
+        let suffix = if *current {
+          format!("  {}", tr(self.lang, "control_center.current"))
+        } else {
+          String::new()
+        };
+        let line = format!("{}{}{}", if selected { "> " } else { "  " }, label, suffix);
+        let style = if selected {
+          Style::new()
+            .fg(self.theme.selected_foreground)
+            .bg(self.theme.selected_background)
+        } else {
+          Style::new().fg(self.theme.foreground)
+        };
+        lines.push(Line::from(Span::styled(line, style)));
+      }
+    }
+    frame.render_widget(
+      Paragraph::new(lines).block(Block::default().title(title).borders(Borders::ALL)),
+      area,
+    );
+  }
 }
 
 #[cfg(test)]
@@ -1378,6 +1774,10 @@ mod tests {
       on_buttons: false,
       button_selected: 0,
       button_from: None,
+      delete_theme: None,
+      import_archives: Vec::new(),
+      pending_import: None,
+      pending_import_name: None,
       manager: JobManager::default(),
     }
   }

@@ -51,6 +51,9 @@ pub fn normalize_hex_color(value: &str) -> Option<String> {
 pub enum AppearancePage {
   Home,
   Themes,
+  ThemeImport,
+  ThemeImportConfirm,
+  ThemeDeleteConfirm,
   ThemeModes { family: usize },
   Wallpapers,
   Accents,
@@ -476,6 +479,17 @@ pub struct AppearanceState {
   pub rounded: bool,
   pub rounding: i32,
   pub thickness: i32,
+  pub custom_themes: Vec<CustomTheme>,
+  pub active_custom_theme: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomTheme {
+  pub id: String,
+  pub name: String,
+  pub base_theme: String,
+  pub profile_path: String,
+  pub wallpaper_path: Option<String>,
 }
 impl Default for AppearanceState {
   /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -503,6 +517,8 @@ impl Default for AppearanceState {
       rounded: false,
       rounding: 0,
       thickness: 1,
+      custom_themes: Vec::new(),
+      active_custom_theme: None,
     }
   }
 }

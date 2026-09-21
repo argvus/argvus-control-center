@@ -47,6 +47,13 @@ pub fn cache_home() -> PathBuf {
     .unwrap_or_else(|| home().join(".cache"))
 }
 
+/// Returns the user's XDG data directory for durable, non-configuration data.
+pub fn data_home() -> PathBuf {
+  env::var_os("XDG_DATA_HOME")
+    .map(PathBuf::from)
+    .unwrap_or_else(|| home().join(".local").join("share"))
+}
+
 /// Executes the `defaults_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn defaults_file() -> PathBuf {
   argvus_config_home().join("defaults.json")
