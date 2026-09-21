@@ -4,7 +4,7 @@
 //! the UI consumes normalized models and results.
 use crate::model::{
   AppearanceState, ControlPanelCard, ControlPanelCards, TaskbarPosition, TaskbarUtilityGroupMode,
-  WidgetTelemetryBlock, WidgetTelemetryBlocks,
+  WidgetTelemetryBlock, WidgetTelemetryBlocks, normalize_hex_color,
 };
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
@@ -634,7 +634,8 @@ pub fn load_state() -> AppearanceState {
   let theme = read_first(&active_theme_file(), DEFAULT_THEME);
   state.theme = theme.clone();
   let default_accent = theme_default_accent(&theme).unwrap_or(DEFAULT_ACCENT);
-  state.accent = read_first(&accent_file(), default_accent);
+  state.accent = normalize_hex_color(&read_first(&accent_file(), default_accent))
+    .unwrap_or_else(|| default_accent.to_string());
   state.wallpapers = list_wallpapers();
   state.wallpaper_active = active_wallpaper();
   state.effects = effects_state();

@@ -13,6 +13,9 @@ pub fn handle(app: &mut App, event: Event) {
   if let Event::Paste(text) = event {
     if app.route == Route::Settings {
       app.settings.admin_paste(&text);
+    } else if app.route == Route::Appearance {
+      #[cfg(feature = "appearance")]
+      app.appearance.paste(&text);
     }
     return;
   }

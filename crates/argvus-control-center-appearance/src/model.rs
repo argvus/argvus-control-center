@@ -2,6 +2,51 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+
+use std::str::FromStr;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HexColor {
+  pub r: u8,
+  pub g: u8,
+  pub b: u8,
+}
+
+impl HexColor {
+  pub fn normalized(self) -> String {
+    format!("#{:02X}{:02X}{:02X}", self.r, self.g, self.b)
+  }
+
+  pub fn foreground(self) -> ratatui::style::Color {
+    let luminance =
+      (299 * u32::from(self.r) + 587 * u32::from(self.g) + 114 * u32::from(self.b)) / 1000;
+    if luminance >= 128 {
+      ratatui::style::Color::Black
+    } else {
+      ratatui::style::Color::White
+    }
+  }
+}
+
+impl FromStr for HexColor {
+  type Err = String;
+
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    let value = value.strip_prefix('#').unwrap_or(value);
+    if value.len() != 6 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+      return Err("expected six hexadecimal digits".into());
+    }
+    Ok(Self {
+      r: u8::from_str_radix(&value[0..2], 16).map_err(|_| "invalid red channel")?,
+      g: u8::from_str_radix(&value[2..4], 16).map_err(|_| "invalid green channel")?,
+      b: u8::from_str_radix(&value[4..6], 16).map_err(|_| "invalid blue channel")?,
+    })
+  }
+}
+
+pub fn normalize_hex_color(value: &str) -> Option<String> {
+  value.parse::<HexColor>().ok().map(HexColor::normalized)
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppearancePage {
   Home,
@@ -9,6 +54,7 @@ pub enum AppearancePage {
   ThemeModes { family: usize },
   Wallpapers,
   Accents,
+  AccentEdit,
   Effects,
   SpacesBordersPosition,
   TaskbarPosition,
@@ -521,6 +567,30 @@ mod tests {
         ..Default::default()
       }
       .is_float_theme()
+    );
+  }
+
+  #[test]
+  fn hex_colors_parse_and_normalize() {
+    assert_eq!(
+      "#12ABEF".parse::<HexColor>().unwrap().normalized(),
+      "#12ABEF"
+    );
+    assert_eq!(normalize_hex_color("12abef"), Some("#12ABEF".into()));
+    assert!(normalize_hex_color("#123").is_none());
+    assert!(normalize_hex_color("#12345G").is_none());
+    assert!(normalize_hex_color("foo").is_none());
+  }
+
+  #[test]
+  fn hex_contrast_uses_black_for_light_and_white_for_dark() {
+    assert_eq!(
+      "#FFFFFF".parse::<HexColor>().unwrap().foreground(),
+      ratatui::style::Color::Black
+    );
+    assert_eq!(
+      "#000000".parse::<HexColor>().unwrap().foreground(),
+      ratatui::style::Color::White
     );
   }
 }

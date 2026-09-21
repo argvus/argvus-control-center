@@ -5,9 +5,9 @@
 use crate::{
   backend,
   model::{
-    ACCENTS, AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, PromptGoal,
+    AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, HexColor, PromptGoal,
     THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, WidgetTelemetryBlock, accent_label,
-    theme_family_label,
+    normalize_hex_color, theme_family_label,
   },
 };
 use argvus_control_center_core::{
@@ -68,6 +68,19 @@ impl AppearanceApp {
   /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.refresh();
+  }
+
+  pub fn paste(&mut self, text: &str) {
+    if self.page != AppearancePage::AccentEdit {
+      return;
+    }
+    let value = text.lines().next().unwrap_or_default().trim();
+    if let Some(color) = normalize_hex_color(value) {
+      self.prompt_buffer = color;
+      self.prompt_error = None;
+    } else {
+      self.prompt_error = Some(tr(self.lang, "control_center.accent_invalid").into());
+    }
   }
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
@@ -259,12 +272,14 @@ impl AppearanceApp {
         }
       }
       AppearancePage::Accents => {
-        if let Some((_, color)) = ACCENTS.get(self.selected) {
-          let color = color.to_string();
-          self.apply(
-            tr(self.lang, "control_center.accent_applied").into(),
-            move || backend::set_accent(&color),
-          );
+        if self.selected == 0 {
+          self.page = AppearancePage::AccentEdit;
+          self.prompt_buffer = self.state.accent.clone();
+          self.prompt_error = None;
+        } else {
+          self.apply(tr(self.lang, "control_center.accent_reset").into(), || {
+            backend::set_accent("--theme-default")
+          });
         }
       }
       AppearancePage::Wallpapers => {
@@ -358,6 +373,35 @@ impl AppearanceApp {
   }
   /// Executes the `prompt_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_key(&mut self, key: KeyCode) -> bool {
+    if self.page == AppearancePage::AccentEdit {
+      match key {
+        KeyCode::Enter if self.action.is_none() => {
+          if let Some(color) = normalize_hex_color(&self.prompt_buffer) {
+            self.apply(
+              tr(self.lang, "control_center.accent_applied").into(),
+              move || backend::set_accent(&color),
+            );
+            self.go(AppearancePage::Accents);
+          } else {
+            self.prompt_error = Some(tr(self.lang, "control_center.accent_invalid").into());
+          }
+        }
+        KeyCode::Esc | KeyCode::Left => self.go(AppearancePage::Accents),
+        KeyCode::Backspace | KeyCode::Delete => {
+          self.prompt_buffer.pop();
+          self.prompt_error = None;
+        }
+        KeyCode::Char('#') if self.prompt_buffer.is_empty() => self.prompt_buffer.push('#'),
+        KeyCode::Char(c)
+          if c.is_ascii_hexdigit() && self.prompt_buffer.trim_start_matches('#').len() < 6 =>
+        {
+          self.prompt_buffer.push(c.to_ascii_uppercase());
+          self.prompt_error = None;
+        }
+        _ => {}
+      }
+      return false;
+    }
     match key {
       KeyCode::Enter if self.action.is_none() => {
         let AppearancePage::Prompt { goal } = self.page else {
@@ -412,7 +456,7 @@ impl AppearanceApp {
   }
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
-    if self.prompt_back.is_some() {
+    if self.prompt_back.is_some() || self.page == AppearancePage::AccentEdit {
       return self.prompt_key(key);
     }
     if self.job.is_some() || self.action.is_some() {
@@ -480,6 +524,7 @@ impl AppearanceApp {
       | AppearancePage::EdgeThickness => {
         self.go(AppearancePage::SpacesBordersPosition);
       }
+      AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
       AppearancePage::Prompt { .. } => {}
     }
     false
@@ -519,6 +564,7 @@ impl AppearanceApp {
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness => self.pick(),
+      AppearancePage::AccentEdit => {}
       AppearancePage::Prompt { .. } => {}
     }
   }
@@ -543,7 +589,8 @@ impl AppearanceApp {
     match self.page {
       AppearancePage::Home => 7,
       AppearancePage::Themes => THEME_FAMILIES.len(),
-      AppearancePage::Accents => ACCENTS.len(),
+      AppearancePage::Accents => 2,
+      AppearancePage::AccentEdit => 0,
       AppearancePage::Effects => 1,
       AppearancePage::ThemeModes { .. }
       | AppearancePage::TaskbarPosition
@@ -644,6 +691,11 @@ impl AppearanceApp {
       AppearancePage::Accents => format!(
         "{root} › {}",
         tr(self.lang, "control_center.highlight_color")
+      ),
+      AppearancePage::AccentEdit => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.highlight_color"),
+        tr(self.lang, "control_center.edit_highlight_color")
       ),
       AppearancePage::Effects => {
         format!("{root} › {}", tr(self.lang, "control_center.effects"))
@@ -765,17 +817,14 @@ impl AppearanceApp {
         }
       }))
       .collect(),
-      AppearancePage::Accents => ACCENTS
-        .iter()
-        .map(|(label, color)| {
-          let suffix = if self.state.accent == *color {
-            format!(" · {}", tr(self.lang, "control_center.current"))
-          } else {
-            String::new()
-          };
-          format!("{label} ({color}){suffix}")
-        })
-        .collect(),
+      AppearancePage::Accents => vec![
+        format!(
+          "{}: {}",
+          tr(self.lang, "control_center.edit_highlight_color"),
+          self.state.accent
+        ),
+        tr(self.lang, "control_center.reset_to_theme_default").into(),
+      ],
       AppearancePage::Effects => vec![format!(
         "[{}] {} · {}",
         if self.state.effects { "x" } else { " " },
@@ -992,7 +1041,7 @@ impl AppearanceApp {
         ),
         self.state.thickness
       )],
-      AppearancePage::Prompt { .. } => Vec::new(),
+      AppearancePage::AccentEdit | AppearancePage::Prompt { .. } => Vec::new(),
     }
   }
 
@@ -1069,7 +1118,14 @@ impl AppearanceApp {
   }
   /// Executes the `hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn hints(&self) -> String {
-    if matches!(self.page, AppearancePage::Prompt { .. }) {
+    if self.page == AppearancePage::AccentEdit {
+      format!(
+        "{} · Enter {} · Esc {}",
+        tr(self.lang, "control_center.hex_color"),
+        tr(self.lang, "control_center.apply"),
+        tr(self.lang, "control_center.back")
+      )
+    } else if matches!(self.page, AppearancePage::Prompt { .. }) {
       let (min, max) = if let AppearancePage::Prompt { goal } = self.page {
         goal.range()
       } else {
@@ -1108,7 +1164,9 @@ impl AppearanceApp {
       &self.breadcrumb(),
       &self.hints(),
     );
-    if let AppearancePage::Prompt { goal } = self.page {
+    if self.page == AppearancePage::AccentEdit {
+      self.draw_accent_editor(frame, area);
+    } else if let AppearancePage::Prompt { goal } = self.page {
       self.draw_prompt(frame, area, goal);
     } else {
       let rows = self.rows();
@@ -1185,6 +1243,55 @@ impl AppearanceApp {
       ))),
       chunks[1],
     );
+  }
+
+  fn draw_accent_editor(&mut self, frame: &mut Frame, area: Rect) {
+    let color = self.prompt_buffer.parse::<HexColor>().ok();
+    let chunks = Layout::vertical([
+      Constraint::Length(1),
+      Constraint::Length(3),
+      Constraint::Length(1),
+      Constraint::Length(3),
+      Constraint::Min(1),
+    ])
+    .split(area);
+    frame.render_widget(
+      Paragraph::new(tr(self.lang, "control_center.preview")),
+      chunks[0],
+    );
+    let preview_style = color
+      .map(|color| {
+        Style::new()
+          .bg(ratatui::style::Color::Rgb(color.r, color.g, color.b))
+          .fg(color.foreground())
+      })
+      .unwrap_or_else(|| Style::new().fg(self.theme.error));
+    frame.render_widget(
+      Paragraph::new(Line::from(Span::styled(
+        format!("  {}  ", self.prompt_buffer),
+        preview_style,
+      ))),
+      chunks[1],
+    );
+    frame.render_widget(
+      Paragraph::new(tr(self.lang, "control_center.hex_color")),
+      chunks[2],
+    );
+    frame.render_widget(
+      Paragraph::new(Line::from(Span::styled(
+        format!("> {}", self.prompt_buffer),
+        Style::new()
+          .fg(self.theme.selected_foreground)
+          .bg(self.theme.selected_background),
+      ))),
+      chunks[3],
+    );
+    if let Some(error) = &self.prompt_error {
+      frame.render_widget(
+        Paragraph::new(Span::styled(error, Style::new().fg(self.theme.error))),
+        chunks[4],
+      );
+    }
   }
 }
 
