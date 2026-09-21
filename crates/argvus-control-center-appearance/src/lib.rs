@@ -4,6 +4,7 @@
 //! the UI consumes normalized models and results.
 mod backend;
 mod model;
+mod profile;
 mod ui;
 
 pub use model::{

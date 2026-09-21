@@ -348,6 +348,8 @@ impl TaskbarPosition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Defines `PromptGoal`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PromptGoal {
+  ExportProfile,
+  ImportProfile,
   WaybarTop,
   WaybarLeft,
   WaybarRight,
@@ -364,6 +366,8 @@ impl PromptGoal {
   /// Executes the `key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn key(self) -> &'static str {
     match self {
+      Self::ExportProfile => "export_profile",
+      Self::ImportProfile => "import_profile",
       Self::WaybarTop => "waybar_top",
       Self::WaybarLeft => "waybar_left",
       Self::WaybarRight => "waybar_right",
@@ -380,6 +384,7 @@ impl PromptGoal {
   /// Executes the const function documented in this module. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   pub const fn range(self) -> (i32, i32) {
     match self {
+      Self::ExportProfile | Self::ImportProfile => (0, 0),
       Self::Rounding => (2, 10),
       Self::Thickness => (0, 10),
       _ => (0, 100),

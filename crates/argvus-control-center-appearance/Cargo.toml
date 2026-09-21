@@ -12,4 +12,9 @@ argvus-theme = { path = "../../../argvus-tui/crates/argvus-theme" }
 argvus-tui = { path = "../../../argvus-tui/crates/argvus-tui" }
 ratatui.workspace = true
 crossterm.workspace = true
+flate2 = "1.1"
+sha2 = "0.10"
 serde_json.workspace = true
+serde.workspace = true
+tar = "0.4"
+tempfile = "3.27"

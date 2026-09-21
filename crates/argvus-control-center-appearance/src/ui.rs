@@ -258,6 +258,12 @@ impl AppearanceApp {
           family: self.selected,
         })
       }
+      AppearancePage::Themes if self.selected == THEME_FAMILIES.len() => {
+        self.open_prompt(PromptGoal::ExportProfile)
+      }
+      AppearancePage::Themes if self.selected == THEME_FAMILIES.len() + 1 => {
+        self.open_prompt(PromptGoal::ImportProfile)
+      }
       AppearancePage::ThemeModes { family } => {
         if let Some((base, _)) = THEME_FAMILIES.get(family) {
           let name = if self.selected == 0 {
@@ -407,7 +413,36 @@ impl AppearanceApp {
         let AppearancePage::Prompt { goal } = self.page else {
           return false;
         };
-        let value = self.prompt_buffer.trim().to_string();
+        let mut value = self.prompt_buffer.trim().to_string();
+        if matches!(goal, PromptGoal::ExportProfile | PromptGoal::ImportProfile) {
+          let back = self.prompt_back.take().unwrap_or(AppearancePage::Themes);
+          if matches!(goal, PromptGoal::ExportProfile) && !value.ends_with(".tar.gz") {
+            value.push_str(".tar.gz");
+          }
+          if value.is_empty()
+            || (matches!(goal, PromptGoal::ImportProfile) && !value.ends_with(".tar.gz"))
+          {
+            self.prompt_error =
+              Some(tr(self.lang, "control_center.theme_profile_invalid_archive").into());
+            self.prompt_back = Some(back);
+            return false;
+          }
+          let path = std::path::PathBuf::from(value);
+          let message = if matches!(goal, PromptGoal::ExportProfile) {
+            tr(self.lang, "control_center.theme_profile_exported")
+          } else {
+            tr(self.lang, "control_center.theme_profile_imported")
+          };
+          self.apply(message.into(), move || {
+            if matches!(goal, PromptGoal::ExportProfile) {
+              backend::export_theme_profile(&path)
+            } else {
+              backend::import_theme_profile(&path).map(|_| ())
+            }
+          });
+          self.go(back);
+          return false;
+        }
         let (min, max) = goal.range();
         let valid = value
           .parse::<i32>()
@@ -441,6 +476,18 @@ impl AppearanceApp {
       KeyCode::Esc | KeyCode::Left => {
         let back = self.prompt_back.take().unwrap_or(AppearancePage::Home);
         self.go(back);
+        false
+      }
+      KeyCode::Char(c)
+        if matches!(
+          self.page,
+          AppearancePage::Prompt {
+            goal: PromptGoal::ExportProfile | PromptGoal::ImportProfile
+          }
+        ) && !c.is_control()
+          && self.prompt_buffer.len() < 512 =>
+      {
+        self.prompt_buffer.push(c);
         false
       }
       KeyCode::Char(c) if c.is_ascii_digit() && self.prompt_buffer.len() < 3 => {
@@ -588,7 +635,7 @@ impl AppearanceApp {
   fn selection_len(&self) -> usize {
     match self.page {
       AppearancePage::Home => 7,
-      AppearancePage::Themes => THEME_FAMILIES.len(),
+      AppearancePage::Themes => THEME_FAMILIES.len() + 2,
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
       AppearancePage::Effects => 1,
@@ -663,6 +710,8 @@ impl AppearanceApp {
   /// Executes the `prompt_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn prompt_label(&self, goal: PromptGoal) -> &'static str {
     match goal {
+      PromptGoal::ExportProfile => "control_center.theme_profile_export_path",
+      PromptGoal::ImportProfile => "control_center.theme_profile_import_path",
       PromptGoal::WaybarTop => "control_center.top",
       PromptGoal::WaybarLeft => "control_center.left",
       PromptGoal::WaybarRight => "control_center.right",
@@ -782,6 +831,16 @@ impl AppearanceApp {
           };
           format!("{label}{suffix} >")
         })
+        .chain([
+          icon_label(
+            argvus_tui::icons::STORAGE,
+            tr(self.lang, "control_center.theme_profile_export"),
+          ),
+          icon_label(
+            argvus_tui::icons::STORAGE,
+            tr(self.lang, "control_center.theme_profile_import"),
+          ),
+        ])
         .collect(),
       AppearancePage::ThemeModes { .. } => [
         (

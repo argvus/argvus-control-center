@@ -18,6 +18,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+pub use crate::profile::{export as export_theme_profile, import as import_theme_profile};
+
 /// Defines the constant `WALLPAPERS_DIR`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const WALLPAPERS_DIR: &str = "/usr/share/backgrounds/argvus";
 /// Defines the constant `DEFAULT_THEME`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -81,6 +83,23 @@ fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
     });
   }
   Ok(())
+}
+
+pub(crate) fn run_profile_script(name: &str, args: &[&str]) -> Result<(), String> {
+  if name == "argvus-widget-telemetry-toggle" {
+    let mut request = ProcessRequest::new(name);
+    for argument in args {
+      request = request.arg(*argument);
+    }
+    let output = SystemProcessRunner
+      .run(&request)
+      .map_err(|error| error.to_string())?;
+    return (output.status == Some(0))
+      .then_some(())
+      .ok_or_else(|| "telemetry apply failed".into());
+  }
+  let path = script(name);
+  run_script(&path, args)
 }
 
 /// Executes the `run_script_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -917,6 +936,10 @@ fn reload_session() -> Result<(), String> {
     });
   }
   Ok(())
+}
+
+pub(crate) fn reload_session_for_profile() -> Result<(), String> {
+  reload_session()
 }
 
 /// Applies the `set_border` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
