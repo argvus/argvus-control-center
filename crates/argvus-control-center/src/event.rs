@@ -45,8 +45,8 @@ pub fn handle(app: &mut App, event: Event) {
       KeyCode::Esc if app.search_query.is_empty() => app.clear_global_search(),
       KeyCode::Esc => app.update_global_search(String::new()),
       KeyCode::Backspace => app.pop_global_search(),
-      KeyCode::Up | KeyCode::Char('k') => app.move_global_search(-1),
-      KeyCode::Down | KeyCode::Char('j') => app.move_global_search(1),
+      KeyCode::Up => app.move_global_search(-1),
+      KeyCode::Down => app.move_global_search(1),
       KeyCode::Enter => app.open_global_search_result(),
       KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
         let mut query = app.search_query.clone();
@@ -337,6 +337,47 @@ mod tests {
     assert!(app.search_query.is_empty());
     handle(&mut app, press(KeyCode::Esc));
     assert!(!app.search_active);
+  }
+
+  #[test]
+  /// Ensures printable navigation letters remain usable as global search input while arrow keys move results.
+  fn home_global_search_accepts_j_and_k_and_uses_arrows_for_navigation() {
+    let mut app = App::new(InitialRoute::Home);
+    handle(&mut app, press(KeyCode::Char('/')));
+    handle(&mut app, press(KeyCode::Char('k')));
+    assert_eq!(app.search_query, "k");
+    handle(&mut app, press(KeyCode::Backspace));
+    handle(&mut app, press(KeyCode::Char('j')));
+    assert_eq!(app.search_query, "j");
+
+    app
+      .search_registry
+      .register(argvus_control_center_core::search::SearchEntry {
+        id: "test.search.first".into(),
+        category: "test".into(),
+        title: "First result".into(),
+        keywords: vec!["zzzz".into()],
+        route: "test/first".into(),
+      })
+      .unwrap();
+    app
+      .search_registry
+      .register(argvus_control_center_core::search::SearchEntry {
+        id: "test.search.second".into(),
+        category: "test".into(),
+        title: "Second result".into(),
+        keywords: vec!["zzzz".into()],
+        route: "test/second".into(),
+      })
+      .unwrap();
+    app.update_global_search("zzzz".into());
+    assert_eq!(app.search_selected, 0);
+    handle(&mut app, press(KeyCode::Down));
+    assert_eq!(app.search_selected, 1);
+    assert_eq!(app.search_query, "zzzz");
+    handle(&mut app, press(KeyCode::Up));
+    assert_eq!(app.search_selected, 0);
+    assert_eq!(app.search_query, "zzzz");
   }
 
   #[test]

@@ -71,8 +71,10 @@ Use `--help` to see all supported routes.
 - `q`: quit
 
 The Home search updates results as you type and opens registered pages directly
-through their real Control Center routes. Mouse clicks remain supported for
-focusing the search field and selecting interface elements.
+through their real Control Center routes. While the Home search is active, type
+any printable character—including `j` and `k`—and use `↑` / `↓` to select a
+result. Mouse clicks remain supported for focusing the search field and
+selecting interface elements.
 
 ## Architecture
 
