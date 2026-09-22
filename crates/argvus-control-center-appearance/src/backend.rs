@@ -388,14 +388,14 @@ fn parse_borders_status(output: &str, state: &mut AppearanceState) {
   }
 }
 
-/// Executes the `effects_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn effects_state() -> bool {
-  let path = argvus_config_home().join("state").join("effects");
+/// Reads one independent visual state from the shared session contract.
+fn effect_state(component: &str) -> bool {
+  let path = argvus_config_home().join("state").join(component);
   match read_first_or_default(&path).as_deref() {
     Some("enabled") => true,
     Some("disabled") => false,
     _ => matches!(
-      run_script_output(&script("effects-toggle.sh"), &["status"])
+      run_script_output(&script("effects-toggle.sh"), &[component, "status"])
         .as_deref()
         .map(str::trim),
       Some("enabled")
@@ -691,7 +691,8 @@ pub fn load_page(
     state.wallpaper_active = active_wallpaper();
   }
   if page == AppearancePage::Effects {
-    state.effects = effects_state();
+    state.animations = effect_state("animations");
+    state.transparency = effect_state("transparency");
   }
   if page == AppearancePage::WidgetTelemetry {
     state.widget_telemetry = telemetry_state();
@@ -752,11 +753,19 @@ pub fn set_accent(color: &str) -> Result<(), String> {
   run_script(&script("accent-switch.sh"), &[color])
 }
 
-/// Applies the `set_effects` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn set_effects(enabled: bool) -> Result<(), String> {
+/// Applies the `set_animations` operation through the shared session helper.
+pub fn set_animations(enabled: bool) -> Result<(), String> {
   run_script(
     &script("effects-toggle.sh"),
-    &[if enabled { "enable" } else { "disable" }],
+    &["animations", if enabled { "enable" } else { "disable" }],
+  )
+}
+
+/// Applies the `set_transparency` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+pub fn set_transparency(enabled: bool) -> Result<(), String> {
+  run_script(
+    &script("effects-toggle.sh"),
+    &["transparency", if enabled { "enable" } else { "disable" }],
   )
 }
 

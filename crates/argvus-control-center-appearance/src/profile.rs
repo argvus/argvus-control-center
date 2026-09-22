@@ -34,14 +34,17 @@ enum FileId {
   Borders,
   WallpaperCustom,
   Fonts,
+  /// Legacy profile identifier kept for importing format v1 archives.
   Effects,
+  Animations,
+  Transparency,
   TaskbarRight2Mode,
   WidgetTelemetryBlocks,
   ControlPanelCards,
 }
 
 impl FileId {
-  const ALL: [Self; 11] = [
+  const ALL: [Self; 12] = [
     Self::ActiveTheme,
     Self::Accent,
     Self::GtkMode,
@@ -49,7 +52,8 @@ impl FileId {
     Self::Borders,
     Self::WallpaperCustom,
     Self::Fonts,
-    Self::Effects,
+    Self::Animations,
+    Self::Transparency,
     Self::TaskbarRight2Mode,
     Self::WidgetTelemetryBlocks,
     Self::ControlPanelCards,
@@ -64,6 +68,8 @@ impl FileId {
       Self::WallpaperCustom => "wallpaper-custom",
       Self::Fonts => "fonts",
       Self::Effects => "effects",
+      Self::Animations => "animations",
+      Self::Transparency => "transparency",
       Self::TaskbarRight2Mode => "taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel-cards",
@@ -79,6 +85,8 @@ impl FileId {
       Self::WallpaperCustom => "payload/config/argvus/.wallpaper-custom",
       Self::Fonts => "payload/config/argvus/fonts.conf",
       Self::Effects => "payload/config/argvus/state/effects",
+      Self::Animations => "payload/config/argvus/state/animations",
+      Self::Transparency => "payload/config/argvus/state/transparency",
       Self::TaskbarRight2Mode => "payload/config/argvus/state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "payload/config/argvus/state/widget-telemetry-blocks",
       Self::ControlPanelCards => "payload/config/argvus/control-panel/cards.json",
@@ -94,13 +102,19 @@ impl FileId {
       Self::WallpaperCustom => ".wallpaper-custom",
       Self::Fonts => "fonts.conf",
       Self::Effects => "state/effects",
+      Self::Animations => "state/animations",
+      Self::Transparency => "state/transparency",
       Self::TaskbarRight2Mode => "state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "state/widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel/cards.json",
     })
   }
   fn parse(value: &str) -> Option<Self> {
-    Self::ALL.into_iter().find(|id| id.id() == value)
+    if value == Self::Effects.id() {
+      Some(Self::Effects)
+    } else {
+      Self::ALL.into_iter().find(|id| id.id() == value)
+    }
   }
 }
 
@@ -266,7 +280,7 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
   let wallpaper = current_wallpaper().map(|path| wallpaper_meta(&path));
   let manifest = Manifest {
     format: "argvus-theme-profile".into(),
-    format_version: Some(1),
+    format_version: Some(2),
     schema_version: None,
     name: display_name,
     created_at: OffsetDateTime::now_utc().to_string(),
@@ -438,8 +452,14 @@ fn apply_staged(
       .entries
       .get(&file.archive_path)
       .ok_or("missing theme profile payload")?;
-    let destination = id.destination(&root);
-    payload.push((entry.path.clone(), destination));
+    if id == FileId::Effects {
+      // Format v1 stored one combined setting. Preserve that profile's
+      // meaning by initializing both independent settings.
+      payload.push((entry.path.clone(), FileId::Animations.destination(&root)));
+      payload.push((entry.path.clone(), FileId::Transparency.destination(&root)));
+    } else {
+      payload.push((entry.path.clone(), id.destination(&root)));
+    }
   }
   let marker_path = custom_current_path();
   let result: Result<bool, String> = (|| {
@@ -649,7 +669,10 @@ fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
     serde_json::from_slice(&fs::read(&manifest_entry.path).map_err(|e| e.to_string())?)
       .map_err(|e| format!("invalid theme profile manifest: {e}"))?;
   if manifest.format != "argvus-theme-profile"
-    || manifest.format_version.or(manifest.schema_version) != Some(1)
+    || !matches!(
+      manifest.format_version.or(manifest.schema_version),
+      Some(1 | 2)
+    )
   {
     return Err("unsupported theme profile version".into());
   }
@@ -753,7 +776,9 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
     FileId::GtkMode if !matches!(value, "light" | "dark" | "auto" | "sticky") => {
       return Err("invalid GTK mode".into());
     }
-    FileId::Effects if !matches!(value, "enabled" | "disabled") => {
+    FileId::Effects | FileId::Animations | FileId::Transparency
+      if !matches!(value, "enabled" | "disabled") =>
+    {
       return Err("invalid effects state".into());
     }
     FileId::TaskbarRight2Mode if !matches!(value, "auto" | "always-expanded") => {
@@ -1002,7 +1027,21 @@ fn wallpaper_meta(path: &Path) -> WallpaperMeta {
 fn source_paths(root: &Path) -> Vec<(FileId, PathBuf)> {
   FileId::ALL
     .into_iter()
-    .map(|id| (id, id.destination(root)))
+    .map(|id| {
+      let destination = id.destination(root);
+      let source =
+        if !destination.is_file() && matches!(id, FileId::Animations | FileId::Transparency) {
+          let legacy = FileId::Effects.destination(root);
+          if legacy.is_file() {
+            legacy
+          } else {
+            destination
+          }
+        } else {
+          destination
+        };
+      (id, source)
+    })
     .collect()
 }
 fn argvus_root() -> PathBuf {

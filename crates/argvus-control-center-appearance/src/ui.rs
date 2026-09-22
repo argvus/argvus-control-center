@@ -484,7 +484,8 @@ impl AppearanceApp {
           draft.set(card, !draft.enabled(card));
         }
       }
-      AppearancePage::Effects if self.selected == 0 => self.apply_toggle_effects(),
+      AppearancePage::Effects if self.selected == 0 => self.apply_toggle_animations(),
+      AppearancePage::Effects if self.selected == 1 => self.apply_toggle_transparency(),
       AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
       AppearancePage::TaskbarSpaces => self.open_prompt(
         [
@@ -781,12 +782,20 @@ impl AppearanceApp {
       AppearancePage::Prompt { .. } => {}
     }
   }
-  /// Applies the `apply_toggle_effects` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn apply_toggle_effects(&mut self) {
-    let value = !self.state.effects;
+  /// Applies the `apply_toggle_animations` operation while preserving the persistence and local-update contract.
+  fn apply_toggle_animations(&mut self) {
+    let value = !self.state.animations;
     self.apply(
-      tr(self.lang, "control_center.effects_applied").into(),
-      move || backend::set_effects(value),
+      tr(self.lang, "control_center.animations_applied").into(),
+      move || backend::set_animations(value),
+    );
+  }
+  /// Applies the `apply_toggle_transparency` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn apply_toggle_transparency(&mut self) {
+    let value = !self.state.transparency;
+    self.apply(
+      tr(self.lang, "control_center.transparency_applied").into(),
+      move || backend::set_transparency(value),
     );
   }
   /// Applies the `apply_toggle_telemetry` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -804,7 +813,7 @@ impl AppearanceApp {
       AppearancePage::Themes => THEME_FAMILIES.len() + self.state.custom_themes.len() + 2,
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
-      AppearancePage::Effects => 1,
+      AppearancePage::Effects => 2,
       AppearancePage::ThemeModes { .. }
       | AppearancePage::TaskbarPosition
       | AppearancePage::Taskbar => 2,
@@ -1097,19 +1106,34 @@ impl AppearanceApp {
         ),
         tr(self.lang, "control_center.reset_to_theme_default").into(),
       ],
-      AppearancePage::Effects => vec![format!(
-        "[{}] {} · {}",
-        if self.state.effects { "x" } else { " " },
-        icon_label(
-          argvus_tui::icons::SUCCESS,
-          tr(self.lang, "control_center.animations")
+      AppearancePage::Effects => vec![
+        format!(
+          "[{}] {} · {}",
+          if self.state.animations { "x" } else { " " },
+          icon_label(
+            argvus_tui::icons::SUCCESS,
+            tr(self.lang, "control_center.animations")
+          ),
+          if self.state.animations {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
         ),
-        if self.state.effects {
-          tr(self.lang, "control_center.enabled")
-        } else {
-          tr(self.lang, "control_center.disabled")
-        }
-      )],
+        format!(
+          "[{}] {} · {}",
+          if self.state.transparency { "x" } else { " " },
+          icon_label(
+            argvus_tui::icons::SUCCESS,
+            tr(self.lang, "control_center.transparency")
+          ),
+          if self.state.transparency {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
+        ),
+      ],
       AppearancePage::SpacesBordersPosition => vec![
         icon_label(
           argvus_tui::icons::INFO,
@@ -1858,7 +1882,7 @@ mod tests {
     assert_eq!(app(AppearancePage::Taskbar).rows().len(), 2);
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 9);
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 14);
-    assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
+    assert_eq!(app(AppearancePage::Effects).rows().len(), 2);
   }
   #[test]
   fn theme_rows_use_friendly_official_names() {

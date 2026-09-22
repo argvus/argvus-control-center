@@ -178,7 +178,7 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
       "Toggle GTK Dark and Light themes",
       "Altera entre tema Dark e Light do GTK",
     ),
-    "appearance.effects" => ("Toggle visual effects", "Ativa/Desativa efeitos visuais"),
+    "appearance.animations" => ("Toggle animations", "Ativa/Desativa animações"),
     "system.about" => ("Open About ARGVUS", "Abrir Sobre o ARGVUS"),
     "session.lock" => ("Lock system", "Bloquear sistema"),
     "session.dpms" => (
