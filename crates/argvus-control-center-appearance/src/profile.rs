@@ -310,10 +310,9 @@ pub fn inspect_archive(path: &Path) -> Result<(String, bool), String> {
   Ok((name, duplicate))
 }
 
-pub fn apply_custom_theme(theme: &CustomTheme) -> Result<(), String> {
+pub fn apply_custom_theme(theme: &CustomTheme) -> Result<ApplyReport, String> {
   let staged = stage_archive(Path::new(&theme.profile_path))?;
-  apply_staged(&staged, theme.wallpaper_path.as_deref())?;
-  write_atomic(&custom_current_path(), &format!("{}\n", theme.id))
+  apply_staged(&staged, theme.wallpaper_path.as_deref(), &theme.id)
 }
 
 pub fn delete_custom_theme(theme: &CustomTheme) -> Result<(), String> {
@@ -324,7 +323,8 @@ pub fn delete_custom_theme(theme: &CustomTheme) -> Result<(), String> {
   themes.retain(|candidate| candidate.id != theme.id);
   save_registry(&themes)?;
   if let Some(parent) = Path::new(&theme.profile_path).parent() {
-    let _ = fs::remove_dir_all(parent);
+    fs::remove_dir_all(parent)
+      .map_err(|error| format!("could not remove theme profile: {error}"))?;
   }
   Ok(())
 }
@@ -346,7 +346,7 @@ fn install_staged_profile(staged: &StagedProfile, source: &Path) -> Result<Custo
   fs::create_dir_all(&temporary).map_err(|e| e.to_string())?;
   let installed = temporary.join("profile.tar.gz");
   copy_atomic(source, &installed)?;
-  let wallpaper_path = staged
+  let restored_wallpaper = staged
     .manifest
     .wallpaper
     .as_ref()
@@ -358,12 +358,18 @@ fn install_staged_profile(staged: &StagedProfile, source: &Path) -> Result<Custo
       restore_wallpaper(meta, &entry.path)
     })
     .transpose()?;
+  let wallpaper_path = restored_wallpaper
+    .as_ref()
+    .map(|(path, _created)| path.clone());
+  let wallpaper_created = restored_wallpaper
+    .as_ref()
+    .is_some_and(|(_, created)| *created);
   let record = RegistryTheme {
     id: id.clone(),
     name: display_name,
     base_theme: staged.manifest.argvus.theme.clone(),
     profile_path: root.join(&id).join("profile.tar.gz").display().to_string(),
-    wallpaper_path,
+    wallpaper_path: wallpaper_path.clone(),
   };
   let mut next = themes
     .into_iter()
@@ -381,6 +387,9 @@ fn install_staged_profile(staged: &StagedProfile, source: &Path) -> Result<Custo
     if let Err(error) = save_registry(&next) {
       let _ = fs::remove_dir_all(&storage);
       let _ = fs::rename(&backup, &storage);
+      if wallpaper_created && let Some(path) = &wallpaper_path {
+        let _ = fs::remove_file(path);
+      }
       return Err(error);
     }
     let _ = fs::remove_dir_all(backup);
@@ -388,17 +397,30 @@ fn install_staged_profile(staged: &StagedProfile, source: &Path) -> Result<Custo
     fs::rename(&temporary, &storage).map_err(|e| e.to_string())?;
     if let Err(error) = save_registry(&next) {
       let _ = fs::remove_dir_all(&storage);
+      if wallpaper_created && let Some(path) = &wallpaper_path {
+        let _ = fs::remove_file(path);
+      }
       return Err(error);
     }
   }
   Ok(record.into())
 }
 
-fn apply_staged(staged: &StagedProfile, wallpaper: Option<&str>) -> Result<(), String> {
+fn apply_staged(
+  staged: &StagedProfile,
+  wallpaper: Option<&str>,
+  custom_theme_id: &str,
+) -> Result<ApplyReport, String> {
   let root = argvus_root();
   let backup = tempdir().map_err(|e| e.to_string())?;
   let mut backups = Vec::new();
   let mut payload = Vec::new();
+  let previous_theme = read_first(&root.join(".active-theme"), "argvus-dark-aether");
+  let previous_wallpaper = fs::read_to_string(root.join(".wallpaper-custom"))
+    .ok()
+    .map(|value| value.trim().to_owned())
+    .filter(|value| !value.is_empty());
+  let previous_custom_marker = fs::read(custom_current_path()).ok();
   for file in &staged.manifest.files {
     let id = FileId::parse(&file.id).ok_or("unknown theme profile file id")?;
     let entry = staged
@@ -416,39 +438,112 @@ fn apply_staged(staged: &StagedProfile, wallpaper: Option<&str>) -> Result<(), S
     backups.push((destination.clone(), old));
     payload.push((entry.path.clone(), destination));
   }
-  let result = (|| {
-    crate::backend::set_theme(&staged.manifest.argvus.theme)?;
+  let marker_path = custom_current_path();
+  let result: Result<bool, String> = (|| {
+    crate::backend::set_theme_static(&staged.manifest.argvus.theme)?;
     for (source, destination) in &payload {
       copy_atomic(source, destination)?;
     }
-    apply_overrides(wallpaper)
+    let wallpaper_missing = apply_overrides_static(wallpaper)?;
+    write_atomic(&marker_path, &format!("{custom_theme_id}\n"))?;
+    Ok(wallpaper_missing)
   })();
-  if let Err(error) = result {
-    for (destination, old) in backups {
-      if let Some(old) = old {
-        let _ = fs::copy(old, destination);
-      } else {
-        let _ = fs::remove_file(destination);
-      }
+  let wallpaper_missing = match result {
+    Ok(value) => value,
+    Err(error) => {
+      rollback_staged(
+        &backups,
+        &marker_path,
+        previous_custom_marker.as_deref(),
+        &previous_theme,
+        previous_wallpaper.as_deref(),
+      );
+      return Err(format!("profile apply rolled back: {error}"));
     }
-    return Err(format!("profile apply rolled back: {error}"));
+  };
+  if let Err(error) = crate::backend::reload_session_for_profile() {
+    rollback_staged(
+      &backups,
+      &marker_path,
+      previous_custom_marker.as_deref(),
+      &previous_theme,
+      previous_wallpaper.as_deref(),
+    );
+    let _ = crate::backend::reload_session_for_profile();
+    return Err(format!("profile reload rolled back: {error}"));
   }
-  crate::backend::reload_session_for_profile()
+  if wallpaper_missing {
+    return Ok(ApplyReport {
+      wallpaper_missing: true,
+    });
+  }
+  Ok(ApplyReport {
+    wallpaper_missing: false,
+  })
 }
 
-fn apply_overrides(wallpaper: Option<&str>) -> Result<(), String> {
-  crate::backend::run_profile_script("accent-switch.sh", &["--apply"])?;
-  crate::backend::run_profile_script("effects-toggle.sh", &["apply"])?;
-  crate::backend::run_profile_script("spaces-switch.sh", &["--apply"])?;
-  crate::backend::run_profile_script("borders-switch.sh", &["--apply"])?;
-  crate::backend::run_profile_script("taskbar-right-2-mode.sh", &["apply"])?;
-  crate::backend::run_profile_script("argvus-widget-telemetry-toggle", &["blocks", "apply"])?;
-  if let Some(path) = wallpaper.filter(|path| Path::new(path).is_file()) {
-    crate::backend::run_profile_script("hypr-wallpaper-pick.sh", &["--apply", path])?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApplyReport {
+  pub wallpaper_missing: bool,
+}
+
+fn rollback_staged(
+  backups: &[(PathBuf, Option<PathBuf>)],
+  marker_path: &Path,
+  previous_marker: Option<&[u8]>,
+  previous_theme: &str,
+  previous_wallpaper: Option<&str>,
+) {
+  for (destination, old) in backups {
+    if let Some(old) = old {
+      let _ = fs::copy(old, destination);
+    } else {
+      let _ = fs::remove_file(destination);
+    }
+  }
+  let _ = crate::backend::set_theme_static(previous_theme);
+  let _ = apply_overrides_static(previous_wallpaper);
+  match previous_marker {
+    Some(value) => {
+      let _ = fs::write(marker_path, value);
+    }
+    None => {
+      let _ = fs::remove_file(marker_path);
+    }
+  }
+}
+
+fn apply_overrides_static(wallpaper: Option<&str>) -> Result<bool, String> {
+  const STATIC_ENV: [(&str, &str); 1] = [("ARGVUS_NO_RUNTIME", "1")];
+  crate::backend::run_profile_script_with_env(
+    "accent-switch.sh",
+    &["--apply-static"],
+    &STATIC_ENV,
+  )?;
+  crate::backend::run_profile_script_with_env("effects-toggle.sh", &["apply"], &STATIC_ENV)?;
+  crate::backend::run_profile_script_with_env("spaces-switch.sh", &["--apply"], &STATIC_ENV)?;
+  crate::backend::run_profile_script_with_env("borders-switch.sh", &["--apply"], &STATIC_ENV)?;
+  crate::backend::run_profile_script_with_env("taskbar-right-2-mode.sh", &["apply"], &STATIC_ENV)?;
+  crate::backend::run_profile_script_with_env(
+    "argvus-widget-telemetry-toggle",
+    &["blocks", "apply"],
+    &STATIC_ENV,
+  )?;
+  if let Some(path) = wallpaper {
+    if Path::new(path).is_file() {
+      crate::backend::run_profile_script_with_env(
+        "hypr-wallpaper-pick.sh",
+        &["--apply-static", path],
+        &STATIC_ENV,
+      )?;
+      return Ok(false);
+    }
+    let _ = fs::remove_file(argvus_root().join(".wallpaper-custom"));
+    return Ok(true);
   } else {
     let _ = fs::remove_file(argvus_root().join(".wallpaper-custom"));
   }
-  Ok(())
+  Ok(false)
 }
 
 fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
@@ -786,7 +881,7 @@ fn copy_atomic(source: &Path, destination: &Path) -> Result<(), String> {
   output.sync_all().map_err(|e| e.to_string())?;
   fs::rename(temporary, destination).map_err(|e| e.to_string())
 }
-fn restore_wallpaper(meta: &WallpaperMeta, source: &Path) -> Result<String, String> {
+fn restore_wallpaper(meta: &WallpaperMeta, source: &Path) -> Result<(String, bool), String> {
   let current_home = argvus_control_center_core::paths::home();
   let original = Path::new(&meta.original_path);
   let original_home = Path::new(&meta.original_home);
@@ -807,10 +902,11 @@ fn restore_wallpaper(meta: &WallpaperMeta, source: &Path) -> Result<String, Stri
     } else {
       target
     };
-  if !final_path.is_file() {
+  let created = !final_path.is_file();
+  if created {
     copy_atomic(source, &final_path)?;
   }
-  Ok(final_path.display().to_string())
+  Ok((final_path.display().to_string(), created))
 }
 fn collision_path(path: &Path) -> PathBuf {
   let stem = path

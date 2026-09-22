@@ -24,6 +24,8 @@ pub struct ProcessRequest {
   pub program: String,
   /// Structured arguments in the same order in which they are passed to the process.
   pub args: Vec<String>,
+  /// Environment overrides passed directly to the child process.
+  pub env: Vec<(String, String)>,
   /// Optional deadline for terminating the operation and avoiding an indefinite wait.
   pub timeout: Option<Duration>,
 }
@@ -34,6 +36,7 @@ impl ProcessRequest {
     Self {
       program: program.into(),
       args: Vec::new(),
+      env: Vec::new(),
       timeout: None,
     }
   }
@@ -41,6 +44,12 @@ impl ProcessRequest {
   /// Executes the `arg` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn arg(mut self, value: impl Into<String>) -> Self {
     self.args.push(value.into());
+    self
+  }
+
+  /// Adds an environment override without invoking a shell.
+  pub fn env(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+    self.env.push((name.into(), value.into()));
     self
   }
 
@@ -168,6 +177,7 @@ impl ProcessRunner for SystemProcessRunner {
     }
     let mut child = Command::new(&request.program)
       .args(&request.args)
+      .envs(request.env.iter().map(|(name, value)| (name, value)))
       .stdin(Stdio::null())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped())
@@ -229,6 +239,7 @@ impl ProcessRunner for SystemProcessRunner {
     }
     let mut child = Command::new(&request.program)
       .args(&request.args)
+      .envs(request.env.iter().map(|(name, value)| (name, value)))
       .stdin(Stdio::null())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped())
@@ -321,6 +332,19 @@ mod tests {
       .arg("hello;not-a-command");
     let output = SystemProcessRunner.run(&request).unwrap();
     assert_eq!(output.stdout, b"hello;not-a-command");
+  }
+
+  #[test]
+  fn passes_environment_without_a_shell() {
+    let output = SystemProcessRunner
+      .run(
+        &ProcessRequest::new("sh")
+          .arg("-c")
+          .arg("printf '%s' \"$ARGVUS_TEST_VALUE\"")
+          .env("ARGVUS_TEST_VALUE", "static-mode"),
+      )
+      .unwrap();
+    assert_eq!(output.stdout, b"static-mode");
   }
 
   #[test]

@@ -325,10 +325,20 @@ impl AppearanceApp {
         let Some(custom) = self.state.custom_themes.get(custom_index).cloned() else {
           return;
         };
-        self.apply(
-          tr(self.lang, "control_center.theme_profile_applied").into(),
-          move || backend::apply_custom_theme(&custom),
-        );
+        let lang = self.lang;
+        self.apply_result(move || {
+          backend::apply_custom_theme(&custom).map(|report| {
+            if report.wallpaper_missing {
+              format!(
+                "{}: {}",
+                tr(lang, "control_center.theme_profile_applied"),
+                tr(lang, "control_center.theme_profile_wallpaper_missing")
+              )
+            } else {
+              tr(lang, "control_center.theme_profile_applied").to_string()
+            }
+          })
+        });
       }
       AppearancePage::ThemeImport => {
         if let Some(path) = self.import_archives.get(self.selected).cloned() {
@@ -1644,9 +1654,9 @@ impl AppearanceApp {
   }
 
   fn draw_theme_page(&mut self, frame: &mut Frame, area: Rect) {
-    let official_height = (THEME_FAMILIES.len() as u16 + 2).min(area.height);
+    let official_height = (THEME_FAMILIES.len() as u16 + 1).min(area.height);
     let custom_rows = self.state.custom_themes.len().max(1) as u16;
-    let custom_height = (custom_rows + 2).min(area.height.saturating_sub(official_height));
+    let custom_height = (custom_rows + 1).min(area.height.saturating_sub(official_height));
     let sections = Layout::vertical([
       Constraint::Length(official_height),
       Constraint::Length(custom_height),
@@ -1655,7 +1665,7 @@ impl AppearanceApp {
     .split(area);
     let official = THEME_FAMILIES
       .iter()
-      .map(|(name, _)| {
+      .map(|(name, label)| {
         let current = self.state.active_custom_theme.is_none()
           && self
             .state
@@ -1663,7 +1673,7 @@ impl AppearanceApp {
             .strip_suffix("-float")
             .unwrap_or(&self.state.theme)
             == *name;
-        (name.to_string(), current)
+        (icon_label(argvus_tui::icons::PALETTE, *label), current)
       })
       .collect::<Vec<_>>();
     self.draw_theme_section(
@@ -1679,7 +1689,7 @@ impl AppearanceApp {
       .iter()
       .map(|theme| {
         (
-          theme.name.clone(),
+          icon_label(argvus_tui::icons::PALETTE, &theme.name),
           self.state.active_custom_theme.as_deref() == Some(theme.id.as_str()),
         )
       })
@@ -1693,11 +1703,17 @@ impl AppearanceApp {
     );
     let actions = vec![
       (
-        tr(self.lang, "control_center.theme_profile_export").to_string(),
+        icon_label(
+          argvus_tui::icons::STORAGE,
+          tr(self.lang, "control_center.theme_profile_export"),
+        ),
         false,
       ),
       (
-        tr(self.lang, "control_center.theme_profile_import").to_string(),
+        icon_label(
+          argvus_tui::icons::FOLDER,
+          tr(self.lang, "control_center.theme_profile_import"),
+        ),
         false,
       ),
     ];
@@ -1719,34 +1735,53 @@ impl AppearanceApp {
     offset: usize,
   ) {
     let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+      title,
+      Style::new()
+        .fg(self.theme.accent)
+        .add_modifier(Modifier::BOLD),
+    )));
     if rows.is_empty() {
       lines.push(Line::from(Span::styled(
         tr(self.lang, "control_center.theme_profile_custom_empty"),
-        Style::new().fg(self.theme.muted),
+        Style::new()
+          .fg(self.theme.muted)
+          .add_modifier(Modifier::DIM),
       )));
     } else {
       for (index, (label, current)) in rows.iter().enumerate() {
         let selected = self.selected == offset + index;
-        let suffix = if *current {
-          format!("  {}", tr(self.lang, "control_center.current"))
-        } else {
-          String::new()
-        };
-        let line = format!("{}{}{}", if selected { "> " } else { "  " }, label, suffix);
         let style = if selected {
           Style::new()
             .fg(self.theme.selected_foreground)
             .bg(self.theme.selected_background)
+            .add_modifier(Modifier::BOLD)
         } else {
           Style::new().fg(self.theme.foreground)
         };
-        lines.push(Line::from(Span::styled(line, style)));
+        let mut row = vec![Span::styled(
+          format!(" {} {}", if selected { ">" } else { " " }, label),
+          style,
+        )];
+        if *current {
+          row.push(Span::styled(
+            format!("  {}", tr(self.lang, "control_center.current")),
+            if selected {
+              Style::new()
+                .fg(self.theme.selected_foreground)
+                .bg(self.theme.selected_background)
+                .add_modifier(Modifier::BOLD)
+            } else {
+              Style::new()
+                .fg(self.theme.accent)
+                .add_modifier(Modifier::BOLD)
+            },
+          ));
+        }
+        lines.push(Line::from(row).style(style));
       }
     }
-    frame.render_widget(
-      Paragraph::new(lines).block(Block::default().title(title).borders(Borders::ALL)),
-      area,
-    );
+    frame.render_widget(Paragraph::new(lines), area);
   }
 }
 
@@ -1790,6 +1825,12 @@ mod tests {
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 9);
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 14);
     assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
+  }
+  #[test]
+  fn theme_rows_use_friendly_official_names() {
+    let rows = app(AppearancePage::Themes).rows();
+    assert!(rows[0].contains("ARGVUS Dark Aether"));
+    assert!(!rows[0].contains("argvus-dark-aether"));
   }
   #[test]
   /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

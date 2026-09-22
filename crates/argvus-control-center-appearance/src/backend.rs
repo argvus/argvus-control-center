@@ -60,6 +60,14 @@ fn control_panel_cards_script() -> PathBuf {
 
 /// Executes the `run_script` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
+  run_script_with_env(script_path, args, &[])
+}
+
+fn run_script_with_env(
+  script_path: &Path,
+  args: &[&str],
+  environment: &[(&str, &str)],
+) -> Result<(), String> {
   if !script_path.is_file() {
     return Err(format!("script não encontrado: {}", script_path.display()));
   }
@@ -73,6 +81,9 @@ fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
       return Err("invalid script argument".into());
     }
     request = request.arg(*argument);
+  }
+  for (name, value) in environment {
+    request = request.env(*name, *value);
   }
   let output = SystemProcessRunner
     .run(&request)
@@ -90,11 +101,18 @@ fn run_script(script_path: &Path, args: &[&str]) -> Result<(), String> {
   Ok(())
 }
 
-pub(crate) fn run_profile_script(name: &str, args: &[&str]) -> Result<(), String> {
+pub(crate) fn run_profile_script_with_env(
+  name: &str,
+  args: &[&str],
+  environment: &[(&str, &str)],
+) -> Result<(), String> {
   if name == "argvus-widget-telemetry-toggle" {
     let mut request = ProcessRequest::new(name);
     for argument in args {
       request = request.arg(*argument);
+    }
+    for (name, value) in environment {
+      request = request.env(*name, *value);
     }
     let output = SystemProcessRunner
       .run(&request)
@@ -104,7 +122,7 @@ pub(crate) fn run_profile_script(name: &str, args: &[&str]) -> Result<(), String
       .ok_or_else(|| "telemetry apply failed".into());
   }
   let path = script(name);
-  run_script(&path, args)
+  run_script_with_env(&path, args, environment)
 }
 
 /// Executes the `run_script_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -683,6 +701,16 @@ pub fn load_state() -> AppearanceState {
 /// Applies the `set_theme` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_theme(name: &str) -> Result<(), String> {
   run_script(&script("theme-switch.sh"), &[name])?;
+  let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
+  Ok(())
+}
+
+pub(crate) fn set_theme_static(name: &str) -> Result<(), String> {
+  run_script_with_env(
+    &script("theme-switch.sh"),
+    &[name],
+    &[("ARGVUS_NO_RUNTIME", "1"), ("ARGVUS_THEME_SWITCH", "1")],
+  )?;
   let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
   Ok(())
 }
