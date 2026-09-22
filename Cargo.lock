@@ -188,6 +188,7 @@ name = "argvus-control-center-core"
 version = "0.1.0"
 dependencies = [
  "argvus-i18n-core",
+ "libc",
  "serde",
  "toml",
 ]

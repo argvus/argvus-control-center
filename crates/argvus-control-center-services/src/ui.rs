@@ -19,7 +19,7 @@ use argvus_theme::Theme;
 use argvus_tui::buttons::{Button, ButtonKind};
 use argvus_tui::components::{
   ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-  draw_confirmation, draw_loading_splash,
+  draw_confirmation,
 };
 use argvus_tui::page::{list, readonly, shell, status};
 use crossterm::event::KeyCode;
@@ -59,6 +59,8 @@ pub struct ServicesApp {
   search: String,
   searching: bool,
   job: Option<JobHandle<JobData>>,
+  updates: Option<std::sync::mpsc::Receiver<Vec<Unit>>>,
+  requested_page: ServicePage,
   action: Option<JobHandle<String>>,
   pending: Option<Pending>,
   confirmation: ConfirmationState,
@@ -131,6 +133,8 @@ impl ServicesApp {
       search: String::new(),
       searching: false,
       job: None,
+      updates: None,
+      requested_page: ServicePage::Home,
       action: None,
       pending: None,
       confirmation: ConfirmationState::default(),
@@ -147,7 +151,7 @@ impl ServicesApp {
   }
   /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
-    if self.job.is_some() {
+    if self.job.is_some() || self.action.is_some() {
       return;
     }
     let page = self.page;
@@ -155,26 +159,60 @@ impl ServicesApp {
     let priority = self.priority.clone();
     let logs_unit = self.logs_unit.clone();
     let detail_user = self.detail_parent == ServicePage::User;
-    self.job = Some(self.manager.spawn(move |_| match page {
-      ServicePage::Home => {
-        let (system, user) = rayon::join(|| backend::list(false), || backend::list(true));
-        let mut system = system?;
-        system.append(&mut user?);
-        Ok(JobData::Units(system))
+    let (sender, receiver) = std::sync::mpsc::channel();
+    self.updates = Some(receiver);
+    self.requested_page = page;
+    self.job = Some(self.manager.spawn(move |_| {
+      match page {
+        ServicePage::Home => {
+          let system_sender = sender.clone();
+          let user_sender = sender.clone();
+          let (system, user) = rayon::join(
+            || {
+              backend::list_progressive(false, |units| {
+                let _ = system_sender.send(units);
+              })
+            },
+            || {
+              backend::list_progressive(true, |units| {
+                let _ = user_sender.send(units);
+              })
+            },
+          );
+          let mut system = system?;
+          system.append(&mut user?);
+          Ok(JobData::Units(system))
+        }
+        ServicePage::User => backend::list_progressive(true, |units| {
+          let _ = sender.send(units);
+        })
+        .map(JobData::Units),
+        ServicePage::Failed => {
+          let system_sender = sender.clone();
+          let user_sender = sender;
+          let (system, user) = rayon::join(
+            || {
+              backend::list_progressive(false, |units| {
+                let _ = system_sender.send(units);
+              })
+            },
+            || {
+              backend::list_progressive(true, |units| {
+                let _ = user_sender.send(units);
+              })
+            },
+          );
+          let mut system = system?;
+          let mut user = user?;
+          system.append(&mut user);
+          Ok(JobData::Units(system))
+        }
+        ServicePage::Logs | ServicePage::LogDetail(_) => {
+          backend::logs(logs_unit.as_deref(), previous, priority.as_deref(), 200).map(JobData::Logs)
+        }
+        ServicePage::Detail => backend::list(detail_user).map(JobData::Units),
+        _ => backend::list_progressive(false, |_| {}).map(JobData::Units),
       }
-      ServicePage::User => backend::list(true).map(JobData::Units),
-      ServicePage::Failed => {
-        let (system, user) = rayon::join(|| backend::list(false), || backend::list(true));
-        let mut system = system?;
-        let mut user = user?;
-        system.append(&mut user);
-        Ok(JobData::Units(system))
-      }
-      ServicePage::Logs | ServicePage::LogDetail(_) => {
-        backend::logs(logs_unit.as_deref(), previous, priority.as_deref(), 200).map(JobData::Logs)
-      }
-      ServicePage::Detail => backend::list(detail_user).map(JobData::Units),
-      _ => backend::list(false).map(JobData::Units),
     }));
     self.status = Some(StatusMessage {
       kind: StatusKind::Info,
@@ -183,11 +221,28 @@ impl ServicesApp {
   }
   /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
+    if self.job.is_some() && self.updates.is_some() && self.requested_page != self.page {
+      if let Some(job) = self.job.take() {
+        job.cancel();
+      }
+      self.updates = None;
+      self.refresh();
+    }
     let mut changed = false;
+    let updates = self
+      .updates
+      .as_ref()
+      .map(|receiver| receiver.try_iter().collect::<Vec<_>>())
+      .unwrap_or_default();
+    for units in updates {
+      self.accept_units(units);
+      changed = true;
+    }
     if let Some(job) = &self.job
       && let JobState::Finished(result) = job.try_state()
     {
       self.job = None;
+      self.updates = None;
       match result {
         Ok(JobData::Units(v)) => {
           self.units = v;
@@ -230,6 +285,27 @@ impl ServicesApp {
       changed = true
     }
     changed
+  }
+
+  fn accept_units(&mut self, incoming: Vec<Unit>) {
+    for unit in incoming {
+      if let Some(existing) = self
+        .units
+        .iter_mut()
+        .find(|existing| existing.name == unit.name && existing.scope == unit.scope)
+      {
+        *existing = unit;
+      } else {
+        self.units.push(unit);
+      }
+    }
+    self.units.sort_by(|left, right| {
+      left
+        .scope
+        .cmp(&right.scope)
+        .then_with(|| left.name.cmp(&right.name))
+    });
+    self.selected = self.selected.min(self.filtered().len().saturating_sub(1));
   }
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
@@ -732,13 +808,15 @@ impl ServicesApp {
         status(frame, area, &self.theme, s)
       }
       if self.job.is_some() {
-        draw_loading_splash(
+        status(
           frame,
           area,
           &self.theme,
-          &self.breadcrumb(),
-          tr(self.lang, "control_center.loading_services"),
-        );
+          &StatusMessage {
+            kind: StatusKind::Info,
+            text: tr(self.lang, "control_center.loading_services").into(),
+          },
+        )
       }
       if let Some(Pending::Action(a, u)) = &self.pending {
         self.draw_pending(frame, area, a, u);
@@ -813,12 +891,14 @@ impl ServicesApp {
       status(frame, area, &self.theme, s)
     }
     if self.job.is_some() {
-      draw_loading_splash(
+      status(
         frame,
         area,
         &self.theme,
-        &self.breadcrumb(),
-        tr(self.lang, "control_center.loading_services"),
+        &StatusMessage {
+          kind: StatusKind::Info,
+          text: tr(self.lang, "control_center.loading_services").into(),
+        },
       );
     }
     if let Some(Pending::Action(a, u)) = &self.pending {

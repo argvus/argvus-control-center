@@ -36,6 +36,132 @@ pub struct NetworkBackend<R> {
   pub capabilities: Capabilities,
 }
 impl<R: ProcessRunner> NetworkBackend<R> {
+  /// Publish inventory before slower page-specific queries complete.
+  pub fn load_page(
+    &self,
+    page: NetworkPage,
+    scan: bool,
+    mut state: NetworkSnapshot,
+    publish: impl Fn(NetworkSnapshot),
+  ) -> Result<NetworkSnapshot, NetworkError> {
+    state.proxy = proxy_from_environment();
+    if page == NetworkPage::Proxy {
+      return Ok(state);
+    }
+    if !self.capabilities.has_nmcli {
+      return Err(NetworkError::BackendUnavailable);
+    }
+    let devices = self.run(
+      "nmcli",
+      &["-t", "-f", DEVICE_STATUS_FIELDS, "device", "status"],
+      Duration::from_secs(3),
+    )?;
+    let mut interfaces = parse_devices(&devices);
+    for interface in &mut interfaces {
+      if let Some(old) = state.interfaces.iter().find(|old| {
+        old.name == interface.name
+          && old.connection == interface.connection
+          && old.state == interface.state
+      }) {
+        let mut preserved = old.clone();
+        preserved.kind = interface.kind.clone();
+        *interface = preserved;
+      }
+    }
+    state.interfaces = interfaces;
+    state.available = true;
+    state.connectivity = if state.interfaces.iter().any(|i| i.state == "connected") {
+      "online"
+    } else {
+      "offline"
+    }
+    .into();
+    publish(state.clone());
+    if matches!(
+      page,
+      NetworkPage::Home | NetworkPage::Status | NetworkPage::Wifi
+    ) {
+      state.wifi_enabled = self.radio_wifi();
+      publish(state.clone());
+    }
+    if matches!(page, NetworkPage::Home | NetworkPage::Vpn) {
+      let value = self.run(
+        "nmcli",
+        &["-t", "-f", "NAME,TYPE,DEVICE", "connection", "show"],
+        Duration::from_secs(3),
+      )?;
+      state.vpn = parse_vpn(&value);
+    }
+    if page == NetworkPage::Wifi
+      && state
+        .interfaces
+        .iter()
+        .any(|i| matches!(i.kind.as_str(), "wifi" | "802-11-wireless" | "wireless"))
+    {
+      let value = self.run(
+        "nmcli",
+        &[
+          "-t",
+          "-f",
+          "IN-USE,SSID,SIGNAL,SECURITY,FREQ,ACTIVE",
+          "device",
+          "wifi",
+          "list",
+          "--rescan",
+          if scan { "yes" } else { "no" },
+        ],
+        Duration::from_secs(if scan { 20 } else { 3 }),
+      )?;
+      state.wifi = parse_wifi(&value);
+    }
+    if matches!(
+      page,
+      NetworkPage::Interfaces
+        | NetworkPage::Ethernet
+        | NetworkPage::Detail(_)
+        | NetworkPage::Dns
+        | NetworkPage::Status
+    ) {
+      let names = state
+        .interfaces
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !matches!(page, NetworkPage::Detail(selected) if selected != *index))
+        .map(|(index, interface)| (index, interface.name.clone()))
+        .collect::<Vec<_>>();
+      for batch in names.chunks(4) {
+        let results = std::thread::scope(|scope| {
+          batch
+            .iter()
+            .map(|(index, name)| {
+              (
+                *index,
+                scope.spawn(move || {
+                  self.run(
+                    "nmcli",
+                    &["-t", "-f", DEVICE_DETAIL_FIELDS, "device", "show", name],
+                    Duration::from_secs(3),
+                  )
+                }),
+              )
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|(index, handle)| (index, handle.join().unwrap_or(Err(NetworkError::Timeout))))
+            .collect::<Vec<_>>()
+        });
+        for (index, result) in results {
+          if let Ok(details) = result {
+            apply_device_details(&mut state.interfaces[index], &details);
+          }
+        }
+        publish(state.clone());
+      }
+      state.dns = dns_from_interfaces(&state.interfaces).unwrap_or_else(|| read_dns(self));
+    }
+    Ok(state)
+  }
+
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(runner: R, capabilities: Capabilities) -> Self {
     Self {
@@ -610,6 +736,65 @@ mod tests {
   #[derive(Default)]
   /// Represents `FailingDetailRunner`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   struct FailingDetailRunner(Mutex<Vec<ProcessRequest>>);
+
+  #[test]
+  fn inventory_survives_detail_failure() {
+    let backend = NetworkBackend::new(
+      FailingDetailRunner::default(),
+      Capabilities {
+        has_nmcli: true,
+        ..Default::default()
+      },
+    );
+    let updates = Mutex::new(Vec::new());
+    backend
+      .load_page(
+        NetworkPage::Interfaces,
+        false,
+        NetworkSnapshot::default(),
+        |state| updates.lock().unwrap().push(state),
+      )
+      .unwrap();
+    assert_eq!(updates.lock().unwrap()[0].interfaces.len(), 2);
+  }
+
+  #[test]
+  fn home_does_not_scan_wifi_probe_bluetooth_or_fetch_details() {
+    let backend = NetworkBackend::new(
+      HostShapeRunner::default(),
+      Capabilities {
+        has_nmcli: true,
+        has_bluetoothctl: true,
+        ..Default::default()
+      },
+    );
+    backend
+      .load_page(NetworkPage::Home, false, NetworkSnapshot::default(), |_| {})
+      .unwrap();
+    let requests = backend.runner.0.lock().unwrap();
+    assert_eq!(requests.len(), 3);
+    assert!(requests.iter().all(|request| {
+      request.program != "bluetoothctl"
+        && !request
+          .args
+          .iter()
+          .any(|arg| arg == DEVICE_DETAIL_FIELDS || arg == "--rescan")
+    }));
+  }
+
+  #[test]
+  fn proxy_requires_no_subprocess_or_network_manager() {
+    let backend = NetworkBackend::new(HostShapeRunner::default(), Capabilities::default());
+    backend
+      .load_page(
+        NetworkPage::Proxy,
+        false,
+        NetworkSnapshot::default(),
+        |_| {},
+      )
+      .unwrap();
+    assert!(backend.runner.0.lock().unwrap().is_empty());
+  }
   impl ProcessRunner for FailingDetailRunner {
     /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
     fn run(&self, request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {

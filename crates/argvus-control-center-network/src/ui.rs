@@ -23,7 +23,7 @@ use argvus_tui::{
   buttons::{Button, ButtonKind},
   components::{
     ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-    draw_confirmation, draw_loading_splash,
+    draw_confirmation,
   },
   page::{Selection, list, readonly, shell, status},
 };
@@ -45,6 +45,9 @@ pub struct NetworkApp {
   button_from: Option<usize>,
   snapshot: NetworkSnapshot,
   job: Option<JobHandle<Result<NetworkSnapshot, String>>>,
+  updates: Option<std::sync::mpsc::Receiver<NetworkSnapshot>>,
+  requested_page: NetworkPage,
+  refreshed: Option<std::time::Instant>,
   action: Option<JobHandle<Result<String, String>>>,
   jobs: JobManager,
   lang: Lang,
@@ -85,6 +88,9 @@ impl NetworkApp {
       button_from: None,
       snapshot: Default::default(),
       job: None,
+      updates: None,
+      requested_page: NetworkPage::Home,
+      refreshed: None,
       action: None,
       jobs: JobManager::default(),
       lang,
@@ -107,7 +113,11 @@ impl NetworkApp {
       self.ensure_firewall();
       return;
     }
-    self.start_refresh(false);
+    if self.requested_page != self.page
+      || self.refreshed.is_none_or(|at| at.elapsed().as_secs() >= 5)
+    {
+      self.start_refresh(false);
+    }
   }
   /// Executes the `ensure_firewall` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn ensure_firewall(&mut self) {
@@ -126,25 +136,33 @@ impl NetworkApp {
     }
     let cap = self.capabilities.clone();
     self.scan = scan;
-    self.status = Some(StatusMessage {
-      kind: StatusKind::Info,
-      text: if scan {
-        tr(self.lang, "control_center.scanning_for_networks")
-      } else {
-        tr(self.lang, "control_center.refreshing_network")
-      }
-      .into(),
-    });
+    let page = self.page;
+    self.requested_page = page;
+    let previous = self.snapshot.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    self.updates = Some(receiver);
     self.job = Some(self.jobs.spawn(move |_| {
       Ok(
         NetworkBackend::new(SystemProcessRunner, cap)
-          .snapshot(scan)
+          .load_page(page, scan, previous, |state| {
+            let _ = sender.send(state);
+          })
           .map_err(|e| e.to_string()),
       )
     }));
   }
   /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
+    if self.job.is_some() && self.requested_page != self.page {
+      if let Some(job) = self.job.take() {
+        job.cancel();
+      }
+      self.updates = None;
+      self.scan = false;
+      if self.page != NetworkPage::Firewall {
+        self.start_refresh(false);
+      }
+    }
     if self.page == NetworkPage::Firewall {
       return self
         .firewall
@@ -152,23 +170,36 @@ impl NetworkApp {
         .is_some_and(|settings| settings.expire_status());
     }
     let mut changed = false;
+    let updates = self
+      .updates
+      .as_ref()
+      .map(|receiver| receiver.try_iter().collect::<Vec<_>>())
+      .unwrap_or_default();
+    for snapshot in updates {
+      self.accept_snapshot(snapshot);
+      changed = true;
+    }
     if let Some(job) = &self.job
       && let JobState::Finished(result) = job.try_state()
     {
       self.job = None;
+      self.updates = None;
       match result {
         Ok(Ok(snapshot)) => {
-          self.snapshot = snapshot;
+          self.accept_snapshot(snapshot);
+          self.refreshed = Some(std::time::Instant::now());
           self.selected.normalize(self.row_count());
-          self.status = Some(StatusMessage {
-            kind: StatusKind::Success,
-            text: if self.scan {
-              tr(self.lang, "control_center.networks_updated")
-            } else {
-              tr(self.lang, "control_center.network_refreshed")
-            }
-            .into(),
-          });
+          if self.status.is_none() {
+            self.status = Some(StatusMessage {
+              kind: StatusKind::Success,
+              text: if self.scan {
+                tr(self.lang, "control_center.networks_updated")
+              } else {
+                tr(self.lang, "control_center.network_refreshed")
+              }
+              .into(),
+            });
+          }
         }
         Ok(Err(error)) | Err(error) => {
           self.status = Some(StatusMessage {
@@ -178,6 +209,9 @@ impl NetworkApp {
         }
       }
       self.scan = false;
+      if self.requested_page != self.page && self.page != NetworkPage::Firewall {
+        self.start_refresh(false);
+      }
       changed = true;
     }
     if let Some(job) = &self.action
@@ -193,6 +227,27 @@ impl NetworkApp {
       changed = true;
     }
     changed
+  }
+
+  fn accept_snapshot(&mut self, snapshot: NetworkSnapshot) {
+    let selected_name = self
+      .current_index()
+      .and_then(|index| self.snapshot.interfaces.get(index))
+      .map(|interface| interface.name.clone());
+    self.snapshot = snapshot;
+    if let (NetworkPage::Detail(_), Some(name)) = (self.page, selected_name) {
+      if let Some(index) = self
+        .snapshot
+        .interfaces
+        .iter()
+        .position(|interface| interface.name == name)
+      {
+        self.page = NetworkPage::Detail(index);
+      } else {
+        self.page = NetworkPage::Interfaces;
+      }
+    }
+    self.selected.normalize(self.row_count());
   }
   /// Executes the `action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn action<F>(&mut self, label: &'static str, task: F)
@@ -241,8 +296,7 @@ impl NetworkApp {
       i.kind.to_ascii_lowercase().contains("wifi")
         || i.kind.to_ascii_lowercase().contains("wireless")
         || i.kind.eq_ignore_ascii_case("802-11-wireless")
-    }) || !self.snapshot.wifi.is_empty()
-      || has_wifi_hardware_sysfs();
+    }) || !self.snapshot.wifi.is_empty();
     if has_wifi_hardware {
       pages.push(NetworkPage::Wifi);
     }
@@ -712,7 +766,7 @@ impl NetworkApp {
       if self.page == NetworkPage::Firewall {
         self.reload();
       } else {
-        self.start_refresh(self.page == NetworkPage::Wifi);
+        self.start_refresh(false);
       }
       return;
     }
@@ -721,6 +775,7 @@ impl NetworkApp {
         self.detail_parent = self.page;
         self.page = NetworkPage::Detail(i);
         self.selected.index = 0;
+        self.reload();
       }
     } else if self.page == NetworkPage::Wifi {
       if let Some(i) = self.current_index() {
@@ -994,12 +1049,22 @@ impl NetworkApp {
       status(f, body, &self.theme, status_message);
     }
     if self.job.is_some() {
-      draw_loading_splash(
+      status(
         f,
-        area,
+        body,
         &self.theme,
-        &self.breadcrumb(),
-        tr(self.lang, "control_center.refreshing_network"),
+        &StatusMessage {
+          kind: StatusKind::Info,
+          text: tr(
+            self.lang,
+            if self.scan {
+              "control_center.scanning_for_networks"
+            } else {
+              "control_center.refreshing_network"
+            },
+          )
+          .into(),
+        },
       );
     }
   }
@@ -1399,16 +1464,6 @@ fn apply_dns_privileged(
   } else {
     Err(terminal_text(&String::from_utf8_lossy(&output.stderr)))
   }
-}
-
-/// Checks the condition represented by `has_wifi_hardware_sysfs` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn has_wifi_hardware_sysfs() -> bool {
-  std::fs::read_dir("/sys/class/net")
-    .ok()
-    .into_iter()
-    .flatten()
-    .filter_map(std::result::Result::ok)
-    .any(|entry| entry.path().join("wireless").is_dir())
 }
 
 #[cfg(test)]

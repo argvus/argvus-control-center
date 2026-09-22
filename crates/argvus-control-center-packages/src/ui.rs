@@ -104,6 +104,7 @@ pub struct PackagesApp {
   details_parent: PackagesPage,
   query: String,
   job: Option<JobHandle<Result<Loaded, String>>>,
+  last_loaded: Option<(String, std::time::Instant)>,
   plan: Option<JobHandle<Result<(Action, TransactionPlan), String>>>,
   action: Option<JobHandle<Result<String, String>>>,
   jobs: JobManager,
@@ -167,6 +168,7 @@ impl PackagesApp {
       details_parent: PackagesPage::Search,
       query: String::new(),
       job: None,
+      last_loaded: None,
       plan: None,
       action: None,
       jobs: JobManager::default(),
@@ -198,7 +200,27 @@ impl PackagesApp {
   }
   /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
+    self.start_reload(false);
+  }
+
+  fn reload_force(&mut self) {
+    self.start_reload(true);
+  }
+
+  fn reload_key(&self) -> String {
+    format!(
+      "{:?}|{}|{}",
+      self.page,
+      self.query,
+      self.selected_package_name().unwrap_or_default()
+    )
+  }
+
+  fn start_reload(&mut self, force: bool) {
     if self.destructive() {
+      return;
+    }
+    if self.job.is_some() {
       return;
     }
     if matches!(self.page, PackagesPage::Search | PackagesPage::Aur) && self.query.trim().is_empty()
@@ -211,6 +233,15 @@ impl PackagesApp {
         }
         .into(),
       });
+      return;
+    }
+    let key = self.reload_key();
+    if !force
+      && self
+        .last_loaded
+        .as_ref()
+        .is_some_and(|(loaded_key, at)| loaded_key == &key && at.elapsed().as_secs() < 10)
+    {
       return;
     }
     let caps = self.capabilities.clone();
@@ -274,6 +305,7 @@ impl PackagesApp {
           if !self.apply(d) {
             self.success(tr(self.lang, "control_center.packages_refreshed"));
           }
+          self.last_loaded = Some((self.reload_key(), std::time::Instant::now()));
           return true;
         }
         JobState::Finished(Ok(Err(e))) | JobState::Finished(Err(e)) => {
@@ -309,7 +341,7 @@ impl PackagesApp {
           self.lang,
           "control_center.operation_completed_refreshing_packages",
         ));
-        self.reload();
+        self.reload_force();
         true
       }
       JobState::Finished(Ok(Err(e))) | JobState::Finished(Err(e)) => {
@@ -656,7 +688,7 @@ impl PackagesApp {
         self.input = Some(self.query.clone());
         self.input_search = true;
       }
-      KeyCode::Char('r') => self.reload(),
+      KeyCode::Char('r') => self.reload_force(),
       KeyCode::Up
       | KeyCode::Down
       | KeyCode::Char('j')

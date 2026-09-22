@@ -18,7 +18,7 @@ use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
   buttons::{Button, ButtonKind},
-  components::{StatusKind, StatusMessage, draw_loading_splash},
+  components::{StatusKind, StatusMessage},
   page::{list, shell, status},
 };
 use crossterm::event::KeyCode;
@@ -34,7 +34,8 @@ use ratatui::{
 #[derive(Debug, Clone)]
 /// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
-  Loaded(Box<AppearanceState>),
+  Loaded(AppearancePage, Box<AppearanceState>),
+  Archives(Vec<std::path::PathBuf>),
   Action(String),
   ImportReady {
     path: std::path::PathBuf,
@@ -62,6 +63,7 @@ pub struct AppearanceApp {
   prompt_error: Option<String>,
   prompt_back: Option<AppearancePage>,
   job: Option<JobHandle<JobData>>,
+  refreshed: Vec<(AppearancePage, std::time::Instant)>,
   action: Option<JobHandle<JobData>>,
   reload_requested: bool,
   control_panel_draft: Option<ControlPanelCards>,
@@ -77,7 +79,22 @@ pub struct AppearanceApp {
 impl AppearanceApp {
   /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
-    self.refresh();
+    self.ensure_page();
+  }
+
+  fn ensure_page(&mut self) {
+    let lifetime = if self.page == AppearancePage::ControlPanel {
+      60
+    } else {
+      30
+    };
+    if !self
+      .refreshed
+      .iter()
+      .any(|(page, at)| *page == self.page && at.elapsed().as_secs() < lifetime)
+    {
+      self.refresh();
+    }
   }
 
   pub fn paste(&mut self, text: &str) {
@@ -94,7 +111,7 @@ impl AppearanceApp {
   }
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
-    let mut app = Self {
+    Self {
       page: AppearancePage::Home,
       lang,
       theme,
@@ -107,6 +124,7 @@ impl AppearanceApp {
       prompt_error: None,
       prompt_back: None,
       job: None,
+      refreshed: Vec::new(),
       action: None,
       reload_requested: false,
       control_panel_draft: None,
@@ -118,32 +136,24 @@ impl AppearanceApp {
       pending_import: None,
       pending_import_name: None,
       manager: JobManager::default(),
-    };
-    app.refresh();
-    app.trigger_first_load();
-    app
-  }
-  /// Executes the `trigger_first_load` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn trigger_first_load(&mut self) {
-    self.status_loading = true;
-    self.status = Some(StatusMessage {
-      kind: StatusKind::Info,
-      text: tr(self.lang, "control_center.loading_appearance").into(),
-    });
+    }
   }
   /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
-    if self.job.is_none() {
+    if self.job.is_none() && self.action.is_none() {
       self.status_loading = true;
-      self.status = Some(StatusMessage {
-        kind: StatusKind::Info,
-        text: tr(self.lang, "control_center.loading_appearance").into(),
-      });
-      self.job = Some(
-        self
-          .manager
-          .spawn(|_| Ok(JobData::Loaded(Box::new(backend::load_state())))),
-      );
+      let page = self.page;
+      let state = self.state.clone();
+      self.job = Some(self.manager.spawn(move |_| {
+        if page == AppearancePage::ThemeImport {
+          Ok(JobData::Archives(backend::list_import_archives()))
+        } else {
+          Ok(JobData::Loaded(
+            page,
+            Box::new(backend::load_page(page, state)),
+          ))
+        }
+      }));
     }
   }
   /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -154,14 +164,22 @@ impl AppearanceApp {
     {
       self.job = None;
       match result {
-        Ok(JobData::Loaded(state)) => {
+        Ok(JobData::Loaded(page, state)) => {
+          self.refreshed.retain(|(old, _)| *old != page);
+          self.refreshed.push((page, std::time::Instant::now()));
           self.state = *state;
           self.loaded = true;
-          let was_loading = self.status_loading;
           self.status_loading = false;
-          if was_loading {
-            self.status = None;
+          if page == AppearancePage::ControlPanel && self.page == page {
+            self.control_panel_draft = Some(self.state.control_panel_cards.clone());
           }
+          if self.page != page {
+            self.refresh();
+          }
+        }
+        Ok(JobData::Archives(paths)) => {
+          self.import_archives = paths;
+          self.status_loading = false;
         }
         Err(error) => {
           self.status_loading = false;
@@ -181,6 +199,7 @@ impl AppearanceApp {
       self.action = None;
       if self.reload_requested {
         self.reload_requested = false;
+        self.refreshed.clear();
         self.refresh();
       }
       match result {
@@ -251,6 +270,12 @@ impl AppearanceApp {
   }
   /// Executes the `go` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn go(&mut self, page: AppearancePage) {
+    if self.page != page
+      && let Some(job) = self.job.take()
+    {
+      job.cancel();
+      self.status_loading = false;
+    }
     if self.page == AppearancePage::ControlPanel && page != AppearancePage::ControlPanel {
       self.control_panel_draft = None;
     }
@@ -261,6 +286,7 @@ impl AppearanceApp {
     if page == AppearancePage::ControlPanel {
       self.control_panel_draft = Some(self.state.control_panel_cards.clone());
     }
+    self.ensure_page();
   }
 
   /// Applies all pending Control Panel checkbox changes with one panel reload.
@@ -317,7 +343,6 @@ impl AppearanceApp {
       AppearancePage::Themes
         if self.selected == THEME_FAMILIES.len() + self.state.custom_themes.len() + 1 =>
       {
-        self.import_archives = backend::list_import_archives();
         self.go(AppearancePage::ThemeImport)
       }
       AppearancePage::Themes => {
@@ -608,7 +633,16 @@ impl AppearanceApp {
     if self.prompt_back.is_some() || self.page == AppearancePage::AccentEdit {
       return self.prompt_key(key);
     }
-    if self.job.is_some() || self.action.is_some() {
+    if matches!(key, KeyCode::Esc | KeyCode::Left) {
+      return self.back();
+    }
+    if (self.job.is_some() || self.action.is_some())
+      && !matches!(
+        key,
+        KeyCode::Up | KeyCode::Down | KeyCode::Home | KeyCode::End
+      )
+      && !(key == KeyCode::Enter && self.page == AppearancePage::Home)
+    {
       return false;
     }
     if self.page == AppearancePage::Themes {
@@ -617,7 +651,6 @@ impl AppearanceApp {
         return false;
       }
       if key == KeyCode::Char('i') {
-        self.import_archives = backend::list_import_archives();
         self.go(AppearancePage::ThemeImport);
         return false;
       }
@@ -1537,12 +1570,14 @@ impl AppearanceApp {
       status(frame, area, &self.theme, message);
     }
     if self.status_loading {
-      draw_loading_splash(
+      status(
         frame,
-        frame.area(),
+        area,
         &self.theme,
-        &self.breadcrumb(),
-        tr(self.lang, "control_center.loading_appearance"),
+        &StatusMessage {
+          kind: StatusKind::Info,
+          text: tr(self.lang, "control_center.loading_appearance").into(),
+        },
       );
     }
   }
@@ -1803,6 +1838,7 @@ mod tests {
       prompt_error: None,
       prompt_back: None,
       job: None,
+      refreshed: Vec::new(),
       action: None,
       reload_requested: false,
       control_panel_draft: None,

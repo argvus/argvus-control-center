@@ -9,3 +9,4 @@ rust-version = "1.95"
 argvus-i18n.workspace = true
 serde.workspace = true
 toml.workspace = true
+libc = "0.2"

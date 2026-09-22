@@ -11,6 +11,32 @@ use argvus_control_center_core::{
   sanitize::terminal_text,
 };
 use serde_json::Value;
+use std::time::Duration;
+
+/// Loads one service scope and publishes it as soon as it is available.
+/// Callers can merge the result with another scope to render useful partial
+/// state while the remaining systemctl query is still running.
+pub fn list_progressive(user: bool, publish: impl Fn(Vec<Unit>)) -> Result<Vec<Unit>, String> {
+  let (units, files) = rayon::join(|| list_units(user), || list_unit_files(user));
+  let units = units?;
+  let session = if user { "user" } else { "system" };
+  let mut units = units
+    .into_iter()
+    .map(|mut unit| {
+      unit.scope = session.into();
+      unit
+    })
+    .collect::<Vec<_>>();
+  if let Ok(file_states) = files {
+    for (name, state) in file_states {
+      if let Some(unit) = units.iter_mut().find(|unit| unit.name == name) {
+        unit.file_state = state;
+      }
+    }
+  }
+  publish(units.clone());
+  Ok(units)
+}
 /// Executes the `list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list(user: bool) -> Result<Vec<Unit>, String> {
   let (units, files) = rayon::join(|| list_units(user), || list_unit_files(user));
@@ -35,7 +61,8 @@ fn list_units(user: bool) -> Result<Vec<Unit>, String> {
     .arg("--no-pager")
     .arg("--type=service")
     .arg("--all")
-    .arg("--output=json");
+    .arg("--output=json")
+    .timeout(Duration::from_secs(5));
   if user {
     r = r.arg("--user")
   }
@@ -49,7 +76,8 @@ fn list_unit_files(user: bool) -> Result<Vec<(String, String)>, String> {
     .arg("--no-pager")
     .arg("--type=service")
     .arg("--output=json")
-    .arg("list-unit-files");
+    .arg("list-unit-files")
+    .timeout(Duration::from_secs(5));
   if user {
     files = files.arg("--user");
   }
@@ -141,6 +169,7 @@ pub fn logs(
     .arg("--output=json")
     .arg("-n")
     .arg(limit.to_string());
+  r = r.timeout(Duration::from_secs(5));
   if previous {
     r = r.arg("-b").arg("-1")
   } else {

@@ -141,7 +141,9 @@ fn run_script_output(script_path: &Path, args: &[&str]) -> Option<String> {
     }
     request = request.arg(*argument);
   }
-  let output = SystemProcessRunner.run(&request).ok()?;
+  let output = SystemProcessRunner
+    .run(&request.timeout(Duration::from_secs(5)))
+    .ok()?;
   if output.status.is_none_or(|status| status != 0) {
     return None;
   }
@@ -407,7 +409,8 @@ fn telemetry_state() -> bool {
     &ProcessRequest::new("env")
       .arg("ARGVUS_MACHINE_OUTPUT=1")
       .arg("argvus-widget-telemetry-toggle")
-      .arg("status"),
+      .arg("status")
+      .timeout(Duration::from_secs(3)),
   ) && output.status.is_none_or(|status| status == 0)
   {
     match terminal_text(&String::from_utf8_lossy(&output.stdout)).trim() {
@@ -441,7 +444,8 @@ fn telemetry_blocks() -> WidgetTelemetryBlocks {
       .arg("ARGVUS_MACHINE_OUTPUT=1")
       .arg("argvus-widget-telemetry-toggle")
       .arg("blocks")
-      .arg("status"),
+      .arg("status")
+      .timeout(Duration::from_secs(3)),
   ) else {
     return blocks;
   };
@@ -671,29 +675,57 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
 }
 
 /// Retrieves data for `load_state` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn load_state() -> AppearanceState {
-  let mut state = AppearanceState::default();
+/// Collect only data used by the requested page. Existing values survive unrelated refreshes.
+pub fn load_page(
+  page: crate::model::AppearancePage,
+  mut state: AppearanceState,
+) -> AppearanceState {
+  use crate::model::AppearancePage;
   let theme = read_first(&active_theme_file(), DEFAULT_THEME);
   state.theme = theme.clone();
   let default_accent = theme_default_accent(&theme).unwrap_or(DEFAULT_ACCENT);
   state.accent = normalize_hex_color(&read_first(&accent_file(), default_accent))
     .unwrap_or_else(|| default_accent.to_string());
-  state.wallpapers = list_wallpapers();
-  state.wallpaper_active = active_wallpaper();
-  state.effects = effects_state();
-  state.widget_telemetry = telemetry_state();
-  state.widget_telemetry_blocks = telemetry_blocks();
-  state.control_panel_cards = control_panel_cards();
-  state.custom_themes = custom_themes();
-  state.active_custom_theme = active_custom_theme();
-  if let Some(output) = run_script_output(&script("taskbar-right-2-mode.sh"), &["status"]) {
-    state.taskbar_utility_group = TaskbarUtilityGroupMode::from_value(output.trim());
+  if page == AppearancePage::Wallpapers {
+    state.wallpapers = list_wallpapers();
+    state.wallpaper_active = active_wallpaper();
   }
-  if let Some(output) = run_script_output(&script("spaces-switch.sh"), &["--status"]) {
-    parse_spacing_status(&output, &mut state);
+  if page == AppearancePage::Effects {
+    state.effects = effects_state();
   }
-  if let Some(output) = run_script_output(&script("borders-switch.sh"), &["--status"]) {
-    parse_borders_status(&output, &mut state);
+  if page == AppearancePage::WidgetTelemetry {
+    state.widget_telemetry = telemetry_state();
+    state.widget_telemetry_blocks = telemetry_blocks();
+  }
+  if page == AppearancePage::ControlPanel {
+    state.control_panel_cards = control_panel_cards();
+  }
+  if matches!(
+    page,
+    AppearancePage::Themes | AppearancePage::ThemeModes { .. }
+  ) {
+    state.custom_themes = custom_themes();
+    state.active_custom_theme = active_custom_theme();
+  }
+  if matches!(
+    page,
+    AppearancePage::SpacesBordersPosition
+      | AppearancePage::TaskbarUtilityGroup
+      | AppearancePage::TaskbarPosition
+      | AppearancePage::TaskbarSpaces
+      | AppearancePage::WindowSpaces
+      | AppearancePage::GeneralBorders
+      | AppearancePage::EdgeThickness
+  ) {
+    if let Some(output) = run_script_output(&script("taskbar-right-2-mode.sh"), &["status"]) {
+      state.taskbar_utility_group = TaskbarUtilityGroupMode::from_value(output.trim());
+    }
+    if let Some(output) = run_script_output(&script("spaces-switch.sh"), &["--status"]) {
+      parse_spacing_status(&output, &mut state);
+    }
+    if let Some(output) = run_script_output(&script("borders-switch.sh"), &["--status"]) {
+      parse_borders_status(&output, &mut state);
+    }
   }
   state
 }

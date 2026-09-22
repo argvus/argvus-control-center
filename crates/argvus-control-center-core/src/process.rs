@@ -9,6 +9,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use std::io::{self, BufRead, BufReader};
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::{
   Arc, Mutex,
@@ -172,10 +173,12 @@ pub struct SystemProcessRunner;
 impl ProcessRunner for SystemProcessRunner {
   /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn run(&self, request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
+    let _measurement = ProcessMeasurement::new(request);
     if request.program.trim().is_empty() {
       return Err(ProcessError::EmptyProgram);
     }
     let mut child = Command::new(&request.program)
+      .process_group(0)
       .args(&request.args)
       .envs(request.env.iter().map(|(name, value)| (name, value)))
       .stdin(Stdio::null())
@@ -202,6 +205,9 @@ impl ProcessRunner for SystemProcessRunner {
     loop {
       match child.try_wait().map_err(ProcessError::Io)? {
         Some(status) => {
+          if request.timeout.is_some() {
+            terminate_descendants(child.id());
+          }
           let stdout = stdout_reader.join().unwrap_or_default();
           let stderr = stderr_reader.join().unwrap_or_default();
           return Ok(ProcessOutput {
@@ -211,7 +217,11 @@ impl ProcessRunner for SystemProcessRunner {
             timed_out: false,
           });
         }
-        None if deadline.is_some_and(|value| Instant::now() >= value) => {
+        None
+          if crate::jobs::current_cancelled()
+            || deadline.is_some_and(|value| Instant::now() >= value) =>
+        {
+          terminate_descendants(child.id());
           let _ = child.kill();
           let _ = child.wait();
           let stdout = stdout_reader.join().unwrap_or_default();
@@ -234,10 +244,12 @@ impl ProcessRunner for SystemProcessRunner {
     request: &ProcessRequest,
     live: &LiveProcess,
   ) -> Result<ProcessOutput, ProcessError> {
+    let _measurement = ProcessMeasurement::new(request);
     if request.program.trim().is_empty() {
       return Err(ProcessError::EmptyProgram);
     }
     let mut child = Command::new(&request.program)
+      .process_group(0)
       .args(&request.args)
       .envs(request.env.iter().map(|(name, value)| (name, value)))
       .stdin(Stdio::null())
@@ -263,6 +275,9 @@ impl ProcessRunner for SystemProcessRunner {
     let output = loop {
       match child.try_wait().map_err(ProcessError::Io)? {
         Some(status) => {
+          if request.timeout.is_some() {
+            terminate_descendants(child.id());
+          }
           let stdout = stdout_reader.join().unwrap_or_default();
           let stderr = stderr_reader.join().unwrap_or_default();
           break Ok(ProcessOutput {
@@ -272,7 +287,11 @@ impl ProcessRunner for SystemProcessRunner {
             timed_out: false,
           });
         }
-        None if deadline.is_some_and(|value| Instant::now() >= value) => {
+        None
+          if crate::jobs::current_cancelled()
+            || deadline.is_some_and(|value| Instant::now() >= value) =>
+        {
+          terminate_descendants(child.id());
           let _ = child.kill();
           let _ = child.wait();
           let stdout = stdout_reader.join().unwrap_or_default();
@@ -293,6 +312,59 @@ impl ProcessRunner for SystemProcessRunner {
 }
 
 /// Retrieves data for `read_pipe` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+fn terminate_descendants(pid: u32) {
+  if let Ok(pid) = i32::try_from(pid) {
+    // Each managed child owns its process group; never target our own group.
+    unsafe {
+      libc::kill(-pid, libc::SIGKILL);
+    }
+  }
+}
+
+/// Opt-in timings omit arguments, output and environment (which may contain secrets).
+struct ProcessMeasurement {
+  started: Instant,
+  program: String,
+  log: Option<std::ffi::OsString>,
+}
+
+impl ProcessMeasurement {
+  fn new(request: &ProcessRequest) -> Self {
+    Self {
+      started: Instant::now(),
+      program: std::path::Path::new(&request.program)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned(),
+      log: std::env::var_os("ARGVUS_PERFORMANCE_LOG"),
+    }
+  }
+}
+
+impl Drop for ProcessMeasurement {
+  fn drop(&mut self) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    if let Some(path) = &self.log
+      && let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+      let _ = writeln!(
+        file,
+        "program={} elapsed_ms={} cancelled={}",
+        crate::sanitize::terminal_text(&self.program),
+        self.started.elapsed().as_millis(),
+        crate::jobs::current_cancelled()
+      );
+    }
+  }
+}
+
 fn read_pipe(mut pipe: impl std::io::Read) -> Vec<u8> {
   let mut output = Vec::new();
   let _ = pipe.read_to_end(&mut output);
@@ -323,6 +395,62 @@ fn read_pipe_live(mut pipe: impl BufRead, live: &LiveProcess) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn timeout_closes_inherited_pipes() {
+    let started = Instant::now();
+    let output = SystemProcessRunner
+      .run(
+        &ProcessRequest::new("sh")
+          .arg("-c")
+          .arg("sleep 30 & wait")
+          .timeout(Duration::from_millis(80)),
+      )
+      .unwrap();
+    assert!(output.timed_out);
+    assert!(started.elapsed() < Duration::from_millis(580));
+  }
+
+  #[test]
+  fn completed_parent_does_not_wait_for_background_pipe() {
+    let started = Instant::now();
+    let output = SystemProcessRunner
+      .run(
+        &ProcessRequest::new("sh")
+          .arg("-c")
+          .arg("sleep 30 & exit 0")
+          .timeout(Duration::from_secs(1)),
+      )
+      .unwrap();
+    assert_eq!(output.status, Some(0));
+    assert!(started.elapsed() < Duration::from_millis(500));
+  }
+
+  #[test]
+  fn cancelled_query_terminates_process_tree() {
+    let manager = crate::jobs::JobManager::default();
+    let job = manager.spawn(|_| {
+      SystemProcessRunner
+        .run(
+          &ProcessRequest::new("sh")
+            .arg("-c")
+            .arg("sleep 30 & wait")
+            .timeout(Duration::from_secs(5)),
+        )
+        .map_err(|e| e.to_string())
+    });
+    std::thread::sleep(Duration::from_millis(40));
+    job.cancel();
+    let start = Instant::now();
+    loop {
+      if let crate::jobs::JobState::Finished(result) = job.try_state() {
+        assert!(result.unwrap().timed_out);
+        break;
+      }
+      assert!(start.elapsed() < Duration::from_millis(500));
+      std::thread::sleep(Duration::from_millis(5));
+    }
+  }
 
   #[test]
   /// Executes the `builds_arguments_without_a_shell` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

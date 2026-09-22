@@ -21,6 +21,19 @@ pub struct JobId(u64);
 /// Represents `CancellationToken`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct CancellationToken(Arc<AtomicBool>);
 
+thread_local! {
+  static CURRENT_CANCELLATION: std::cell::RefCell<Option<CancellationToken>> = const { std::cell::RefCell::new(None) };
+}
+
+pub(crate) fn current_cancelled() -> bool {
+  CURRENT_CANCELLATION.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .is_some_and(CancellationToken::is_cancelled)
+  })
+}
+
 impl CancellationToken {
   /// Checks the condition represented by `is_cancelled` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn is_cancelled(&self) -> bool {
@@ -86,7 +99,9 @@ impl JobManager {
     let token = CancellationToken(Arc::clone(&cancel));
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
+      CURRENT_CANCELLATION.with(|slot| *slot.borrow_mut() = Some(token.clone()));
       let _ = sender.send(task(token));
+      CURRENT_CANCELLATION.with(|slot| *slot.borrow_mut() = None);
     });
     JobHandle {
       id,

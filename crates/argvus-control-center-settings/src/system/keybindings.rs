@@ -164,10 +164,6 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
       "Abre seletor para trocar wallpaper",
     ),
     "appearance.theme" => ("Open theme selector", "Abre o seletor de temas"),
-    "appearance.accent" => (
-      "Open accent color selector",
-      "Abre o seletor de cores de destaque",
-    ),
     "session.idle_timeout" => (
       "Choose inactivity lock timeout",
       "Escolhe o tempo de bloqueio por inatividade",

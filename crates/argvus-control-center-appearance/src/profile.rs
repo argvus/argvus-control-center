@@ -421,12 +421,7 @@ fn apply_staged(
     .map(|value| value.trim().to_owned())
     .filter(|value| !value.is_empty());
   let previous_custom_marker = fs::read(custom_current_path()).ok();
-  for file in &staged.manifest.files {
-    let id = FileId::parse(&file.id).ok_or("unknown theme profile file id")?;
-    let entry = staged
-      .entries
-      .get(&file.archive_path)
-      .ok_or("missing theme profile payload")?;
+  for id in FileId::ALL {
     let destination = id.destination(&root);
     let old = if destination.is_file() {
       let old = backup.path().join(id.id());
@@ -435,11 +430,24 @@ fn apply_staged(
     } else {
       None
     };
-    backups.push((destination.clone(), old));
+    backups.push((destination, old));
+  }
+  for file in &staged.manifest.files {
+    let id = FileId::parse(&file.id).ok_or("unknown theme profile file id")?;
+    let entry = staged
+      .entries
+      .get(&file.archive_path)
+      .ok_or("missing theme profile payload")?;
+    let destination = id.destination(&root);
     payload.push((entry.path.clone(), destination));
   }
   let marker_path = custom_current_path();
   let result: Result<bool, String> = (|| {
+    for (source, destination) in &payload {
+      if *destination == FileId::Fonts.destination(&root) {
+        copy_atomic(source, destination)?;
+      }
+    }
     crate::backend::set_theme_static(&staged.manifest.argvus.theme)?;
     for (source, destination) in &payload {
       copy_atomic(source, destination)?;
@@ -451,25 +459,38 @@ fn apply_staged(
   let wallpaper_missing = match result {
     Ok(value) => value,
     Err(error) => {
-      rollback_staged(
+      let recovery = rollback_staged(
         &backups,
         &marker_path,
         previous_custom_marker.as_deref(),
         &previous_theme,
         previous_wallpaper.as_deref(),
       );
+      if let Err(recovery) = recovery {
+        let retained = backup.keep();
+        return Err(format!(
+          "{error}; recovery failed: {recovery}; backup: {}",
+          retained.display()
+        ));
+      }
       return Err(format!("profile apply rolled back: {error}"));
     }
   };
   if let Err(error) = crate::backend::reload_session_for_profile() {
-    rollback_staged(
+    let recovery = rollback_staged(
       &backups,
       &marker_path,
       previous_custom_marker.as_deref(),
       &previous_theme,
       previous_wallpaper.as_deref(),
     );
-    let _ = crate::backend::reload_session_for_profile();
+    if let Err(recovery) = recovery.and_then(|()| crate::backend::reload_session_for_profile()) {
+      let retained = backup.keep();
+      return Err(format!(
+        "{error}; recovery failed: {recovery}; backup: {}",
+        retained.display()
+      ));
+    }
     return Err(format!("profile reload rolled back: {error}"));
   }
   if wallpaper_missing {
@@ -493,22 +514,41 @@ fn rollback_staged(
   previous_marker: Option<&[u8]>,
   previous_theme: &str,
   previous_wallpaper: Option<&str>,
-) {
-  for (destination, old) in backups {
-    if let Some(old) = old {
-      let _ = fs::copy(old, destination);
-    } else {
-      let _ = fs::remove_file(destination);
-    }
+) -> Result<(), String> {
+  // Fonts must precede theme generation; reset-prone overrides follow it.
+  if let Some((destination, old)) = backups
+    .iter()
+    .find(|(path, _)| *path == FileId::Fonts.destination(&argvus_root()))
+  {
+    restore_backup(destination, old.as_deref())?;
   }
-  let _ = crate::backend::set_theme_static(previous_theme);
-  let _ = apply_overrides_static(previous_wallpaper);
+  crate::backend::set_theme_static(previous_theme)?;
+  for (destination, old) in backups {
+    restore_backup(destination, old.as_deref())?;
+  }
+  apply_overrides_static(previous_wallpaper)?;
   match previous_marker {
     Some(value) => {
-      let _ = fs::write(marker_path, value);
+      write_atomic(
+        marker_path,
+        std::str::from_utf8(value).map_err(|e| e.to_string())?,
+      )?;
     }
     None => {
-      let _ = fs::remove_file(marker_path);
+      restore_backup(marker_path, None)?;
+    }
+  }
+  Ok(())
+}
+
+fn restore_backup(destination: &Path, old: Option<&Path>) -> Result<(), String> {
+  if let Some(old) = old {
+    copy_atomic(old, destination)
+  } else {
+    match fs::remove_file(destination) {
+      Ok(()) => Ok(()),
+      Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+      Err(error) => Err(error.to_string()),
     }
   }
 }
