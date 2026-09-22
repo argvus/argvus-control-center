@@ -62,7 +62,7 @@ pub enum AppearancePage {
   SpacesBordersPosition,
   TaskbarPosition,
   TaskbarSpaces,
-  TaskbarUtilityGroup,
+  Taskbar,
   WidgetTelemetry,
   ControlPanel,
   WindowSpaces,

@@ -710,7 +710,7 @@ pub fn load_page(
   if matches!(
     page,
     AppearancePage::SpacesBordersPosition
-      | AppearancePage::TaskbarUtilityGroup
+      | AppearancePage::Taskbar
       | AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces

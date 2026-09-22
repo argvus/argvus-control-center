@@ -449,14 +449,14 @@ impl AppearanceApp {
           move || backend::set_waybar_position(position),
         );
       }
-      AppearancePage::TaskbarUtilityGroup => {
+      AppearancePage::Taskbar => {
         let mode = if self.selected == 0 {
           TaskbarUtilityGroupMode::Auto
         } else {
           TaskbarUtilityGroupMode::AlwaysExpanded
         };
         self.apply(
-          tr(self.lang, "control_center.taskbar_utility_group_changed").into(),
+          tr(self.lang, "control_center.taskbar_changed").into(),
           move || backend::set_taskbar_utility_group(mode),
         );
       }
@@ -714,6 +714,7 @@ impl AppearanceApp {
       | AppearancePage::Accents
       | AppearancePage::Effects
       | AppearancePage::SpacesBordersPosition
+      | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel => {
         self.go(AppearancePage::Home);
@@ -728,7 +729,6 @@ impl AppearanceApp {
       }
       AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarSpaces
-      | AppearancePage::TaskbarUtilityGroup
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness => {
@@ -747,18 +747,18 @@ impl AppearanceApp {
         1 => self.go(AppearancePage::Accents),
         2 => self.go(AppearancePage::Wallpapers),
         3 => self.go(AppearancePage::SpacesBordersPosition),
-        4 => self.go(AppearancePage::Effects),
-        5 => self.go(AppearancePage::WidgetTelemetry),
-        6 => self.go(AppearancePage::ControlPanel),
+        4 => self.go(AppearancePage::Taskbar),
+        5 => self.go(AppearancePage::Effects),
+        6 => self.go(AppearancePage::WidgetTelemetry),
+        7 => self.go(AppearancePage::ControlPanel),
         _ => {}
       },
       AppearancePage::SpacesBordersPosition => match self.selected {
         0 => self.go(AppearancePage::TaskbarPosition),
         1 => self.go(AppearancePage::TaskbarSpaces),
-        2 => self.go(AppearancePage::TaskbarUtilityGroup),
-        3 => self.go(AppearancePage::WindowSpaces),
-        4 => self.go(AppearancePage::GeneralBorders),
-        5 => self.go(AppearancePage::EdgeThickness),
+        2 => self.go(AppearancePage::WindowSpaces),
+        3 => self.go(AppearancePage::GeneralBorders),
+        4 => self.go(AppearancePage::EdgeThickness),
         _ => {}
       },
       AppearancePage::Themes
@@ -767,7 +767,7 @@ impl AppearanceApp {
       | AppearancePage::Accents
       | AppearancePage::Effects
       | AppearancePage::TaskbarPosition
-      | AppearancePage::TaskbarUtilityGroup
+      | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
       | AppearancePage::TaskbarSpaces
@@ -800,18 +800,18 @@ impl AppearanceApp {
   /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
-      AppearancePage::Home => 7,
+      AppearancePage::Home => 8,
       AppearancePage::Themes => THEME_FAMILIES.len() + self.state.custom_themes.len() + 2,
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
       AppearancePage::Effects => 1,
       AppearancePage::ThemeModes { .. }
       | AppearancePage::TaskbarPosition
-      | AppearancePage::TaskbarUtilityGroup => 2,
+      | AppearancePage::Taskbar => 2,
       AppearancePage::WidgetTelemetry => 2 + WidgetTelemetryBlock::ALL.len(),
       AppearancePage::ControlPanel => self.control_panel_cards().len(),
       AppearancePage::Wallpapers => self.state.wallpapers.len() + 1,
-      AppearancePage::SpacesBordersPosition => 6,
+      AppearancePage::SpacesBordersPosition => 5,
       AppearancePage::TaskbarSpaces => 4,
       AppearancePage::WindowSpaces => 5,
       AppearancePage::GeneralBorders => 2,
@@ -861,6 +861,10 @@ impl AppearanceApp {
       icon_label(
         argvus_tui::icons::STORAGE,
         tr(self.lang, "control_center.spaces_borders_position"),
+      ),
+      icon_label(
+        argvus_tui::icons::STORAGE,
+        tr(self.lang, "control_center.taskbar"),
       ),
       icon_label(
         argvus_tui::icons::SUCCESS,
@@ -943,11 +947,9 @@ impl AppearanceApp {
         tr(self.lang, "control_center.spaces_borders_position"),
         tr(self.lang, "control_center.taskbar_spaces")
       ),
-      AppearancePage::TaskbarUtilityGroup => format!(
-        "{root} › {} › {}",
-        tr(self.lang, "control_center.spaces_borders_position"),
-        tr(self.lang, "control_center.taskbar_utility_group")
-      ),
+      AppearancePage::Taskbar => {
+        format!("{root} › {}", tr(self.lang, "control_center.taskbar"))
+      }
       AppearancePage::WidgetTelemetry => format!(
         "{root} › {}",
         tr(self.lang, "control_center.widget_telemetry")
@@ -1118,10 +1120,6 @@ impl AppearanceApp {
           tr(self.lang, "control_center.taskbar_spaces"),
         ),
         icon_label(
-          argvus_tui::icons::INFO,
-          tr(self.lang, "control_center.taskbar_utility_group"),
-        ),
-        icon_label(
           argvus_tui::icons::STORAGE,
           tr(self.lang, "control_center.window_spaces"),
         ),
@@ -1134,6 +1132,26 @@ impl AppearanceApp {
           tr(self.lang, "control_center.edge_thickness"),
         ),
       ],
+      AppearancePage::Taskbar => [
+        (
+          "control_center.taskbar_utility_group_auto",
+          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::Auto,
+        ),
+        (
+          "control_center.taskbar_utility_group_always_expanded",
+          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::AlwaysExpanded,
+        ),
+      ]
+      .into_iter()
+      .map(|(key, current)| {
+        let suffix = if current {
+          format!(" · {}", tr(self.lang, "control_center.current"))
+        } else {
+          String::new()
+        };
+        format!("{}{}", tr(self.lang, key), suffix)
+      })
+      .collect(),
       AppearancePage::TaskbarPosition => vec![
         format!(
           "{}{}",
@@ -1188,26 +1206,6 @@ impl AppearanceApp {
           self.state.waybar_bottom
         ),
       ],
-      AppearancePage::TaskbarUtilityGroup => [
-        (
-          "control_center.taskbar_utility_group_auto",
-          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::Auto,
-        ),
-        (
-          "control_center.taskbar_utility_group_always_expanded",
-          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::AlwaysExpanded,
-        ),
-      ]
-      .into_iter()
-      .map(|(key, current)| {
-        let suffix = if current {
-          format!(" · {}", tr(self.lang, "control_center.current"))
-        } else {
-          String::new()
-        };
-        format!("{}{}", tr(self.lang, key), suffix)
-      })
-      .collect(),
       AppearancePage::WidgetTelemetry => std::iter::once(format!(
         "[{}] {}",
         if self.state.widget_telemetry {
@@ -1855,9 +1853,9 @@ mod tests {
   #[test]
   /// Executes the `home_has_categories_and_spacing_is_nested` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_has_categories_and_spacing_is_nested() {
-    assert_eq!(app(AppearancePage::Home).rows().len(), 7);
-    assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 6);
-    assert_eq!(app(AppearancePage::TaskbarUtilityGroup).rows().len(), 2);
+    assert_eq!(app(AppearancePage::Home).rows().len(), 8);
+    assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
+    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 2);
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 9);
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 14);
     assert_eq!(app(AppearancePage::Effects).rows().len(), 1);

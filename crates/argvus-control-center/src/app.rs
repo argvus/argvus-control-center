@@ -1049,17 +1049,17 @@ impl App {
       (
         "appearance.taskbar",
         "appearance",
-        "Taskbar position",
-        "taskbar barra posicao position gaps espacamento margin margem",
+        "Taskbar",
+        "taskbar barra grupo utility group hover expandido expanded sempre always",
         "appearance/taskbar",
       ),
       #[cfg(feature = "appearance")]
       (
-        "appearance.taskbar_utility_group",
+        "appearance.taskbar_position",
         "appearance",
-        "Taskbar utility group",
-        "taskbar barra grupo utilitarios utility group hover expandido automatico",
-        "appearance/taskbar-group",
+        "Taskbar position",
+        "taskbar barra posicao position gaps espacamento margin margem",
+        "appearance/taskbar-position",
       ),
       #[cfg(feature = "appearance")]
       (
@@ -1692,10 +1692,12 @@ impl App {
       #[cfg(feature = "appearance")]
       ("appearance", "accents") => self.open_appearance_page(AppearancePage::Accents),
       #[cfg(feature = "appearance")]
-      ("appearance", "taskbar") => self.open_appearance_page(AppearancePage::TaskbarPosition),
+      ("appearance", "taskbar")
+      | ("appearance", "taskbar-group")
+      | ("appearance", "utility-group") => self.open_appearance_page(AppearancePage::Taskbar),
       #[cfg(feature = "appearance")]
-      ("appearance", "taskbar-group") => {
-        self.open_appearance_page(AppearancePage::TaskbarUtilityGroup)
+      ("appearance", "taskbar-position") | ("appearance", "position") => {
+        self.open_appearance_page(AppearancePage::TaskbarPosition)
       }
       #[cfg(feature = "appearance")]
       ("appearance", "widget-telemetry") => {

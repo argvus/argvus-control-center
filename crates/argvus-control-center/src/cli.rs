@@ -141,8 +141,8 @@ fn parse_appearance(args: &[String]) -> Result<AppearancePage, String> {
     Some("themes") => AppearancePage::Themes,
     Some("wallpapers") => AppearancePage::Wallpapers,
     Some("accents") | Some("accent") | Some("color") => AppearancePage::Accents,
-    Some("taskbar") | Some("position") => AppearancePage::TaskbarPosition,
-    Some("taskbar-group") | Some("utility-group") => AppearancePage::TaskbarUtilityGroup,
+    Some("taskbar") | Some("taskbar-group") | Some("utility-group") => AppearancePage::Taskbar,
+    Some("taskbar-position") | Some("position") => AppearancePage::TaskbarPosition,
     Some("widget-telemetry") | Some("telemetry") => AppearancePage::WidgetTelemetry,
     Some("spaces") => AppearancePage::SpacesBordersPosition,
     Some(v) => return Err(format!("unknown Appearance page '{v}'")),
@@ -767,13 +767,23 @@ mod tests {
     );
     assert_eq!(
       parse(&args(&["appearance", "taskbar"])).unwrap(),
+      Some(InitialRoute::Appearance(AppearancePage::Taskbar))
+    );
+    assert_eq!(
+      parse(&args(&["appearance", "taskbar-position"])).unwrap(),
+      Some(InitialRoute::Appearance(AppearancePage::TaskbarPosition))
+    );
+    assert_eq!(
+      parse(&args(&["appearance", "position"])).unwrap(),
       Some(InitialRoute::Appearance(AppearancePage::TaskbarPosition))
     );
     assert_eq!(
       parse(&args(&["appearance", "taskbar-group"])).unwrap(),
-      Some(InitialRoute::Appearance(
-        AppearancePage::TaskbarUtilityGroup
-      ))
+      Some(InitialRoute::Appearance(AppearancePage::Taskbar))
+    );
+    assert_eq!(
+      parse(&args(&["appearance", "utility-group"])).unwrap(),
+      Some(InitialRoute::Appearance(AppearancePage::Taskbar))
     );
     assert_eq!(
       parse(&args(&["appearance", "widget-telemetry"])).unwrap(),
