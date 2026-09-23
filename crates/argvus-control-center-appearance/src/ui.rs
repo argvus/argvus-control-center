@@ -1887,7 +1887,12 @@ mod tests {
   #[test]
   fn theme_rows_use_friendly_official_names() {
     let rows = app(AppearancePage::Themes).rows();
-    assert!(rows[0].contains("ARGVUS Dark Aether"));
+    assert!(rows.iter().any(|row| row.contains("ARGVUS Dark Aether")));
+    assert!(
+      rows
+        .iter()
+        .any(|row| row.contains("ARGVUS Catppuccin Latte"))
+    );
     assert!(!rows[0].contains("argvus-dark-aether"));
   }
   #[test]

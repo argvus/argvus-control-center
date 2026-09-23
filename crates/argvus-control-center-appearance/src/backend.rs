@@ -339,11 +339,17 @@ fn accent_file() -> PathBuf {
 /// Executes the `theme_default_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn theme_default_accent(theme: &str) -> Option<&'static str> {
   match theme {
+    "argvus-dracula" | "argvus-dracula-float" => Some("#BD93F9"),
     "argvus-dark-aether" | "argvus-dark-aether-float" => Some("#3590bd"),
     "argvus-dark-silver" | "argvus-dark-silver-float" => Some("#595959"),
     "argvus-light-veil" | "argvus-light-veil-float" => Some("#181818"),
+    "argvus-rosepine" | "argvus-rosepine-float" => Some("#C4A7E7"),
+    "argvus-frost" | "argvus-frost-float" => Some("#0969DA"),
+    "argvus-catppuccin-latte" | "argvus-catppuccin-latte-float" => Some("#1E66F5"),
     "argvus-dark-slate" | "argvus-dark-slate-float" => Some("#7391a5"),
     "argvus-dark-universe" | "argvus-dark-universe-float" => Some("#eeeeee"),
+    "argvus-gruvbox-dark-medium" | "argvus-gruvbox-dark-medium-float" => Some("#D79921"),
+    "argvus-tokyo-night" | "argvus-tokyo-night-float" => Some("#7AA2F7"),
     _ => None,
   }
 }

@@ -397,6 +397,10 @@ impl PromptGoal {
 
 /// Defines the constant `THEMES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEMES: &[(&str, &str)] = &[
+  ("argvus-onedark", "ARGVUS One Dark"),
+  ("argvus-onedark-float", "ARGVUS One Dark Float"),
+  ("argvus-dracula", "ARGVUS Dracula"),
+  ("argvus-dracula-float", "ARGVUS Dracula Float"),
   ("argvus-dark-aether", "Argvus Dark Aether"),
   ("argvus-dark-aether-float", "Argvus Dark Aether Float"),
   ("argvus-dark-silver", "Argvus Dark Silver"),
@@ -405,16 +409,35 @@ pub const THEMES: &[(&str, &str)] = &[
   ("argvus-dark-slate-float", "Argvus Dark Slate Float"),
   ("argvus-dark-universe", "Argvus Dark Universe"),
   ("argvus-dark-universe-float", "Argvus Dark Universe Float"),
+  ("argvus-gruvbox-dark-medium", "ARGVUS Gruvbox Dark Medium"),
+  (
+    "argvus-gruvbox-dark-medium-float",
+    "ARGVUS Gruvbox Dark Medium Float",
+  ),
   ("argvus-light-veil", "Argvus Light Veil"),
   ("argvus-light-veil-float", "Argvus Light Veil Float"),
+  ("argvus-frost", "ARGVUS Frost"),
+  ("argvus-frost-float", "ARGVUS Frost Float"),
+  ("argvus-catppuccin-latte", "ARGVUS Catppuccin Latte"),
+  ("argvus-rosepine", "ARGVUS Rosé Pine"),
+  ("argvus-rosepine-float", "ARGVUS Rosé Pine Float"),
+  ("argvus-tokyo-night", "ARGVUS Tokyo Night"),
+  ("argvus-tokyo-night-float", "ARGVUS Tokyo Night Float"),
 ];
 /// Defines the constant `THEME_FAMILIES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEME_FAMILIES: &[(&str, &str)] = &[
+  ("argvus-onedark", "ARGVUS One Dark"),
+  ("argvus-dracula", "ARGVUS Dracula"),
   ("argvus-dark-aether", "ARGVUS Dark Aether"),
   ("argvus-dark-silver", "ARGVUS Dark Silver"),
   ("argvus-dark-slate", "ARGVUS Dark Slate"),
   ("argvus-dark-universe", "ARGVUS Dark Universe"),
+  ("argvus-gruvbox-dark-medium", "ARGVUS Gruvbox Dark Medium"),
   ("argvus-light-veil", "ARGVUS Light Veil"),
+  ("argvus-frost", "ARGVUS Frost"),
+  ("argvus-catppuccin-latte", "ARGVUS Catppuccin Latte"),
+  ("argvus-rosepine", "ARGVUS Rosé Pine"),
+  ("argvus-tokyo-night", "ARGVUS Tokyo Night"),
 ];
 /// Executes the `theme_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn theme_label(name: &str) -> String {
