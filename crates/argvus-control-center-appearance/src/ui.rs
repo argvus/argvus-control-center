@@ -1871,7 +1871,7 @@ mod tests {
       category: ThemeCategory::Light,
     })
     .rows();
-    assert_eq!(dark_rows.len(), 13);
+    assert_eq!(dark_rows.len(), 14);
     assert_eq!(light_rows.len(), 6);
     assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Gruvbox >")));
     assert!(light_rows.iter().any(|row| row.contains("ARGVUS GitHub >")));
@@ -1884,7 +1884,7 @@ mod tests {
   }
   #[test]
   fn every_control_center_theme_family_has_both_official_modes() {
-    assert_eq!(THEME_FAMILIES.len(), 19);
+    assert_eq!(THEME_FAMILIES.len(), 20);
     for (family_id, _) in THEME_FAMILIES {
       assert!(argvus_theme::loader::is_official_theme(family_id));
       assert!(argvus_theme::loader::is_official_theme(&format!(
