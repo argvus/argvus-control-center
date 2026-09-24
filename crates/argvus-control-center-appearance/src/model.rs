@@ -467,6 +467,10 @@ pub const THEMES: &[(&str, &str)] = &[
   ("argvus-dark-tokio-night-float", "ARGVUS Tokyo Night Float"),
   ("argvus-dark-solitude", "ARGVUS Solitude"),
   ("argvus-dark-solitude-float", "ARGVUS Solitude Float"),
+  ("argvus-dark-sunset", "ARGVUS Dark Sunset"),
+  ("argvus-dark-sunset-float", "ARGVUS Dark Sunset Float"),
+  ("argvus-dark-hackerman", "ARGVUS Dark Hackerman"),
+  ("argvus-dark-hackerman-float", "ARGVUS Dark Hackerman Float"),
 ];
 /// Defines the constant `THEME_FAMILIES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEME_FAMILIES: &[(&str, &str)] = &[
@@ -486,6 +490,8 @@ pub const THEME_FAMILIES: &[(&str, &str)] = &[
   ("argvus-dark-rosepine", "ARGVUS Rosé Pine"),
   ("argvus-dark-tokio-night", "ARGVUS Tokyo Night"),
   ("argvus-dark-solitude", "ARGVUS Solitude"),
+  ("argvus-dark-sunset", "ARGVUS Dark Sunset"),
+  ("argvus-dark-hackerman", "ARGVUS Dark Hackerman"),
 ];
 /// Executes the `theme_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn theme_label(name: &str) -> String {

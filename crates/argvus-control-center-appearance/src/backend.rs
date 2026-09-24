@@ -354,6 +354,8 @@ fn theme_default_accent(theme: &str) -> Option<&'static str> {
     "argvus-dark-gruvbox" | "argvus-dark-gruvbox-float" => Some("#D4BE98"),
     "argvus-dark-tokio-night" | "argvus-dark-tokio-night-float" => Some("#7AA2F7"),
     "argvus-dark-solitude" | "argvus-dark-solitude-float" => Some("#798186"),
+    "argvus-dark-sunset" | "argvus-dark-sunset-float" => Some("#E2BE8A"),
+    "argvus-dark-hackerman" | "argvus-dark-hackerman-float" => Some("#82FB9C"),
     _ => None,
   }
 }

@@ -1850,10 +1850,11 @@ mod tests {
       category: ThemeCategory::Light,
     })
     .rows();
-    assert_eq!(dark_rows.len(), 11);
+    assert_eq!(dark_rows.len(), 13);
     assert_eq!(light_rows.len(), 5);
     assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Gruvbox >")));
     assert!(light_rows.iter().any(|row| row.contains("ARGVUS GitHub >")));
+    assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Dark Hackerman >")));
     assert!(!dark_rows.iter().any(|row| row.contains("Dark Gruvbox")));
   }
   #[test]
