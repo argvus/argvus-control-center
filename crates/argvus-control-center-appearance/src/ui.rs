@@ -343,15 +343,19 @@ impl AppearanceApp {
   fn pick(&mut self) {
     match self.page {
       AppearancePage::Themes => match self.selected {
+        0 => self.go(AppearancePage::OfficialThemes),
+        1 => self.go(AppearancePage::CustomThemes),
+        2 => self.open_prompt(PromptGoal::ExportProfile),
+        3 => self.go(AppearancePage::ThemeImport),
+        _ => {}
+      },
+      AppearancePage::OfficialThemes => match self.selected {
         0 => self.go(AppearancePage::ThemeFamilies {
           category: ThemeCategory::Dark,
         }),
         1 => self.go(AppearancePage::ThemeFamilies {
           category: ThemeCategory::Light,
         }),
-        2 => self.go(AppearancePage::CustomThemes),
-        3 => self.open_prompt(PromptGoal::ExportProfile),
-        4 => self.go(AppearancePage::ThemeImport),
         _ => {}
       },
       AppearancePage::ThemeFamilies { category } => {
@@ -735,9 +739,11 @@ impl AppearanceApp {
       | AppearancePage::ControlPanel => {
         self.go(AppearancePage::Home);
       }
-      AppearancePage::ThemeFamilies { .. } | AppearancePage::CustomThemes => {
-        self.go(AppearancePage::Themes);
+      AppearancePage::OfficialThemes => self.go(AppearancePage::Themes),
+      AppearancePage::ThemeFamilies { .. } => {
+        self.go(AppearancePage::OfficialThemes);
       }
+      AppearancePage::CustomThemes => self.go(AppearancePage::Themes),
       AppearancePage::ThemeModes { family } => {
         let category = THEME_FAMILIES
           .get(family)
@@ -785,6 +791,7 @@ impl AppearanceApp {
         _ => {}
       },
       AppearancePage::Themes
+      | AppearancePage::OfficialThemes
       | AppearancePage::ThemeFamilies { .. }
       | AppearancePage::CustomThemes
       | AppearancePage::ThemeModes { .. }
@@ -834,7 +841,8 @@ impl AppearanceApp {
   fn selection_len(&self) -> usize {
     match self.page {
       AppearancePage::Home => 8,
-      AppearancePage::Themes => 5,
+      AppearancePage::Themes => 4,
+      AppearancePage::OfficialThemes => ThemeCategory::ALL.len(),
       AppearancePage::ThemeFamilies { category } => family_indices(category).len(),
       AppearancePage::CustomThemes => self.state.custom_themes.len(),
       AppearancePage::Accents => 2,
@@ -939,6 +947,11 @@ impl AppearanceApp {
     match self.page {
       AppearancePage::Home => root.into(),
       AppearancePage::Themes => format!("{root} › {}", tr(self.lang, "control_center.themes")),
+      AppearancePage::OfficialThemes => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.themes"),
+        tr(self.lang, "control_center.theme_profile_official")
+      ),
       AppearancePage::ThemeImport => format!(
         "{root} › {} › {}",
         tr(self.lang, "control_center.themes"),
@@ -951,8 +964,9 @@ impl AppearanceApp {
         tr(self.lang, "control_center.theme_profile_delete_title").into()
       }
       AppearancePage::ThemeFamilies { category } => format!(
-        "{root} › {} › {}",
+        "{root} › {} › {} › {}",
         tr(self.lang, "control_center.themes"),
+        tr(self.lang, "control_center.theme_profile_official"),
         tr(self.lang, category.label_key())
       ),
       AppearancePage::CustomThemes => format!(
@@ -965,9 +979,15 @@ impl AppearanceApp {
           .get(family)
           .map(|(_, label)| *label)
           .unwrap_or_default();
+        let category = THEME_FAMILIES
+          .get(family)
+          .and_then(|(family_id, _)| ThemeCategory::for_family_id(family_id))
+          .unwrap_or(ThemeCategory::Dark);
         format!(
-          "{root} › {} › {label}",
-          tr(self.lang, "control_center.themes")
+          "{root} › {} › {} › {} › {label}",
+          tr(self.lang, "control_center.themes"),
+          tr(self.lang, "control_center.theme_profile_official"),
+          tr(self.lang, category.label_key())
         )
       }
       AppearancePage::Wallpapers => {
@@ -1051,22 +1071,11 @@ impl AppearanceApp {
     match self.page {
       AppearancePage::Home => self.home_rows(),
       AppearancePage::Themes => [
-        (
-          ThemeCategory::Dark,
-          tr(self.lang, ThemeCategory::Dark.label_key()),
+        format!(
+          "{} >",
+          tr(self.lang, "control_center.theme_profile_official")
         ),
-        (
-          ThemeCategory::Light,
-          tr(self.lang, ThemeCategory::Light.label_key()),
-        ),
-      ]
-      .into_iter()
-      .map(|(_, label)| format!("{label} >"))
-      .chain(std::iter::once(format!(
-        "{} >",
-        tr(self.lang, "control_center.theme_profile_custom")
-      )))
-      .chain([
+        format!("{} >", tr(self.lang, "control_center.theme_profile_custom")),
         icon_label(
           argvus_tui::icons::STORAGE,
           tr(self.lang, "control_center.theme_profile_export"),
@@ -1075,8 +1084,13 @@ impl AppearanceApp {
           argvus_tui::icons::STORAGE,
           tr(self.lang, "control_center.theme_profile_import"),
         ),
-      ])
+      ]
+      .into_iter()
       .collect(),
+      AppearancePage::OfficialThemes => ThemeCategory::ALL
+        .into_iter()
+        .map(|category| format!("{} >", tr(self.lang, category.label_key())))
+        .collect(),
       AppearancePage::ThemeFamilies { category } => {
         let current = self
           .state
@@ -1484,7 +1498,10 @@ impl AppearanceApp {
       )
     } else if matches!(
       self.page,
-      AppearancePage::Themes | AppearancePage::ThemeFamilies { .. } | AppearancePage::CustomThemes
+      AppearancePage::Themes
+        | AppearancePage::OfficialThemes
+        | AppearancePage::ThemeFamilies { .. }
+        | AppearancePage::CustomThemes
     ) {
       tr(self.lang, "control_center.theme_profile_themes_help").into()
     } else if self.page == AppearancePage::ThemeImport {
@@ -1835,10 +1852,14 @@ mod tests {
   #[test]
   fn theme_rows_use_friendly_official_names() {
     let rows = app(AppearancePage::Themes).rows();
-    assert_eq!(rows.len(), 5);
-    assert_eq!(rows[0], "Dark >");
-    assert_eq!(rows[1], "Light >");
-    assert!(rows[2].contains("Custom"));
+    assert_eq!(rows.len(), 4);
+    assert!(rows[0].contains("Official"));
+    assert!(rows[1].contains("Custom"));
+  }
+  #[test]
+  fn official_theme_rows_expose_both_categories() {
+    let rows = app(AppearancePage::OfficialThemes).rows();
+    assert_eq!(rows, vec!["Dark >", "Light >"]);
   }
   #[test]
   fn theme_families_are_grouped_by_identifier_category() {
@@ -1854,8 +1875,22 @@ mod tests {
     assert_eq!(light_rows.len(), 5);
     assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Gruvbox >")));
     assert!(light_rows.iter().any(|row| row.contains("ARGVUS GitHub >")));
-    assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Dark Hackerman >")));
+    assert!(
+      dark_rows
+        .iter()
+        .any(|row| row.contains("ARGVUS Dark Hackerman >"))
+    );
     assert!(!dark_rows.iter().any(|row| row.contains("Dark Gruvbox")));
+  }
+  #[test]
+  fn every_control_center_theme_family_has_both_official_modes() {
+    assert_eq!(THEME_FAMILIES.len(), 18);
+    for (family_id, _) in THEME_FAMILIES {
+      assert!(argvus_theme::loader::is_official_theme(family_id));
+      assert!(argvus_theme::loader::is_official_theme(&format!(
+        "{family_id}-float"
+      )));
+    }
   }
   #[test]
   /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

@@ -81,6 +81,7 @@ impl ThemeCategory {
 pub enum AppearancePage {
   Home,
   Themes,
+  OfficialThemes,
   ThemeFamilies { category: ThemeCategory },
   CustomThemes,
   ThemeImport,
