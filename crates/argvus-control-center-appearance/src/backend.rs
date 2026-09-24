@@ -339,17 +339,21 @@ fn accent_file() -> PathBuf {
 /// Executes the `theme_default_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn theme_default_accent(theme: &str) -> Option<&'static str> {
   match theme {
-    "argvus-dracula" | "argvus-dracula-float" => Some("#BD93F9"),
+    "argvus-dark-dracula" | "argvus-dark-dracula-float" => Some("#BD93F9"),
     "argvus-dark-aether" | "argvus-dark-aether-float" => Some("#3590bd"),
     "argvus-dark-silver" | "argvus-dark-silver-float" => Some("#595959"),
     "argvus-light-veil" | "argvus-light-veil-float" => Some("#181818"),
-    "argvus-rosepine" | "argvus-rosepine-float" => Some("#C4A7E7"),
-    "argvus-frost" | "argvus-frost-float" => Some("#0969DA"),
-    "argvus-catppuccin-latte" | "argvus-catppuccin-latte-float" => Some("#1E66F5"),
+    "argvus-github-light" | "argvus-github-light-float" => Some("#0969DA"),
+    "argvus-light-solarized" | "argvus-light-solarized-float" => Some("#268BD2"),
+    "argvus-dark-rosepine" | "argvus-dark-rosepine-float" => Some("#C4A7E7"),
+    "argvus-light-frost" | "argvus-light-frost-float" => Some("#0969DA"),
+    "argvus-light-catppuccin-latte" | "argvus-light-catppuccin-latte-float" => Some("#1E66F5"),
     "argvus-dark-slate" | "argvus-dark-slate-float" => Some("#7391a5"),
     "argvus-dark-universe" | "argvus-dark-universe-float" => Some("#eeeeee"),
-    "argvus-gruvbox-dark-medium" | "argvus-gruvbox-dark-medium-float" => Some("#D79921"),
-    "argvus-tokyo-night" | "argvus-tokyo-night-float" => Some("#7AA2F7"),
+    "argvus-dark-gruvbox-high" | "argvus-dark-gruvbox-high-float" => Some("#D79921"),
+    "argvus-dark-gruvbox" | "argvus-dark-gruvbox-float" => Some("#D4BE98"),
+    "argvus-dark-tokio-night" | "argvus-dark-tokio-night-float" => Some("#7AA2F7"),
+    "argvus-dark-solitude" | "argvus-dark-solitude-float" => Some("#798186"),
     _ => None,
   }
 }
@@ -709,7 +713,10 @@ pub fn load_page(
   }
   if matches!(
     page,
-    AppearancePage::Themes | AppearancePage::ThemeModes { .. }
+    AppearancePage::Themes
+      | AppearancePage::ThemeFamilies { .. }
+      | AppearancePage::CustomThemes
+      | AppearancePage::ThemeModes { .. }
   ) {
     state.custom_themes = custom_themes();
     state.active_custom_theme = active_custom_theme();

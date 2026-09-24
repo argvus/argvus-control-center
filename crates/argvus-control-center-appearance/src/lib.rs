@@ -9,7 +9,7 @@ mod ui;
 
 pub use model::{
   ACCENTS, AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
-  PromptGoal, THEME_FAMILIES, THEMES, TaskbarPosition, TaskbarUtilityGroupMode,
+  PromptGoal, THEME_FAMILIES, THEMES, TaskbarPosition, TaskbarUtilityGroupMode, ThemeCategory,
   WidgetTelemetryBlock, WidgetTelemetryBlocks,
 };
 pub use ui::AppearanceApp;

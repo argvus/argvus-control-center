@@ -6,8 +6,8 @@ use crate::{
   backend,
   model::{
     AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme, HexColor,
-    PromptGoal, THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, WidgetTelemetryBlock,
-    accent_label, normalize_hex_color, theme_family_label,
+    PromptGoal, THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, ThemeCategory,
+    WidgetTelemetryBlock, accent_label, normalize_hex_color, theme_family_label,
   },
 };
 use argvus_control_center_core::{
@@ -47,6 +47,18 @@ enum JobData {
 /// Executes the `icon_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn icon_label(icon: &'static str, label: impl AsRef<str>) -> String {
   argvus_tui::icons::icon_label(AppConfig::icon(icon), label)
+}
+
+fn family_indices(category: ThemeCategory) -> Vec<usize> {
+  THEME_FAMILIES
+    .iter()
+    .enumerate()
+    .filter_map(|(index, (family_id, _))| category.contains_family(family_id).then_some(index))
+    .collect()
+}
+
+fn family_index(category: ThemeCategory, selected: usize) -> Option<usize> {
+  family_indices(category).get(selected).copied()
 }
 
 /// Represents `AppearanceApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -330,24 +342,26 @@ impl AppearanceApp {
   /// Executes the `pick` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn pick(&mut self) {
     match self.page {
-      AppearancePage::Themes if self.selected < THEME_FAMILIES.len() => {
-        self.go(AppearancePage::ThemeModes {
-          family: self.selected,
-        })
+      AppearancePage::Themes => match self.selected {
+        0 => self.go(AppearancePage::ThemeFamilies {
+          category: ThemeCategory::Dark,
+        }),
+        1 => self.go(AppearancePage::ThemeFamilies {
+          category: ThemeCategory::Light,
+        }),
+        2 => self.go(AppearancePage::CustomThemes),
+        3 => self.open_prompt(PromptGoal::ExportProfile),
+        4 => self.go(AppearancePage::ThemeImport),
+        _ => {}
+      },
+      AppearancePage::ThemeFamilies { category } => {
+        let Some(family) = family_index(category, self.selected) else {
+          return;
+        };
+        self.go(AppearancePage::ThemeModes { family });
       }
-      AppearancePage::Themes
-        if self.selected == THEME_FAMILIES.len() + self.state.custom_themes.len() =>
-      {
-        self.open_prompt(PromptGoal::ExportProfile)
-      }
-      AppearancePage::Themes
-        if self.selected == THEME_FAMILIES.len() + self.state.custom_themes.len() + 1 =>
-      {
-        self.go(AppearancePage::ThemeImport)
-      }
-      AppearancePage::Themes => {
-        let custom_index = self.selected.saturating_sub(THEME_FAMILIES.len());
-        let Some(custom) = self.state.custom_themes.get(custom_index).cloned() else {
+      AppearancePage::CustomThemes => {
+        let Some(custom) = self.state.custom_themes.get(self.selected).cloned() else {
           return;
         };
         let lang = self.lang;
@@ -646,7 +660,10 @@ impl AppearanceApp {
     {
       return false;
     }
-    if self.page == AppearancePage::Themes {
+    if matches!(
+      self.page,
+      AppearancePage::Themes | AppearancePage::CustomThemes
+    ) {
       if key == KeyCode::Char('e') {
         self.open_prompt(PromptGoal::ExportProfile);
         return false;
@@ -655,13 +672,11 @@ impl AppearanceApp {
         self.go(AppearancePage::ThemeImport);
         return false;
       }
-      let custom_start = THEME_FAMILIES.len();
       if key == KeyCode::Char('d')
-        && self.selected >= custom_start
-        && self.selected < custom_start + self.state.custom_themes.len()
+        && self.page == AppearancePage::CustomThemes
+        && self.selected < self.state.custom_themes.len()
       {
-        let index = self.selected - custom_start;
-        if let Some(theme) = self.state.custom_themes.get(index).cloned() {
+        if let Some(theme) = self.state.custom_themes.get(self.selected).cloned() {
           self.delete_theme = Some(theme);
           self.go(AppearancePage::ThemeDeleteConfirm);
         }
@@ -720,8 +735,15 @@ impl AppearanceApp {
       | AppearancePage::ControlPanel => {
         self.go(AppearancePage::Home);
       }
-      AppearancePage::ThemeModes { .. } => {
+      AppearancePage::ThemeFamilies { .. } | AppearancePage::CustomThemes => {
         self.go(AppearancePage::Themes);
+      }
+      AppearancePage::ThemeModes { family } => {
+        let category = THEME_FAMILIES
+          .get(family)
+          .and_then(|(family_id, _)| ThemeCategory::for_family_id(family_id))
+          .unwrap_or(ThemeCategory::Dark);
+        self.go(AppearancePage::ThemeFamilies { category });
       }
       AppearancePage::ThemeImport
       | AppearancePage::ThemeImportConfirm
@@ -763,6 +785,8 @@ impl AppearanceApp {
         _ => {}
       },
       AppearancePage::Themes
+      | AppearancePage::ThemeFamilies { .. }
+      | AppearancePage::CustomThemes
       | AppearancePage::ThemeModes { .. }
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
@@ -810,7 +834,9 @@ impl AppearanceApp {
   fn selection_len(&self) -> usize {
     match self.page {
       AppearancePage::Home => 8,
-      AppearancePage::Themes => THEME_FAMILIES.len() + self.state.custom_themes.len() + 2,
+      AppearancePage::Themes => 5,
+      AppearancePage::ThemeFamilies { category } => family_indices(category).len(),
+      AppearancePage::CustomThemes => self.state.custom_themes.len(),
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
       AppearancePage::Effects => 2,
@@ -924,8 +950,25 @@ impl AppearanceApp {
       AppearancePage::ThemeDeleteConfirm => {
         tr(self.lang, "control_center.theme_profile_delete_title").into()
       }
-      AppearancePage::ThemeModes { .. } => {
-        format!("{root} › {}", tr(self.lang, "control_center.themes"))
+      AppearancePage::ThemeFamilies { category } => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.themes"),
+        tr(self.lang, category.label_key())
+      ),
+      AppearancePage::CustomThemes => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.themes"),
+        tr(self.lang, "control_center.theme_profile_custom")
+      ),
+      AppearancePage::ThemeModes { family } => {
+        let label = THEME_FAMILIES
+          .get(family)
+          .map(|(_, label)| *label)
+          .unwrap_or_default();
+        format!(
+          "{root} › {} › {label}",
+          tr(self.lang, "control_center.themes")
+        )
       }
       AppearancePage::Wallpapers => {
         format!("{root} › {}", tr(self.lang, "control_center.wallpapers"))
@@ -1007,16 +1050,44 @@ impl AppearanceApp {
   fn rows(&self) -> Vec<String> {
     match self.page {
       AppearancePage::Home => self.home_rows(),
-      AppearancePage::Themes => {
+      AppearancePage::Themes => [
+        (
+          ThemeCategory::Dark,
+          tr(self.lang, ThemeCategory::Dark.label_key()),
+        ),
+        (
+          ThemeCategory::Light,
+          tr(self.lang, ThemeCategory::Light.label_key()),
+        ),
+      ]
+      .into_iter()
+      .map(|(_, label)| format!("{label} >"))
+      .chain(std::iter::once(format!(
+        "{} >",
+        tr(self.lang, "control_center.theme_profile_custom")
+      )))
+      .chain([
+        icon_label(
+          argvus_tui::icons::STORAGE,
+          tr(self.lang, "control_center.theme_profile_export"),
+        ),
+        icon_label(
+          argvus_tui::icons::STORAGE,
+          tr(self.lang, "control_center.theme_profile_import"),
+        ),
+      ])
+      .collect(),
+      AppearancePage::ThemeFamilies { category } => {
         let current = self
           .state
           .theme
           .strip_suffix("-float")
           .unwrap_or(&self.state.theme);
-        let mut rows = THEME_FAMILIES
-          .iter()
-          .map(|(name, label)| {
-            let is_current = self.state.active_custom_theme.is_none() && current == *name;
+        family_indices(category)
+          .into_iter()
+          .map(|family_index| {
+            let (name, label) = THEME_FAMILIES[family_index];
+            let is_current = self.state.active_custom_theme.is_none() && current == name;
             let suffix = if is_current {
               format!(" · {}", tr(self.lang, "control_center.current"))
             } else {
@@ -1024,27 +1095,21 @@ impl AppearanceApp {
             };
             format!("{label}{suffix} >")
           })
-          .collect::<Vec<_>>();
-        rows.extend(self.state.custom_themes.iter().map(|theme| {
+          .collect()
+      }
+      AppearancePage::CustomThemes => self
+        .state
+        .custom_themes
+        .iter()
+        .map(|theme| {
           let suffix = if self.state.active_custom_theme.as_deref() == Some(theme.id.as_str()) {
             format!(" · {}", tr(self.lang, "control_center.current"))
           } else {
             String::new()
           };
-          format!("{}{} >", theme.name, suffix)
-        }));
-        rows.extend([
-          icon_label(
-            argvus_tui::icons::STORAGE,
-            tr(self.lang, "control_center.theme_profile_export"),
-          ),
-          icon_label(
-            argvus_tui::icons::STORAGE,
-            tr(self.lang, "control_center.theme_profile_import"),
-          ),
-        ]);
-        rows
-      }
+          format!("{}{}", theme.name, suffix)
+        })
+        .collect(),
       AppearancePage::ThemeImport => self
         .import_archives
         .iter()
@@ -1417,7 +1482,10 @@ impl AppearanceApp {
         tr(self.lang, "control_center.apply"),
         tr(self.lang, "control_center.back")
       )
-    } else if self.page == AppearancePage::Themes {
+    } else if matches!(
+      self.page,
+      AppearancePage::Themes | AppearancePage::ThemeFamilies { .. } | AppearancePage::CustomThemes
+    ) {
       tr(self.lang, "control_center.theme_profile_themes_help").into()
     } else if self.page == AppearancePage::ThemeImport {
       tr(self.lang, "control_center.theme_profile_import_help").into()
@@ -1711,134 +1779,14 @@ impl AppearanceApp {
   }
 
   fn draw_theme_page(&mut self, frame: &mut Frame, area: Rect) {
-    let official_height = (THEME_FAMILIES.len() as u16 + 1).min(area.height);
-    let custom_rows = self.state.custom_themes.len().max(1) as u16;
-    let custom_height = (custom_rows + 1).min(area.height.saturating_sub(official_height));
-    let sections = Layout::vertical([
-      Constraint::Length(official_height),
-      Constraint::Length(custom_height),
-      Constraint::Min(4),
-    ])
-    .split(area);
-    let official = THEME_FAMILIES
-      .iter()
-      .map(|(name, label)| {
-        let current = self.state.active_custom_theme.is_none()
-          && self
-            .state
-            .theme
-            .strip_suffix("-float")
-            .unwrap_or(&self.state.theme)
-            == *name;
-        (icon_label(argvus_tui::icons::PALETTE, *label), current)
-      })
-      .collect::<Vec<_>>();
-    self.draw_theme_section(
+    let rows = self.rows();
+    list(
       frame,
-      sections[0],
-      tr(self.lang, "control_center.theme_profile_official"),
-      &official,
-      0,
+      area,
+      &self.theme,
+      &rows,
+      self.selected.min(rows.len().saturating_sub(1)),
     );
-    let custom = self
-      .state
-      .custom_themes
-      .iter()
-      .map(|theme| {
-        (
-          icon_label(argvus_tui::icons::PALETTE, &theme.name),
-          self.state.active_custom_theme.as_deref() == Some(theme.id.as_str()),
-        )
-      })
-      .collect::<Vec<_>>();
-    self.draw_theme_section(
-      frame,
-      sections[1],
-      tr(self.lang, "control_center.theme_profile_custom"),
-      &custom,
-      THEME_FAMILIES.len(),
-    );
-    let actions = vec![
-      (
-        icon_label(
-          argvus_tui::icons::STORAGE,
-          tr(self.lang, "control_center.theme_profile_export"),
-        ),
-        false,
-      ),
-      (
-        icon_label(
-          argvus_tui::icons::FOLDER,
-          tr(self.lang, "control_center.theme_profile_import"),
-        ),
-        false,
-      ),
-    ];
-    self.draw_theme_section(
-      frame,
-      sections[2],
-      tr(self.lang, "control_center.theme_profile_export_import"),
-      &actions,
-      THEME_FAMILIES.len() + self.state.custom_themes.len(),
-    );
-  }
-
-  fn draw_theme_section(
-    &self,
-    frame: &mut Frame,
-    area: Rect,
-    title: &str,
-    rows: &[(String, bool)],
-    offset: usize,
-  ) {
-    let mut lines = Vec::new();
-    lines.push(Line::from(Span::styled(
-      title,
-      Style::new()
-        .fg(self.theme.accent)
-        .add_modifier(Modifier::BOLD),
-    )));
-    if rows.is_empty() {
-      lines.push(Line::from(Span::styled(
-        tr(self.lang, "control_center.theme_profile_custom_empty"),
-        Style::new()
-          .fg(self.theme.muted)
-          .add_modifier(Modifier::DIM),
-      )));
-    } else {
-      for (index, (label, current)) in rows.iter().enumerate() {
-        let selected = self.selected == offset + index;
-        let style = if selected {
-          Style::new()
-            .fg(self.theme.selected_foreground)
-            .bg(self.theme.selected_background)
-            .add_modifier(Modifier::BOLD)
-        } else {
-          Style::new().fg(self.theme.foreground)
-        };
-        let mut row = vec![Span::styled(
-          format!(" {} {}", if selected { ">" } else { " " }, label),
-          style,
-        )];
-        if *current {
-          row.push(Span::styled(
-            format!("  {}", tr(self.lang, "control_center.current")),
-            if selected {
-              Style::new()
-                .fg(self.theme.selected_foreground)
-                .bg(self.theme.selected_background)
-                .add_modifier(Modifier::BOLD)
-            } else {
-              Style::new()
-                .fg(self.theme.accent)
-                .add_modifier(Modifier::BOLD)
-            },
-          ));
-        }
-        lines.push(Line::from(row).style(style));
-      }
-    }
-    frame.render_widget(Paragraph::new(lines), area);
   }
 }
 
@@ -1887,13 +1835,26 @@ mod tests {
   #[test]
   fn theme_rows_use_friendly_official_names() {
     let rows = app(AppearancePage::Themes).rows();
-    assert!(rows.iter().any(|row| row.contains("ARGVUS Dark Aether")));
-    assert!(
-      rows
-        .iter()
-        .any(|row| row.contains("ARGVUS Catppuccin Latte"))
-    );
-    assert!(!rows[0].contains("argvus-dark-aether"));
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0], "Dark >");
+    assert_eq!(rows[1], "Light >");
+    assert!(rows[2].contains("Custom"));
+  }
+  #[test]
+  fn theme_families_are_grouped_by_identifier_category() {
+    let dark_rows = app(AppearancePage::ThemeFamilies {
+      category: ThemeCategory::Dark,
+    })
+    .rows();
+    let light_rows = app(AppearancePage::ThemeFamilies {
+      category: ThemeCategory::Light,
+    })
+    .rows();
+    assert_eq!(dark_rows.len(), 11);
+    assert_eq!(light_rows.len(), 5);
+    assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Gruvbox >")));
+    assert!(light_rows.iter().any(|row| row.contains("ARGVUS GitHub >")));
+    assert!(!dark_rows.iter().any(|row| row.contains("Dark Gruvbox")));
   }
   #[test]
   /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
