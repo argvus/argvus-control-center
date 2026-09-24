@@ -348,6 +348,7 @@ fn theme_default_accent(theme: &str) -> Option<&'static str> {
     "argvus-dark-rosepine" | "argvus-dark-rosepine-float" => Some("#C4A7E7"),
     "argvus-light-frost" | "argvus-light-frost-float" => Some("#0969DA"),
     "argvus-light-catppuccin-latte" | "argvus-light-catppuccin-latte-float" => Some("#1E66F5"),
+    "argvus-light-gruvbox" | "argvus-light-gruvbox-float" => Some("#458588"),
     "argvus-dark-slate" | "argvus-dark-slate-float" => Some("#7391a5"),
     "argvus-dark-universe" | "argvus-dark-universe-float" => Some("#eeeeee"),
     "argvus-dark-gruvbox-high" | "argvus-dark-gruvbox-high-float" => Some("#D79921"),
