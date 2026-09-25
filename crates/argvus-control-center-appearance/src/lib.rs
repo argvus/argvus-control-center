@@ -10,6 +10,6 @@ mod ui;
 pub use model::{
   ACCENTS, AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
   PromptGoal, THEME_FAMILIES, THEMES, TaskbarPosition, TaskbarUtilityGroupMode, ThemeCategory,
-  WidgetTelemetryBlock, WidgetTelemetryBlocks,
+  WallpaperCollection, WallpaperEntry, WallpaperMode, WidgetTelemetryBlock, WidgetTelemetryBlocks,
 };
 pub use ui::AppearanceApp;

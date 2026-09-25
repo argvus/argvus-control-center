@@ -160,8 +160,8 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
     ),
     "widget.taskbar_toggle" => ("Toggle Waybar top", "Oculta/Mostra Waybar top"),
     "appearance.wallpaper" => (
-      "Open wallpaper selector",
-      "Abre seletor para trocar wallpaper",
+      "Open Control Center wallpapers",
+      "Abre os wallpapers do Control Center",
     ),
     "appearance.theme" => ("Open theme selector", "Abre o seletor de temas"),
     "session.idle_timeout" => (

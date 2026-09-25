@@ -174,17 +174,69 @@ pub fn canonical_theme_id(theme_id: &str) -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WallpaperCollection {
+  Abstract,
+  Landscape,
+}
+
+impl WallpaperCollection {
+  pub const ALL: [Self; 2] = [Self::Abstract, Self::Landscape];
+
+  pub fn label_key(self) -> &'static str {
+    match self {
+      Self::Abstract => "control_center.wallpaper_category_abstract",
+      Self::Landscape => "control_center.wallpaper_category_landscape",
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WallpaperMode {
+  Dark,
+  Light,
+}
+
+impl WallpaperMode {
+  pub const ALL: [Self; 2] = [Self::Dark, Self::Light];
+
+  pub fn label_key(self) -> &'static str {
+    match self {
+      Self::Dark => "control_center.wallpaper_category_dark",
+      Self::Light => "control_center.wallpaper_category_light",
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WallpaperEntry {
+  pub path: String,
+  pub collection: WallpaperCollection,
+  pub mode: WallpaperMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppearancePage {
   Home,
   Themes,
   OfficialThemes,
-  ThemeFamilies { category: ThemeCategory },
+  ThemeFamilies {
+    category: ThemeCategory,
+  },
   CustomThemes,
   ThemeImport,
   ThemeImportConfirm,
   ThemeDeleteConfirm,
-  ThemeModes { family: usize },
+  ThemeModes {
+    family: usize,
+  },
   Wallpapers,
+  WallpaperModes {
+    collection: WallpaperCollection,
+  },
+  WallpaperItems {
+    collection: WallpaperCollection,
+    mode: WallpaperMode,
+  },
   Accents,
   AccentEdit,
   Effects,
@@ -197,7 +249,9 @@ pub enum AppearancePage {
   WindowSpaces,
   GeneralBorders,
   EdgeThickness,
-  Prompt { goal: PromptGoal },
+  Prompt {
+    goal: PromptGoal,
+  },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -633,7 +687,7 @@ pub fn accent_label(color: &str) -> String {
 pub struct AppearanceState {
   pub theme: String,
   pub accent: String,
-  pub wallpapers: Vec<String>,
+  pub wallpapers: Vec<WallpaperEntry>,
   pub wallpaper_active: Option<String>,
   pub animations: bool,
   pub transparency: bool,

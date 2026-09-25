@@ -7,7 +7,8 @@ use crate::{
   model::{
     AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme, HexColor,
     PromptGoal, THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, ThemeCategory,
-    WidgetTelemetryBlock, accent_label, normalize_hex_color, theme_family_label,
+    WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label, normalize_hex_color,
+    theme_family_label,
   },
 };
 use argvus_control_center_core::{
@@ -452,11 +453,32 @@ impl AppearanceApp {
             tr(self.lang, "control_center.wallpaper_chooser_opened").into(),
             backend::choose_wallpaper,
           );
-        } else if let Some(name) = self.state.wallpapers.get(self.selected - 1) {
-          let name = name.clone();
+        } else if let Some(collection) = WallpaperCollection::ALL.get(self.selected - 1) {
+          self.go(AppearancePage::WallpaperModes {
+            collection: *collection,
+          });
+        }
+      }
+      AppearancePage::WallpaperModes { collection } => {
+        if let Some(mode) = WallpaperMode::ALL.get(self.selected) {
+          self.go(AppearancePage::WallpaperItems {
+            collection,
+            mode: *mode,
+          });
+        }
+      }
+      AppearancePage::WallpaperItems { collection, mode } => {
+        if let Some(entry) = self
+          .state
+          .wallpapers
+          .iter()
+          .filter(|entry| entry.collection == collection && entry.mode == mode)
+          .nth(self.selected)
+        {
+          let path = entry.path.clone();
           self.apply(
             tr(self.lang, "control_center.wallpaper_applied").into(),
-            move || backend::set_wallpaper(&name),
+            move || backend::set_wallpaper(&path),
           );
         }
       }
@@ -751,6 +773,10 @@ impl AppearanceApp {
           .unwrap_or(ThemeCategory::Dark);
         self.go(AppearancePage::ThemeFamilies { category });
       }
+      AppearancePage::WallpaperModes { .. } => self.go(AppearancePage::Wallpapers),
+      AppearancePage::WallpaperItems { collection, .. } => {
+        self.go(AppearancePage::WallpaperModes { collection });
+      }
       AppearancePage::ThemeImport
       | AppearancePage::ThemeImportConfirm
       | AppearancePage::ThemeDeleteConfirm => {
@@ -795,7 +821,6 @@ impl AppearanceApp {
       | AppearancePage::ThemeFamilies { .. }
       | AppearancePage::CustomThemes
       | AppearancePage::ThemeModes { .. }
-      | AppearancePage::Wallpapers
       | AppearancePage::Accents
       | AppearancePage::Effects
       | AppearancePage::TaskbarPosition
@@ -806,6 +831,9 @@ impl AppearanceApp {
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness => self.pick(),
+      AppearancePage::Wallpapers
+      | AppearancePage::WallpaperModes { .. }
+      | AppearancePage::WallpaperItems { .. } => self.pick(),
       AppearancePage::ThemeImport
       | AppearancePage::ThemeImportConfirm
       | AppearancePage::ThemeDeleteConfirm => self.pick(),
@@ -853,7 +881,14 @@ impl AppearanceApp {
       | AppearancePage::Taskbar => 2,
       AppearancePage::WidgetTelemetry => 2 + WidgetTelemetryBlock::ALL.len(),
       AppearancePage::ControlPanel => self.control_panel_cards().len(),
-      AppearancePage::Wallpapers => self.state.wallpapers.len() + 1,
+      AppearancePage::Wallpapers => WallpaperCollection::ALL.len() + 1,
+      AppearancePage::WallpaperModes { .. } => WallpaperMode::ALL.len(),
+      AppearancePage::WallpaperItems { collection, mode } => self
+        .state
+        .wallpapers
+        .iter()
+        .filter(|entry| entry.collection == collection && entry.mode == mode)
+        .count(),
       AppearancePage::SpacesBordersPosition => 5,
       AppearancePage::TaskbarSpaces => 4,
       AppearancePage::WindowSpaces => 5,
@@ -993,6 +1028,17 @@ impl AppearanceApp {
       AppearancePage::Wallpapers => {
         format!("{root} › {}", tr(self.lang, "control_center.wallpapers"))
       }
+      AppearancePage::WallpaperModes { collection } => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.wallpapers"),
+        tr(self.lang, collection.label_key())
+      ),
+      AppearancePage::WallpaperItems { collection, mode } => format!(
+        "{root} › {} › {} › {}",
+        tr(self.lang, "control_center.wallpapers"),
+        tr(self.lang, collection.label_key()),
+        tr(self.lang, mode.label_key())
+      ),
       AppearancePage::Accents => format!(
         "{root} › {}",
         tr(self.lang, "control_center.highlight_color")
@@ -1166,17 +1212,45 @@ impl AppearanceApp {
       })
       .collect(),
       AppearancePage::Wallpapers => std::iter::once(icon_label(
-        "📂",
+        argvus_tui::icons::FOLDER,
         tr(self.lang, "control_center.choose_image_from_home"),
       ))
-      .chain(self.state.wallpapers.iter().map(|value| {
-        if self.state.wallpaper_active.as_deref() == Some(value.as_str()) {
-          format!("{value} · {}", tr(self.lang, "control_center.current"))
-        } else {
-          value.to_string()
-        }
+      .chain(WallpaperCollection::ALL.into_iter().map(|collection| {
+        format!(
+          "{} >",
+          icon_label(
+            argvus_tui::icons::IMAGE,
+            tr(self.lang, collection.label_key())
+          )
+        )
       }))
       .collect(),
+      AppearancePage::WallpaperModes { .. } => WallpaperMode::ALL
+        .into_iter()
+        .map(|mode| {
+          format!(
+            "{} >",
+            icon_label(argvus_tui::icons::IMAGE, tr(self.lang, mode.label_key()))
+          )
+        })
+        .collect(),
+      AppearancePage::WallpaperItems { collection, mode } => self
+        .state
+        .wallpapers
+        .iter()
+        .filter(|entry| entry.collection == collection && entry.mode == mode)
+        .map(|entry| {
+          let filename = std::path::Path::new(&entry.path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&entry.path);
+          if self.state.wallpaper_active.as_deref() == Some(entry.path.as_str()) {
+            format!("{filename} · {}", tr(self.lang, "control_center.current"))
+          } else {
+            filename.to_string()
+          }
+        })
+        .collect(),
       AppearancePage::Accents => vec![
         format!(
           "{}: {}",
@@ -1861,6 +1935,85 @@ mod tests {
     let rows = app(AppearancePage::OfficialThemes).rows();
     assert_eq!(rows, vec!["Dark >", "Light >"]);
   }
+
+  #[test]
+  fn wallpaper_rows_use_nerd_font_icon_and_nested_categories() {
+    let wallpaper_rows = app(AppearancePage::Wallpapers).rows();
+    assert!(wallpaper_rows[0].contains("Choose image from HOME"));
+    assert!(!wallpaper_rows[0].contains("📂"));
+    assert_eq!(wallpaper_rows.len(), 3);
+    assert!(
+      wallpaper_rows[1].contains("Abstract")
+        || wallpaper_rows[1].contains("wallpaper_category_abstract")
+    );
+    assert!(
+      wallpaper_rows[2].contains("Landscape")
+        || wallpaper_rows[2].contains("wallpaper_category_landscape")
+    );
+
+    let mode_rows = app(AppearancePage::WallpaperModes {
+      collection: WallpaperCollection::Abstract,
+    })
+    .rows();
+    assert!(mode_rows[0].contains("Dark >") || mode_rows[0].contains("category_dark"));
+    assert!(mode_rows[1].contains("Light >") || mode_rows[1].contains("category_light"));
+  }
+
+  #[test]
+  fn wallpaper_navigation_returns_from_items_to_collection() {
+    let mut application = app(AppearancePage::Wallpapers);
+    application.selected = 1;
+    application.handle(KeyCode::Enter);
+    application.job = None;
+    assert_eq!(
+      application.page,
+      AppearancePage::WallpaperModes {
+        collection: WallpaperCollection::Abstract
+      }
+    );
+    application.selected = 0;
+    application.handle(KeyCode::Right);
+    application.job = None;
+    assert_eq!(
+      application.page,
+      AppearancePage::WallpaperItems {
+        collection: WallpaperCollection::Abstract,
+        mode: WallpaperMode::Dark
+      }
+    );
+    application.handle(KeyCode::Left);
+    assert_eq!(
+      application.page,
+      AppearancePage::WallpaperModes {
+        collection: WallpaperCollection::Abstract
+      }
+    );
+    application.handle(KeyCode::Esc);
+    assert_eq!(application.page, AppearancePage::Wallpapers);
+  }
+
+  #[test]
+  fn wallpaper_items_filter_by_collection_and_mode() {
+    let mut application = app(AppearancePage::WallpaperItems {
+      collection: WallpaperCollection::Landscape,
+      mode: WallpaperMode::Light,
+    });
+    application.state.wallpapers = vec![
+      crate::WallpaperEntry {
+        path: "abstract/dark/gruvbox-abstract-dark.jxl".into(),
+        collection: WallpaperCollection::Abstract,
+        mode: WallpaperMode::Dark,
+      },
+      crate::WallpaperEntry {
+        path: "landscape/light/gruvbox-landscape-light.jxl".into(),
+        collection: WallpaperCollection::Landscape,
+        mode: WallpaperMode::Light,
+      },
+    ];
+    assert_eq!(application.rows(), vec!["gruvbox-landscape-light.jxl"]);
+    assert_eq!(application.selection_len(), 1);
+  }
+
   #[test]
   fn theme_families_are_grouped_by_identifier_category() {
     let dark_rows = app(AppearancePage::ThemeFamilies {

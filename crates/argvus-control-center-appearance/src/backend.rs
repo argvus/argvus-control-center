@@ -4,7 +4,8 @@
 //! the UI consumes normalized models and results.
 use crate::model::{
   AppearanceState, ControlPanelCard, ControlPanelCards, TaskbarPosition, TaskbarUtilityGroupMode,
-  WidgetTelemetryBlock, WidgetTelemetryBlocks, canonical_theme_id, normalize_hex_color,
+  WallpaperCollection, WallpaperEntry, WallpaperMode, WidgetTelemetryBlock, WidgetTelemetryBlocks,
+  canonical_theme_id, normalize_hex_color,
 };
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
@@ -560,31 +561,61 @@ fn parse_control_panel_cards(output: &str) -> ControlPanelCards {
 }
 
 /// Executes the `list_wallpapers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn list_wallpapers() -> Vec<String> {
-  fn collect(root: &Path, current: &Path, names: &mut Vec<String>) {
-    let Ok(entries) = fs::read_dir(current) else {
+fn classify_wallpaper(relative: &Path) -> Option<(WallpaperCollection, WallpaperMode)> {
+  let components = relative
+    .components()
+    .filter_map(|component| component.as_os_str().to_str())
+    .collect::<Vec<_>>();
+  match components.as_slice() {
+    ["argvus-dark.jxl"] => Some((WallpaperCollection::Abstract, WallpaperMode::Dark)),
+    ["argvus-light.jxl"] => Some((WallpaperCollection::Abstract, WallpaperMode::Light)),
+    [collection, mode, filename] if filename.ends_with(".jxl") => {
+      let collection = match *collection {
+        "abstract" => WallpaperCollection::Abstract,
+        "landscape" => WallpaperCollection::Landscape,
+        _ => return None,
+      };
+      let mode = match *mode {
+        "dark" => WallpaperMode::Dark,
+        "light" => WallpaperMode::Light,
+        _ => return None,
+      };
+      Some((collection, mode))
+    }
+    _ => None,
+  }
+}
+
+pub fn list_wallpapers() -> Vec<WallpaperEntry> {
+  fn collect(root: &Path, current: &Path, entries: &mut Vec<WallpaperEntry>) {
+    let Ok(directory_entries) = fs::read_dir(current) else {
       return;
     };
-    for entry in entries.flatten() {
+    for entry in directory_entries.flatten() {
       let path = entry.path();
       if path.is_dir() {
-        collect(root, &path, names);
+        collect(root, &path, entries);
       } else if path.extension().is_some_and(|extension| extension == "jxl")
         && let Ok(relative) = path.strip_prefix(root)
+        && let Some((collection, mode)) = classify_wallpaper(relative)
       {
-        names.push(relative.to_string_lossy().into_owned());
+        entries.push(WallpaperEntry {
+          path: relative.to_string_lossy().into_owned(),
+          collection,
+          mode,
+        });
       }
     }
   }
 
-  let mut names = Vec::new();
+  let mut entries = Vec::new();
   collect(
     Path::new(WALLPAPERS_DIR),
     Path::new(WALLPAPERS_DIR),
-    &mut names,
+    &mut entries,
   );
-  names.sort();
-  names
+  entries.sort_by(|left, right| left.path.cmp(&right.path));
+  entries
 }
 
 /// Executes the `hyprpaper_config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1078,6 +1109,32 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn wallpaper_paths_are_grouped_by_collection_and_mode() {
+    assert_eq!(
+      classify_wallpaper(Path::new("argvus-dark.jxl")),
+      Some((WallpaperCollection::Abstract, WallpaperMode::Dark))
+    );
+    assert_eq!(
+      classify_wallpaper(Path::new("argvus-light.jxl")),
+      Some((WallpaperCollection::Abstract, WallpaperMode::Light))
+    );
+    assert_eq!(
+      classify_wallpaper(Path::new("abstract/dark/gruvbox-abstract-dark.jxl")),
+      Some((WallpaperCollection::Abstract, WallpaperMode::Dark))
+    );
+    assert_eq!(
+      classify_wallpaper(Path::new("landscape/light/gruvbox-landscape-light.jxl")),
+      Some((WallpaperCollection::Landscape, WallpaperMode::Light))
+    );
+    assert_eq!(classify_wallpaper(Path::new("dark/wallpaper.jxl")), None);
+    assert_eq!(
+      classify_wallpaper(Path::new("abstract/dark/readme.png")),
+      None
+    );
+  }
+
   #[test]
   /// Executes the `theme_default_accents_exist` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn theme_default_accents_exist() {
