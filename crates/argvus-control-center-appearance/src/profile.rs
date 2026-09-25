@@ -38,13 +38,14 @@ enum FileId {
   Effects,
   Animations,
   Transparency,
+  ThemeEffects,
   TaskbarRight2Mode,
   WidgetTelemetryBlocks,
   ControlPanelCards,
 }
 
 impl FileId {
-  const ALL: [Self; 12] = [
+  const ALL: [Self; 13] = [
     Self::ActiveTheme,
     Self::Accent,
     Self::GtkMode,
@@ -54,6 +55,7 @@ impl FileId {
     Self::Fonts,
     Self::Animations,
     Self::Transparency,
+    Self::ThemeEffects,
     Self::TaskbarRight2Mode,
     Self::WidgetTelemetryBlocks,
     Self::ControlPanelCards,
@@ -70,6 +72,7 @@ impl FileId {
       Self::Effects => "effects",
       Self::Animations => "animations",
       Self::Transparency => "transparency",
+      Self::ThemeEffects => "theme-effects",
       Self::TaskbarRight2Mode => "taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel-cards",
@@ -87,12 +90,19 @@ impl FileId {
       Self::Effects => "payload/config/argvus/state/effects",
       Self::Animations => "payload/config/argvus/state/animations",
       Self::Transparency => "payload/config/argvus/state/transparency",
+      Self::ThemeEffects => "payload/config/argvus/state/effects/current-theme.conf",
       Self::TaskbarRight2Mode => "payload/config/argvus/state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "payload/config/argvus/state/widget-telemetry-blocks",
       Self::ControlPanelCards => "payload/config/argvus/control-panel/cards.json",
     }
   }
   fn destination(self, root: &Path) -> PathBuf {
+    if self == Self::ThemeEffects {
+      return theme_effects_destination(
+        root,
+        &read_first(&root.join(".active-theme"), "argvus-dark"),
+      );
+    }
     root.join(match self {
       Self::ActiveTheme => ".active-theme",
       Self::Accent => ".accent-color",
@@ -104,6 +114,7 @@ impl FileId {
       Self::Effects => "state/effects",
       Self::Animations => "state/animations",
       Self::Transparency => "state/transparency",
+      Self::ThemeEffects => unreachable!(),
       Self::TaskbarRight2Mode => "state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "state/widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel/cards.json",
@@ -259,6 +270,14 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
     suffix += 1;
   }
   let root = argvus_root();
+  let active_theme = read_first(&root.join(".active-theme"), "argvus-dark");
+  let effects_path = theme_effects_destination(&root, &active_theme);
+  if !effects_path.is_file() {
+    write_atomic(
+      &effects_path,
+      "taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\n",
+    )?;
+  }
   let mut files = Vec::new();
   let mut contents = Vec::new();
   for (id, source) in source_paths(&root) {
@@ -446,6 +465,17 @@ fn apply_staged(
     };
     backups.push((destination, old));
   }
+  let imported_effects = theme_effects_destination(&root, &staged.manifest.argvus.theme);
+  if !backups.iter().any(|(path, _)| *path == imported_effects) {
+    let old = if imported_effects.is_file() {
+      let old_path = backup.path().join("imported-theme-effects");
+      fs::copy(&imported_effects, &old_path).map_err(|e| e.to_string())?;
+      Some(old_path)
+    } else {
+      None
+    };
+    backups.push((imported_effects.clone(), old));
+  }
   for file in &staged.manifest.files {
     let id = FileId::parse(&file.id).ok_or("unknown theme profile file id")?;
     let entry = staged
@@ -457,6 +487,8 @@ fn apply_staged(
       // meaning by initializing both independent settings.
       payload.push((entry.path.clone(), FileId::Animations.destination(&root)));
       payload.push((entry.path.clone(), FileId::Transparency.destination(&root)));
+    } else if id == FileId::ThemeEffects {
+      payload.push((entry.path.clone(), imported_effects.clone()));
     } else {
       payload.push((entry.path.clone(), id.destination(&root)));
     }
@@ -782,6 +814,39 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
     {
       return Err("invalid effects state".into());
     }
+    FileId::ThemeEffects => {
+      let mut seen = HashSet::new();
+      for line in text.lines() {
+        let (key, value) = line.split_once('=').ok_or("invalid theme effects")?;
+        let valid_value = if key.ends_with(".enabled") {
+          matches!(value, "enabled" | "disabled")
+        } else {
+          value.parse::<u8>().ok().is_some_and(|number| number <= 100)
+        };
+        if !matches!(
+          key,
+          "taskbar.transparency"
+            | "control-panel.transparency"
+            | "widget-telemetry.transparency"
+            | "taskbar.transparency.enabled"
+            | "control-panel.transparency.enabled"
+            | "widget-telemetry.transparency.enabled"
+            | "taskbar.blur"
+            | "control-panel.blur"
+            | "widget-telemetry.blur"
+            | "taskbar.blur.enabled"
+            | "control-panel.blur.enabled"
+            | "widget-telemetry.blur.enabled"
+        ) || !seen.insert(key)
+          || !valid_value
+        {
+          return Err("invalid theme effects".into());
+        }
+      }
+      if seen.len() != 6 && seen.len() != 12 {
+        return Err("invalid theme effects".into());
+      }
+    }
     FileId::TaskbarRight2Mode if !matches!(value, "auto" | "always-expanded") => {
       return Err("invalid taskbar mode".into());
     }
@@ -1045,6 +1110,13 @@ fn source_paths(root: &Path) -> Vec<(FileId, PathBuf)> {
     })
     .collect()
 }
+
+fn theme_effects_destination(root: &Path, theme: &str) -> PathBuf {
+  root
+    .join("state")
+    .join("effects")
+    .join(format!("{theme}.conf"))
+}
 fn argvus_root() -> PathBuf {
   argvus_control_center_core::paths::argvus_config_home()
 }
@@ -1203,6 +1275,12 @@ mod tests {
   fn rejects_bad_values() {
     assert!(validate_content(FileId::Accent, b"#GGGGGG\n").is_err());
     assert!(validate_content(FileId::Effects, b"maybe\n").is_err());
+    assert!(validate_content(
+      FileId::ThemeEffects,
+      b"taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\n"
+    )
+    .is_ok());
+    assert!(validate_content(FileId::ThemeEffects, b"taskbar.transparency=101\n").is_err());
   }
   #[test]
   fn registry_validation_is_strict() {

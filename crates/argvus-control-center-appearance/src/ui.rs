@@ -5,10 +5,10 @@
 use crate::{
   backend,
   model::{
-    AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme, HexColor,
-    PromptGoal, THEME_FAMILIES, TaskbarPosition, TaskbarUtilityGroupMode, ThemeCategory,
-    WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label, normalize_hex_color,
-    theme_family_label,
+    AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
+    EffectSurface, HexColor, PromptGoal, SurfaceSection, THEME_FAMILIES, TaskbarPosition,
+    TaskbarUtilityGroupMode, ThemeCategory, WallpaperCollection, WallpaperMode,
+    WidgetTelemetryBlock, accent_label, normalize_hex_color, theme_family_label,
   },
 };
 use argvus_control_center_core::{
@@ -43,6 +43,20 @@ enum JobData {
     name: String,
     duplicate: bool,
   },
+}
+
+#[derive(Debug, Clone)]
+struct SurfaceDraft {
+  surface: EffectSurface,
+  utility_group: TaskbarUtilityGroupMode,
+  widget_enabled: bool,
+  widget_blocks: crate::model::WidgetTelemetryBlocks,
+  control_panel_enabled: bool,
+  control_panel_cards: ControlPanelCards,
+  transparency_enabled: bool,
+  transparency: i32,
+  blur_enabled: bool,
+  blur: i32,
 }
 
 /// Executes the `icon_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -80,6 +94,8 @@ pub struct AppearanceApp {
   action: Option<JobHandle<JobData>>,
   reload_requested: bool,
   control_panel_draft: Option<ControlPanelCards>,
+  effect_draft: Option<i32>,
+  surface_draft: Option<SurfaceDraft>,
   on_buttons: bool,
   button_selected: usize,
   button_from: Option<usize>,
@@ -141,6 +157,8 @@ impl AppearanceApp {
       action: None,
       reload_requested: false,
       control_panel_draft: None,
+      effect_draft: None,
+      surface_draft: None,
       on_buttons: false,
       button_selected: 0,
       button_from: None,
@@ -185,6 +203,11 @@ impl AppearanceApp {
           self.status_loading = false;
           if page == AppearancePage::ControlPanel && self.page == page {
             self.control_panel_draft = Some(self.state.control_panel_cards.clone());
+          }
+          if let Some(surface) = Self::surface_for_page(page)
+            && self.page == page
+          {
+            self.surface_draft = Some(self.make_surface_draft(surface));
           }
           if self.page != page {
             self.refresh();
@@ -299,28 +322,125 @@ impl AppearanceApp {
     if page == AppearancePage::ControlPanel {
       self.control_panel_draft = Some(self.state.control_panel_cards.clone());
     }
+    if let Some(surface) = Self::surface_for_page(page) {
+      if self.surface_draft.is_none()
+        || self
+          .surface_draft
+          .as_ref()
+          .is_some_and(|draft| draft.surface != surface)
+      {
+        self.surface_draft = Some(self.make_surface_draft(surface));
+      }
+    } else if !matches!(page, AppearancePage::SurfaceSection { .. }) {
+      self.surface_draft = None;
+    }
     self.ensure_page();
   }
 
-  /// Applies all pending Control Panel checkbox changes with one panel reload.
-  fn apply_control_panel_changes(&mut self) {
-    let Some(draft) = self.control_panel_draft.clone() else {
+  fn surface_for_page(page: AppearancePage) -> Option<EffectSurface> {
+    match page {
+      AppearancePage::Taskbar => Some(EffectSurface::Taskbar),
+      AppearancePage::WidgetTelemetry => Some(EffectSurface::WidgetTelemetry),
+      AppearancePage::ControlPanel => Some(EffectSurface::ControlPanel),
+      AppearancePage::SurfaceSection { surface, .. } => Some(surface),
+      _ => None,
+    }
+  }
+
+  fn make_surface_draft(&self, surface: EffectSurface) -> SurfaceDraft {
+    let (transparency_enabled, transparency, blur_enabled, blur) = match surface {
+      EffectSurface::Taskbar => (
+        self.state.taskbar_transparency_enabled,
+        self.state.taskbar_transparency,
+        self.state.taskbar_blur_enabled,
+        self.state.taskbar_blur,
+      ),
+      EffectSurface::ControlPanel => (
+        self.state.control_panel_transparency_enabled,
+        self.state.control_panel_transparency,
+        self.state.control_panel_blur_enabled,
+        self.state.control_panel_blur,
+      ),
+      EffectSurface::WidgetTelemetry => (
+        self.state.widget_telemetry_transparency_enabled,
+        self.state.widget_telemetry_transparency,
+        self.state.widget_telemetry_blur_enabled,
+        self.state.widget_telemetry_blur,
+      ),
+    };
+    SurfaceDraft {
+      surface,
+      utility_group: self.state.taskbar_utility_group,
+      widget_enabled: self.state.widget_telemetry,
+      widget_blocks: self.state.widget_telemetry_blocks.clone(),
+      control_panel_enabled: self.state.control_panel_enabled,
+      control_panel_cards: self.state.control_panel_cards.clone(),
+      transparency_enabled,
+      transparency,
+      blur_enabled,
+      blur,
+    }
+  }
+
+  fn surface_draft(&self) -> Option<&SurfaceDraft> {
+    self.surface_draft.as_ref()
+  }
+
+  fn surface_draft_mut(&mut self) -> Option<&mut SurfaceDraft> {
+    self.surface_draft.as_mut()
+  }
+
+  fn apply_surface_changes(&mut self) {
+    let Some(draft) = self.surface_draft.clone() else {
       return;
     };
-    let changes = ControlPanelCard::ALL
-      .into_iter()
-      .filter_map(|card| {
-        (draft.enabled(card) != self.state.control_panel_cards.enabled(card))
-          .then_some((card, draft.enabled(card)))
-      })
-      .collect::<Vec<_>>();
-    if changes.is_empty() {
-      return;
-    }
-    self.control_panel_draft = None;
+    self.surface_draft = None;
+    let current_state = self.state.clone();
     self.apply(
-      tr(self.lang, "control_center.control_panel_changed").into(),
-      move || backend::set_control_panel_cards(changes),
+      tr(self.lang, "control_center.surface_settings_applied").into(),
+      move || match draft.surface {
+        EffectSurface::Taskbar => {
+          backend::set_taskbar_utility_group(draft.utility_group)?;
+          backend::apply_surface_effects(
+            draft.surface,
+            draft.transparency_enabled,
+            draft.transparency,
+            draft.blur_enabled,
+            draft.blur,
+          )
+        }
+        EffectSurface::WidgetTelemetry => {
+          backend::apply_widget_telemetry(draft.widget_enabled, &draft.widget_blocks)?;
+          backend::apply_surface_effects(
+            draft.surface,
+            draft.transparency_enabled,
+            draft.transparency,
+            draft.blur_enabled,
+            draft.blur,
+          )
+        }
+        EffectSurface::ControlPanel => {
+          backend::set_control_panel_enabled(draft.control_panel_enabled)?;
+          let changes = ControlPanelCard::ALL
+            .into_iter()
+            .filter_map(|card| {
+              (draft.control_panel_cards.enabled(card)
+                != current_state.control_panel_cards.enabled(card))
+              .then_some((card, draft.control_panel_cards.enabled(card)))
+            })
+            .collect::<Vec<_>>();
+          if !changes.is_empty() {
+            backend::set_control_panel_cards(changes)?;
+          }
+          backend::apply_surface_effects(
+            draft.surface,
+            draft.transparency_enabled,
+            draft.transparency,
+            draft.blur_enabled,
+            draft.blur,
+          )
+        }
+      },
     );
   }
   /// Applies the `toggle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -489,43 +609,88 @@ impl AppearanceApp {
           move || backend::set_waybar_position(position),
         );
       }
-      AppearancePage::Taskbar => {
-        let mode = if self.selected == 0 {
-          TaskbarUtilityGroupMode::Auto
-        } else {
-          TaskbarUtilityGroupMode::AlwaysExpanded
-        };
-        self.apply(
-          tr(self.lang, "control_center.taskbar_changed").into(),
-          move || backend::set_taskbar_utility_group(mode),
-        );
-      }
-      AppearancePage::WidgetTelemetry => {
-        if self.selected == 0 {
-          self.apply_toggle_telemetry();
-        } else if let Some(block) = self
-          .selected
-          .checked_sub(2)
-          .and_then(|index| WidgetTelemetryBlock::ALL.get(index))
-          .copied()
-        {
-          let enabled = !self.state.widget_telemetry_blocks.enabled(block);
-          self.apply(
-            tr(self.lang, "control_center.widget_telemetry_block_changed").into(),
-            move || backend::set_telemetry_block(block, enabled),
-          );
-        }
-      }
-      AppearancePage::ControlPanel => {
-        if let Some(card) = self.control_panel_cards().get(self.selected).copied() {
-          let draft = self
-            .control_panel_draft
-            .get_or_insert_with(|| self.state.control_panel_cards.clone());
-          draft.set(card, !draft.enabled(card));
-        }
-      }
       AppearancePage::Effects if self.selected == 0 => self.apply_toggle_animations(),
-      AppearancePage::Effects if self.selected == 1 => self.apply_toggle_transparency(),
+      AppearancePage::Taskbar if self.selected < 3 => self.go(AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: match self.selected {
+          0 => SurfaceSection::UtilityIcons,
+          1 => SurfaceSection::Transparency,
+          _ => SurfaceSection::Blur,
+        },
+      }),
+      AppearancePage::WidgetTelemetry if self.selected == 0 => {
+        if let Some(draft) = self.surface_draft_mut() {
+          draft.widget_enabled = !draft.widget_enabled;
+        }
+      }
+      AppearancePage::WidgetTelemetry if self.selected < 4 => {
+        self.go(AppearancePage::SurfaceSection {
+          surface: EffectSurface::WidgetTelemetry,
+          section: match self.selected {
+            1 => SurfaceSection::Sessions,
+            2 => SurfaceSection::Transparency,
+            _ => SurfaceSection::Blur,
+          },
+        })
+      }
+      AppearancePage::ControlPanel if self.selected == 0 => {
+        if let Some(draft) = self.surface_draft_mut() {
+          draft.control_panel_enabled = !draft.control_panel_enabled;
+        }
+      }
+      AppearancePage::ControlPanel if self.selected < 4 => {
+        self.go(AppearancePage::SurfaceSection {
+          surface: EffectSurface::ControlPanel,
+          section: match self.selected {
+            1 => SurfaceSection::Sessions,
+            2 => SurfaceSection::Transparency,
+            _ => SurfaceSection::Blur,
+          },
+        })
+      }
+      AppearancePage::SurfaceSection { surface, section } => match section {
+        SurfaceSection::UtilityIcons => {
+          let selected = self.selected;
+          if let Some(draft) = self.surface_draft_mut() {
+            draft.utility_group = if selected == 0 {
+              TaskbarUtilityGroupMode::Auto
+            } else {
+              TaskbarUtilityGroupMode::AlwaysExpanded
+            };
+          }
+        }
+        SurfaceSection::Sessions => {
+          if surface == EffectSurface::WidgetTelemetry {
+            if let Some(block) = WidgetTelemetryBlock::ALL.get(self.selected).copied()
+              && let Some(draft) = self.surface_draft_mut()
+            {
+              let enabled = !draft.widget_blocks.enabled(block);
+              draft.widget_blocks.set(block, enabled);
+            }
+          } else if let Some(card) = ControlPanelCard::ALL.get(self.selected).copied()
+            && let Some(draft) = self.surface_draft_mut()
+          {
+            draft
+              .control_panel_cards
+              .set(card, !draft.control_panel_cards.enabled(card));
+          }
+        }
+        SurfaceSection::Transparency => {
+          if self.selected == 0
+            && let Some(draft) = self.surface_draft_mut()
+          {
+            draft.transparency_enabled = !draft.transparency_enabled;
+          }
+        }
+        SurfaceSection::Blur => {
+          if self.selected == 0
+            && let Some(draft) = self.surface_draft_mut()
+          {
+            draft.blur_enabled = !draft.blur_enabled;
+          }
+        }
+      },
+      AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => {}
       AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
       AppearancePage::TaskbarSpaces => self.open_prompt(
         [
@@ -686,6 +851,37 @@ impl AppearanceApp {
     {
       return false;
     }
+    if let AppearancePage::SurfaceSection { section, .. } = self.page
+      && !self.on_buttons
+      && matches!(section, SurfaceSection::Transparency | SurfaceSection::Blur)
+      && self.selected == 1
+      && let Some(draft) = self.surface_draft_mut()
+    {
+      let value = if section == SurfaceSection::Transparency {
+        &mut draft.transparency
+      } else {
+        &mut draft.blur
+      };
+      match key {
+        KeyCode::Char('-') => {
+          *value = (*value - 5).max(0);
+          return false;
+        }
+        KeyCode::Char('+') => {
+          *value = (*value + 5).min(100);
+          return false;
+        }
+        KeyCode::Home => {
+          *value = 0;
+          return false;
+        }
+        KeyCode::End => {
+          *value = 100;
+          return false;
+        }
+        _ => {}
+      }
+    }
     if matches!(
       self.page,
       AppearancePage::Themes | AppearancePage::CustomThemes
@@ -709,7 +905,15 @@ impl AppearanceApp {
         return false;
       }
     }
-    if self.page == AppearancePage::ControlPanel && !self.buttons().is_empty() {
+    if (matches!(
+      self.page,
+      AppearancePage::Taskbar
+        | AppearancePage::WidgetTelemetry
+        | AppearancePage::ControlPanel
+        | AppearancePage::SurfaceSection { .. }
+    ) || Self::effect_spec(self.page).is_some())
+      && !self.buttons().is_empty()
+    {
       if self.on_buttons {
         match key {
           KeyCode::Tab => self.toggle_buttons(false),
@@ -726,6 +930,19 @@ impl AppearanceApp {
         self.toggle_buttons(key == KeyCode::BackTab);
         return false;
       }
+    }
+    if Self::effect_spec(self.page).is_some() && !self.on_buttons {
+      let mut value = self.effect_editor_value();
+      match key {
+        KeyCode::Esc => return self.back(),
+        KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('-') => value = value.saturating_sub(5),
+        KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('+') => value = (value + 5).min(100),
+        KeyCode::Home => value = 0,
+        KeyCode::End => value = 100,
+        _ => return false,
+      }
+      self.effect_draft = Some(value);
+      return false;
     }
     if matches!(key, KeyCode::Esc | KeyCode::Left) {
       return self.back();
@@ -790,6 +1007,22 @@ impl AppearanceApp {
         self.go(AppearancePage::SpacesBordersPosition);
       }
       AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
+      AppearancePage::Transparency | AppearancePage::Blur => self.go(AppearancePage::Effects),
+      AppearancePage::TransparencySurface { .. } => {
+        self.effect_draft = None;
+        self.go(AppearancePage::Transparency);
+      }
+      AppearancePage::BlurSurface { .. } => {
+        self.effect_draft = None;
+        self.go(AppearancePage::Blur);
+      }
+      AppearancePage::SurfaceSection { surface, .. } => {
+        self.go(match surface {
+          EffectSurface::Taskbar => AppearancePage::Taskbar,
+          EffectSurface::WidgetTelemetry => AppearancePage::WidgetTelemetry,
+          EffectSurface::ControlPanel => AppearancePage::ControlPanel,
+        });
+      }
       AppearancePage::Prompt { .. } => {}
     }
     false
@@ -823,6 +1056,8 @@ impl AppearanceApp {
       | AppearancePage::ThemeModes { .. }
       | AppearancePage::Accents
       | AppearancePage::Effects
+      | AppearancePage::Transparency
+      | AppearancePage::Blur
       | AppearancePage::TaskbarPosition
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
@@ -837,6 +1072,8 @@ impl AppearanceApp {
       AppearancePage::ThemeImport
       | AppearancePage::ThemeImportConfirm
       | AppearancePage::ThemeDeleteConfirm => self.pick(),
+      AppearancePage::SurfaceSection { .. } => self.pick(),
+      AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => {}
       AppearancePage::AccentEdit => {}
       AppearancePage::Prompt { .. } => {}
     }
@@ -849,21 +1086,52 @@ impl AppearanceApp {
       move || backend::set_animations(value),
     );
   }
-  /// Applies the `apply_toggle_transparency` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn apply_toggle_transparency(&mut self) {
-    let value = !self.state.transparency;
-    self.apply(
-      tr(self.lang, "control_center.transparency_applied").into(),
-      move || backend::set_transparency(value),
-    );
+  fn effect_spec(page: AppearancePage) -> Option<(&'static str, EffectSurface)> {
+    match page {
+      AppearancePage::TransparencySurface { surface } => Some(("transparency", surface)),
+      AppearancePage::BlurSurface { surface } => Some(("blur", surface)),
+      _ => None,
+    }
   }
-  /// Applies the `apply_toggle_telemetry` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn apply_toggle_telemetry(&mut self) {
-    let value = !self.state.widget_telemetry;
+
+  fn effect_value(&self, kind: &str, surface: EffectSurface) -> i32 {
+    match (kind, surface) {
+      ("transparency", EffectSurface::Taskbar) => self.state.taskbar_transparency,
+      ("transparency", EffectSurface::ControlPanel) => self.state.control_panel_transparency,
+      ("transparency", EffectSurface::WidgetTelemetry) => self.state.widget_telemetry_transparency,
+      ("blur", EffectSurface::Taskbar) => self.state.taskbar_blur,
+      ("blur", EffectSurface::ControlPanel) => self.state.control_panel_blur,
+      ("blur", EffectSurface::WidgetTelemetry) => self.state.widget_telemetry_blur,
+      _ => 0,
+    }
+  }
+
+  fn effect_editor_value(&self) -> i32 {
+    Self::effect_spec(self.page)
+      .map(|(kind, surface)| {
+        self
+          .effect_draft
+          .unwrap_or_else(|| self.effect_value(kind, surface))
+      })
+      .unwrap_or(0)
+  }
+
+  fn apply_effect_changes(&mut self) {
+    let Some((kind, surface)) = Self::effect_spec(self.page) else {
+      return;
+    };
+    let value = self.effect_editor_value();
+    self.effect_draft = None;
+    let back = if kind == "transparency" {
+      AppearancePage::Transparency
+    } else {
+      AppearancePage::Blur
+    };
     self.apply(
-      tr(self.lang, "control_center.widget_telemetry_changed").into(),
-      move || backend::set_telemetry(value),
+      tr(self.lang, "control_center.effect_value_applied").into(),
+      move || backend::set_effect_value(kind, surface, value),
     );
+    self.go(back);
   }
   /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
@@ -875,12 +1143,21 @@ impl AppearanceApp {
       AppearancePage::CustomThemes => self.state.custom_themes.len(),
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
-      AppearancePage::Effects => 2,
-      AppearancePage::ThemeModes { .. }
-      | AppearancePage::TaskbarPosition
-      | AppearancePage::Taskbar => 2,
-      AppearancePage::WidgetTelemetry => 2 + WidgetTelemetryBlock::ALL.len(),
-      AppearancePage::ControlPanel => self.control_panel_cards().len(),
+      AppearancePage::Effects => 1,
+      AppearancePage::Transparency | AppearancePage::Blur => 4,
+      AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => 1,
+      AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
+      AppearancePage::Taskbar => 3,
+      AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => 4,
+      AppearancePage::SurfaceSection { surface, section } => match section {
+        SurfaceSection::UtilityIcons => 2,
+        SurfaceSection::Sessions => match surface {
+          EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL.len(),
+          EffectSurface::ControlPanel => self.control_panel_cards().len(),
+          EffectSurface::Taskbar => 0,
+        },
+        SurfaceSection::Transparency | SurfaceSection::Blur => 2,
+      },
       AppearancePage::Wallpapers => WallpaperCollection::ALL.len() + 1,
       AppearancePage::WallpaperModes { .. } => WallpaperMode::ALL.len(),
       AppearancePage::WallpaperItems { collection, mode } => self
@@ -1051,6 +1328,28 @@ impl AppearanceApp {
       AppearancePage::Effects => {
         format!("{root} › {}", tr(self.lang, "control_center.effects"))
       }
+      AppearancePage::Transparency => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.effects"),
+        tr(self.lang, "control_center.transparency")
+      ),
+      AppearancePage::Blur => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.effects"),
+        tr(self.lang, "control_center.blur")
+      ),
+      AppearancePage::TransparencySurface { surface } => format!(
+        "{root} › {} › {} › {}",
+        tr(self.lang, "control_center.effects"),
+        tr(self.lang, "control_center.transparency"),
+        tr(self.lang, surface.label_key())
+      ),
+      AppearancePage::BlurSurface { surface } => format!(
+        "{root} › {} › {} › {}",
+        tr(self.lang, "control_center.effects"),
+        tr(self.lang, "control_center.blur"),
+        tr(self.lang, surface.label_key())
+      ),
       AppearancePage::SpacesBordersPosition => format!(
         "{root} › {}",
         tr(self.lang, "control_center.spaces_borders_position")
@@ -1075,6 +1374,19 @@ impl AppearanceApp {
       AppearancePage::ControlPanel => {
         format!("{root} › {}", tr(self.lang, "control_center.control_panel"))
       }
+      AppearancePage::SurfaceSection { surface, section } => format!(
+        "{root} › {} › {}",
+        tr(self.lang, surface.label_key()),
+        tr(
+          self.lang,
+          match section {
+            SurfaceSection::UtilityIcons => "control_center.taskbar_utility_group",
+            SurfaceSection::Sessions => "control_center.sessions",
+            SurfaceSection::Transparency => "control_center.transparency",
+            SurfaceSection::Blur => "control_center.blur",
+          }
+        )
+      ),
       AppearancePage::WindowSpaces => format!(
         "{root} › {} › {}",
         tr(self.lang, "control_center.spaces_borders_position"),
@@ -1259,34 +1571,81 @@ impl AppearanceApp {
         ),
         tr(self.lang, "control_center.reset_to_theme_default").into(),
       ],
-      AppearancePage::Effects => vec![
-        format!(
-          "[{}] {} · {}",
-          if self.state.animations { "x" } else { " " },
-          icon_label(
-            argvus_tui::icons::SUCCESS,
-            tr(self.lang, "control_center.animations")
-          ),
-          if self.state.animations {
-            tr(self.lang, "control_center.enabled")
-          } else {
-            tr(self.lang, "control_center.disabled")
-          }
+      AppearancePage::Effects => vec![format!(
+        "[{}] {} · {}",
+        if self.state.animations { "x" } else { " " },
+        icon_label(
+          argvus_tui::icons::SUCCESS,
+          tr(self.lang, "control_center.animations")
         ),
-        format!(
-          "[{}] {} · {}",
-          if self.state.transparency { "x" } else { " " },
-          icon_label(
-            argvus_tui::icons::SUCCESS,
-            tr(self.lang, "control_center.transparency")
-          ),
-          if self.state.transparency {
-            tr(self.lang, "control_center.enabled")
-          } else {
-            tr(self.lang, "control_center.disabled")
-          }
+        if self.state.animations {
+          tr(self.lang, "control_center.enabled")
+        } else {
+          tr(self.lang, "control_center.disabled")
+        }
+      )],
+      AppearancePage::Transparency => std::iter::once(format!(
+        "[{}] {} · {}",
+        if self.state.transparency { "x" } else { " " },
+        icon_label(
+          argvus_tui::icons::SUCCESS,
+          tr(self.lang, "control_center.transparency")
         ),
-      ],
+        if self.state.transparency {
+          tr(self.lang, "control_center.enabled")
+        } else {
+          tr(self.lang, "control_center.disabled")
+        }
+      ))
+      .chain(
+        EffectSurface::ALL
+          .into_iter()
+          .map(|surface| {
+            format!(
+              "{} › {}%",
+              icon_label(argvus_tui::icons::INFO, tr(self.lang, surface.label_key())),
+              self.effect_value("transparency", surface)
+            )
+          })
+          .collect::<Vec<_>>(),
+      )
+      .collect(),
+      AppearancePage::Blur => std::iter::once(format!(
+        "[{}] {} · {}",
+        if self.state.blur { "x" } else { " " },
+        icon_label(
+          argvus_tui::icons::SUCCESS,
+          tr(self.lang, "control_center.blur")
+        ),
+        if self.state.blur {
+          tr(self.lang, "control_center.enabled")
+        } else {
+          tr(self.lang, "control_center.disabled")
+        }
+      ))
+      .chain(
+        EffectSurface::ALL
+          .into_iter()
+          .map(|surface| {
+            format!(
+              "{} › {}%",
+              icon_label(argvus_tui::icons::INFO, tr(self.lang, surface.label_key())),
+              self.effect_value("blur", surface)
+            )
+          })
+          .collect::<Vec<_>>(),
+      )
+      .collect(),
+      AppearancePage::TransparencySurface { surface: _surface } => vec![format!(
+        "{}: {}%",
+        tr(self.lang, "control_center.transparency"),
+        self.effect_editor_value()
+      )],
+      AppearancePage::BlurSurface { surface: _surface } => vec![format!(
+        "{}: {}%",
+        tr(self.lang, "control_center.blur"),
+        self.effect_editor_value()
+      )],
       AppearancePage::SpacesBordersPosition => vec![
         icon_label(
           argvus_tui::icons::INFO,
@@ -1309,26 +1668,14 @@ impl AppearanceApp {
           tr(self.lang, "control_center.edge_thickness"),
         ),
       ],
-      AppearancePage::Taskbar => [
-        (
-          "control_center.taskbar_utility_group_auto",
-          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::Auto,
+      AppearancePage::Taskbar => vec![
+        format!(
+          "{} ›",
+          tr(self.lang, "control_center.taskbar_utility_group")
         ),
-        (
-          "control_center.taskbar_utility_group_always_expanded",
-          self.state.taskbar_utility_group == TaskbarUtilityGroupMode::AlwaysExpanded,
-        ),
-      ]
-      .into_iter()
-      .map(|(key, current)| {
-        let suffix = if current {
-          format!(" · {}", tr(self.lang, "control_center.current"))
-        } else {
-          String::new()
-        };
-        format!("{}{}", tr(self.lang, key), suffix)
-      })
-      .collect(),
+        format!("{} ›", tr(self.lang, "control_center.transparency")),
+        format!("{} ›", tr(self.lang, "control_center.blur")),
+      ],
       AppearancePage::TaskbarPosition => vec![
         format!(
           "{}{}",
@@ -1383,31 +1730,146 @@ impl AppearanceApp {
           self.state.waybar_bottom
         ),
       ],
-      AppearancePage::WidgetTelemetry => std::iter::once(format!(
-        "[{}] {}",
-        if self.state.widget_telemetry {
-          "x"
-        } else {
-          " "
-        },
-        tr(self.lang, "control_center.enable")
-      ))
-      .chain(std::iter::once(
-        tr(self.lang, "control_center.options").to_string(),
-      ))
-      .chain(WidgetTelemetryBlock::ALL.into_iter().map(|block| {
+      AppearancePage::WidgetTelemetry => vec![
         format!(
           "[{}] {}",
-          if self.state.widget_telemetry_blocks.enabled(block) {
+          if self
+            .surface_draft()
+            .is_some_and(|draft| draft.widget_enabled)
+          {
             "x"
           } else {
             " "
           },
-          tr(self.lang, block.label_key())
-        )
-      }))
-      .collect(),
-      AppearancePage::ControlPanel => self.control_panel_rows(),
+          tr(self.lang, "control_center.enable")
+        ),
+        format!("{} ›", tr(self.lang, "control_center.sessions")),
+        format!("{} ›", tr(self.lang, "control_center.transparency")),
+        format!("{} ›", tr(self.lang, "control_center.blur")),
+      ],
+      AppearancePage::ControlPanel => vec![
+        format!(
+          "[{}] {}",
+          if self
+            .surface_draft()
+            .is_some_and(|draft| draft.control_panel_enabled)
+          {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, "control_center.enable")
+        ),
+        format!("{} ›", tr(self.lang, "control_center.sessions")),
+        format!("{} ›", tr(self.lang, "control_center.transparency")),
+        format!("{} ›", tr(self.lang, "control_center.blur")),
+      ],
+      AppearancePage::SurfaceSection { surface, section } => match section {
+        SurfaceSection::UtilityIcons => vec![
+          format!(
+            "{}{}",
+            tr(self.lang, "control_center.taskbar_utility_group_auto"),
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.utility_group == TaskbarUtilityGroupMode::Auto)
+            {
+              format!(" · {}", tr(self.lang, "control_center.current"))
+            } else {
+              String::new()
+            }
+          ),
+          format!(
+            "{}{}",
+            tr(
+              self.lang,
+              "control_center.taskbar_utility_group_always_expanded"
+            ),
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.utility_group == TaskbarUtilityGroupMode::AlwaysExpanded)
+            {
+              format!(" · {}", tr(self.lang, "control_center.current"))
+            } else {
+              String::new()
+            }
+          ),
+        ],
+        SurfaceSection::Sessions => match surface {
+          EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL
+            .into_iter()
+            .map(|block| {
+              format!(
+                "[{}] {}",
+                if self
+                  .surface_draft()
+                  .is_some_and(|draft| draft.widget_blocks.enabled(block))
+                {
+                  "x"
+                } else {
+                  " "
+                },
+                tr(self.lang, block.label_key())
+              )
+            })
+            .collect(),
+          EffectSurface::ControlPanel => self
+            .surface_draft()
+            .map(|draft| {
+              ControlPanelCard::ALL
+                .into_iter()
+                .filter(|card| draft.control_panel_cards.available(*card))
+                .map(|card| {
+                  format!(
+                    "[{}] {}",
+                    if draft.control_panel_cards.enabled(card) {
+                      "x"
+                    } else {
+                      " "
+                    },
+                    tr(self.lang, card.label_key())
+                  )
+                })
+                .collect()
+            })
+            .unwrap_or_default(),
+          EffectSurface::Taskbar => Vec::new(),
+        },
+        SurfaceSection::Transparency => vec![
+          format!(
+            "[{}] {}",
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.transparency_enabled)
+            {
+              "x"
+            } else {
+              " "
+            },
+            tr(self.lang, "control_center.enable")
+          ),
+          format!(
+            "{} > {}%",
+            tr(self.lang, "control_center.value"),
+            self.surface_draft().map_or(50, |draft| draft.transparency)
+          ),
+        ],
+        SurfaceSection::Blur => vec![
+          format!(
+            "[{}] {}",
+            if self.surface_draft().is_some_and(|draft| draft.blur_enabled) {
+              "x"
+            } else {
+              " "
+            },
+            tr(self.lang, "control_center.enable")
+          ),
+          format!(
+            "{} > {}%",
+            tr(self.lang, "control_center.value"),
+            self.surface_draft().map_or(50, |draft| draft.blur)
+          ),
+        ],
+      },
       AppearancePage::WindowSpaces => vec![
         format!(
           "{} · {}",
@@ -1498,39 +1960,19 @@ impl AppearanceApp {
       .collect()
   }
 
-  /// Uses the uncommitted draft while editing, leaving persisted state intact
-  /// until the user activates the Apply row.
-  fn control_panel_view(&self) -> &ControlPanelCards {
-    self
-      .control_panel_draft
-      .as_ref()
-      .unwrap_or(&self.state.control_panel_cards)
-  }
-
-  fn control_panel_rows(&self) -> Vec<String> {
-    self
-      .control_panel_cards()
-      .into_iter()
-      .map(|card| {
-        format!(
-          "[{}] {}",
-          if self.control_panel_view().enabled(card) {
-            "x"
-          } else {
-            " "
-          },
-          tr(self.lang, card.label_key())
-        )
-      })
-      .collect()
-  }
-
   fn buttons(&self) -> Vec<Button> {
-    if self.page != AppearancePage::ControlPanel {
+    if !matches!(
+      self.page,
+      AppearancePage::Taskbar
+        | AppearancePage::WidgetTelemetry
+        | AppearancePage::ControlPanel
+        | AppearancePage::SurfaceSection { .. }
+    ) && Self::effect_spec(self.page).is_none()
+    {
       return Vec::new();
     }
     vec![Button::new(
-      tr(self.lang, "control_center.apply_bc01e2"),
+      tr(self.lang, "control_center.apply"),
       ButtonKind::Primary,
     )]
   }
@@ -1558,7 +2000,17 @@ impl AppearanceApp {
 
   fn activate_button(&mut self) {
     if self.button_selected == 0 {
-      self.apply_control_panel_changes();
+      if matches!(
+        self.page,
+        AppearancePage::Taskbar
+          | AppearancePage::WidgetTelemetry
+          | AppearancePage::ControlPanel
+          | AppearancePage::SurfaceSection { .. }
+      ) {
+        self.apply_surface_changes();
+      } else {
+        self.apply_effect_changes();
+      }
     }
   }
   /// Executes the `hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1591,12 +2043,35 @@ impl AppearanceApp {
         (0, 100)
       };
       format!("0-9 edit · Enter confirm · Esc back · {min}..{max}")
-    } else if self.page == AppearancePage::ControlPanel {
+    } else if let AppearancePage::SurfaceSection { section, .. } = self.page {
+      if matches!(section, SurfaceSection::Transparency | SurfaceSection::Blur) {
+        tr(
+          self.lang,
+          "control_center.navigate_tab_actions_adjust_enter_activate_esc_back_help",
+        )
+        .into()
+      } else {
+        tr(
+          self.lang,
+          "control_center.navigate_tab_actions_move_enter_activate_esc_back_help",
+        )
+        .into()
+      }
+    } else if matches!(
+      self.page,
+      AppearancePage::Taskbar | AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel
+    ) {
       tr(
         self.lang,
         "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
       )
       .into()
+    } else if Self::effect_spec(self.page).is_some() {
+      format!(
+        "←/→ 5% · Tab {} · Esc {}",
+        tr(self.lang, "control_center.apply"),
+        tr(self.lang, "control_center.back")
+      )
     } else if matches!(
       self.page,
       AppearancePage::Home | AppearancePage::SpacesBordersPosition
@@ -1903,6 +2378,8 @@ mod tests {
       action: None,
       reload_requested: false,
       control_panel_draft: None,
+      effect_draft: None,
+      surface_draft: None,
       on_buttons: false,
       button_selected: 0,
       button_from: None,
@@ -1918,10 +2395,57 @@ mod tests {
   fn home_has_categories_and_spacing_is_nested() {
     assert_eq!(app(AppearancePage::Home).rows().len(), 8);
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
-    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 2);
-    assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 9);
-    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 14);
-    assert_eq!(app(AppearancePage::Effects).rows().len(), 2);
+    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 3);
+    assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 4);
+    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 4);
+    assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
+    assert_eq!(app(AppearancePage::Transparency).rows().len(), 4);
+    assert_eq!(app(AppearancePage::Blur).rows().len(), 4);
+  }
+
+  #[test]
+  fn surface_pages_keep_settings_nested_and_values_bounded() {
+    assert_eq!(
+      app(AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: SurfaceSection::UtilityIcons,
+      })
+      .rows()
+      .len(),
+      2
+    );
+    let mut widget_sessions = app(AppearancePage::SurfaceSection {
+      surface: EffectSurface::WidgetTelemetry,
+      section: SurfaceSection::Sessions,
+    });
+    widget_sessions.surface_draft =
+      Some(widget_sessions.make_surface_draft(EffectSurface::WidgetTelemetry));
+    assert_eq!(
+      widget_sessions.rows().len(),
+      WidgetTelemetryBlock::ALL.len()
+    );
+    let mut control_sessions = app(AppearancePage::SurfaceSection {
+      surface: EffectSurface::ControlPanel,
+      section: SurfaceSection::Sessions,
+    });
+    control_sessions.surface_draft =
+      Some(control_sessions.make_surface_draft(EffectSurface::ControlPanel));
+    assert_eq!(control_sessions.rows().len(), ControlPanelCard::ALL.len());
+
+    let mut application = app(AppearancePage::SurfaceSection {
+      surface: EffectSurface::Taskbar,
+      section: SurfaceSection::Transparency,
+    });
+    application.go(application.page);
+    if let Some(draft) = application.surface_draft.as_mut() {
+      draft.transparency = 100;
+    }
+    application.selected = 1;
+    application.handle(KeyCode::Char('+'));
+    assert_eq!(application.surface_draft().unwrap().transparency, 100);
+    application.surface_draft.as_mut().unwrap().transparency = 0;
+    application.handle(KeyCode::Char('-'));
+    assert_eq!(application.surface_draft().unwrap().transparency, 0);
   }
   #[test]
   fn theme_rows_use_friendly_official_names() {
@@ -2094,5 +2618,46 @@ mod tests {
     assert_eq!(a.button_selected, 0);
     a.handle(KeyCode::BackTab);
     assert!(!a.on_buttons);
+  }
+
+  #[test]
+  fn surface_value_navigation_keeps_vertical_focus_and_exposes_apply_actions() {
+    for surface in EffectSurface::ALL {
+      for section in [SurfaceSection::Transparency, SurfaceSection::Blur] {
+        let mut application = app(AppearancePage::SurfaceSection { surface, section });
+        application.surface_draft = Some(application.make_surface_draft(surface));
+
+        assert_eq!(application.buttons().len(), 1);
+        let footer_hint = application.hints().to_lowercase();
+        assert!(footer_hint.contains("tab"));
+        assert!(footer_hint.contains("action") || footer_hint.contains("actions"));
+        assert!(!footer_hint.contains("tab apply"));
+
+        application.handle(KeyCode::Down);
+        assert_eq!(application.selected, 1);
+        application.handle(KeyCode::Up);
+        assert_eq!(application.selected, 0);
+
+        application.selected = 1;
+        let initial_value = if section == SurfaceSection::Transparency {
+          application.surface_draft().unwrap().transparency
+        } else {
+          application.surface_draft().unwrap().blur
+        };
+        application.handle(KeyCode::Char('+'));
+        assert_eq!(application.selected, 1);
+        let adjusted_value = if section == SurfaceSection::Transparency {
+          application.surface_draft().unwrap().transparency
+        } else {
+          application.surface_draft().unwrap().blur
+        };
+        assert_eq!(adjusted_value, (initial_value + 5).min(100));
+
+        application.handle(KeyCode::Tab);
+        assert!(application.on_buttons);
+        application.handle(KeyCode::Enter);
+        assert!(application.action.is_some());
+      }
+    }
   }
 }

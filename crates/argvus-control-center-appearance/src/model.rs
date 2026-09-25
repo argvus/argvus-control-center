@@ -244,18 +244,69 @@ pub enum AppearancePage {
   Accents,
   AccentEdit,
   Effects,
+  #[allow(dead_code)]
+  Transparency,
+  #[allow(dead_code)]
+  TransparencySurface {
+    surface: EffectSurface,
+  },
+  #[allow(dead_code)]
+  Blur,
+  #[allow(dead_code)]
+  BlurSurface {
+    surface: EffectSurface,
+  },
   SpacesBordersPosition,
   TaskbarPosition,
   TaskbarSpaces,
   Taskbar,
   WidgetTelemetry,
   ControlPanel,
+  SurfaceSection {
+    surface: EffectSurface,
+    section: SurfaceSection,
+  },
   WindowSpaces,
   GeneralBorders,
   EdgeThickness,
   Prompt {
     goal: PromptGoal,
   },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectSurface {
+  Taskbar,
+  ControlPanel,
+  WidgetTelemetry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceSection {
+  UtilityIcons,
+  Sessions,
+  Transparency,
+  Blur,
+}
+
+impl EffectSurface {
+  pub const ALL: [Self; 3] = [Self::Taskbar, Self::ControlPanel, Self::WidgetTelemetry];
+
+  pub const fn key(self) -> &'static str {
+    match self {
+      Self::Taskbar => "taskbar",
+      Self::ControlPanel => "control-panel",
+      Self::WidgetTelemetry => "widget-telemetry",
+    }
+  }
+
+  pub const fn label_key(self) -> &'static str {
+    match self {
+      Self::Taskbar => "control_center.taskbar",
+      Self::ControlPanel => "control_center.control_panel",
+      Self::WidgetTelemetry => "control_center.widget_telemetry",
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -701,7 +752,21 @@ pub struct AppearanceState {
   pub wallpaper_active: Option<String>,
   pub animations: bool,
   pub transparency: bool,
+  pub blur: bool,
+  pub taskbar_transparency_enabled: bool,
+  pub control_panel_transparency_enabled: bool,
+  pub widget_telemetry_transparency_enabled: bool,
+  pub taskbar_blur_enabled: bool,
+  pub control_panel_blur_enabled: bool,
+  pub widget_telemetry_blur_enabled: bool,
+  pub taskbar_transparency: i32,
+  pub control_panel_transparency: i32,
+  pub widget_telemetry_transparency: i32,
+  pub taskbar_blur: i32,
+  pub control_panel_blur: i32,
+  pub widget_telemetry_blur: i32,
   pub widget_telemetry: bool,
+  pub control_panel_enabled: bool,
   pub widget_telemetry_blocks: WidgetTelemetryBlocks,
   pub control_panel_cards: ControlPanelCards,
   pub waybar_pos: TaskbarPosition,
@@ -740,7 +805,21 @@ impl Default for AppearanceState {
       wallpaper_active: None,
       animations: true,
       transparency: true,
+      blur: true,
+      taskbar_transparency_enabled: true,
+      control_panel_transparency_enabled: true,
+      widget_telemetry_transparency_enabled: true,
+      taskbar_blur_enabled: true,
+      control_panel_blur_enabled: true,
+      widget_telemetry_blur_enabled: true,
+      taskbar_transparency: 50,
+      control_panel_transparency: 50,
+      widget_telemetry_transparency: 50,
+      taskbar_blur: 50,
+      control_panel_blur: 50,
+      widget_telemetry_blur: 50,
       widget_telemetry: true,
+      control_panel_enabled: true,
       widget_telemetry_blocks: WidgetTelemetryBlocks::default(),
       control_panel_cards: ControlPanelCards::default(),
       waybar_pos: TaskbarPosition::Top,

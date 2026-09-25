@@ -3,9 +3,9 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::model::{
-  AppearanceState, ControlPanelCard, ControlPanelCards, TaskbarPosition, TaskbarUtilityGroupMode,
-  WallpaperCollection, WallpaperEntry, WallpaperMode, WidgetTelemetryBlock, WidgetTelemetryBlocks,
-  canonical_theme_id, normalize_hex_color,
+  AppearanceState, ControlPanelCard, ControlPanelCards, EffectSurface, TaskbarPosition,
+  TaskbarUtilityGroupMode, WallpaperCollection, WallpaperEntry, WallpaperMode,
+  WidgetTelemetryBlock, WidgetTelemetryBlocks, canonical_theme_id, normalize_hex_color,
 };
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
@@ -420,6 +420,29 @@ fn effect_state(component: &str) -> bool {
   }
 }
 
+fn effect_value(kind: &str, surface: EffectSurface) -> i32 {
+  run_script_output(
+    &script("effects-toggle.sh"),
+    &[&format!("{kind}-value"), surface.key(), "get"],
+  )
+  .and_then(|value| value.trim().parse::<i32>().ok())
+  .filter(|value| (0..=100).contains(value))
+  .unwrap_or(50)
+}
+
+fn effect_enabled(kind: &str, surface: EffectSurface) -> bool {
+  run_script_output(
+    &script("effects-toggle.sh"),
+    &["effect-enabled", surface.key(), kind],
+  )
+  .is_some_and(|value| value.trim() == "enabled")
+}
+
+fn control_panel_enabled() -> bool {
+  run_script_output(&control_panel_cards_script(), &["master", "status"])
+    .is_none_or(|value| value.trim() != "disabled")
+}
+
 /// Executes the `telemetry_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn telemetry_state() -> bool {
   if let Ok(output) = SystemProcessRunner.run(
@@ -750,16 +773,64 @@ pub fn load_page(
     state.wallpapers = list_wallpapers();
     state.wallpaper_active = active_wallpaper();
   }
-  if page == AppearancePage::Effects {
+  if matches!(
+    page,
+    AppearancePage::Effects
+      | AppearancePage::Taskbar
+      | AppearancePage::WidgetTelemetry
+      | AppearancePage::ControlPanel
+      | AppearancePage::SurfaceSection { .. }
+  ) {
     state.animations = effect_state("animations");
     state.transparency = effect_state("transparency");
+    state.blur = effect_state("blur");
   }
-  if page == AppearancePage::WidgetTelemetry {
+  if matches!(
+    page,
+    AppearancePage::Taskbar
+      | AppearancePage::WidgetTelemetry
+      | AppearancePage::ControlPanel
+      | AppearancePage::SurfaceSection { .. }
+  ) {
+    state.taskbar_transparency = effect_value("transparency", EffectSurface::Taskbar);
+    state.control_panel_transparency = effect_value("transparency", EffectSurface::ControlPanel);
+    state.widget_telemetry_transparency =
+      effect_value("transparency", EffectSurface::WidgetTelemetry);
+    state.taskbar_blur = effect_value("blur", EffectSurface::Taskbar);
+    state.control_panel_blur = effect_value("blur", EffectSurface::ControlPanel);
+    state.widget_telemetry_blur = effect_value("blur", EffectSurface::WidgetTelemetry);
+    state.taskbar_transparency_enabled = effect_enabled("transparency", EffectSurface::Taskbar);
+    state.control_panel_transparency_enabled =
+      effect_enabled("transparency", EffectSurface::ControlPanel);
+    state.widget_telemetry_transparency_enabled =
+      effect_enabled("transparency", EffectSurface::WidgetTelemetry);
+    state.taskbar_blur_enabled = effect_enabled("blur", EffectSurface::Taskbar);
+    state.control_panel_blur_enabled = effect_enabled("blur", EffectSurface::ControlPanel);
+    state.widget_telemetry_blur_enabled = effect_enabled("blur", EffectSurface::WidgetTelemetry);
+  }
+  if page == AppearancePage::WidgetTelemetry
+    || matches!(
+      page,
+      AppearancePage::SurfaceSection {
+        surface: EffectSurface::WidgetTelemetry,
+        ..
+      }
+    )
+  {
     state.widget_telemetry = telemetry_state();
     state.widget_telemetry_blocks = telemetry_blocks();
   }
-  if page == AppearancePage::ControlPanel {
+  if page == AppearancePage::ControlPanel
+    || matches!(
+      page,
+      AppearancePage::SurfaceSection {
+        surface: EffectSurface::ControlPanel,
+        ..
+      }
+    )
+  {
     state.control_panel_cards = control_panel_cards();
+    state.control_panel_enabled = control_panel_enabled();
   }
   if matches!(
     page,
@@ -780,6 +851,10 @@ pub fn load_page(
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness
+      | AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        ..
+      }
   ) {
     if let Some(output) = run_script_output(&script("taskbar-right-2-mode.sh"), &["status"]) {
       state.taskbar_utility_group = TaskbarUtilityGroupMode::from_value(output.trim());
@@ -826,55 +901,76 @@ pub fn set_animations(enabled: bool) -> Result<(), String> {
   )
 }
 
-/// Applies the `set_transparency` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn set_transparency(enabled: bool) -> Result<(), String> {
+pub fn set_effect_value(kind: &str, surface: EffectSurface, value: i32) -> Result<(), String> {
+  if !matches!(kind, "transparency" | "blur") || !(0..=100).contains(&value) {
+    return Err("invalid effect value".into());
+  }
+  let value = value.to_string();
   run_script(
     &script("effects-toggle.sh"),
-    &["transparency", if enabled { "enable" } else { "disable" }],
+    &[&format!("{kind}-value"), surface.key(), "set", &value],
   )
 }
 
-/// Applies the `set_telemetry` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn set_telemetry(enabled: bool) -> Result<(), String> {
-  let output = SystemProcessRunner.run(
-    &ProcessRequest::new("argvus-widget-telemetry-toggle").arg(if enabled { "on" } else { "off" }),
-  );
-  match output {
-    Ok(output) if output.status.is_none_or(|status| status != 0) => Err(format!(
-      "argvus-widget-telemetry-toggle falhou: {}",
-      terminal_text(&String::from_utf8_lossy(&output.stderr)).trim()
-    )),
-    Ok(_) => Ok(()),
-    Err(_) => {
-      let path = cache_home()
-        .join("argvus")
-        .join("waybar")
-        .join("widget-telemetry-state");
-      write_atomic(&path, if enabled { "enabled\n" } else { "disabled\n" })
-    }
+pub fn apply_surface_effects(
+  surface: EffectSurface,
+  transparency_enabled: bool,
+  transparency: i32,
+  blur_enabled: bool,
+  blur: i32,
+) -> Result<(), String> {
+  if !(0..=100).contains(&transparency) || !(0..=100).contains(&blur) {
+    return Err("invalid effect value".into());
   }
+  let args = [
+    "surface-apply".to_string(),
+    surface.key().to_string(),
+    if transparency_enabled {
+      "enabled"
+    } else {
+      "disabled"
+    }
+    .into(),
+    transparency.to_string(),
+    if blur_enabled { "enabled" } else { "disabled" }.into(),
+    blur.to_string(),
+  ];
+  let references = args.iter().map(String::as_str).collect::<Vec<_>>();
+  run_script(&script("effects-toggle.sh"), &references)
 }
 
-/// Persists one Widget Telemetry block and lets the widget package regenerate
-/// its managed Waybar file before restarting the service.
-pub fn set_telemetry_block(block: WidgetTelemetryBlock, enabled: bool) -> Result<(), String> {
-  let output = SystemProcessRunner.run(
-    &ProcessRequest::new("argvus-widget-telemetry-toggle")
-      .arg("blocks")
-      .arg("set")
-      .arg(block.key())
-      .arg(if enabled { "enabled" } else { "disabled" }),
-  );
-  match output {
-    Ok(output) if output.status.is_none_or(|status| status != 0) => Err(format!(
-      "argvus-widget-telemetry-toggle blocks falhou: {}",
-      terminal_text(&String::from_utf8_lossy(&output.stderr)).trim()
-    )),
-    Ok(_) => Ok(()),
-    Err(error) => Err(format!(
-      "argvus-widget-telemetry-toggle blocks falhou: {error}"
-    )),
+pub fn set_control_panel_enabled(enabled: bool) -> Result<(), String> {
+  run_script(
+    &control_panel_cards_script(),
+    &[
+      "master",
+      "set",
+      if enabled { "enabled" } else { "disabled" },
+    ],
+  )
+}
+
+pub fn apply_widget_telemetry(enabled: bool, blocks: &WidgetTelemetryBlocks) -> Result<(), String> {
+  let values = WidgetTelemetryBlock::ALL.map(|block| {
+    if blocks.enabled(block) {
+      "enabled"
+    } else {
+      "disabled"
+    }
+  });
+  let mut args = vec!["apply-state", if enabled { "enabled" } else { "disabled" }];
+  args.extend(values);
+  let mut request = ProcessRequest::new("argvus-widget-telemetry-toggle");
+  for argument in args {
+    request = request.arg(argument);
   }
+  let output = SystemProcessRunner
+    .run(&request)
+    .map_err(|error| error.to_string())?;
+  if output.status.is_none_or(|status| status != 0) {
+    return Err(terminal_text(&String::from_utf8_lossy(&output.stderr)).to_string());
+  }
+  Ok(())
 }
 
 /// Applies the `set_wallpaper` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
