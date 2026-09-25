@@ -2025,9 +2025,15 @@ mod tests {
     })
     .rows();
     assert_eq!(dark_rows.len(), 14);
-    assert_eq!(light_rows.len(), 6);
+    assert_eq!(light_rows.len(), 8);
     assert!(dark_rows.iter().any(|row| row.contains("Gruvbox Dark >")));
     assert!(light_rows.iter().any(|row| row.contains("GitHub Light >")));
+    assert!(light_rows.iter().any(|row| row.contains("One Light >")));
+    assert!(
+      light_rows
+        .iter()
+        .any(|row| row.contains("Everforest Light >"))
+    );
     assert!(dark_rows.iter().any(|row| row.contains("Hackerman >")));
     assert!(
       light_rows
@@ -2038,7 +2044,7 @@ mod tests {
   }
   #[test]
   fn every_control_center_theme_family_has_both_official_modes() {
-    assert_eq!(THEME_FAMILIES.len(), 20);
+    assert_eq!(THEME_FAMILIES.len(), 22);
     for (family_id, _) in THEME_FAMILIES {
       assert!(argvus_theme::loader::is_official_theme(family_id));
       assert!(argvus_theme::loader::is_official_theme(&format!(

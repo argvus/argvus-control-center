@@ -98,11 +98,15 @@ impl ThemeCategory {
           | "github-light"
           | "gruvbox-light"
           | "solarized-light"
+          | "one-light"
+          | "everforest-light"
           | "catppuccin-latte-float"
           | "frost-float"
           | "github-light-float"
           | "gruvbox-light-float"
           | "solarized-light-float"
+          | "one-light-float"
+          | "everforest-light-float"
       ),
     }
   }
@@ -620,6 +624,10 @@ pub const THEMES: &[(&str, &str)] = &[
   ("gruvbox-light-float", "Gruvbox Light Float"),
   ("solarized-light", "Solarized Light"),
   ("solarized-light-float", "Solarized Light Float"),
+  ("one-light", "One Light"),
+  ("one-light-float", "One Light Float"),
+  ("everforest-light", "Everforest Light"),
+  ("everforest-light-float", "Everforest Light Float"),
 ];
 /// Defines the constant `THEME_FAMILIES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEME_FAMILIES: &[(&str, &str)] = &[
@@ -643,6 +651,8 @@ pub const THEME_FAMILIES: &[(&str, &str)] = &[
   ("github-light", "GitHub Light"),
   ("gruvbox-light", "Gruvbox Light"),
   ("solarized-light", "Solarized Light"),
+  ("one-light", "One Light"),
+  ("everforest-light", "Everforest Light"),
 ];
 /// Executes the `theme_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn theme_label(name: &str) -> String {

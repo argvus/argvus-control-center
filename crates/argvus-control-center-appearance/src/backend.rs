@@ -345,6 +345,8 @@ fn theme_default_accent(theme: &str) -> Option<&'static str> {
     "silver-dark" | "silver-dark-float" => Some("#595959"),
     "argvus-light" | "argvus-light-float" => Some("#181818"),
     "github-light" | "github-light-float" => Some("#0969DA"),
+    "one-light" | "one-light-float" => Some("#4078F2"),
+    "everforest-light" | "everforest-light-float" => Some("#3A94C5"),
     "solarized-light" | "solarized-light-float" => Some("#268BD2"),
     "rose-pine" | "rose-pine-float" => Some("#C4A7E7"),
     "frost" | "frost-float" => Some("#0969DA"),
@@ -1123,6 +1125,10 @@ mod tests {
     assert_eq!(
       classify_wallpaper(Path::new("abstract/dark/gruvbox-abstract-dark.jxl")),
       Some((WallpaperCollection::Abstract, WallpaperMode::Dark))
+    );
+    assert_eq!(
+      classify_wallpaper(Path::new("abstract/light/everforest-abstract-light.jxl")),
+      Some((WallpaperCollection::Abstract, WallpaperMode::Light))
     );
     assert_eq!(
       classify_wallpaper(Path::new("landscape/light/gruvbox-landscape-light.jxl")),
