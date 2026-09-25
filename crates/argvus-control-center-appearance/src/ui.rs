@@ -1873,14 +1873,15 @@ mod tests {
     .rows();
     assert_eq!(dark_rows.len(), 14);
     assert_eq!(light_rows.len(), 6);
-    assert!(dark_rows.iter().any(|row| row.contains("ARGVUS Gruvbox >")));
-    assert!(light_rows.iter().any(|row| row.contains("ARGVUS GitHub >")));
+    assert!(dark_rows.iter().any(|row| row.contains("Gruvbox Dark >")));
+    assert!(light_rows.iter().any(|row| row.contains("GitHub Light >")));
+    assert!(dark_rows.iter().any(|row| row.contains("Hackerman >")));
     assert!(
-      dark_rows
+      light_rows
         .iter()
-        .any(|row| row.contains("ARGVUS Dark Hackerman >"))
+        .any(|row| row.contains("Catppuccin Latte >"))
     );
-    assert!(!dark_rows.iter().any(|row| row.contains("Dark Gruvbox")));
+    assert!(!dark_rows.iter().any(|row| row.contains("Gruvbox Light")));
   }
   #[test]
   fn every_control_center_theme_family_has_both_official_modes() {

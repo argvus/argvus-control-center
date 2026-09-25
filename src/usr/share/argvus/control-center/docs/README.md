@@ -236,7 +236,7 @@ normal XDG/ARGVUS config overrides are respected for development and user setups
 
 The resolver maps the global `argvus_*` palette to one semantic `Theme` used by
 Home, Settings, About, tabs, links, selections, borders, and status messages. A
-central Aether fallback keeps the application readable when a file or color is
+central ARGVUS Dark fallback keeps the application readable when a file or color is
 missing. Official themes therefore require no palettes compiled into this binary;
 reopening the application after a global theme change loads the new theme, in the
 same consumer-oriented model used for Superfile and other ARGVUS terminal tools.

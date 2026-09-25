@@ -58,8 +58,52 @@ impl ThemeCategory {
 
   pub fn contains_family(self, family_id: &str) -> bool {
     match self {
-      Self::Dark => family_id == "argvus-onedark" || family_id.contains("-dark-"),
-      Self::Light => family_id.contains("-light") || family_id == "argvus-github-light",
+      Self::Dark => matches!(
+        family_id,
+        "argvus-dark"
+          | "argvus-dark-float"
+          | "dracula"
+          | "gruvbox-dark"
+          | "gruvbox-high-dark"
+          | "monokai-dark"
+          | "one-dark"
+          | "rose-pine"
+          | "silver-dark"
+          | "slate-dark"
+          | "sunset"
+          | "tokyo-night"
+          | "hackerman"
+          | "solitude"
+          | "universe"
+          | "dracula-float"
+          | "gruvbox-dark-float"
+          | "gruvbox-high-dark-float"
+          | "monokai-dark-float"
+          | "one-dark-float"
+          | "rose-pine-float"
+          | "silver-dark-float"
+          | "slate-dark-float"
+          | "sunset-float"
+          | "tokyo-night-float"
+          | "hackerman-float"
+          | "solitude-float"
+          | "universe-float"
+      ),
+      Self::Light => matches!(
+        family_id,
+        "argvus-light"
+          | "argvus-light-float"
+          | "catppuccin-latte"
+          | "frost"
+          | "github-light"
+          | "gruvbox-light"
+          | "solarized-light"
+          | "catppuccin-latte-float"
+          | "frost-float"
+          | "github-light-float"
+          | "gruvbox-light-float"
+          | "solarized-light-float"
+      ),
     }
   }
 
@@ -74,6 +118,58 @@ impl ThemeCategory {
     Self::ALL
       .into_iter()
       .find(|category| category.contains_family(family_id))
+  }
+}
+
+/// Canonicalizes identifiers from profiles and persisted state after the
+/// official theme identifiers were simplified.
+pub fn canonical_theme_id(theme_id: &str) -> String {
+  match theme_id {
+    "argvus-dark-aether" => "argvus-dark".into(),
+    "argvus-dark-aether-float" => "argvus-dark-float".into(),
+    "argvus-light-veil" => "argvus-light".into(),
+    "argvus-light-veil-float" => "argvus-light-float".into(),
+    "argvus-onedark" => "one-dark".into(),
+    "argvus-onedark-float" => "one-dark-float".into(),
+    "argvus-dark-dracula" => "dracula".into(),
+    "argvus-dark-dracula-float" => "dracula-float".into(),
+    "argvus-dark-silver" => "silver-dark".into(),
+    "argvus-dark-silver-float" => "silver-dark-float".into(),
+    "argvus-dark-slate" => "slate-dark".into(),
+    "argvus-dark-slate-float" => "slate-dark-float".into(),
+    "argvus-dark-universe" => "universe".into(),
+    "argvus-dark-universe-float" => "universe-float".into(),
+    "argvus-dark-gruvbox-high" => "gruvbox-high-dark".into(),
+    "argvus-dark-gruvbox-high-float" => "gruvbox-high-dark-float".into(),
+    "argvus-dark-gruvbox" => "gruvbox-dark".into(),
+    "argvus-dark-gruvbox-float" => "gruvbox-dark-float".into(),
+    "argvus-light-gruvbox" => "gruvbox-light".into(),
+    "argvus-light-gruvbox-float" => "gruvbox-light-float".into(),
+    "argvus-dark-rose-pine" | "argvus-dark-rosepine" => "rose-pine".into(),
+    "argvus-dark-rose-pine-float" | "argvus-dark-rosepine-float" => "rose-pine-float".into(),
+    "argvus-dark-tokio-night" | "argvus-dark-tokyo-night" => "tokyo-night".into(),
+    "argvus-dark-tokio-night-float" | "argvus-dark-tokyo-night-float" => "tokyo-night-float".into(),
+    "argvus-dark-solitude" => "solitude".into(),
+    "argvus-dark-solitude-float" => "solitude-float".into(),
+    "argvus-dark-sunset" => "sunset".into(),
+    "argvus-dark-sunset-float" => "sunset-float".into(),
+    "argvus-dark-hackerman" => "hackerman".into(),
+    "argvus-dark-hackerman-float" => "hackerman-float".into(),
+    "argvus-dark-monokai" => "monokai-dark".into(),
+    "argvus-dark-monokai-float" => "monokai-dark-float".into(),
+    "argvus-github-light" => "github-light".into(),
+    "argvus-github-light-float" => "github-light-float".into(),
+    "argvus-light-solarized" => "solarized-light".into(),
+    "argvus-light-solarized-float" => "solarized-light-float".into(),
+    "argvus-light-frost" => "frost".into(),
+    "argvus-light-frost-float" => "frost-float".into(),
+    "argvus-dark-catppuccin-latte"
+    | "argvus-light-catppuccin-latte"
+    | "argvus-catppuccin-latte" => "catppuccin-latte".into(),
+    "argvus-dark-catppuccin-latte-float"
+    | "argvus-light-catppuccin-latte-float"
+    | "argvus-catppuccin-latte-float" => "catppuccin-latte-float".into(),
+    _ => theme_id.to_owned(),
   }
 }
 
@@ -430,75 +526,69 @@ impl PromptGoal {
 
 /// Defines the constant `THEMES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEMES: &[(&str, &str)] = &[
-  ("argvus-onedark", "ARGVUS One Dark"),
-  ("argvus-onedark-float", "ARGVUS One Dark Float"),
-  ("argvus-dark-dracula", "ARGVUS Dracula"),
-  ("argvus-dark-dracula-float", "ARGVUS Dracula Float"),
-  ("argvus-dark-aether", "ARGVUS Aether"),
-  ("argvus-dark-aether-float", "ARGVUS Aether Float"),
-  ("argvus-dark-silver", "ARGVUS Silver"),
-  ("argvus-dark-silver-float", "ARGVUS Silver Float"),
-  ("argvus-dark-slate", "ARGVUS Slate"),
-  ("argvus-dark-slate-float", "ARGVUS Slate Float"),
-  ("argvus-dark-universe", "ARGVUS Universe"),
-  ("argvus-dark-universe-float", "ARGVUS Universe Float"),
-  ("argvus-dark-gruvbox-high", "ARGVUS Gruvbox High"),
-  (
-    "argvus-dark-gruvbox-high-float",
-    "ARGVUS Gruvbox High Float",
-  ),
-  ("argvus-dark-gruvbox", "ARGVUS Gruvbox"),
-  ("argvus-dark-gruvbox-float", "ARGVUS Gruvbox Float"),
-  ("argvus-light-veil", "ARGVUS Veil"),
-  ("argvus-light-veil-float", "ARGVUS Veil Float"),
-  ("argvus-github-light", "ARGVUS GitHub"),
-  ("argvus-light-solarized", "ARGVUS Solarized"),
-  ("argvus-github-light-float", "ARGVUS GitHub Float"),
-  ("argvus-light-frost", "ARGVUS Frost"),
-  ("argvus-light-frost-float", "ARGVUS Frost Float"),
-  ("argvus-light-catppuccin-latte", "ARGVUS Catppuccin Latte"),
-  (
-    "argvus-light-catppuccin-latte-float",
-    "ARGVUS Catppuccin Latte Float",
-  ),
-  ("argvus-light-gruvbox", "ARGVUS Light Gruvbox"),
-  ("argvus-light-gruvbox-float", "ARGVUS Light Gruvbox Float"),
-  ("argvus-light-solarized-float", "ARGVUS Solarized Float"),
-  ("argvus-dark-rosepine", "ARGVUS Rosé Pine"),
-  ("argvus-dark-rosepine-float", "ARGVUS Rosé Pine Float"),
-  ("argvus-dark-tokio-night", "ARGVUS Tokyo Night"),
-  ("argvus-dark-tokio-night-float", "ARGVUS Tokyo Night Float"),
-  ("argvus-dark-solitude", "ARGVUS Solitude"),
-  ("argvus-dark-solitude-float", "ARGVUS Solitude Float"),
-  ("argvus-dark-sunset", "ARGVUS Dark Sunset"),
-  ("argvus-dark-sunset-float", "ARGVUS Dark Sunset Float"),
-  ("argvus-dark-hackerman", "ARGVUS Dark Hackerman"),
-  ("argvus-dark-hackerman-float", "ARGVUS Dark Hackerman Float"),
-  ("argvus-dark-monokai", "ARGVUS Dark Monokai"),
-  ("argvus-dark-monokai-float", "ARGVUS Dark Monokai Float"),
+  ("argvus-dark", "ARGVUS Dark"),
+  ("argvus-dark-float", "ARGVUS Dark Float"),
+  ("dracula", "Dracula"),
+  ("dracula-float", "Dracula Float"),
+  ("gruvbox-dark", "Gruvbox Dark"),
+  ("gruvbox-dark-float", "Gruvbox Dark Float"),
+  ("gruvbox-high-dark", "Gruvbox High Dark"),
+  ("gruvbox-high-dark-float", "Gruvbox High Dark Float"),
+  ("monokai-dark", "Monokai Dark"),
+  ("monokai-dark-float", "Monokai Dark Float"),
+  ("one-dark", "One Dark"),
+  ("one-dark-float", "One Dark Float"),
+  ("rose-pine", "Rosé Pine"),
+  ("rose-pine-float", "Rosé Pine Float"),
+  ("silver-dark", "Silver Dark"),
+  ("silver-dark-float", "Silver Dark Float"),
+  ("slate-dark", "Slate Dark"),
+  ("slate-dark-float", "Slate Dark Float"),
+  ("sunset", "Sunset"),
+  ("sunset-float", "Sunset Float"),
+  ("tokyo-night", "Tokyo-Night"),
+  ("tokyo-night-float", "Tokyo-Night Float"),
+  ("hackerman", "Hackerman"),
+  ("hackerman-float", "Hackerman Float"),
+  ("solitude", "Solitude"),
+  ("solitude-float", "Solitude Float"),
+  ("universe", "Universe"),
+  ("universe-float", "Universe Float"),
+  ("argvus-light", "ARGVUS Light"),
+  ("argvus-light-float", "ARGVUS Light Float"),
+  ("catppuccin-latte", "Catppuccin Latte"),
+  ("catppuccin-latte-float", "Catppuccin Latte Float"),
+  ("frost", "Frost"),
+  ("frost-float", "Frost Float"),
+  ("github-light", "GitHub Light"),
+  ("github-light-float", "GitHub Light Float"),
+  ("gruvbox-light", "Gruvbox Light"),
+  ("gruvbox-light-float", "Gruvbox Light Float"),
+  ("solarized-light", "Solarized Light"),
+  ("solarized-light-float", "Solarized Light Float"),
 ];
 /// Defines the constant `THEME_FAMILIES`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const THEME_FAMILIES: &[(&str, &str)] = &[
-  ("argvus-onedark", "ARGVUS One Dark"),
-  ("argvus-dark-dracula", "ARGVUS Dracula"),
-  ("argvus-dark-aether", "ARGVUS Aether"),
-  ("argvus-dark-silver", "ARGVUS Silver"),
-  ("argvus-dark-slate", "ARGVUS Slate"),
-  ("argvus-dark-universe", "ARGVUS Universe"),
-  ("argvus-dark-gruvbox-high", "ARGVUS Gruvbox High"),
-  ("argvus-dark-gruvbox", "ARGVUS Gruvbox"),
-  ("argvus-light-veil", "ARGVUS Veil"),
-  ("argvus-github-light", "ARGVUS GitHub"),
-  ("argvus-light-solarized", "ARGVUS Solarized"),
-  ("argvus-light-frost", "ARGVUS Frost"),
-  ("argvus-light-catppuccin-latte", "ARGVUS Catppuccin Latte"),
-  ("argvus-light-gruvbox", "ARGVUS Light Gruvbox"),
-  ("argvus-dark-rosepine", "ARGVUS Rosé Pine"),
-  ("argvus-dark-tokio-night", "ARGVUS Tokyo Night"),
-  ("argvus-dark-solitude", "ARGVUS Solitude"),
-  ("argvus-dark-sunset", "ARGVUS Dark Sunset"),
-  ("argvus-dark-hackerman", "ARGVUS Dark Hackerman"),
-  ("argvus-dark-monokai", "ARGVUS Dark Monokai"),
+  ("argvus-dark", "ARGVUS Dark"),
+  ("dracula", "Dracula"),
+  ("gruvbox-dark", "Gruvbox Dark"),
+  ("gruvbox-high-dark", "Gruvbox High Dark"),
+  ("monokai-dark", "Monokai Dark"),
+  ("one-dark", "One Dark"),
+  ("rose-pine", "Rosé Pine"),
+  ("silver-dark", "Silver Dark"),
+  ("slate-dark", "Slate Dark"),
+  ("sunset", "Sunset"),
+  ("tokyo-night", "Tokyo-Night"),
+  ("hackerman", "Hackerman"),
+  ("solitude", "Solitude"),
+  ("universe", "Universe"),
+  ("argvus-light", "ARGVUS Light"),
+  ("catppuccin-latte", "Catppuccin Latte"),
+  ("frost", "Frost"),
+  ("github-light", "GitHub Light"),
+  ("gruvbox-light", "Gruvbox Light"),
+  ("solarized-light", "Solarized Light"),
 ];
 /// Executes the `theme_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn theme_label(name: &str) -> String {
@@ -580,7 +670,7 @@ impl Default for AppearanceState {
   /// Executes the `default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn default() -> Self {
     Self {
-      theme: "argvus-dark-aether".into(),
+      theme: "argvus-dark".into(),
       accent: "#3590bd".into(),
       wallpapers: Vec::new(),
       wallpaper_active: None,

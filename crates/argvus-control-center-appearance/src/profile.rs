@@ -4,7 +4,7 @@
 //! existing appearance scripts. A custom theme is only a validated snapshot
 //! plus a registry entry; it is not a second theme engine.
 
-use crate::model::{CustomTheme, THEMES, WidgetTelemetryBlock};
+use crate::model::{CustomTheme, THEMES, WidgetTelemetryBlock, canonical_theme_id};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -285,7 +285,7 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
     name: display_name,
     created_at: OffsetDateTime::now_utc().to_string(),
     argvus: ManifestArgvus {
-      theme: read_first(&root.join(".active-theme"), "argvus-dark-aether"),
+      theme: canonical_theme_id(&read_first(&root.join(".active-theme"), "argvus-dark")),
       mode: "sticky".into(),
     },
     files: files.clone(),
@@ -331,7 +331,7 @@ pub fn apply_custom_theme(theme: &CustomTheme) -> Result<ApplyReport, String> {
 
 pub fn delete_custom_theme(theme: &CustomTheme) -> Result<(), String> {
   if active_custom_theme().as_deref() == Some(theme.id.as_str()) {
-    crate::backend::set_theme("argvus-dark-aether")?;
+    crate::backend::set_theme("argvus-dark")?;
   }
   let mut themes = read_registry();
   themes.retain(|candidate| candidate.id != theme.id);
@@ -429,7 +429,7 @@ fn apply_staged(
   let backup = tempdir().map_err(|e| e.to_string())?;
   let mut backups = Vec::new();
   let mut payload = Vec::new();
-  let previous_theme = read_first(&root.join(".active-theme"), "argvus-dark-aether");
+  let previous_theme = read_first(&root.join(".active-theme"), "argvus-dark");
   let previous_wallpaper = fs::read_to_string(root.join(".wallpaper-custom"))
     .ok()
     .map(|value| value.trim().to_owned())
@@ -665,9 +665,10 @@ fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
   let manifest_entry = entries
     .get(MANIFEST_PATH)
     .ok_or("theme profile manifest is missing")?;
-  let manifest: Manifest =
+  let mut manifest: Manifest =
     serde_json::from_slice(&fs::read(&manifest_entry.path).map_err(|e| e.to_string())?)
       .map_err(|e| format!("invalid theme profile manifest: {e}"))?;
+  manifest.argvus.theme = canonical_theme_id(&manifest.argvus.theme);
   if manifest.format != "argvus-theme-profile"
     || !matches!(
       manifest.format_version.or(manifest.schema_version),
@@ -724,7 +725,7 @@ fn validate_manifest(
     .find(|file| file.id == FileId::ActiveTheme.id())
     .and_then(|file| entries.get(&file.archive_path))
     .ok_or("theme profile active theme is missing")?;
-  if read_first(&active_theme.path, "") != manifest.argvus.theme {
+  if canonical_theme_id(&read_first(&active_theme.path, "")) != manifest.argvus.theme {
     return Err("theme profile base theme does not match active theme".into());
   }
   if let Some(wallpaper) = &manifest.wallpaper {
@@ -1223,11 +1224,7 @@ mod tests {
     let target_data = target_home.path().join("data");
     fs::create_dir_all(source_config.join("argvus")).expect("source config");
     fs::create_dir_all(target_config.join("argvus")).expect("target config");
-    fs::write(
-      source_config.join("argvus/.active-theme"),
-      "argvus-dark-universe\n",
-    )
-    .expect("active theme");
+    fs::write(source_config.join("argvus/.active-theme"), "universe\n").expect("active theme");
     let source_wallpaper = source_home.path().join("Pictures/Wallpapers/foo.png");
     fs::create_dir_all(source_wallpaper.parent().unwrap()).expect("wallpaper directory");
     fs::write(&source_wallpaper, b"wallpaper-bytes").expect("wallpaper");
@@ -1334,7 +1331,7 @@ mod tests {
     save_registry(&[RegistryTheme {
       id: "kept-theme".into(),
       name: "Kept Theme".into(),
-      base_theme: "argvus-dark-aether".into(),
+      base_theme: "argvus-dark".into(),
       profile_path: profile_path.display().to_string(),
       wallpaper_path: Some(wallpaper.display().to_string()),
     }])

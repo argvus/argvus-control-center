@@ -4,7 +4,7 @@
 //! the UI consumes normalized models and results.
 use crate::model::{
   AppearanceState, ControlPanelCard, ControlPanelCards, TaskbarPosition, TaskbarUtilityGroupMode,
-  WidgetTelemetryBlock, WidgetTelemetryBlocks, normalize_hex_color,
+  WidgetTelemetryBlock, WidgetTelemetryBlocks, canonical_theme_id, normalize_hex_color,
 };
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
@@ -28,7 +28,7 @@ pub use crate::profile::{
 /// Defines the constant `WALLPAPERS_DIR`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const WALLPAPERS_DIR: &str = "/usr/share/backgrounds/argvus";
 /// Defines the constant `DEFAULT_THEME`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-const DEFAULT_THEME: &str = "argvus-dark-aether";
+const DEFAULT_THEME: &str = "argvus-dark";
 /// Defines the constant `DEFAULT_ACCENT`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const DEFAULT_ACCENT: &str = "#3590bd";
 
@@ -339,25 +339,25 @@ fn accent_file() -> PathBuf {
 /// Executes the `theme_default_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn theme_default_accent(theme: &str) -> Option<&'static str> {
   match theme {
-    "argvus-dark-dracula" | "argvus-dark-dracula-float" => Some("#BD93F9"),
-    "argvus-dark-aether" | "argvus-dark-aether-float" => Some("#3590bd"),
-    "argvus-dark-silver" | "argvus-dark-silver-float" => Some("#595959"),
-    "argvus-light-veil" | "argvus-light-veil-float" => Some("#181818"),
-    "argvus-github-light" | "argvus-github-light-float" => Some("#0969DA"),
-    "argvus-light-solarized" | "argvus-light-solarized-float" => Some("#268BD2"),
-    "argvus-dark-rosepine" | "argvus-dark-rosepine-float" => Some("#C4A7E7"),
-    "argvus-light-frost" | "argvus-light-frost-float" => Some("#0969DA"),
-    "argvus-light-catppuccin-latte" | "argvus-light-catppuccin-latte-float" => Some("#1E66F5"),
-    "argvus-light-gruvbox" | "argvus-light-gruvbox-float" => Some("#458588"),
-    "argvus-dark-slate" | "argvus-dark-slate-float" => Some("#7391a5"),
-    "argvus-dark-universe" | "argvus-dark-universe-float" => Some("#eeeeee"),
-    "argvus-dark-gruvbox-high" | "argvus-dark-gruvbox-high-float" => Some("#D79921"),
-    "argvus-dark-gruvbox" | "argvus-dark-gruvbox-float" => Some("#D4BE98"),
-    "argvus-dark-tokio-night" | "argvus-dark-tokio-night-float" => Some("#7AA2F7"),
-    "argvus-dark-solitude" | "argvus-dark-solitude-float" => Some("#798186"),
-    "argvus-dark-sunset" | "argvus-dark-sunset-float" => Some("#E2BE8A"),
-    "argvus-dark-hackerman" | "argvus-dark-hackerman-float" => Some("#82FB9C"),
-    "argvus-dark-monokai" | "argvus-dark-monokai-float" => Some("#78DCE8"),
+    "dracula" | "dracula-float" => Some("#BD93F9"),
+    "argvus-dark" | "argvus-dark-float" => Some("#3590bd"),
+    "silver-dark" | "silver-dark-float" => Some("#595959"),
+    "argvus-light" | "argvus-light-float" => Some("#181818"),
+    "github-light" | "github-light-float" => Some("#0969DA"),
+    "solarized-light" | "solarized-light-float" => Some("#268BD2"),
+    "rose-pine" | "rose-pine-float" => Some("#C4A7E7"),
+    "frost" | "frost-float" => Some("#0969DA"),
+    "catppuccin-latte" | "catppuccin-latte-float" => Some("#1E66F5"),
+    "gruvbox-light" | "gruvbox-light-float" => Some("#458588"),
+    "slate-dark" | "slate-dark-float" => Some("#7391a5"),
+    "universe" | "universe-float" => Some("#eeeeee"),
+    "gruvbox-high-dark" | "gruvbox-high-dark-float" => Some("#D79921"),
+    "gruvbox-dark" | "gruvbox-dark-float" => Some("#D4BE98"),
+    "tokyo-night" | "tokyo-night-float" => Some("#7AA2F7"),
+    "solitude" | "solitude-float" => Some("#798186"),
+    "sunset" | "sunset-float" => Some("#E2BE8A"),
+    "hackerman" | "hackerman-float" => Some("#82FB9C"),
+    "monokai-dark" | "monokai-dark-float" => Some("#78DCE8"),
     _ => None,
   }
 }
@@ -561,15 +561,28 @@ fn parse_control_panel_cards(output: &str) -> ControlPanelCards {
 
 /// Executes the `list_wallpapers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list_wallpapers() -> Vec<String> {
-  let mut names = fs::read_dir(WALLPAPERS_DIR)
-    .map(|entries| {
-      entries
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.path().is_file())
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .collect::<Vec<_>>()
-    })
-    .unwrap_or_default();
+  fn collect(root: &Path, current: &Path, names: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(current) else {
+      return;
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if path.is_dir() {
+        collect(root, &path, names);
+      } else if path.extension().is_some_and(|extension| extension == "jxl")
+        && let Ok(relative) = path.strip_prefix(root)
+      {
+        names.push(relative.to_string_lossy().into_owned());
+      }
+    }
+  }
+
+  let mut names = Vec::new();
+  collect(
+    Path::new(WALLPAPERS_DIR),
+    Path::new(WALLPAPERS_DIR),
+    &mut names,
+  );
   names.sort();
   names
 }
@@ -695,7 +708,7 @@ pub fn load_page(
   mut state: AppearanceState,
 ) -> AppearanceState {
   use crate::model::AppearancePage;
-  let theme = read_first(&active_theme_file(), DEFAULT_THEME);
+  let theme = canonical_theme_id(&read_first(&active_theme_file(), DEFAULT_THEME));
   state.theme = theme.clone();
   let default_accent = theme_default_accent(&theme).unwrap_or(DEFAULT_ACCENT);
   state.accent = normalize_hex_color(&read_first(&accent_file(), default_accent))
@@ -750,15 +763,17 @@ pub fn load_page(
 
 /// Applies the `set_theme` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_theme(name: &str) -> Result<(), String> {
-  run_script(&script("theme-switch.sh"), &[name])?;
+  let canonical_name = canonical_theme_id(name);
+  run_script(&script("theme-switch.sh"), &[canonical_name.as_str()])?;
   let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
   Ok(())
 }
 
 pub(crate) fn set_theme_static(name: &str) -> Result<(), String> {
+  let canonical_name = canonical_theme_id(name);
   run_script_with_env(
     &script("theme-switch.sh"),
-    &[name],
+    &[canonical_name.as_str()],
     &[("ARGVUS_NO_RUNTIME", "1"), ("ARGVUS_THEME_SWITCH", "1")],
   )?;
   let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
@@ -834,12 +849,20 @@ pub fn set_wallpaper(name: &str) -> Result<(), String> {
   if name.is_empty()
     || name
       .chars()
-      .any(|character| character.is_control() || character == '/' || character == '\n')
+      .any(|character| character.is_control() || character == '\n')
   {
     return Err("invalid wallpaper name".into());
   }
-  let path = PathBuf::from(WALLPAPERS_DIR).join(name);
-  if !path.is_file() {
+  let relative = Path::new(name);
+  if relative.is_absolute()
+    || relative
+      .components()
+      .any(|component| matches!(component, std::path::Component::ParentDir))
+  {
+    return Err("invalid wallpaper path".into());
+  }
+  let path = PathBuf::from(WALLPAPERS_DIR).join(relative);
+  if !path.is_file() || path.extension().is_none_or(|extension| extension != "jxl") {
     return Err(format!("papel de parede não encontrado: {name}"));
   }
   write_hyprpaper_config(&path)?;
@@ -1058,10 +1081,7 @@ mod tests {
   #[test]
   /// Executes the `theme_default_accents_exist` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn theme_default_accents_exist() {
-    assert_eq!(
-      theme_default_accent("argvus-dark-slate-float"),
-      Some("#7391a5")
-    );
+    assert_eq!(theme_default_accent("slate-dark-float"), Some("#7391a5"));
     assert_eq!(theme_default_accent("unknown"), None);
   }
 
