@@ -250,6 +250,9 @@ pub fn parse_xkb_variants(contents: &str, layout: &str) -> Vec<Variant> {
 
 /// Converts input data into `parse_hypr_keyboard_config` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_hypr_keyboard_config() -> (String, String, String) {
+  if let Some(value) = canonical_keyboard_config() {
+    return value;
+  }
   let generated = generated_hypr_input_path();
   let generated_contents = fs::read_to_string(generated).unwrap_or_default();
   let packaged = fs::read_to_string(hypr_config_path()).unwrap_or_default();
@@ -263,6 +266,30 @@ fn parse_hypr_keyboard_config() -> (String, String, String) {
     .or_else(|| extract_lua_string(&packaged, "kb_options"))
     .unwrap_or_default();
   (layout, variant, options)
+}
+
+fn canonical_keyboard_config() -> Option<(String, String, String)> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/hyprland/keyboard", "--raw"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  let value: Value = serde_json::from_slice(&output.stdout).ok()?;
+  Some((
+    value.get("layout")?.as_str()?.to_string(),
+    value
+      .get("variant")
+      .and_then(Value::as_str)
+      .unwrap_or_default()
+      .to_string(),
+    value
+      .get("options")
+      .and_then(Value::as_str)
+      .unwrap_or_default()
+      .to_string(),
+  ))
 }
 
 /// Executes the `hypr_config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -372,7 +399,27 @@ fn write_generated_hypr_input(
       .sync_all()
       .map_err(|error| SettingsError::System(error.to_string()))?;
   }
-  fs::rename(&tmp, &path).map_err(|error| SettingsError::System(error.to_string()))
+  fs::rename(&tmp, &path).map_err(|error| SettingsError::System(error.to_string()))?;
+  let value = serde_json::json!({
+    "layout": layout,
+    "variant": variant,
+    "options": options,
+  });
+  match Command::new("argvus-config")
+    .args(["set", "/hyprland/keyboard", &value.to_string()])
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .status()
+  {
+    Ok(status) if status.success() => Ok(()),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Ok(status) => Err(SettingsError::System(format!(
+      "argvus-config exited with {status}"
+    ))),
+    Err(error) => Err(SettingsError::System(format!(
+      "argvus-config unavailable: {error}"
+    ))),
+  }
 }
 
 /// Retrieves data for `read_xkb_rules` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

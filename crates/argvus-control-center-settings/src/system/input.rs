@@ -84,10 +84,13 @@ pub fn path() -> PathBuf {
 /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load() -> InputSettings {
   let persisted = fs::read_to_string(path());
-  let mut settings: InputSettings = persisted
-    .as_deref()
-    .ok()
-    .and_then(|v| toml::from_str(v).ok())
+  let mut settings: InputSettings = canonical_settings()
+    .or_else(|| {
+      persisted
+        .as_deref()
+        .ok()
+        .and_then(|v| toml::from_str(v).ok())
+    })
     .unwrap_or_default();
   if persisted.is_err() {
     settings.load_runtime_values();
@@ -134,8 +137,35 @@ fn save(settings: &InputSettings) -> Result<(), String> {
     toml::to_string_pretty(settings).map_err(|e| e.to_string())?,
   )
   .map_err(|e| e.to_string())?;
+  write_canonical_settings(settings)?;
   fs::rename(tmp, target).map_err(|e| e.to_string())?;
   write_generated_hypr_input(settings)
+}
+
+fn canonical_settings() -> Option<InputSettings> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/hyprland/input", "--raw"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  serde_json::from_slice(&output.stdout).ok()
+}
+
+fn write_canonical_settings(settings: &InputSettings) -> Result<(), String> {
+  let value = serde_json::to_string(settings).map_err(|error| error.to_string())?;
+  match Command::new("argvus-config")
+    .args(["set", "/hyprland/input", &value])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped())
+    .status()
+  {
+    Ok(status) if status.success() => Ok(()),
+    Ok(status) => Err(format!("argvus-config exited with {status}")),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Err(error) => Err(format!("argvus-config unavailable: {error}")),
+  }
 }
 
 /// Executes the `generated_hypr_input_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

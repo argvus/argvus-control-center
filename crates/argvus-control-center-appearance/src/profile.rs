@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tar::{Archive, Builder, EntryType, Header};
 use tempfile::{TempDir, tempdir};
 use time::{OffsetDateTime, format_description};
@@ -42,10 +43,11 @@ enum FileId {
   TaskbarRight2Mode,
   WidgetTelemetryBlocks,
   ControlPanelCards,
+  CanonicalConfig,
 }
 
 impl FileId {
-  const ALL: [Self; 13] = [
+  const ALL: [Self; 14] = [
     Self::ActiveTheme,
     Self::Accent,
     Self::GtkMode,
@@ -59,6 +61,7 @@ impl FileId {
     Self::TaskbarRight2Mode,
     Self::WidgetTelemetryBlocks,
     Self::ControlPanelCards,
+    Self::CanonicalConfig,
   ];
   fn id(self) -> &'static str {
     match self {
@@ -76,6 +79,7 @@ impl FileId {
       Self::TaskbarRight2Mode => "taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel-cards",
+      Self::CanonicalConfig => "canonical-config",
     }
   }
   fn archive_path(self) -> &'static str {
@@ -94,6 +98,7 @@ impl FileId {
       Self::TaskbarRight2Mode => "payload/config/argvus/state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "payload/config/argvus/state/widget-telemetry-blocks",
       Self::ControlPanelCards => "payload/config/argvus/control-panel/cards.json",
+      Self::CanonicalConfig => "payload/config/argvus/config.json",
     }
   }
   fn destination(self, root: &Path) -> PathBuf {
@@ -118,6 +123,7 @@ impl FileId {
       Self::TaskbarRight2Mode => "state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "state/widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel/cards.json",
+      Self::CanonicalConfig => "config.json",
     })
   }
   fn parse(value: &str) -> Option<Self> {
@@ -270,17 +276,41 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
     suffix += 1;
   }
   let root = argvus_root();
-  let active_theme = read_first(&root.join(".active-theme"), "argvus-dark");
+  let canonical_export = tempdir().map_err(|error| error.to_string())?;
+  let canonical_config_path = canonical_export.path().join("config.json");
+  let has_canonical_config = export_canonical_appearance(&canonical_config_path)?;
+  let canonical_theme = if has_canonical_config {
+    fs::read_to_string(&canonical_config_path)
+      .ok()
+      .and_then(|contents| serde_json::from_str::<serde_json::Value>(&contents).ok())
+      .and_then(|document| {
+        document
+          .pointer("/appearance/theme")
+          .and_then(|value| value.as_str())
+          .map(str::to_owned)
+      })
+  } else {
+    None
+  };
+  let active_theme =
+    canonical_theme.unwrap_or_else(|| read_first(&root.join(".active-theme"), "argvus-dark"));
   let effects_path = theme_effects_destination(&root, &active_theme);
   if !effects_path.is_file() {
     write_atomic(
       &effects_path,
-      "taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\n",
+      "taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\nterminal.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\nterminal.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\nterminal.blur.enabled=enabled\n",
     )?;
   }
   let mut files = Vec::new();
   let mut contents = Vec::new();
-  for (id, source) in source_paths(&root) {
+  let mut profile_sources = source_paths(&root)
+    .into_iter()
+    .filter(|(id, _)| *id != FileId::CanonicalConfig)
+    .collect::<Vec<_>>();
+  if has_canonical_config {
+    profile_sources.push((FileId::CanonicalConfig, canonical_config_path));
+  }
+  for (id, source) in profile_sources {
     if !source.is_file() {
       continue;
     }
@@ -299,12 +329,12 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
   let wallpaper = current_wallpaper().map(|path| wallpaper_meta(&path));
   let manifest = Manifest {
     format: "argvus-theme-profile".into(),
-    format_version: Some(2),
+    format_version: Some(if has_canonical_config { 3 } else { 2 }),
     schema_version: None,
     name: display_name,
     created_at: OffsetDateTime::now_utc().to_string(),
     argvus: ManifestArgvus {
-      theme: canonical_theme_id(&read_first(&root.join(".active-theme"), "argvus-dark")),
+      theme: canonical_theme_id(&active_theme),
       mode: "sticky".into(),
     },
     files: files.clone(),
@@ -489,12 +519,27 @@ fn apply_staged(
       payload.push((entry.path.clone(), FileId::Transparency.destination(&root)));
     } else if id == FileId::ThemeEffects {
       payload.push((entry.path.clone(), imported_effects.clone()));
+    } else if id == FileId::CanonicalConfig {
+      // The canonical payload is imported with argvus-config below. It must
+      // not replace the complete desktop document with an appearance scope.
     } else {
       payload.push((entry.path.clone(), id.destination(&root)));
     }
   }
   let marker_path = custom_current_path();
   let result: Result<bool, String> = (|| {
+    if let Some(entry) = staged.entries.get(
+      &staged
+        .manifest
+        .files
+        .iter()
+        .find(|file| file.id == FileId::CanonicalConfig.id())
+        .map(|file| file.archive_path.clone())
+        .unwrap_or_default(),
+    ) {
+      import_canonical_appearance(&entry.path)?;
+      project_canonical_config()?;
+    }
     for (source, destination) in &payload {
       if *destination == FileId::Fonts.destination(&root) {
         copy_atomic(source, destination)?;
@@ -702,10 +747,7 @@ fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
       .map_err(|e| format!("invalid theme profile manifest: {e}"))?;
   manifest.argvus.theme = canonical_theme_id(&manifest.argvus.theme);
   if manifest.format != "argvus-theme-profile"
-    || !matches!(
-      manifest.format_version.or(manifest.schema_version),
-      Some(1 | 2)
-    )
+    || !is_supported_profile_version(manifest.format_version.or(manifest.schema_version))
   {
     return Err("unsupported theme profile version".into());
   }
@@ -715,6 +757,10 @@ fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
     manifest,
     entries,
   })
+}
+
+fn is_supported_profile_version(version: Option<u32>) -> bool {
+  matches!(version, Some(1..=3))
 }
 
 fn validate_manifest(
@@ -828,27 +874,54 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
           "taskbar.transparency"
             | "control-panel.transparency"
             | "widget-telemetry.transparency"
+            | "terminal.transparency"
             | "taskbar.transparency.enabled"
             | "control-panel.transparency.enabled"
             | "widget-telemetry.transparency.enabled"
+            | "terminal.transparency.enabled"
             | "taskbar.blur"
             | "control-panel.blur"
             | "widget-telemetry.blur"
+            | "terminal.blur"
             | "taskbar.blur.enabled"
             | "control-panel.blur.enabled"
             | "widget-telemetry.blur.enabled"
+            | "terminal.blur.enabled"
         ) || !seen.insert(key)
           || !valid_value
         {
           return Err("invalid theme effects".into());
         }
       }
-      if seen.len() != 6 && seen.len() != 12 {
+      // Older profiles contain the original three surfaces (6 or 12 keys);
+      // keep accepting them while exporting the four-surface format.
+      if !matches!(seen.len(), 6 | 8 | 12 | 16) {
         return Err("invalid theme effects".into());
       }
     }
     FileId::TaskbarRight2Mode if !matches!(value, "auto" | "always-expanded") => {
       return Err("invalid taskbar mode".into());
+    }
+    FileId::CanonicalConfig => {
+      let document: serde_json::Value =
+        serde_json::from_slice(data).map_err(|_| "invalid canonical configuration JSON")?;
+      if document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+        || !document.is_object()
+      {
+        return Err("invalid canonical configuration schema".into());
+      }
+      for section in ["appearance", "layout", "effects", "fonts", "control_panel"] {
+        if let Some(value) = document.get(section)
+          && !value.is_object()
+        {
+          return Err(format!(
+            "invalid canonical configuration section: {section}"
+          ));
+        }
+      }
     }
     FileId::WallpaperCustom
       if text.lines().count() > 1 || (!value.is_empty() && !Path::new(value).is_absolute()) =>
@@ -954,6 +1027,63 @@ fn write_archive_atomic(
     .finish()
     .map_err(|e| e.to_string())?;
   fs::rename(temporary, path).map_err(|e| e.to_string())
+}
+
+fn export_canonical_appearance(destination: &Path) -> Result<bool, String> {
+  let config_path = argvus_root();
+  let config_home = config_path
+    .parent()
+    .ok_or_else(|| "invalid ARGVUS configuration path".to_string())?;
+  let output = Command::new("argvus-config")
+    .args(["export", "--scope", "appearance", "--output"])
+    .arg(destination)
+    .env("ARGVUS_CONFIG_HOME", config_home)
+    .output();
+  match output {
+    Ok(output) if output.status.success() => Ok(true),
+    Ok(output) if output.status.code() == Some(127) => Ok(false),
+    Ok(output) => {
+      let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+      Err(if error.is_empty() {
+        "argvus-config export failed".into()
+      } else {
+        error
+      })
+    }
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(error) => Err(format!("could not run argvus-config export: {error}")),
+  }
+}
+
+fn import_canonical_appearance(source: &Path) -> Result<(), String> {
+  let source_path = source.to_string_lossy().into_owned();
+  run_canonical_config_command(&["import", "--scope", "appearance", &source_path])
+}
+
+fn project_canonical_config() -> Result<(), String> {
+  run_canonical_config_command(&["project"])
+}
+
+fn run_canonical_config_command(arguments: &[&str]) -> Result<(), String> {
+  let config_path = argvus_root();
+  let config_home = config_path
+    .parent()
+    .ok_or_else(|| "invalid ARGVUS configuration path".to_string())?;
+  let output = Command::new("argvus-config")
+    .args(arguments)
+    .env("ARGVUS_CONFIG_HOME", config_home)
+    .output()
+    .map_err(|error| format!("could not run argvus-config: {error}"))?;
+  if output.status.success() {
+    Ok(())
+  } else {
+    let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(if error.is_empty() {
+      format!("argvus-config failed with {}", output.status)
+    } else {
+      error
+    })
+  }
 }
 fn append_bytes<W: Write>(tar: &mut Builder<W>, name: &str, bytes: &[u8]) -> Result<(), String> {
   let mut header = Header::new_gnu();
@@ -1277,11 +1407,49 @@ mod tests {
     assert!(validate_content(FileId::Effects, b"maybe\n").is_err());
     assert!(validate_content(
       FileId::ThemeEffects,
-      b"taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\n"
+      b"taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\nterminal.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\nterminal.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\nterminal.blur.enabled=enabled\n"
     )
     .is_ok());
     assert!(validate_content(FileId::ThemeEffects, b"taskbar.transparency=101\n").is_err());
   }
+
+  #[test]
+  fn accepts_canonical_appearance_profile_payload() {
+    let payload = br#"{
+      "schema_version": 1,
+      "appearance": {"theme": "argvus-dark"},
+      "layout": {},
+      "effects": {},
+      "fonts": {},
+      "control_panel": {}
+    }"#;
+    assert!(validate_content(FileId::CanonicalConfig, payload).is_ok());
+  }
+
+  #[test]
+  fn restoring_profile_backup_reinstates_or_removes_state() {
+    let directory = tempfile::tempdir().expect("backup directory");
+    let destination = directory.path().join("state");
+    let backup = directory.path().join("state.backup");
+    fs::write(&destination, b"new state").expect("new state");
+    fs::write(&backup, b"previous state").expect("previous state");
+
+    restore_backup(&destination, Some(&backup)).expect("restore previous state");
+    assert_eq!(fs::read(&destination).unwrap(), b"previous state");
+
+    restore_backup(&destination, None).expect("remove state without backup");
+    assert!(!destination.exists());
+  }
+
+  #[test]
+  fn keeps_legacy_profile_versions_compatible() {
+    assert!(is_supported_profile_version(Some(1)));
+    assert!(is_supported_profile_version(Some(2)));
+    assert!(is_supported_profile_version(Some(3)));
+    assert!(!is_supported_profile_version(Some(4)));
+    assert!(!is_supported_profile_version(None));
+  }
+
   #[test]
   fn registry_validation_is_strict() {
     assert!(validate_control_panel_cards(r#"{"cards":[]}"#).is_err());
@@ -1343,6 +1511,13 @@ mod tests {
         .iter()
         .any(|member| member.starts_with("argvus-theme-profile/wallpaper/"))
     );
+    if Command::new("argvus-config")
+      .arg("path")
+      .output()
+      .is_ok_and(|output| output.status.success())
+    {
+      assert!(members.contains("argvus-theme-profile/payload/config/argvus/config.json"));
+    }
     unsafe {
       std::env::set_var("HOME", target_home.path());
       std::env::set_var("XDG_CONFIG_HOME", &target_config);

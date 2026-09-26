@@ -228,8 +228,9 @@ editing are complete. See [docs/RECOVERY6.md](docs/RECOVERY6.md).
 
 ## ARGVUS themes
 
-ARGVUS remains the source of truth. `argvus-theme` reads the active name from
-`$XDG_CONFIG_HOME/argvus/.active-theme`, follows the shared CSS resources and
+`$XDG_CONFIG_HOME/argvus/config.json` is the logical source of truth. The
+`argvus-theme` loader reads the active name from `/appearance/theme` and uses
+`.active-theme` only as a compatibility fallback, follows the shared CSS resources and
 imports in `/etc/argvus-settings`, and consumes the generated ARGVUS theme cache
 used by other integrated applications. `ARGVUS_SETTINGS_RESOURCE_DIR` and the
 normal XDG/ARGVUS config overrides are respected for development and user setups.

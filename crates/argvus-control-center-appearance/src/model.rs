@@ -262,6 +262,7 @@ pub enum AppearancePage {
   Taskbar,
   WidgetTelemetry,
   ControlPanel,
+  Terminal,
   SurfaceSection {
     surface: EffectSurface,
     section: SurfaceSection,
@@ -279,6 +280,7 @@ pub enum EffectSurface {
   Taskbar,
   ControlPanel,
   WidgetTelemetry,
+  Terminal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -290,13 +292,19 @@ pub enum SurfaceSection {
 }
 
 impl EffectSurface {
-  pub const ALL: [Self; 3] = [Self::Taskbar, Self::ControlPanel, Self::WidgetTelemetry];
+  pub const ALL: [Self; 4] = [
+    Self::Taskbar,
+    Self::ControlPanel,
+    Self::WidgetTelemetry,
+    Self::Terminal,
+  ];
 
   pub const fn key(self) -> &'static str {
     match self {
       Self::Taskbar => "taskbar",
       Self::ControlPanel => "control-panel",
       Self::WidgetTelemetry => "widget-telemetry",
+      Self::Terminal => "terminal",
     }
   }
 
@@ -305,6 +313,7 @@ impl EffectSurface {
       Self::Taskbar => "control_center.taskbar",
       Self::ControlPanel => "control_center.control_panel",
       Self::WidgetTelemetry => "control_center.widget_telemetry",
+      Self::Terminal => "control_center.terminal",
     }
   }
 }
@@ -759,12 +768,16 @@ pub struct AppearanceState {
   pub taskbar_blur_enabled: bool,
   pub control_panel_blur_enabled: bool,
   pub widget_telemetry_blur_enabled: bool,
+  pub terminal_transparency_enabled: bool,
+  pub terminal_blur_enabled: bool,
   pub taskbar_transparency: i32,
   pub control_panel_transparency: i32,
   pub widget_telemetry_transparency: i32,
   pub taskbar_blur: i32,
   pub control_panel_blur: i32,
   pub widget_telemetry_blur: i32,
+  pub terminal_transparency: i32,
+  pub terminal_blur: i32,
   pub widget_telemetry: bool,
   pub control_panel_enabled: bool,
   pub widget_telemetry_blocks: WidgetTelemetryBlocks,
@@ -812,12 +825,16 @@ impl Default for AppearanceState {
       taskbar_blur_enabled: true,
       control_panel_blur_enabled: true,
       widget_telemetry_blur_enabled: true,
+      terminal_transparency_enabled: true,
+      terminal_blur_enabled: true,
       taskbar_transparency: 50,
       control_panel_transparency: 50,
       widget_telemetry_transparency: 50,
       taskbar_blur: 50,
       control_panel_blur: 50,
       widget_telemetry_blur: 50,
+      terminal_transparency: 50,
+      terminal_blur: 50,
       widget_telemetry: true,
       control_panel_enabled: true,
       widget_telemetry_blocks: WidgetTelemetryBlocks::default(),

@@ -271,6 +271,7 @@ dependencies = [
  "argvus-tui",
  "crossterm",
  "ratatui",
+ "serde_json",
 ]
 
 [[package]]

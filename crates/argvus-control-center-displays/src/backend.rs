@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 /// Executes the `hyprctl_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn hyprctl_version() -> (u32, u32) {
@@ -333,6 +334,9 @@ fn state_path() -> PathBuf {
 /// module and the legacy `return {...}` format written by older releases are
 /// parsed so existing user configs migrate in place.
 pub fn load_config() -> PersistedConfig {
+  if let Some(config) = canonical_config() {
+    return config;
+  }
   let content = match fs::read_to_string(config_path()) {
     Ok(content) => content,
     Err(_) => return PersistedConfig::default(),
@@ -638,7 +642,148 @@ pub fn save_config(config: &PersistedConfig) -> Result<(), String> {
   let tmp = path.with_extension("tmp");
   fs::write(&tmp, text).map_err(|error| error.to_string())?;
   fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
-  Ok(())
+  write_canonical_config(config)
+}
+
+fn canonical_config() -> Option<PersistedConfig> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/displays", "--raw"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  let value: Value = serde_json::from_slice(&output.stdout).ok()?;
+  let mut config = PersistedConfig::default();
+  let mut found = false;
+  if let Some(primary) = value.get("primary_monitor").and_then(Value::as_str) {
+    config.primary_monitor = Some(primary.to_string());
+    found = true;
+  }
+  if let Some(monitors) = value.get("monitors").and_then(Value::as_object) {
+    for (name, value) in monitors {
+      let Some(object) = value.as_object() else {
+        continue;
+      };
+      let monitor = PersistedMonitor {
+        mode: object
+          .get("mode")
+          .and_then(Value::as_str)
+          .map(str::to_string),
+        position: object
+          .get("position")
+          .and_then(Value::as_str)
+          .map(str::to_string),
+        scale: object.get("scale").and_then(Value::as_f64),
+        transform: object
+          .get("transform")
+          .and_then(Value::as_i64)
+          .map(|value| value as i32),
+        vrr: object
+          .get("vrr")
+          .and_then(Value::as_i64)
+          .map(|value| value as i32),
+        hdr: object
+          .get("hdr")
+          .and_then(Value::as_i64)
+          .map(|value| value as i32),
+        mirror: object
+          .get("mirror")
+          .and_then(Value::as_str)
+          .map(str::to_string),
+        bitdepth: object
+          .get("bitdepth")
+          .and_then(Value::as_i64)
+          .map(|value| value as i32),
+        disabled: object.get("disabled").and_then(Value::as_bool),
+        sdr_brightness: object.get("sdr_brightness").and_then(Value::as_f64),
+        sdr_saturation: object.get("sdr_saturation").and_then(Value::as_f64),
+        dpms: object.get("dpms").and_then(Value::as_bool),
+      };
+      config.monitors.push((name.clone(), monitor));
+      found = true;
+    }
+  }
+  if let Some(workspaces) = value.get("workspaces").and_then(Value::as_object) {
+    for (monitor, ids) in workspaces {
+      let ids = ids
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_u64)
+        .map(|value| value as u32)
+        .collect::<Vec<_>>();
+      config.set_workspaces(monitor, ids);
+      found = true;
+    }
+  }
+  found.then_some(config)
+}
+
+fn write_canonical_config(config: &PersistedConfig) -> Result<(), String> {
+  let mut monitors = serde_json::Map::new();
+  for (name, monitor) in &config.monitors {
+    let mut value = serde_json::Map::new();
+    if let Some(field) = &monitor.mode {
+      value.insert("mode".into(), Value::String(field.clone()));
+    }
+    if let Some(field) = &monitor.position {
+      value.insert("position".into(), Value::String(field.clone()));
+    }
+    if let Some(field) = monitor.scale {
+      value.insert("scale".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.transform {
+      value.insert("transform".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.vrr {
+      value.insert("vrr".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.hdr {
+      value.insert("hdr".into(), serde_json::json!(field));
+    }
+    if let Some(field) = &monitor.mirror {
+      value.insert("mirror".into(), Value::String(field.clone()));
+    }
+    if let Some(field) = monitor.bitdepth {
+      value.insert("bitdepth".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.disabled {
+      value.insert("disabled".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.sdr_brightness {
+      value.insert("sdr_brightness".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.sdr_saturation {
+      value.insert("sdr_saturation".into(), serde_json::json!(field));
+    }
+    if let Some(field) = monitor.dpms {
+      value.insert("dpms".into(), serde_json::json!(field));
+    }
+    monitors.insert(name.clone(), Value::Object(value));
+  }
+  let workspaces = config
+    .workspaces
+    .iter()
+    .map(|(monitor, ids)| (monitor.clone(), serde_json::json!(ids)))
+    .collect::<serde_json::Map<_, _>>();
+  let value = serde_json::json!({
+    "primary_monitor": config.primary_monitor,
+    "monitors": monitors,
+    "workspaces": workspaces,
+  });
+  let serialized = value.to_string();
+  match Command::new("argvus-config")
+    .args(["set", "/displays", &serialized])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .status()
+  {
+    Ok(status) if status.success() => Ok(()),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Ok(status) => Err(format!("argvus-config exited with {status}")),
+    Err(error) => Err(format!("argvus-config unavailable: {error}")),
+  }
 }
 
 /// Executes the `append_workspace_rules` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

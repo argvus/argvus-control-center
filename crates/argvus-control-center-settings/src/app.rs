@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use std::collections::BTreeSet;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use argvus_control_center_apps::catalog::Category;
@@ -134,6 +135,7 @@ pub struct App {
   jobs: JobManager,
   dnd_enabled: bool,
   dnd_job: Option<JobHandle<(bool, bool)>>,
+  language_reload_job: Option<JobHandle<Result<(), String>>>,
   dnd_last_refresh: Instant,
   task_job: Option<JobHandle<Result<String, String>>>,
   pub task_live: Option<LiveProcess>,
@@ -220,6 +222,7 @@ impl App {
       jobs: JobManager::default(),
       dnd_enabled: false,
       dnd_job: None,
+      language_reload_job: None,
       dnd_last_refresh: Instant::now() - Duration::from_secs(2),
       task_job: None,
       task_live: None,
@@ -2069,6 +2072,22 @@ impl App {
         .status();
       changed = true;
     }
+    if let Some(job) = self.language_reload_job.take() {
+      match job.try_state() {
+        JobState::Running => self.language_reload_job = Some(job),
+        JobState::Finished(Ok(Ok(()))) => {
+          self.success(tr(self.lang, "control_center.interface_language_applied").to_string());
+          changed = true;
+        }
+        JobState::Finished(Ok(Err(error))) | JobState::Finished(Err(error)) => {
+          self.fail(self.lang.tr_args(
+            "control_center.interface_language_panel_reload_failed",
+            [("error", error.as_str())],
+          ));
+          changed = true;
+        }
+      }
+    }
     if self.dnd_job.is_none()
       && self.page() == Page::System
       && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2)
@@ -2494,8 +2513,21 @@ impl App {
     };
     if let Err(error) = std::fs::write(path, format!("{value}\n")) {
       self.fail(error);
+    } else if let Err(error) = write_canonical_language(self.lang.locale().as_str()) {
+      self.fail(error);
     } else {
-      self.success(tr(self.lang, "control_center.interface_language_applied").to_string());
+      self.status = Some(Status {
+        text: tr(self.lang, "control_center.interface_language_reloading").to_string(),
+        kind: StatusKind::Success,
+        created: Instant::now(),
+      });
+      if self.language_reload_job.is_none() {
+        self.language_reload_job = Some(
+          self
+            .jobs
+            .spawn(|_| Ok(crate::system::session::restart_control_panel())),
+        );
+      }
     }
   }
 
@@ -3223,6 +3255,22 @@ impl App {
       created: Instant::now(),
     });
     self.error_modal = Some(error);
+  }
+}
+
+fn write_canonical_language(locale: &str) -> Result<(), String> {
+  let serialized = serde_json::to_string(locale).map_err(|error| error.to_string())?;
+  match Command::new("argvus-config")
+    .args(["set", "/session/language", &serialized])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .status()
+  {
+    Ok(status) if status.success() => Ok(()),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Ok(status) => Err(format!("argvus-config exited with {status}")),
+    Err(error) => Err(error.to_string()),
   }
 }
 

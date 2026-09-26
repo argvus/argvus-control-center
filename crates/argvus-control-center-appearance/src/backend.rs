@@ -9,7 +9,7 @@ use crate::model::{
 };
 use argvus_control_center_core::{
   paths::{argvus_config_home, cache_home, system_config_root},
-  process::{ProcessRequest, ProcessRunner, SystemProcessRunner},
+  process::{ProcessError, ProcessRequest, ProcessRunner, SystemProcessRunner},
   sanitize::terminal_text,
 };
 use serde_json::Value;
@@ -149,6 +149,155 @@ fn run_script_output(script_path: &Path, args: &[&str]) -> Option<String> {
     return None;
   }
   Some(terminal_text(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Runs the canonical configuration CLI without introducing a second
+/// configuration parser into the Control Center. Missing binaries are treated
+/// as a compatibility condition for older installations; installed binaries
+/// remain authoritative and report validation or persistence failures.
+fn run_canonical_config_command(args: &[&str]) -> Result<Option<String>, String> {
+  let argvus_config_path = argvus_config_home();
+  let config_home = argvus_config_path
+    .parent()
+    .ok_or_else(|| "invalid ARGVUS configuration path".to_string())?;
+  let mut request = ProcessRequest::new("argvus-config")
+    .env(
+      "ARGVUS_CONFIG_HOME",
+      config_home.to_string_lossy().to_string(),
+    )
+    .timeout(Duration::from_secs(5));
+  for argument in args {
+    request = request.arg(*argument);
+  }
+  let output = match SystemProcessRunner.run(&request) {
+    Ok(output) => output,
+    Err(ProcessError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+      return Ok(None);
+    }
+    Err(error) => return Err(error.to_string()),
+  };
+  if output.timed_out || output.status != Some(0) {
+    let stderr = terminal_text(&String::from_utf8_lossy(&output.stderr))
+      .trim()
+      .to_string();
+    return Err(if stderr.is_empty() {
+      "argvus-config falhou".into()
+    } else {
+      stderr
+    });
+  }
+  Ok(Some(terminal_text(&String::from_utf8_lossy(
+    &output.stdout,
+  ))))
+}
+
+fn canonical_config_document() -> Option<Value> {
+  let output = run_canonical_config_command(&["export", "--scope", "appearance"])
+    .ok()
+    .flatten()?;
+  serde_json::from_str(&output).ok()
+}
+
+fn canonical_config_value<'a>(document: &'a Value, pointer: &str) -> Option<&'a Value> {
+  document.pointer(pointer)
+}
+
+fn canonical_config_string(document: &Value, pointer: &str) -> Option<String> {
+  canonical_config_value(document, pointer)
+    .and_then(Value::as_str)
+    .map(str::to_owned)
+}
+
+fn canonical_config_bool(document: &Value, pointer: &str) -> Option<bool> {
+  canonical_config_value(document, pointer).and_then(Value::as_bool)
+}
+
+fn canonical_config_integer(document: &Value, pointer: &str) -> Option<i32> {
+  canonical_config_value(document, pointer)
+    .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
+    .and_then(|value| i32::try_from(value).ok())
+}
+
+fn canonical_config_cards(document: &Value, mut cards: ControlPanelCards) -> ControlPanelCards {
+  let Some(values) = canonical_config_value(document, "/control_panel/cards") else {
+    return cards;
+  };
+  let entries = values
+    .as_array()
+    .into_iter()
+    .flatten()
+    .filter_map(|entry| Some((entry.get("id")?.as_str()?, entry.get("enabled")?.as_bool()?)))
+    .chain(
+      values
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, value)| Some((key.as_str(), value.as_bool()?))),
+    );
+  for (key, enabled) in entries {
+    let Some(card) = [
+      ControlPanelCard::User,
+      ControlPanelCard::Notifications,
+      ControlPanelCard::Calendar,
+      ControlPanelCard::Weather,
+      ControlPanelCard::Volume,
+      ControlPanelCard::Brightness,
+      ControlPanelCard::Network,
+      ControlPanelCard::Bluetooth,
+      ControlPanelCard::System,
+      ControlPanelCard::Appearance,
+      ControlPanelCard::Session,
+      ControlPanelCard::Display,
+      ControlPanelCard::SpacesBordersPosition,
+      ControlPanelCard::Power,
+    ]
+    .into_iter()
+    .find(|card| card.key() == key) else {
+      continue;
+    };
+    cards.set(card, enabled);
+  }
+  cards
+}
+
+fn control_panel_cards_value(cards: &ControlPanelCards) -> Value {
+  Value::Array(
+    ControlPanelCard::ALL
+      .into_iter()
+      .map(|card| {
+        serde_json::json!({
+          "id": card.key(),
+          "enabled": cards.enabled(card),
+        })
+      })
+      .collect(),
+  )
+}
+
+fn canonical_widget_telemetry_blocks(document: &Value) -> WidgetTelemetryBlocks {
+  let Some(values) = canonical_config_value(document, "/control_panel/widget_telemetry_blocks")
+    .and_then(Value::as_array)
+  else {
+    return WidgetTelemetryBlocks::default();
+  };
+  let mut blocks = WidgetTelemetryBlocks::default();
+  for block in WidgetTelemetryBlock::ALL {
+    blocks.set(block, false);
+  }
+  for value in values.iter().filter_map(Value::as_str) {
+    for block in WidgetTelemetryBlock::ALL {
+      if block.key() == value {
+        blocks.set(block, true);
+      }
+    }
+  }
+  blocks
+}
+
+fn persist_canonical_config_value(pointer: &str, value: Value) -> Result<(), String> {
+  let serialized = serde_json::to_string(&value).map_err(|error| error.to_string())?;
+  let _ = run_canonical_config_command(&["set", pointer, &serialized])?;
+  Ok(())
 }
 
 /// Executes the `command_words` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -657,7 +806,11 @@ fn custom_wallpaper_state_path() -> PathBuf {
 /// Persists the selected wallpaper for the session service and future logins.
 fn persist_custom_wallpaper(wallpaper: &Path) -> Result<(), String> {
   let path = custom_wallpaper_state_path();
-  write_atomic(&path, &format!("{}\n", wallpaper.display()))
+  write_atomic(&path, &format!("{}\n", wallpaper.display()))?;
+  persist_canonical_config_value(
+    "/appearance/wallpaper",
+    Value::String(wallpaper.to_string_lossy().into_owned()),
+  )
 }
 
 /// Executes the `active_wallpaper` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -764,11 +917,20 @@ pub fn load_page(
   mut state: AppearanceState,
 ) -> AppearanceState {
   use crate::model::AppearancePage;
-  let theme = canonical_theme_id(&read_first(&active_theme_file(), DEFAULT_THEME));
+  let canonical_config = canonical_config_document();
+  let theme = canonical_config
+    .as_ref()
+    .and_then(|document| canonical_config_string(document, "/appearance/theme"))
+    .map(|theme| canonical_theme_id(&theme))
+    .unwrap_or_else(|| canonical_theme_id(&read_first(&active_theme_file(), DEFAULT_THEME)));
   state.theme = theme.clone();
   let default_accent = theme_default_accent(&theme).unwrap_or(DEFAULT_ACCENT);
-  state.accent = normalize_hex_color(&read_first(&accent_file(), default_accent))
-    .unwrap_or_else(|| default_accent.to_string());
+  let legacy_accent = read_first(&accent_file(), default_accent);
+  let persisted_accent = canonical_config
+    .as_ref()
+    .and_then(|document| canonical_config_string(document, "/appearance/accent"));
+  let accent_source = persisted_accent.as_deref().unwrap_or(&legacy_accent);
+  state.accent = normalize_hex_color(accent_source).unwrap_or_else(|| default_accent.to_string());
   if page == AppearancePage::Wallpapers {
     state.wallpapers = list_wallpapers();
     state.wallpaper_active = active_wallpaper();
@@ -781,9 +943,18 @@ pub fn load_page(
       | AppearancePage::ControlPanel
       | AppearancePage::SurfaceSection { .. }
   ) {
-    state.animations = effect_state("animations");
-    state.transparency = effect_state("transparency");
-    state.blur = effect_state("blur");
+    state.animations = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/animations"))
+      .unwrap_or_else(|| effect_state("animations"));
+    state.transparency = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/transparency"))
+      .unwrap_or_else(|| effect_state("transparency"));
+    state.blur = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/blur"))
+      .unwrap_or_else(|| effect_state("blur"));
   }
   if matches!(
     page,
@@ -792,21 +963,88 @@ pub fn load_page(
       | AppearancePage::ControlPanel
       | AppearancePage::SurfaceSection { .. }
   ) {
-    state.taskbar_transparency = effect_value("transparency", EffectSurface::Taskbar);
-    state.control_panel_transparency = effect_value("transparency", EffectSurface::ControlPanel);
-    state.widget_telemetry_transparency =
-      effect_value("transparency", EffectSurface::WidgetTelemetry);
-    state.taskbar_blur = effect_value("blur", EffectSurface::Taskbar);
-    state.control_panel_blur = effect_value("blur", EffectSurface::ControlPanel);
-    state.widget_telemetry_blur = effect_value("blur", EffectSurface::WidgetTelemetry);
-    state.taskbar_transparency_enabled = effect_enabled("transparency", EffectSurface::Taskbar);
-    state.control_panel_transparency_enabled =
-      effect_enabled("transparency", EffectSurface::ControlPanel);
-    state.widget_telemetry_transparency_enabled =
-      effect_enabled("transparency", EffectSurface::WidgetTelemetry);
-    state.taskbar_blur_enabled = effect_enabled("blur", EffectSurface::Taskbar);
-    state.control_panel_blur_enabled = effect_enabled("blur", EffectSurface::ControlPanel);
-    state.widget_telemetry_blur_enabled = effect_enabled("blur", EffectSurface::WidgetTelemetry);
+    state.taskbar_transparency = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_integer(document, "/effects/transparency_taskbar_value")
+      })
+      .unwrap_or_else(|| effect_value("transparency", EffectSurface::Taskbar));
+    state.control_panel_transparency = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_integer(document, "/effects/transparency_control-panel_value")
+      })
+      .unwrap_or_else(|| effect_value("transparency", EffectSurface::ControlPanel));
+    state.widget_telemetry_transparency = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_integer(document, "/effects/transparency_widget-telemetry_value")
+      })
+      .unwrap_or_else(|| effect_value("transparency", EffectSurface::WidgetTelemetry));
+    state.taskbar_blur = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_taskbar_value"))
+      .unwrap_or_else(|| effect_value("blur", EffectSurface::Taskbar));
+    state.control_panel_blur = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_control-panel_value"))
+      .unwrap_or_else(|| effect_value("blur", EffectSurface::ControlPanel));
+    state.widget_telemetry_blur = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_integer(document, "/effects/blur_widget-telemetry_value")
+      })
+      .unwrap_or_else(|| effect_value("blur", EffectSurface::WidgetTelemetry));
+    state.terminal_transparency = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_integer(document, "/effects/transparency_terminal_value")
+      })
+      .unwrap_or_else(|| effect_value("transparency", EffectSurface::Terminal));
+    state.terminal_blur = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_terminal_value"))
+      .unwrap_or_else(|| effect_value("blur", EffectSurface::Terminal));
+    state.taskbar_transparency_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/transparency_taskbar_enabled"))
+      .unwrap_or_else(|| effect_enabled("transparency", EffectSurface::Taskbar));
+    state.control_panel_transparency_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_bool(document, "/effects/transparency_control-panel_enabled")
+      })
+      .unwrap_or_else(|| effect_enabled("transparency", EffectSurface::ControlPanel));
+    state.widget_telemetry_transparency_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_bool(document, "/effects/transparency_widget-telemetry_enabled")
+      })
+      .unwrap_or_else(|| effect_enabled("transparency", EffectSurface::WidgetTelemetry));
+    state.taskbar_blur_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/blur_taskbar_enabled"))
+      .unwrap_or_else(|| effect_enabled("blur", EffectSurface::Taskbar));
+    state.control_panel_blur_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/blur_control-panel_enabled"))
+      .unwrap_or_else(|| effect_enabled("blur", EffectSurface::ControlPanel));
+    state.widget_telemetry_blur_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_bool(document, "/effects/blur_widget-telemetry_enabled")
+      })
+      .unwrap_or_else(|| effect_enabled("blur", EffectSurface::WidgetTelemetry));
+    state.terminal_transparency_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_bool(document, "/effects/transparency_terminal_enabled")
+      })
+      .unwrap_or_else(|| effect_enabled("transparency", EffectSurface::Terminal));
+    state.terminal_blur_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/blur_terminal_enabled"))
+      .unwrap_or_else(|| effect_enabled("blur", EffectSurface::Terminal));
   }
   if page == AppearancePage::WidgetTelemetry
     || matches!(
@@ -817,8 +1055,16 @@ pub fn load_page(
       }
     )
   {
-    state.widget_telemetry = telemetry_state();
-    state.widget_telemetry_blocks = telemetry_blocks();
+    state.widget_telemetry = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_bool(document, "/control_panel/widget_telemetry_enabled")
+      })
+      .unwrap_or_else(telemetry_state);
+    state.widget_telemetry_blocks = canonical_config
+      .as_ref()
+      .map(canonical_widget_telemetry_blocks)
+      .unwrap_or_else(telemetry_blocks);
   }
   if page == AppearancePage::ControlPanel
     || matches!(
@@ -829,8 +1075,15 @@ pub fn load_page(
       }
     )
   {
-    state.control_panel_cards = control_panel_cards();
-    state.control_panel_enabled = control_panel_enabled();
+    let runtime_cards = control_panel_cards();
+    state.control_panel_cards = canonical_config
+      .as_ref()
+      .map(|document| canonical_config_cards(document, runtime_cards.clone()))
+      .unwrap_or(runtime_cards);
+    state.control_panel_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/control_panel/enabled"))
+      .unwrap_or_else(control_panel_enabled);
   }
   if matches!(
     page,
@@ -865,6 +1118,31 @@ pub fn load_page(
     if let Some(output) = run_script_output(&script("borders-switch.sh"), &["--status"]) {
       parse_borders_status(&output, &mut state);
     }
+    if let Some(document) = canonical_config.as_ref() {
+      if let Some(position) = canonical_config_string(document, "/layout/waybar_pos") {
+        state.waybar_pos = TaskbarPosition::from_value(&position);
+      }
+      for (pointer, target) in [
+        ("/layout/waybar_top", &mut state.waybar_top),
+        ("/layout/waybar_left", &mut state.waybar_left),
+        ("/layout/waybar_right", &mut state.waybar_right),
+        ("/layout/waybar_bottom", &mut state.waybar_bottom),
+        ("/layout/gaps_in", &mut state.gaps_in),
+        ("/layout/gaps_out_top", &mut state.gaps_out_top),
+        ("/layout/gaps_out_left", &mut state.gaps_out_left),
+        ("/layout/gaps_out_right", &mut state.gaps_out_right),
+        ("/layout/gaps_out_bottom", &mut state.gaps_out_bottom),
+        ("/layout/rounding", &mut state.rounding),
+        ("/layout/thickness", &mut state.thickness),
+      ] {
+        if let Some(value) = canonical_config_integer(document, pointer) {
+          *target = value;
+        }
+      }
+      if let Some(value) = canonical_config_bool(document, "/layout/rounded") {
+        state.rounded = value;
+      }
+    }
   }
   state
 }
@@ -872,6 +1150,7 @@ pub fn load_page(
 /// Applies the `set_theme` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_theme(name: &str) -> Result<(), String> {
   let canonical_name = canonical_theme_id(name);
+  persist_canonical_config_value("/appearance/theme", Value::String(canonical_name.clone()))?;
   run_script(&script("theme-switch.sh"), &[canonical_name.as_str()])?;
   let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
   Ok(())
@@ -879,6 +1158,7 @@ pub fn set_theme(name: &str) -> Result<(), String> {
 
 pub(crate) fn set_theme_static(name: &str) -> Result<(), String> {
   let canonical_name = canonical_theme_id(name);
+  persist_canonical_config_value("/appearance/theme", Value::String(canonical_name.clone()))?;
   run_script_with_env(
     &script("theme-switch.sh"),
     &[canonical_name.as_str()],
@@ -890,11 +1170,15 @@ pub(crate) fn set_theme_static(name: &str) -> Result<(), String> {
 
 /// Applies the `set_accent` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_accent(color: &str) -> Result<(), String> {
+  let normalized_color =
+    normalize_hex_color(color).ok_or_else(|| "invalid accent color".to_string())?;
+  persist_canonical_config_value("/appearance/accent", Value::String(normalized_color))?;
   run_script(&script("accent-switch.sh"), &[color])
 }
 
 /// Applies the `set_animations` operation through the shared session helper.
 pub fn set_animations(enabled: bool) -> Result<(), String> {
+  persist_canonical_config_value("/effects/animations", Value::Bool(enabled))?;
   run_script(
     &script("effects-toggle.sh"),
     &["animations", if enabled { "enable" } else { "disable" }],
@@ -940,6 +1224,7 @@ pub fn apply_surface_effects(
 }
 
 pub fn set_control_panel_enabled(enabled: bool) -> Result<(), String> {
+  persist_canonical_config_value("/control_panel/enabled", Value::Bool(enabled))?;
   run_script(
     &control_panel_cards_script(),
     &[
@@ -951,6 +1236,19 @@ pub fn set_control_panel_enabled(enabled: bool) -> Result<(), String> {
 }
 
 pub fn apply_widget_telemetry(enabled: bool, blocks: &WidgetTelemetryBlocks) -> Result<(), String> {
+  persist_canonical_config_value(
+    "/control_panel/widget_telemetry_enabled",
+    Value::Bool(enabled),
+  )?;
+  let enabled_blocks = WidgetTelemetryBlock::ALL
+    .iter()
+    .filter(|block| blocks.enabled(**block))
+    .map(|block| Value::String(block.key().to_string()))
+    .collect();
+  persist_canonical_config_value(
+    "/control_panel/widget_telemetry_blocks",
+    Value::Array(enabled_blocks),
+  )?;
   let values = WidgetTelemetryBlock::ALL.map(|block| {
     if blocks.enabled(block) {
       "enabled"
@@ -1102,6 +1400,7 @@ pub fn set_spacing(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid spaces key/value".into());
   }
+  persist_canonical_config_value(&format!("/layout/{key}"), Value::String(value.to_string()))?;
   run_script(&script("spaces-switch.sh"), &["--set-persist", key, value])?;
   run_script(&script("spaces-switch.sh"), &["--apply"])
 }
@@ -1111,6 +1410,7 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
   if position != "top" && position != "bottom" {
     return Err("invalid waybar position".into());
   }
+  persist_canonical_config_value("/layout/waybar_pos", Value::String(position.to_string()))?;
   run_script(
     &script("spaces-switch.sh"),
     &["--set-persist", "waybar_pos", position],
@@ -1121,6 +1421,10 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
 /// Persists the taskbar utility-group mode, regenerates its managed Waybar
 /// configuration, and restarts the session components that consume it.
 pub fn set_taskbar_utility_group(mode: TaskbarUtilityGroupMode) -> Result<(), String> {
+  persist_canonical_config_value(
+    "/layout/taskbar_utility_group",
+    Value::String(mode.value().to_string()),
+  )?;
   run_script(&script("taskbar-right-2-mode.sh"), &["set", mode.value()])?;
   reload_session()
 }
@@ -1128,6 +1432,18 @@ pub fn set_taskbar_utility_group(mode: TaskbarUtilityGroupMode) -> Result<(), St
 /// Persists a complete batch of Control Panel preferences and performs one
 /// targeted restart after all writes have succeeded.
 pub fn set_control_panel_cards(changes: Vec<(ControlPanelCard, bool)>) -> Result<(), String> {
+  let runtime_cards = control_panel_cards();
+  let mut effective_cards = canonical_config_document()
+    .as_ref()
+    .map(|document| canonical_config_cards(document, runtime_cards.clone()))
+    .unwrap_or(runtime_cards);
+  for &(card, enabled) in &changes {
+    effective_cards.set(card, enabled);
+  }
+  persist_canonical_config_value(
+    "/control_panel/cards",
+    control_panel_cards_value(&effective_cards),
+  )?;
   for &(card, enabled) in &changes {
     run_script(
       &control_panel_cards_script(),
@@ -1194,6 +1510,7 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid border key/value".into());
   }
+  persist_canonical_config_value(&format!("/layout/{key}"), Value::String(value.to_string()))?;
   run_script(&script("borders-switch.sh"), &["--set-persist", key, value])?;
   run_script(&script("borders-switch.sh"), &["--apply"])?;
 
@@ -1275,6 +1592,35 @@ mod tests {
     assert!(cards.enabled(ControlPanelCard::Power));
     assert!(cards.enabled(ControlPanelCard::User));
     assert!(parse_control_panel_cards("invalid").enabled(ControlPanelCard::User));
+  }
+
+  #[test]
+  fn canonical_configuration_overrides_appearance_values() {
+    let document = serde_json::json!({
+      "appearance": {"theme": "dracula", "accent": "#BD93F9"},
+      "layout": {"gaps_in": 12},
+      "control_panel": {"cards": [{"id": "power", "enabled": false}]}
+    });
+    assert_eq!(
+      canonical_config_string(&document, "/appearance/theme").as_deref(),
+      Some("dracula")
+    );
+    assert_eq!(
+      canonical_config_integer(&document, "/layout/gaps_in"),
+      Some(12)
+    );
+    let cards = canonical_config_cards(&document, ControlPanelCards::default());
+    assert!(!cards.enabled(ControlPanelCard::Power));
+    assert!(cards.enabled(ControlPanelCard::User));
+  }
+
+  #[test]
+  fn canonical_configuration_accepts_legacy_string_numbers() {
+    let document = serde_json::json!({"layout": {"gaps_in": "9"}});
+    assert_eq!(
+      canonical_config_integer(&document, "/layout/gaps_in"),
+      Some(9)
+    );
   }
 
   #[test]

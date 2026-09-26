@@ -11,7 +11,9 @@ use argvus_control_center_core::{
   process::{ProcessOutput, ProcessRequest, ProcessRunner, SystemProcessRunner},
   sanitize::terminal_text,
 };
+use serde_json::Value;
 use std::fs;
+use std::process::{Command, Stdio};
 
 /// Defines the constant `LOGIND_MAIN`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const LOGIND_MAIN: &str = "/etc/systemd/logind.conf";
@@ -20,23 +22,53 @@ const LOGIND_DROP_IN: &str = "/etc/systemd/logind.conf.d/argvus.conf";
 
 /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load() -> PowerState {
-  let lid_battery = logind_value("HandleLidSwitch")
-    .as_deref()
+  let canonical = canonical_power();
+  let lid_battery = canonical
+    .get("lid_battery")
+    .and_then(Value::as_str)
     .and_then(PowerBehavior::parse)
+    .or_else(|| {
+      logind_value("HandleLidSwitch")
+        .as_deref()
+        .and_then(PowerBehavior::parse)
+    })
     .unwrap_or(PowerBehavior::Suspend);
-  let lid_ac = logind_value("HandleLidSwitchExternalPower")
-    .as_deref()
+  let lid_ac = canonical
+    .get("lid_ac")
+    .and_then(Value::as_str)
     .and_then(PowerBehavior::parse)
+    .or_else(|| {
+      logind_value("HandleLidSwitchExternalPower")
+        .as_deref()
+        .and_then(PowerBehavior::parse)
+    })
     .unwrap_or(lid_battery);
-  let power_button = logind_value("HandlePowerKey")
-    .as_deref()
+  let power_button = canonical
+    .get("power_button")
+    .and_then(Value::as_str)
     .and_then(PowerButtonBehavior::parse)
+    .or_else(|| {
+      logind_value("HandlePowerKey")
+        .as_deref()
+        .and_then(PowerButtonBehavior::parse)
+    })
     .unwrap_or(PowerButtonBehavior::Poweroff);
-  let screen_off_minutes = hypridle::screen_off_minutes();
+  let screen_off_minutes = canonical
+    .get("screen_off_minutes")
+    .and_then(Value::as_u64)
+    .map(|minutes| minutes as u32)
+    .or_else(hypridle::screen_off_minutes);
   let screen_off_supported = hypridle::config_path().exists();
-  let lock_minutes = hypridle::lock_minutes();
+  let lock_minutes = canonical
+    .get("lock_minutes")
+    .and_then(Value::as_u64)
+    .map(|minutes| minutes as u32)
+    .or_else(hypridle::lock_minutes);
   let lock_supported = screen_off_supported;
-  let keep_awake = keep_awake_status();
+  let keep_awake = canonical
+    .get("keep_awake")
+    .and_then(Value::as_bool)
+    .unwrap_or_else(keep_awake_status);
   let can_suspend = systemctl_can("can-suspend");
   let can_hibernate = systemctl_can("can-hibernate");
   let is_laptop = detect_is_laptop();
@@ -121,6 +153,10 @@ pub fn set_lid(context: LidContext, behavior: PowerBehavior) -> Result<(), Strin
     "set-lid",
     vec![context.into(), behavior.value().into()],
     &format!("{key}={}", behavior.value()),
+  )?;
+  write_canonical_power(
+    key_to_canonical(key),
+    &Value::String(behavior.value().into()),
   )
 }
 
@@ -130,17 +166,20 @@ pub fn set_power_button(behavior: PowerButtonBehavior) -> Result<(), String> {
     "set-power-button",
     vec![behavior.value().into()],
     &format!("HandlePowerKey={}", behavior.value()),
-  )
+  )?;
+  write_canonical_power("power_button", &Value::String(behavior.value().into()))
 }
 
 /// Applies the `apply_idle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_idle(minutes: u32) -> Result<(), String> {
-  hypridle::apply_screen_off_minutes(minutes).map(|_| ())
+  hypridle::apply_screen_off_minutes(minutes)?;
+  write_canonical_power("screen_off_minutes", &Value::from(minutes))
 }
 
 /// Applies the `apply_lock` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn apply_lock(minutes: u32) -> Result<(), String> {
-  hypridle::apply_lock_minutes(minutes).map(|_| ())
+  hypridle::apply_lock_minutes(minutes)?;
+  write_canonical_power("lock_minutes", &Value::from(minutes))
 }
 
 /// Applies the `set_keep_awake` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -149,9 +188,46 @@ pub fn set_keep_awake(enabled: bool) -> Result<(), String> {
   let output = SystemProcessRunner
     .run(&ProcessRequest::new("/usr/share/argvus/power/sh/keep-awake.sh").arg(value))
     .map_err(|error| error.to_string())?;
-  (output.status == Some(0))
-    .then_some(())
-    .ok_or_else(|| terminal_text(String::from_utf8_lossy(&output.stderr).trim()).to_string())
+  if output.status != Some(0) {
+    return Err(terminal_text(String::from_utf8_lossy(&output.stderr).trim()).to_string());
+  }
+  write_canonical_power("keep_awake", &Value::Bool(enabled))
+}
+
+fn canonical_power() -> serde_json::Map<String, Value> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/power", "--raw"])
+    .output();
+  output
+    .ok()
+    .filter(|output| output.status.success())
+    .and_then(|output| serde_json::from_slice::<Value>(&output.stdout).ok())
+    .and_then(|value| value.as_object().cloned())
+    .unwrap_or_default()
+}
+
+fn write_canonical_power(key: &str, value: &Value) -> Result<(), String> {
+  let serialized = value.to_string();
+  match Command::new("argvus-config")
+    .args(["set", &format!("/power/{key}"), &serialized])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .status()
+  {
+    Ok(status) if status.success() => Ok(()),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Ok(status) => Err(format!("argvus-config exited with {status}")),
+    Err(error) => Err(format!("argvus-config unavailable: {error}")),
+  }
+}
+
+fn key_to_canonical(key: &str) -> &str {
+  match key {
+    "HandleLidSwitch" => "lid_battery",
+    "HandleLidSwitchExternalPower" => "lid_ac",
+    _ => key,
+  }
 }
 
 /// Executes the `suspend_now` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

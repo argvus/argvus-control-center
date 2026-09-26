@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 
@@ -132,6 +133,9 @@ impl AppState {
 
   /// Load the state file; a missing/invalid file yields an empty state.
   pub fn load() -> AppState {
+    if let Some(state) = Self::load_canonical() {
+      return state;
+    }
     let primary = argvus_control_center_core::paths::defaults_file();
     if primary.exists() {
       return Self::load_from(&primary);
@@ -166,7 +170,7 @@ impl AppState {
     }
     let json = serde_json::to_string_pretty(self).expect("AppState serializes to valid JSON");
     fs::write(&path, format!("{json}\n"))?;
-    Ok(())
+    Self::write_canonical(self)
   }
 
   /// Persist to a specific path (tests).
@@ -177,6 +181,43 @@ impl AppState {
     }
     let json = serde_json::to_string_pretty(self).unwrap();
     fs::write(path, format!("{json}\n"))
+  }
+
+  fn load_canonical() -> Option<Self> {
+    let output = Command::new("argvus-config")
+      .args(["get", "/defaults", "--raw"])
+      .output()
+      .ok()?;
+    if !output.status.success() {
+      return None;
+    }
+    if serde_json::from_slice::<serde_json::Value>(&output.stdout)
+      .ok()
+      .is_some_and(|value| value.is_null())
+    {
+      return None;
+    }
+    let mut state: Self = serde_json::from_slice(&output.stdout).ok()?;
+    state.version.get_or_insert(STATE_VERSION);
+    Some(state)
+  }
+
+  fn write_canonical(&self) -> std::io::Result<()> {
+    let serialized = serde_json::to_string(self).expect("AppState serializes to valid JSON");
+    match Command::new("argvus-config")
+      .args(["set", "/defaults", &serialized])
+      .stdin(Stdio::null())
+      .stdout(Stdio::null())
+      .stderr(Stdio::piped())
+      .status()
+    {
+      Ok(status) if status.success() => Ok(()),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+      Ok(status) => Err(std::io::Error::other(format!(
+        "argvus-config exited with {status}"
+      ))),
+      Err(error) => Err(error),
+    }
   }
 }
 

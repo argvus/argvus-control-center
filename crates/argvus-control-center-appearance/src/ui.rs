@@ -342,6 +342,7 @@ impl AppearanceApp {
       AppearancePage::Taskbar => Some(EffectSurface::Taskbar),
       AppearancePage::WidgetTelemetry => Some(EffectSurface::WidgetTelemetry),
       AppearancePage::ControlPanel => Some(EffectSurface::ControlPanel),
+      AppearancePage::Terminal => Some(EffectSurface::Terminal),
       AppearancePage::SurfaceSection { surface, .. } => Some(surface),
       _ => None,
     }
@@ -366,6 +367,12 @@ impl AppearanceApp {
         self.state.widget_telemetry_transparency,
         self.state.widget_telemetry_blur_enabled,
         self.state.widget_telemetry_blur,
+      ),
+      EffectSurface::Terminal => (
+        self.state.terminal_transparency_enabled,
+        self.state.terminal_transparency,
+        self.state.terminal_blur_enabled,
+        self.state.terminal_blur,
       ),
     };
     SurfaceDraft {
@@ -440,6 +447,13 @@ impl AppearanceApp {
             draft.blur,
           )
         }
+        EffectSurface::Terminal => backend::apply_surface_effects(
+          draft.surface,
+          draft.transparency_enabled,
+          draft.transparency,
+          draft.blur_enabled,
+          draft.blur,
+        ),
       },
     );
   }
@@ -648,6 +662,14 @@ impl AppearanceApp {
           },
         })
       }
+      AppearancePage::Terminal => self.go(AppearancePage::SurfaceSection {
+        surface: EffectSurface::Terminal,
+        section: if self.selected == 0 {
+          SurfaceSection::Transparency
+        } else {
+          SurfaceSection::Blur
+        },
+      }),
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => {
           let selected = self.selected;
@@ -674,6 +696,8 @@ impl AppearanceApp {
               .control_panel_cards
               .set(card, !draft.control_panel_cards.enabled(card));
           }
+          // Terminal has no session/card submenu; this branch is unreachable
+          // through its two dedicated effect pages.
         }
         SurfaceSection::Transparency => {
           if self.selected == 0
@@ -910,6 +934,7 @@ impl AppearanceApp {
       AppearancePage::Taskbar
         | AppearancePage::WidgetTelemetry
         | AppearancePage::ControlPanel
+        | AppearancePage::Terminal
         | AppearancePage::SurfaceSection { .. }
     ) || Self::effect_spec(self.page).is_some())
       && !self.buttons().is_empty()
@@ -975,7 +1000,8 @@ impl AppearanceApp {
       | AppearancePage::SpacesBordersPosition
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
-      | AppearancePage::ControlPanel => {
+      | AppearancePage::ControlPanel
+      | AppearancePage::Terminal => {
         self.go(AppearancePage::Home);
       }
       AppearancePage::OfficialThemes => self.go(AppearancePage::Themes),
@@ -1021,6 +1047,7 @@ impl AppearanceApp {
           EffectSurface::Taskbar => AppearancePage::Taskbar,
           EffectSurface::WidgetTelemetry => AppearancePage::WidgetTelemetry,
           EffectSurface::ControlPanel => AppearancePage::ControlPanel,
+          EffectSurface::Terminal => AppearancePage::Terminal,
         });
       }
       AppearancePage::Prompt { .. } => {}
@@ -1039,6 +1066,7 @@ impl AppearanceApp {
         5 => self.go(AppearancePage::Effects),
         6 => self.go(AppearancePage::WidgetTelemetry),
         7 => self.go(AppearancePage::ControlPanel),
+        8 => self.go(AppearancePage::Terminal),
         _ => {}
       },
       AppearancePage::SpacesBordersPosition => match self.selected {
@@ -1062,6 +1090,7 @@ impl AppearanceApp {
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
+      | AppearancePage::Terminal
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
@@ -1136,7 +1165,7 @@ impl AppearanceApp {
   /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
-      AppearancePage::Home => 8,
+      AppearancePage::Home => 9,
       AppearancePage::Themes => 4,
       AppearancePage::OfficialThemes => ThemeCategory::ALL.len(),
       AppearancePage::ThemeFamilies { category } => family_indices(category).len(),
@@ -1149,12 +1178,13 @@ impl AppearanceApp {
       AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
       AppearancePage::Taskbar => 3,
       AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => 4,
+      AppearancePage::Terminal => 2,
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => 2,
         SurfaceSection::Sessions => match surface {
           EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL.len(),
           EffectSurface::ControlPanel => self.control_panel_cards().len(),
-          EffectSurface::Taskbar => 0,
+          EffectSurface::Taskbar | EffectSurface::Terminal => 0,
         },
         SurfaceSection::Transparency | SurfaceSection::Blur => 2,
       },
@@ -1232,6 +1262,10 @@ impl AppearanceApp {
       icon_label(
         argvus_tui::icons::WIDGET,
         tr(self.lang, "control_center.control_panel"),
+      ),
+      icon_label(
+        argvus_tui::icons::TERMINAL,
+        tr(self.lang, "control_center.terminal"),
       ),
     ]
   }
@@ -1373,6 +1407,9 @@ impl AppearanceApp {
       ),
       AppearancePage::ControlPanel => {
         format!("{root} › {}", tr(self.lang, "control_center.control_panel"))
+      }
+      AppearancePage::Terminal => {
+        format!("{root} › {}", tr(self.lang, "control_center.terminal"))
       }
       AppearancePage::SurfaceSection { surface, section } => format!(
         "{root} › {} › {}",
@@ -1764,6 +1801,10 @@ impl AppearanceApp {
         format!("{} ›", tr(self.lang, "control_center.transparency")),
         format!("{} ›", tr(self.lang, "control_center.blur")),
       ],
+      AppearancePage::Terminal => vec![
+        format!("{} ›", tr(self.lang, "control_center.transparency")),
+        format!("{} ›", tr(self.lang, "control_center.blur")),
+      ],
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => vec![
           format!(
@@ -1833,6 +1874,7 @@ impl AppearanceApp {
             })
             .unwrap_or_default(),
           EffectSurface::Taskbar => Vec::new(),
+          EffectSurface::Terminal => Vec::new(),
         },
         SurfaceSection::Transparency => vec![
           format!(
@@ -2005,6 +2047,7 @@ impl AppearanceApp {
         AppearancePage::Taskbar
           | AppearancePage::WidgetTelemetry
           | AppearancePage::ControlPanel
+          | AppearancePage::Terminal
           | AppearancePage::SurfaceSection { .. }
       ) {
         self.apply_surface_changes();
@@ -2059,7 +2102,10 @@ impl AppearanceApp {
       }
     } else if matches!(
       self.page,
-      AppearancePage::Taskbar | AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel
+      AppearancePage::Taskbar
+        | AppearancePage::WidgetTelemetry
+        | AppearancePage::ControlPanel
+        | AppearancePage::Terminal
     ) {
       tr(
         self.lang,
@@ -2393,14 +2439,14 @@ mod tests {
   #[test]
   /// Executes the `home_has_categories_and_spacing_is_nested` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_has_categories_and_spacing_is_nested() {
-    assert_eq!(app(AppearancePage::Home).rows().len(), 8);
+    assert_eq!(app(AppearancePage::Home).rows().len(), 9);
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
     assert_eq!(app(AppearancePage::Taskbar).rows().len(), 3);
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 4);
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 4);
     assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
-    assert_eq!(app(AppearancePage::Transparency).rows().len(), 4);
-    assert_eq!(app(AppearancePage::Blur).rows().len(), 4);
+    assert_eq!(app(AppearancePage::Transparency).rows().len(), 5);
+    assert_eq!(app(AppearancePage::Blur).rows().len(), 5);
   }
 
   #[test]

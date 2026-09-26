@@ -8,6 +8,8 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use serde_json::{Map, Value, json};
+
 use crate::config::paths;
 use crate::error::SettingsError;
 use crate::system::fonts::FontEntry;
@@ -133,7 +135,8 @@ pub struct FontSettings {
 impl FontSettings {
   /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn load() -> Self {
-    let state = parse_state(&fs::read_to_string(paths::fonts_file()).unwrap_or_default());
+    let state = canonical_state()
+      .unwrap_or_else(|| parse_state(&fs::read_to_string(paths::fonts_file()).unwrap_or_default()));
     let mut profile = HashMap::new();
     for target in FontTarget::ALL {
       let key = target.key();
@@ -412,7 +415,8 @@ impl FontSettings {
     let _ = writeln!(output, "subpixel={}", self.subpixel);
     let _ = writeln!(output, "custom_dpi={}", self.custom_dpi);
     let _ = writeln!(output, "dpi={}", self.dpi);
-    write_file(&paths::fonts_file(), &output)
+    write_file(&paths::fonts_file(), &output)?;
+    write_canonical_state(self)
   }
 
   /// Applies the `write_gtk_settings` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -699,6 +703,84 @@ fn write_file(path: &Path, contents: &str) -> Result<(), String> {
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
   }
   fs::write(path, contents).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn canonical_state() -> Option<HashMap<String, String>> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/fonts", "--raw"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  let value: Value = serde_json::from_slice(&output.stdout).ok()?;
+  let mut state = HashMap::new();
+  let targets = value.get("targets")?.as_object()?;
+  for target in FontTarget::ALL {
+    let Some(selection) = targets.get(target.key()).and_then(Value::as_object) else {
+      continue;
+    };
+    if let Some(value) = selection.get("family").and_then(Value::as_str) {
+      state.insert(format!("{}_family", target.key()), value.to_owned());
+    }
+    if let Some(value) = selection.get("style").and_then(Value::as_str) {
+      state.insert(format!("{}_style", target.key()), value.to_owned());
+    }
+    if let Some(value) = selection.get("size").and_then(Value::as_u64) {
+      state.insert(format!("{}_size", target.key()), value.to_string());
+    }
+  }
+  if let Some(rendering) = value.get("rendering").and_then(Value::as_object) {
+    if let Some(value) = rendering.get("antialias").and_then(Value::as_bool) {
+      state.insert("antialias".into(), value.to_string());
+    }
+    for key in ["hinting", "subpixel"] {
+      if let Some(value) = rendering.get(key).and_then(Value::as_str) {
+        state.insert(key.into(), value.to_owned());
+      }
+    }
+    if let Some(value) = rendering.get("custom_dpi").and_then(Value::as_bool) {
+      state.insert("custom_dpi".into(), value.to_string());
+    }
+    if let Some(value) = rendering.get("dpi").and_then(Value::as_u64) {
+      state.insert("dpi".into(), value.to_string());
+    }
+  }
+  (!state.is_empty()).then_some(state)
+}
+
+fn write_canonical_state(settings: &FontSettings) -> Result<(), String> {
+  let mut targets = Map::new();
+  for target in FontTarget::ALL {
+    let font = settings.get(target);
+    targets.insert(
+      target.key().into(),
+      json!({ "family": font.family, "style": font.style, "size": font.size }),
+    );
+  }
+  let value = json!({
+    "targets": targets,
+    "rendering": {
+      "antialias": settings.antialias,
+      "hinting": settings.hinting,
+      "subpixel": settings.subpixel,
+      "custom_dpi": settings.custom_dpi,
+      "dpi": settings.dpi,
+    }
+  });
+  let serialized = serde_json::to_string(&value).map_err(|error| error.to_string())?;
+  match Command::new("argvus-config")
+    .args(["set", "/fonts", &serialized])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .status()
+  {
+    Ok(status) if status.success() => Ok(()),
+    Ok(status) => Err(format!("argvus-config exited with {status}")),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Err(error) => Err(format!("argvus-config unavailable: {error}")),
+  }
 }
 
 /// Executes the `escape` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
