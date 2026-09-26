@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+
+exec argvus-tui-terminal --class argvus-control-center --term kitty \
+  --profile control-center -- argvus-control-center "$@"

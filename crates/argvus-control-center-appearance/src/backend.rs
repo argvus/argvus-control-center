@@ -958,9 +958,12 @@ pub fn load_page(
   }
   if matches!(
     page,
-    AppearancePage::Taskbar
+    AppearancePage::Effects
+      | AppearancePage::BlurIntensity
+      | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
+      | AppearancePage::ControlCenter
       | AppearancePage::SurfaceSection { .. }
   ) {
     state.taskbar_transparency = canonical_config
@@ -985,6 +988,10 @@ pub fn load_page(
       .as_ref()
       .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
       .unwrap_or_else(|| effect_value("blur", EffectSurface::Taskbar));
+    state.blur_global_value = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
+      .unwrap_or_else(|| effect_value("blur", EffectSurface::Taskbar));
     state.control_panel_blur = canonical_config
       .as_ref()
       .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
@@ -1003,6 +1010,12 @@ pub fn load_page(
       .as_ref()
       .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
       .unwrap_or_else(|| effect_value("blur", EffectSurface::Terminal));
+    state.control_center_transparency = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_integer(document, "/effects/transparency_control-center_value")
+      })
+      .unwrap_or_else(|| effect_value("transparency", EffectSurface::ControlCenter));
     state.taskbar_transparency_enabled = canonical_config
       .as_ref()
       .and_then(|document| canonical_config_bool(document, "/effects/transparency_taskbar_enabled"))
@@ -1043,6 +1056,16 @@ pub fn load_page(
       .as_ref()
       .and_then(|document| canonical_config_bool(document, "/effects/blur_terminal_enabled"))
       .unwrap_or_else(|| effect_enabled("blur", EffectSurface::Terminal));
+    state.control_center_transparency_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| {
+        canonical_config_bool(document, "/effects/transparency_control-center_enabled")
+      })
+      .unwrap_or_else(|| effect_enabled("transparency", EffectSurface::ControlCenter));
+    state.control_center_blur_enabled = canonical_config
+      .as_ref()
+      .and_then(|document| canonical_config_bool(document, "/effects/blur_control-center_enabled"))
+      .unwrap_or_else(|| effect_enabled("blur", EffectSurface::ControlCenter));
   }
   if page == AppearancePage::WidgetTelemetry
     || matches!(
@@ -1191,6 +1214,16 @@ pub fn set_effect_value(kind: &str, surface: EffectSurface, value: i32) -> Resul
   run_script(
     &script("effects-toggle.sh"),
     &[&format!("{kind}-value"), surface.key(), "set", &value],
+  )
+}
+
+pub fn set_effect_component(component: &str, enabled: bool) -> Result<(), String> {
+  if !matches!(component, "animations" | "transparency" | "blur") {
+    return Err("invalid effect component".into());
+  }
+  run_script(
+    &script("effects-toggle.sh"),
+    &[component, if enabled { "enable" } else { "disable" }],
   )
 }
 
@@ -1345,7 +1378,9 @@ pub fn choose_wallpaper() -> Result<(), String> {
     "--class".to_string(),
     "argvus-wallpaper-picker".to_string(),
     "--term".to_string(),
-    "foot".to_string(),
+    "kitty".to_string(),
+    "--profile".to_string(),
+    "wallpaper-picker".to_string(),
     "--".to_string(),
   ];
   for argument in &file_manager {

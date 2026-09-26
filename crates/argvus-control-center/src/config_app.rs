@@ -21,21 +21,53 @@ use crossterm::event::KeyCode;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
+use std::process::Command;
 
 /// Names the type `ConfigOperation`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 type ConfigOperation = Arc<dyn PrivilegedOperation>;
 
-/// The ARGVUS Control Center configuration screen. Currently hosts the
-/// option that enables/disables the decorative icons across the whole layout.
+fn read_effect_value(key: &str, fallback: i32) -> i32 {
+  Command::new("argvus-config")
+    .args(["get", &format!("/effects/{key}"), "--raw"])
+    .output()
+    .ok()
+    .and_then(|output| String::from_utf8(output.stdout).ok())
+    .and_then(|value| value.trim().parse::<i32>().ok())
+    .filter(|value| (0..=100).contains(value))
+    .unwrap_or(fallback)
+}
+
+fn read_effect_bool(key: &str, fallback: bool) -> bool {
+  match Command::new("argvus-config")
+    .args(["get", &format!("/effects/{key}"), "--raw"])
+    .output()
+    .ok()
+    .and_then(|output| String::from_utf8(output.stdout).ok())
+    .map(|value| value.trim().to_owned())
+    .as_deref()
+  {
+    Some("true") => true,
+    Some("false") => false,
+    _ => fallback,
+  }
+}
+
+/// The ARGVUS Control Center configuration screen owns Control Center-local
+/// effects and the existing decorative-icon preference.
 pub struct ConfigApp {
   lang: Lang,
   theme: Theme,
   pub icons: bool,
+  pub transparency_enabled: bool,
+  pub transparency_value: i32,
+  pub blur_enabled: bool,
+  blur_global_value: i32,
   selected: usize,
   pub status: Option<StatusMessage>,
   operation: ConfigOperation,
   jobs: JobManager,
   save_job: Option<JobHandle<()>>,
+  effect_job: Option<JobHandle<()>>,
 }
 
 impl ConfigApp {
@@ -61,21 +93,48 @@ impl ConfigApp {
       lang,
       theme,
       icons: config.icons(),
+      transparency_enabled: read_effect_bool("transparency_control-center_enabled", true),
+      transparency_value: read_effect_value("transparency_control-center_value", 50),
+      blur_enabled: read_effect_bool("blur_control-center_enabled", true),
+      blur_global_value: read_effect_value("blur_global_value", 50),
       selected: 0,
       status: None,
       operation,
       jobs: JobManager::default(),
       save_job: None,
+      effect_job: None,
     }
   }
 
   /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows(&self) -> Vec<String> {
-    vec![format!(
-      "[{}] {}",
-      if self.icons { "✓" } else { " " },
-      tr(self.lang, "control_center.icons")
-    )]
+    vec![
+      format!(
+        "[{}] {}",
+        if self.icons { "✓" } else { " " },
+        tr(self.lang, "control_center.icons")
+      ),
+      format!(
+        "[{}] {}",
+        if self.transparency_enabled {
+          "✓"
+        } else {
+          " "
+        },
+        tr(self.lang, "control_center.transparency")
+      ),
+      format!(
+        "{} > {}%",
+        tr(self.lang, "control_center.value"),
+        self.transparency_value
+      ),
+      format!(
+        "[{}] {}",
+        if self.blur_enabled { "✓" } else { " " },
+        tr(self.lang, "control_center.blur")
+      ),
+      format!("[ {} ]", tr(self.lang, "control_center.apply")),
+    ]
   }
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -87,17 +146,29 @@ impl ConfigApp {
   pub fn footer_hints(&self) -> &'static str {
     tr(
       self.lang,
-      "control_center.navigate_enter_space_toggle_esc_back_help",
+      "control_center.navigate_enter_apply_esc_back_help",
     )
   }
 
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     match key {
+      KeyCode::Left | KeyCode::Char('h') if self.selected == 2 => {
+        self.transparency_value = (self.transparency_value - 5).max(0);
+        false
+      }
+      KeyCode::Right | KeyCode::Char('l') if self.selected == 2 => {
+        self.transparency_value = (self.transparency_value + 5).min(100);
+        false
+      }
       KeyCode::Esc | KeyCode::Left => true,
       KeyCode::Enter | KeyCode::Char(' ') => {
-        if self.selected == 0 {
-          self.toggle();
+        match self.selected {
+          0 => self.toggle(),
+          1 => self.transparency_enabled = !self.transparency_enabled,
+          3 => self.blur_enabled = !self.blur_enabled,
+          4 => self.apply_effects(),
+          _ => {}
         }
         false
       }
@@ -118,6 +189,48 @@ impl ConfigApp {
   /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
     self.selected = self.selected.min(self.rows().len().saturating_sub(1));
+  }
+
+  fn apply_effects(&mut self) {
+    if self.effect_job.is_some() {
+      return;
+    }
+    let script = std::env::var_os("ARGVUS_SYSTEM_CONFIG")
+      .map(std::path::PathBuf::from)
+      .unwrap_or_else(|| std::path::PathBuf::from("/usr/share/argvus"))
+      .join("session/sh/effects-toggle.sh");
+    let transparency_enabled = if self.transparency_enabled {
+      "enabled"
+    } else {
+      "disabled"
+    };
+    let blur_enabled = if self.blur_enabled {
+      "enabled"
+    } else {
+      "disabled"
+    };
+    let transparency_value = self.transparency_value.to_string();
+    let blur_global_value = self.blur_global_value.to_string();
+    self.status = Some(StatusMessage {
+      kind: StatusKind::Info,
+      text: tr(self.lang, "control_center.saving_configuration").into(),
+    });
+    self.effect_job = Some(self.jobs.spawn(move |_| {
+      let status = Command::new(script)
+        .args([
+          "surface-apply",
+          "control-center",
+          transparency_enabled,
+          &transparency_value,
+          blur_enabled,
+          &blur_global_value,
+        ])
+        .status()
+        .map_err(|error| error.to_string())?;
+      status.success().then_some(()).ok_or_else(|| {
+        "Control Center effects could not be applied; values were not reported as applied".into()
+      })
+    }));
   }
 
   /// Applies the toggle in-session immediately and persists it through the
@@ -195,6 +308,24 @@ impl ConfigApp {
           ));
         }
       }
+      changed = true;
+    }
+    if let Some(job) = &self.effect_job
+      && let JobState::Finished(result) = job.try_state()
+    {
+      self.effect_job = None;
+      self.status = Some(StatusMessage {
+        kind: if result.is_ok() {
+          StatusKind::Success
+        } else {
+          StatusKind::Warning
+        },
+        text: if result.is_ok() {
+          tr(self.lang, "control_center.applied").into()
+        } else {
+          result.err().unwrap_or_default()
+        },
+      });
       changed = true;
     }
     changed

@@ -343,6 +343,7 @@ impl AppearanceApp {
       AppearancePage::WidgetTelemetry => Some(EffectSurface::WidgetTelemetry),
       AppearancePage::ControlPanel => Some(EffectSurface::ControlPanel),
       AppearancePage::Terminal => Some(EffectSurface::Terminal),
+      AppearancePage::ControlCenter => Some(EffectSurface::ControlCenter),
       AppearancePage::SurfaceSection { surface, .. } => Some(surface),
       _ => None,
     }
@@ -373,6 +374,12 @@ impl AppearanceApp {
         self.state.terminal_transparency,
         self.state.terminal_blur_enabled,
         self.state.terminal_blur,
+      ),
+      EffectSurface::ControlCenter => (
+        self.state.control_center_transparency_enabled,
+        self.state.control_center_transparency,
+        self.state.control_center_blur_enabled,
+        self.state.blur_global_value,
       ),
     };
     SurfaceDraft {
@@ -448,6 +455,13 @@ impl AppearanceApp {
           )
         }
         EffectSurface::Terminal => backend::apply_surface_effects(
+          draft.surface,
+          draft.transparency_enabled,
+          draft.transparency,
+          draft.blur_enabled,
+          draft.blur,
+        ),
+        EffectSurface::ControlCenter => backend::apply_surface_effects(
           draft.surface,
           draft.transparency_enabled,
           draft.transparency,
@@ -624,6 +638,9 @@ impl AppearanceApp {
         );
       }
       AppearancePage::Effects if self.selected == 0 => self.apply_toggle_animations(),
+      AppearancePage::Effects if self.selected == 1 => self.apply_toggle_transparency(),
+      AppearancePage::Effects if self.selected == 2 => self.apply_toggle_blur(),
+      AppearancePage::Effects if self.selected == 3 => self.go(AppearancePage::BlurIntensity),
       AppearancePage::Blur if self.selected == 1 => self.go(AppearancePage::BlurSurface {
         surface: EffectSurface::Taskbar,
       }),
@@ -667,6 +684,14 @@ impl AppearanceApp {
       }
       AppearancePage::Terminal => self.go(AppearancePage::SurfaceSection {
         surface: EffectSurface::Terminal,
+        section: if self.selected == 0 {
+          SurfaceSection::Transparency
+        } else {
+          SurfaceSection::Blur
+        },
+      }),
+      AppearancePage::ControlCenter => self.go(AppearancePage::SurfaceSection {
+        surface: EffectSurface::ControlCenter,
         section: if self.selected == 0 {
           SurfaceSection::Transparency
         } else {
@@ -717,7 +742,9 @@ impl AppearanceApp {
           }
         }
       },
-      AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => {}
+      AppearancePage::TransparencySurface { .. }
+      | AppearancePage::BlurSurface { .. }
+      | AppearancePage::BlurIntensity => {}
       AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
       AppearancePage::TaskbarSpaces => self.open_prompt(
         [
@@ -938,6 +965,7 @@ impl AppearanceApp {
         | AppearancePage::WidgetTelemetry
         | AppearancePage::ControlPanel
         | AppearancePage::Terminal
+        | AppearancePage::ControlCenter
         | AppearancePage::SurfaceSection { .. }
     ) || Self::effect_spec(self.page).is_some())
       && !self.buttons().is_empty()
@@ -963,7 +991,7 @@ impl AppearanceApp {
       let mut value = self.effect_editor_value();
       match key {
         KeyCode::Esc => return self.back(),
-        KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('-') => value = value.saturating_sub(5),
+        KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('-') => value = (value - 5).max(0),
         KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('+') => value = (value + 5).min(100),
         KeyCode::Home => value = 0,
         KeyCode::End => value = 100,
@@ -1004,7 +1032,8 @@ impl AppearanceApp {
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
-      | AppearancePage::Terminal => {
+      | AppearancePage::Terminal
+      | AppearancePage::ControlCenter => {
         self.go(AppearancePage::Home);
       }
       AppearancePage::OfficialThemes => self.go(AppearancePage::Themes),
@@ -1036,7 +1065,9 @@ impl AppearanceApp {
         self.go(AppearancePage::SpacesBordersPosition);
       }
       AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
-      AppearancePage::Transparency | AppearancePage::Blur => self.go(AppearancePage::Effects),
+      AppearancePage::Transparency | AppearancePage::Blur | AppearancePage::BlurIntensity => {
+        self.go(AppearancePage::Effects)
+      }
       AppearancePage::TransparencySurface { .. } => {
         self.effect_draft = None;
         self.go(AppearancePage::Transparency);
@@ -1051,6 +1082,7 @@ impl AppearanceApp {
           EffectSurface::WidgetTelemetry => AppearancePage::WidgetTelemetry,
           EffectSurface::ControlPanel => AppearancePage::ControlPanel,
           EffectSurface::Terminal => AppearancePage::Terminal,
+          EffectSurface::ControlCenter => AppearancePage::ControlCenter,
         });
       }
       AppearancePage::Prompt { .. } => {}
@@ -1089,11 +1121,13 @@ impl AppearanceApp {
       | AppearancePage::Effects
       | AppearancePage::Transparency
       | AppearancePage::Blur
+      | AppearancePage::BlurIntensity
       | AppearancePage::TaskbarPosition
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
       | AppearancePage::Terminal
+      | AppearancePage::ControlCenter
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
@@ -1118,10 +1152,27 @@ impl AppearanceApp {
       move || backend::set_animations(value),
     );
   }
+
+  fn apply_toggle_transparency(&mut self) {
+    let value = !self.state.transparency;
+    self.apply(
+      tr(self.lang, "control_center.transparency_applied").into(),
+      move || backend::set_effect_component("transparency", value),
+    );
+  }
+
+  fn apply_toggle_blur(&mut self) {
+    let value = !self.state.blur;
+    self.apply(
+      tr(self.lang, "control_center.blur_applied").into(),
+      move || backend::set_effect_component("blur", value),
+    );
+  }
   fn effect_spec(page: AppearancePage) -> Option<(&'static str, EffectSurface)> {
     match page {
       AppearancePage::TransparencySurface { surface } => Some(("transparency", surface)),
       AppearancePage::BlurSurface { surface } => Some(("blur", surface)),
+      AppearancePage::BlurIntensity => Some(("blur", EffectSurface::Taskbar)),
       _ => None,
     }
   }
@@ -1134,6 +1185,9 @@ impl AppearanceApp {
       ("blur", EffectSurface::Taskbar) => self.state.taskbar_blur,
       ("blur", EffectSurface::ControlPanel) => self.state.control_panel_blur,
       ("blur", EffectSurface::WidgetTelemetry) => self.state.widget_telemetry_blur,
+      ("blur", EffectSurface::Terminal) | ("blur", EffectSurface::ControlCenter) => {
+        self.state.blur_global_value
+      }
       _ => 0,
     }
   }
@@ -1156,6 +1210,8 @@ impl AppearanceApp {
     self.effect_draft = None;
     let back = if kind == "transparency" {
       AppearancePage::Transparency
+    } else if self.page == AppearancePage::BlurIntensity {
+      AppearancePage::Effects
     } else {
       AppearancePage::Blur
     };
@@ -1175,20 +1231,22 @@ impl AppearanceApp {
       AppearancePage::CustomThemes => self.state.custom_themes.len(),
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
-      AppearancePage::Effects => 1,
-      AppearancePage::Transparency => 4,
+      AppearancePage::Effects => 4,
+      AppearancePage::BlurIntensity => 1,
+      AppearancePage::Transparency => EffectSurface::ALL.len() + 1,
       AppearancePage::Blur => 2,
       AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => 1,
       AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
       AppearancePage::Taskbar => 3,
       AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => 4,
       AppearancePage::Terminal => 2,
+      AppearancePage::ControlCenter => 2,
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => 2,
         SurfaceSection::Sessions => match surface {
           EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL.len(),
           EffectSurface::ControlPanel => self.control_panel_cards().len(),
-          EffectSurface::Taskbar | EffectSurface::Terminal => 0,
+          EffectSurface::Taskbar | EffectSurface::Terminal | EffectSurface::ControlCenter => 0,
         },
         SurfaceSection::Transparency => 2,
         SurfaceSection::Blur => 1,
@@ -1416,6 +1474,15 @@ impl AppearanceApp {
       AppearancePage::Terminal => {
         format!("{root} › {}", tr(self.lang, "control_center.terminal"))
       }
+      AppearancePage::ControlCenter => format!(
+        "{root} › {}",
+        tr(self.lang, "control_center.control_center_surface")
+      ),
+      AppearancePage::BlurIntensity => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.effects"),
+        tr(self.lang, "control_center.blur_intensity")
+      ),
       AppearancePage::SurfaceSection { surface, section } => format!(
         "{root} › {} › {}",
         tr(self.lang, surface.label_key()),
@@ -1613,19 +1680,46 @@ impl AppearanceApp {
         ),
         tr(self.lang, "control_center.reset_to_theme_default").into(),
       ],
-      AppearancePage::Effects => vec![format!(
-        "[{}] {} · {}",
-        if self.state.animations { "x" } else { " " },
-        icon_label(
-          argvus_tui::icons::SUCCESS,
-          tr(self.lang, "control_center.animations")
+      AppearancePage::Effects => vec![
+        format!(
+          "[{}] {} · {}",
+          if self.state.animations { "x" } else { " " },
+          icon_label(
+            argvus_tui::icons::SUCCESS,
+            tr(self.lang, "control_center.animations")
+          ),
+          if self.state.animations {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
         ),
-        if self.state.animations {
-          tr(self.lang, "control_center.enabled")
-        } else {
-          tr(self.lang, "control_center.disabled")
-        }
-      )],
+        format!(
+          "[{}] {} · {}",
+          if self.state.transparency { "x" } else { " " },
+          tr(self.lang, "control_center.transparency"),
+          if self.state.transparency {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
+        ),
+        format!(
+          "[{}] {} · {}",
+          if self.state.blur { "x" } else { " " },
+          tr(self.lang, "control_center.blur"),
+          if self.state.blur {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
+        ),
+        format!(
+          "{} > {}%",
+          tr(self.lang, "control_center.blur_intensity"),
+          self.state.blur_global_value
+        ),
+      ],
       AppearancePage::Transparency => std::iter::once(format!(
         "[{}] {} · {}",
         if self.state.transparency { "x" } else { " " },
@@ -1674,6 +1768,11 @@ impl AppearanceApp {
         self.effect_value("blur", EffectSurface::Taskbar)
       )))
       .collect(),
+      AppearancePage::BlurIntensity => vec![format!(
+        "{}: {}%",
+        tr(self.lang, "control_center.blur_intensity"),
+        self.effect_editor_value()
+      )],
       AppearancePage::TransparencySurface { surface: _surface } => vec![format!(
         "{}: {}%",
         tr(self.lang, "control_center.transparency"),
@@ -1806,6 +1905,10 @@ impl AppearanceApp {
         format!("{} ›", tr(self.lang, "control_center.transparency")),
         format!("{} ›", tr(self.lang, "control_center.blur")),
       ],
+      AppearancePage::ControlCenter => vec![
+        format!("{} ›", tr(self.lang, "control_center.transparency")),
+        format!("{} ›", tr(self.lang, "control_center.blur")),
+      ],
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => vec![
           format!(
@@ -1876,6 +1979,7 @@ impl AppearanceApp {
             .unwrap_or_default(),
           EffectSurface::Taskbar => Vec::new(),
           EffectSurface::Terminal => Vec::new(),
+          EffectSurface::ControlCenter => Vec::new(),
         },
         SurfaceSection::Transparency => vec![
           format!(
@@ -2042,6 +2146,7 @@ impl AppearanceApp {
           | AppearancePage::WidgetTelemetry
           | AppearancePage::ControlPanel
           | AppearancePage::Terminal
+          | AppearancePage::ControlCenter
           | AppearancePage::SurfaceSection { .. }
       ) {
         self.apply_surface_changes();
@@ -2100,6 +2205,7 @@ impl AppearanceApp {
         | AppearancePage::WidgetTelemetry
         | AppearancePage::ControlPanel
         | AppearancePage::Terminal
+        | AppearancePage::ControlCenter
     ) {
       tr(
         self.lang,
@@ -2438,11 +2544,12 @@ mod tests {
     assert_eq!(app(AppearancePage::Taskbar).rows().len(), 3);
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 4);
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 4);
-    assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
+    assert_eq!(app(AppearancePage::Effects).rows().len(), 4);
     assert_eq!(app(AppearancePage::Transparency).rows().len(), 5);
     // Hyprland blur has one global intensity; individual surfaces expose
     // enable/disable controls in their nested pages.
     assert_eq!(app(AppearancePage::Blur).rows().len(), 2);
+    assert_eq!(app(AppearancePage::ControlCenter).rows().len(), 2);
   }
 
   #[test]
@@ -2702,5 +2809,33 @@ mod tests {
         assert!(application.action.is_some());
       }
     }
+  }
+
+  #[test]
+  fn global_blur_intensity_is_staged_and_bounded() {
+    let mut application = app(AppearancePage::BlurIntensity);
+    application.state.blur_global_value = 50;
+    application.effect_draft = Some(50);
+    application.handle(KeyCode::Char('+'));
+    assert_eq!(application.effect_editor_value(), 55);
+    application.effect_draft = Some(100);
+    application.handle(KeyCode::Char('+'));
+    assert_eq!(application.effect_editor_value(), 100);
+    application.effect_draft = Some(0);
+    application.handle(KeyCode::Char('-'));
+    assert_eq!(application.effect_editor_value(), 0);
+    assert!(application.action.is_none());
+    assert_eq!(application.buttons().len(), 1);
+  }
+
+  #[test]
+  fn control_center_surface_uses_global_blur_and_independent_transparency() {
+    let mut application = app(AppearancePage::ControlCenter);
+    application.surface_draft = Some(application.make_surface_draft(EffectSurface::ControlCenter));
+    let draft = application.surface_draft().unwrap();
+    assert_eq!(draft.blur, application.state.blur_global_value);
+    assert_eq!(draft.transparency, 50);
+    assert!(draft.transparency_enabled);
+    assert!(draft.blur_enabled);
   }
 }

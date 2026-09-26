@@ -1,12 +1,11 @@
 [Desktop Entry]
 Type=Application
-# The desktop entry launches the keyboard-first TUI through Foot so the ARGVUS
-# window rules can identify it by the stable application ID.
+# The desktop entry delegates terminal policy to the shared TUI app launcher.
 Name=ARGVUS Control Center
 Name[pt_BR]=Central de Controle ARGVUS
 Comment=Configure ARGVUS from the terminal
 Comment[pt_BR]=Configure o ARGVUS pelo terminal
-Exec=foot --app-id=argvus-control-center -e argvus-control-center
+Exec=argvus-control-center-launcher
 Icon=preferences-system
 Terminal=false
 Categories=Settings;
