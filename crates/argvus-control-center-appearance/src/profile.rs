@@ -298,7 +298,7 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
   if !effects_path.is_file() {
     write_atomic(
       &effects_path,
-      "taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\nterminal.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\nterminal.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\nterminal.blur.enabled=enabled\n",
+      "taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\nterminal.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\nblur.global=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\nterminal.blur.enabled=enabled\n",
     )?;
   }
   let mut files = Vec::new();
@@ -882,6 +882,9 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
             | "taskbar.blur"
             | "control-panel.blur"
             | "widget-telemetry.blur"
+            | "blur.global"
+            // Accept the legacy key while importing older profiles; runtime
+            // consumers now use blur.global and the canonical global value.
             | "terminal.blur"
             | "taskbar.blur.enabled"
             | "control-panel.blur.enabled"
@@ -1407,7 +1410,7 @@ mod tests {
     assert!(validate_content(FileId::Effects, b"maybe\n").is_err());
     assert!(validate_content(
       FileId::ThemeEffects,
-      b"taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\nterminal.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\nterminal.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\nterminal.blur.enabled=enabled\n"
+      b"taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\nterminal.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\nblur.global=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\nterminal.blur.enabled=enabled\n"
     )
     .is_ok());
     assert!(validate_content(FileId::ThemeEffects, b"taskbar.transparency=101\n").is_err());

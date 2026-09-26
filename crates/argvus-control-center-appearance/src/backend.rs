@@ -1001,7 +1001,7 @@ pub fn load_page(
       .unwrap_or_else(|| effect_value("transparency", EffectSurface::Terminal));
     state.terminal_blur = canonical_config
       .as_ref()
-      .and_then(|document| canonical_config_integer(document, "/effects/blur_terminal_value"))
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
       .unwrap_or_else(|| effect_value("blur", EffectSurface::Terminal));
     state.taskbar_transparency_enabled = canonical_config
       .as_ref()
