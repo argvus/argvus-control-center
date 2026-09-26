@@ -624,6 +624,9 @@ impl AppearanceApp {
         );
       }
       AppearancePage::Effects if self.selected == 0 => self.apply_toggle_animations(),
+      AppearancePage::Blur if self.selected == 1 => self.go(AppearancePage::BlurSurface {
+        surface: EffectSurface::Taskbar,
+      }),
       AppearancePage::Taskbar if self.selected < 3 => self.go(AppearancePage::SurfaceSection {
         surface: EffectSurface::Taskbar,
         section: match self.selected {
@@ -1173,7 +1176,8 @@ impl AppearanceApp {
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
       AppearancePage::Effects => 1,
-      AppearancePage::Transparency | AppearancePage::Blur => 4,
+      AppearancePage::Transparency => 4,
+      AppearancePage::Blur => 2,
       AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => 1,
       AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
       AppearancePage::Taskbar => 3,
@@ -1186,7 +1190,8 @@ impl AppearanceApp {
           EffectSurface::ControlPanel => self.control_panel_cards().len(),
           EffectSurface::Taskbar | EffectSurface::Terminal => 0,
         },
-        SurfaceSection::Transparency | SurfaceSection::Blur => 2,
+        SurfaceSection::Transparency => 2,
+        SurfaceSection::Blur => 1,
       },
       AppearancePage::Wallpapers => WallpaperCollection::ALL.len() + 1,
       AppearancePage::WallpaperModes { .. } => WallpaperMode::ALL.len(),
@@ -1660,18 +1665,14 @@ impl AppearanceApp {
           tr(self.lang, "control_center.disabled")
         }
       ))
-      .chain(
-        EffectSurface::ALL
-          .into_iter()
-          .map(|surface| {
-            format!(
-              "{} › {}%",
-              icon_label(argvus_tui::icons::INFO, tr(self.lang, surface.label_key())),
-              self.effect_value("blur", surface)
-            )
-          })
-          .collect::<Vec<_>>(),
-      )
+      .chain(std::iter::once(format!(
+        "{} › {}%",
+        icon_label(
+          argvus_tui::icons::INFO,
+          tr(self.lang, "control_center.blur")
+        ),
+        self.effect_value("blur", EffectSurface::Taskbar)
+      )))
       .collect(),
       AppearancePage::TransparencySurface { surface: _surface } => vec![format!(
         "{}: {}%",
@@ -1895,22 +1896,15 @@ impl AppearanceApp {
             self.surface_draft().map_or(50, |draft| draft.transparency)
           ),
         ],
-        SurfaceSection::Blur => vec![
-          format!(
-            "[{}] {}",
-            if self.surface_draft().is_some_and(|draft| draft.blur_enabled) {
-              "x"
-            } else {
-              " "
-            },
-            tr(self.lang, "control_center.enable")
-          ),
-          format!(
-            "{} > {}%",
-            tr(self.lang, "control_center.value"),
-            self.surface_draft().map_or(50, |draft| draft.blur)
-          ),
-        ],
+        SurfaceSection::Blur => vec![format!(
+          "[{}] {}",
+          if self.surface_draft().is_some_and(|draft| draft.blur_enabled) {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, "control_center.enable")
+        )],
       },
       AppearancePage::WindowSpaces => vec![
         format!(
@@ -2446,7 +2440,9 @@ mod tests {
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 4);
     assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
     assert_eq!(app(AppearancePage::Transparency).rows().len(), 5);
-    assert_eq!(app(AppearancePage::Blur).rows().len(), 5);
+    // Hyprland blur has one global intensity; individual surfaces expose
+    // enable/disable controls in their nested pages.
+    assert_eq!(app(AppearancePage::Blur).rows().len(), 2);
   }
 
   #[test]
@@ -2680,24 +2676,25 @@ mod tests {
         assert!(!footer_hint.contains("tab apply"));
 
         application.handle(KeyCode::Down);
-        assert_eq!(application.selected, 1);
+        assert_eq!(
+          application.selected,
+          if section == SurfaceSection::Blur {
+            0
+          } else {
+            1
+          }
+        );
         application.handle(KeyCode::Up);
         assert_eq!(application.selected, 0);
 
-        application.selected = 1;
-        let initial_value = if section == SurfaceSection::Transparency {
-          application.surface_draft().unwrap().transparency
-        } else {
-          application.surface_draft().unwrap().blur
-        };
-        application.handle(KeyCode::Char('+'));
-        assert_eq!(application.selected, 1);
-        let adjusted_value = if section == SurfaceSection::Transparency {
-          application.surface_draft().unwrap().transparency
-        } else {
-          application.surface_draft().unwrap().blur
-        };
-        assert_eq!(adjusted_value, (initial_value + 5).min(100));
+        if section == SurfaceSection::Transparency {
+          application.selected = 1;
+          let initial_value = application.surface_draft().unwrap().transparency;
+          application.handle(KeyCode::Char('+'));
+          assert_eq!(application.selected, 1);
+          let adjusted_value = application.surface_draft().unwrap().transparency;
+          assert_eq!(adjusted_value, (initial_value + 5).min(100));
+        }
 
         application.handle(KeyCode::Tab);
         assert!(application.on_buttons);

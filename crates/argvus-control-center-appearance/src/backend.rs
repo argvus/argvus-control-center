@@ -983,17 +983,15 @@ pub fn load_page(
       .unwrap_or_else(|| effect_value("transparency", EffectSurface::WidgetTelemetry));
     state.taskbar_blur = canonical_config
       .as_ref()
-      .and_then(|document| canonical_config_integer(document, "/effects/blur_taskbar_value"))
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
       .unwrap_or_else(|| effect_value("blur", EffectSurface::Taskbar));
     state.control_panel_blur = canonical_config
       .as_ref()
-      .and_then(|document| canonical_config_integer(document, "/effects/blur_control-panel_value"))
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
       .unwrap_or_else(|| effect_value("blur", EffectSurface::ControlPanel));
     state.widget_telemetry_blur = canonical_config
       .as_ref()
-      .and_then(|document| {
-        canonical_config_integer(document, "/effects/blur_widget-telemetry_value")
-      })
+      .and_then(|document| canonical_config_integer(document, "/effects/blur_global_value"))
       .unwrap_or_else(|| effect_value("blur", EffectSurface::WidgetTelemetry));
     state.terminal_transparency = canonical_config
       .as_ref()
