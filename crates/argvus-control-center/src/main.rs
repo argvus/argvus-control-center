@@ -119,6 +119,10 @@ fn main() -> Result<()> {
       #[cfg(feature = "appearance")]
       {
         domain_dirty |= app.appearance.poll();
+        if app.appearance.take_theme_dirty() {
+          app.refresh_theme();
+          domain_dirty = true;
+        }
       }
       if domain_dirty {
         dirty = true;

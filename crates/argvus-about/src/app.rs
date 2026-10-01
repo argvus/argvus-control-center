@@ -120,6 +120,11 @@ impl App {
     Self::with_context(initial_tab, lang, Theme::load())
   }
 
+  /// Replaces the semantic theme used by this page.
+  pub fn set_theme(&mut self, theme: &Theme) {
+    self.theme = theme.clone();
+  }
+
   /// Constructs `with_context` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn with_context(initial_tab: Tab, lang: Lang, theme: Theme) -> Self {
     let missing = na(lang);

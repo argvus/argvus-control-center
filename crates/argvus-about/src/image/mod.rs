@@ -158,12 +158,7 @@ fn color_supported() -> bool {
     return true;
   }
   env::var("TERM")
-    .map(|term| {
-      term.contains("256color")
-        || term.starts_with("xterm")
-        || term.contains("kitty")
-        || term.contains("foot")
-    })
+    .map(|term| term.contains("256color") || term.starts_with("xterm") || term.contains("kitty"))
     .unwrap_or(false)
 }
 

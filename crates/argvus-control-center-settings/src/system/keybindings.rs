@@ -3,7 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command};
 
 use argvus_i18n::Lang;
 
@@ -36,20 +36,6 @@ struct Manifest {
   version: u32,
   bindings: Vec<Binding>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-/// Represents `Overrides`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-pub struct Overrides {
-  pub version: u32,
-  #[serde(default)]
-  pub keybindings: BTreeMap<String, Override>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-/// Represents `Override`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-pub struct Override {
-  pub keys: Option<String>,
-  pub enabled: Option<bool>,
-}
-
 /// Executes the `manifest_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn manifest_path() -> PathBuf {
   std::env::var_os("ARGVUS_SYSTEM_CONFIG")
@@ -57,17 +43,9 @@ pub fn manifest_path() -> PathBuf {
     .unwrap_or_else(|| PathBuf::from("/usr/share/argvus"))
     .join("hyprland/keybindings.json")
 }
-/// Executes the `config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn config_path() -> PathBuf {
-  crate::config::paths::argvus_config_home().join("keybindings.toml")
-}
-/// Executes the `generated_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn generated_path() -> PathBuf {
-  crate::config::paths::argvus_config_home().join("generated/hypr/keybindings.lua")
-}
 /// Executes the `generated_cheatsheet_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn generated_cheatsheet_path() -> PathBuf {
-  crate::config::paths::argvus_config_home().join("generated/hypr/keybindings.txt")
+  crate::config::paths::argvus_data_home().join("generated/hypr/keybindings.txt")
 }
 
 /// Executes the `cheatsheet_description` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -164,6 +142,10 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
       "Abre os wallpapers do Control Center",
     ),
     "appearance.theme" => ("Open theme selector", "Abre o seletor de temas"),
+    "appearance.layout_mode" => (
+      "Open Sticky/Float mode picker",
+      "Abre o seletor de modo Sticky/Float",
+    ),
     "session.idle_timeout" => (
       "Choose inactivity lock timeout",
       "Escolhe o tempo de bloqueio por inatividade",
@@ -232,28 +214,73 @@ pub fn load() -> Vec<Binding> {
   let Ok(manifest) = serde_json::from_str::<Manifest>(&raw) else {
     return Vec::new();
   };
-  let overrides = fs::read_to_string(config_path())
-    .ok()
-    .and_then(|v| toml::from_str::<Overrides>(&v).ok())
-    .unwrap_or_default();
+  let canonical_shortcuts = load_canonical_shortcuts();
   manifest
     .bindings
     .into_iter()
     .map(|mut b| {
       b.keys = normalize_keys(&b.keys).unwrap_or(b.keys);
-      if let Some(o) = overrides.keybindings.get(&b.id) {
-        if let Some(k) = &o.keys {
-          b.keys = normalize_keys(k).unwrap_or(b.keys)
+      match canonical_shortcuts
+        .as_ref()
+        .and_then(|shortcuts| shortcuts.get(&config_key_for_binding(&b.id)))
+      {
+        Some(serde_json::Value::String(keys)) => {
+          b.keys = normalize_keys(keys).unwrap_or(b.keys);
+          b.enabled = true;
         }
-        if let Some(e) = o.enabled {
-          b.enabled = e
-        }
-      } else {
-        b.enabled = true
+        Some(serde_json::Value::Null) => b.enabled = false,
+        _ => b.enabled = true,
       };
       b
     })
     .collect()
+}
+
+fn config_key_for_binding(id: &str) -> String {
+  match id {
+    "window.close" => "close_window",
+    "window.drag_mouse" => "drag_window__floating_window_only",
+    "window.maximize" => "maximize_window__toggle",
+    "app.browser" => "open_browser",
+    "system.about" => "open_about",
+    "appearance.theme" => "open_theme_selector",
+    _ => return id.replace(['.', '-'], "_"),
+  }
+  .into()
+}
+
+fn load_canonical_shortcuts() -> Option<serde_json::Map<String, serde_json::Value>> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/keyboard_shortcuts", "--effective"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  serde_json::from_slice::<serde_json::Value>(&output.stdout)
+    .ok()?
+    .as_object()
+    .cloned()
+}
+
+fn persist_canonical_shortcut(id: &str, shortcut: Option<&str>) -> Result<(), String> {
+  let pointer = format!("/keyboard_shortcuts/{}", config_key_for_binding(id));
+  let value = shortcut
+    .map(|keys| serde_json::to_string(keys).map_err(|error| error.to_string()))
+    .transpose()?
+    .unwrap_or_else(|| "null".into());
+  let status = Command::new("argvus-config")
+    .args(["set", &pointer, &value])
+    .status()
+    .map_err(|error| format!("failed to persist shortcut: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the shortcut".into());
+  }
+  Ok(())
+}
+
+fn project_canonical_config() -> Result<(), String> {
+  argvus_control_center_core::config::reload_argvus_config_service()
 }
 /// Executes the `normalize_keys` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn normalize_keys(value: &str) -> Result<String, String> {
@@ -400,101 +427,44 @@ pub fn save_override(
   id: &str,
   keys: Option<String>,
   enabled: Option<bool>,
-  bindings: &[Binding],
+  _bindings: &[Binding],
 ) -> Result<(), String> {
-  let mut file = fs::read_to_string(config_path())
-    .ok()
-    .and_then(|v| toml::from_str::<Overrides>(&v).ok())
-    .unwrap_or(Overrides {
-      version: 1,
-      keybindings: BTreeMap::new(),
-    });
   let default = defaults()
     .into_iter()
     .find(|b| b.id == id)
     .ok_or("unknown keybinding")?;
   let normalized_keys = keys.as_deref().map(normalize_keys).transpose()?;
-  if normalized_keys.as_deref() == Some(normalize_keys(&default.keys)?.as_str())
-    && enabled.unwrap_or(true)
-  {
-    file.keybindings.remove(id);
+  let shortcut = if enabled == Some(false) {
+    None
   } else {
-    file.keybindings.insert(
-      id.into(),
-      Override {
-        keys: normalized_keys,
-        enabled,
-      },
-    );
-  }
-  let target = config_path();
-  fs::create_dir_all(target.parent().ok_or("invalid config path")?).map_err(|e| e.to_string())?;
-  let tmp = target.with_extension("toml.tmp");
-  fs::write(
-    &tmp,
-    toml::to_string_pretty(&file).map_err(|e| e.to_string())?,
-  )
-  .map_err(|e| e.to_string())?;
-  fs::rename(tmp, target).map_err(|e| e.to_string())?;
-  generate(bindings)
+    Some(normalized_keys.as_deref().unwrap_or(&default.keys))
+  };
+  persist_canonical_shortcut(id, shortcut)?;
+  project_canonical_config()
 }
 /// Executes the `restore_all` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn restore_all(bindings: &[Binding]) -> Result<(), String> {
-  let p = config_path();
-  if p.exists() {
-    fs::remove_file(p).map_err(|e| e.to_string())?;
+  for binding in defaults()
+    .into_iter()
+    .filter(|binding| binding.configurable)
+  {
+    persist_canonical_shortcut(&binding.id, Some(&binding.keys))?;
   }
+  project_canonical_config()?;
   generate(bindings)
 }
 /// Executes the `restore` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn restore(id: &str, bindings: &[Binding]) -> Result<(), String> {
-  let mut file = fs::read_to_string(config_path())
-    .ok()
-    .and_then(|v| toml::from_str::<Overrides>(&v).ok())
-    .unwrap_or_default();
-  file.keybindings.remove(id);
-  let target = config_path();
-  fs::create_dir_all(target.parent().ok_or("invalid config path")?).map_err(|e| e.to_string())?;
-  fs::write(
-    &target,
-    toml::to_string_pretty(&file).map_err(|e| e.to_string())?,
-  )
-  .map_err(|e| e.to_string())?;
+  let default = defaults()
+    .into_iter()
+    .find(|binding| binding.id == id)
+    .ok_or("unknown keybinding")?;
+  persist_canonical_shortcut(id, Some(&default.keys))?;
+  project_canonical_config()?;
   generate(bindings)
 }
 /// Executes the `generate` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn generate(bindings: &[Binding]) -> Result<(), String> {
-  let overrides = fs::read_to_string(config_path())
-    .ok()
-    .and_then(|v| toml::from_str::<Overrides>(&v).ok())
-    .unwrap_or_default();
-  let mut out = String::from(
-    "-- Generated by argvus-control-center; defaults remain in argvus-hyprland.\nreturn {\n",
-  );
-  for (id, value) in overrides.keybindings {
-    out.push_str(&format!("  [{}] = {{", lua_key(&id)));
-    if let Some(keys) = value.keys {
-      let keys = normalize_keys(&keys)?;
-      out.push_str(&format!(" keys = {:?},", keys));
-    }
-    if let Some(enabled) = value.enabled {
-      out.push_str(&format!(" enabled = {},", enabled));
-    }
-    out.push_str(" },\n");
-  }
-  out.push_str("}\n");
-  let p = generated_path();
-  fs::create_dir_all(p.parent().ok_or("invalid generated path")?).map_err(|e| e.to_string())?;
-  let tmp = p.with_extension("lua.tmp");
-  fs::write(&tmp, out).map_err(|e| e.to_string())?;
-  if Command::new("luac")
-    .args(["-p", tmp.to_str().unwrap_or("")])
-    .status()
-    .is_ok_and(|status| !status.success())
-  {
-    return Err("generated keybindings Lua is invalid".into());
-  }
-  fs::rename(tmp, p).map_err(|e| e.to_string())?;
   let mut cheatsheet =
     String::from("ARGVUS effective Hyprland shortcuts\n===================================\n\n");
   let language = argvus_i18n::Lang::detect();
@@ -563,11 +533,6 @@ fn defaults() -> Vec<Binding> {
     .map(|m| m.bindings)
     .unwrap_or_default()
 }
-/// Executes the `lua_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn lua_key(s: &str) -> String {
-  format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;

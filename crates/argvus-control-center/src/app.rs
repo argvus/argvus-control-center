@@ -1455,6 +1455,46 @@ impl App {
     self.route = Route::Settings;
   }
 
+  /// Reloads the semantic theme and propagates it to every page.
+  ///
+  /// Appearance changes are written to the generated theme files by external
+  /// scripts, so the process must re-read them instead of reusing the palette
+  /// captured at startup.
+  pub fn refresh_theme(&mut self) {
+    let theme = Theme::load();
+    self.theme = theme.clone();
+    self.settings.set_theme(&theme);
+    self.config.set_theme(&theme);
+    #[cfg(feature = "about")]
+    self.about.set_theme(&theme);
+    #[cfg(feature = "hardware")]
+    self.hardware.set_theme(&theme);
+    #[cfg(feature = "services")]
+    self.services.set_theme(&theme);
+    #[cfg(feature = "network")]
+    self.network.set_theme(&theme);
+    #[cfg(feature = "audio")]
+    self.audio.set_theme(&theme);
+    #[cfg(feature = "bluetooth")]
+    self.bluetooth.set_theme(&theme);
+    #[cfg(feature = "boot")]
+    self.boot.set_theme(&theme);
+    #[cfg(feature = "packages")]
+    self.packages.set_theme(&theme);
+    #[cfg(feature = "storage")]
+    self.storage.set_theme(&theme);
+    #[cfg(feature = "diagnostics")]
+    self.diagnostics.set_theme(&theme);
+    #[cfg(feature = "power")]
+    self.power.set_theme(&theme);
+    #[cfg(feature = "session")]
+    self.session.set_theme(&theme);
+    #[cfg(feature = "displays")]
+    self.displays.set_theme(&theme);
+    #[cfg(feature = "appearance")]
+    self.appearance.set_theme(&theme);
+  }
+
   /// Executes the `begin_global_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn begin_global_search(&mut self) {
     self.search_active = true;

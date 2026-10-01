@@ -27,6 +27,16 @@ pub fn argvus_config_home() -> PathBuf {
     .join("argvus")
 }
 
+/// Returns the mutable runtime tree inside the ARGVUS configuration root.
+///
+/// The root holds exactly two entries: `config/` (the canonical modular
+/// document) and `data/` (every managed component tree, generated file and
+/// state marker). Prefer this over joining onto [`argvus_config_home`]
+/// directly so a new consumer cannot reintroduce a root-level path.
+pub fn argvus_data_home() -> PathBuf {
+  argvus_config_home().join("data")
+}
+
 /// Executes the `legacy_argvus_state_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn legacy_argvus_state_home() -> PathBuf {
   let base = env::var_os("XDG_STATE_HOME")
@@ -37,7 +47,7 @@ pub fn legacy_argvus_state_home() -> PathBuf {
 
 /// Executes the `active_argvus_theme_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn active_argvus_theme_file() -> PathBuf {
-  argvus_config_home().join(".active-theme")
+  argvus_data_home().join(".active-theme")
 }
 
 /// Executes the `cache_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -56,12 +66,12 @@ pub fn data_home() -> PathBuf {
 
 /// Executes the `defaults_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn defaults_file() -> PathBuf {
-  argvus_config_home().join("defaults.json")
+  argvus_data_home().join("control-center/defaults.json")
 }
 
 /// Executes the `fonts_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn fonts_file() -> PathBuf {
-  argvus_config_home().join("fonts.conf")
+  argvus_data_home().join("generated/fonts.conf")
 }
 
 /// Executes the `system_config_root` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

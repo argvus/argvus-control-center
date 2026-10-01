@@ -8,7 +8,8 @@ use crate::model::{
   WidgetTelemetryBlock, WidgetTelemetryBlocks, canonical_theme_id, normalize_hex_color,
 };
 use argvus_control_center_core::{
-  paths::{argvus_config_home, cache_home, system_config_root},
+  config::reload_argvus_config_service,
+  paths::{argvus_data_home, cache_home, system_config_root},
   process::{ProcessRequest, ProcessRunner, SystemProcessRunner},
   sanitize::terminal_text,
 };
@@ -41,7 +42,8 @@ fn script(name: &str) -> PathBuf {
     | "accent-switch.sh"
     | "hypr-wallpaper-pick.sh"
     | "taskbar-right-2-mode.sh"
-    | "brightness-switch.sh" => "appearance",
+    | "brightness-switch.sh"
+    | "layout-mode-switch.sh" => "appearance",
     "bluetooth-control.sh" => "network",
     "hyprlock-theme.sh" => "lock",
     "spaces-switch.sh" | "borders-switch.sh" => "hyprland",
@@ -329,12 +331,12 @@ fn read_first_or_default(path: &Path) -> Option<String> {
 
 /// Executes the `active_theme_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn active_theme_file() -> PathBuf {
-  argvus_config_home().join(".active-theme")
+  argvus_data_home().join(".active-theme")
 }
 
 /// Executes the `accent_file` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn accent_file() -> PathBuf {
-  argvus_config_home().join(".accent-color")
+  argvus_data_home().join(".accent-color")
 }
 
 /// Executes the `theme_default_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -405,9 +407,74 @@ fn parse_borders_status(output: &str, state: &mut AppearanceState) {
   }
 }
 
+pub(crate) fn canonical_layout() -> Option<Value> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/layout", "--effective"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  serde_json::from_slice(&output.stdout).ok()
+}
+
+fn apply_canonical_layout(state: &mut AppearanceState) {
+  let Some(layout) = canonical_layout() else {
+    return;
+  };
+  let window = layout.get("window").and_then(Value::as_object);
+  let taskbar = layout.get("taskbar").and_then(Value::as_object);
+  let integer = |object: Option<&serde_json::Map<String, Value>>, key: &str| {
+    object
+      .and_then(|values| values.get(key))
+      .and_then(Value::as_i64)
+  };
+  if let Some(value) = integer(window, "gaps_in") {
+    state.gaps_in = value as i32;
+  }
+  for (key, target) in [
+    ("gaps_out_top", &mut state.gaps_out_top),
+    ("gaps_out_left", &mut state.gaps_out_left),
+    ("gaps_out_right", &mut state.gaps_out_right),
+    ("gaps_out_bottom", &mut state.gaps_out_bottom),
+  ] {
+    if let Some(value) = integer(window, key) {
+      *target = value as i32;
+    }
+  }
+  if let Some(value) = window
+    .and_then(|values| values.get("rounded"))
+    .and_then(Value::as_bool)
+  {
+    state.rounded = value;
+  }
+  if let Some(value) = integer(window, "rounding") {
+    state.rounding = value as i32;
+  }
+  if let Some(value) = integer(window, "border_size") {
+    state.thickness = value as i32;
+  }
+  if let Some(value) = taskbar
+    .and_then(|values| values.get("position"))
+    .and_then(Value::as_str)
+  {
+    state.waybar_pos = TaskbarPosition::from_value(value);
+  }
+  for (key, target) in [
+    ("margin_top", &mut state.waybar_top),
+    ("margin_left", &mut state.waybar_left),
+    ("margin_right", &mut state.waybar_right),
+    ("margin_bottom", &mut state.waybar_bottom),
+  ] {
+    if let Some(value) = integer(taskbar, key) {
+      *target = value as i32;
+    }
+  }
+}
+
 /// Reads one independent visual state from the shared session contract.
 fn effect_state(component: &str) -> bool {
-  let path = argvus_config_home().join("state").join(component);
+  let path = argvus_data_home().join("state").join(component);
   match read_first_or_default(&path).as_deref() {
     Some("enabled") => true,
     Some("disabled") => false,
@@ -428,6 +495,13 @@ fn effect_value(kind: &str, surface: EffectSurface) -> i32 {
   .and_then(|value| value.trim().parse::<i32>().ok())
   .filter(|value| (0..=100).contains(value))
   .unwrap_or(50)
+}
+
+fn global_effect_value(key: &str) -> i32 {
+  run_script_output(&script("effects-toggle.sh"), &["global-value", key, "get"])
+    .and_then(|value| value.trim().parse::<i32>().ok())
+    .filter(|value| (0..=100).contains(value))
+    .unwrap_or(50)
 }
 
 fn effect_enabled(kind: &str, surface: EffectSurface) -> bool {
@@ -645,19 +719,23 @@ pub fn list_wallpapers() -> Vec<WallpaperEntry> {
 
 /// Executes the `hyprpaper_config_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hyprpaper_config_path() -> PathBuf {
-  argvus_config_home().join("hypr").join("hyprpaper.conf")
+  argvus_data_home().join("hypr").join("hyprpaper.conf")
 }
 
-/// Returns the user-owned marker for a wallpaper selected independently of
-/// the active theme.
-fn custom_wallpaper_state_path() -> PathBuf {
-  argvus_config_home().join(".wallpaper-custom")
-}
-
-/// Persists the selected wallpaper for the session service and future logins.
-fn persist_custom_wallpaper(wallpaper: &Path) -> Result<(), String> {
-  let path = custom_wallpaper_state_path();
-  write_atomic(&path, &format!("{}\n", wallpaper.display()))
+fn persist_wallpaper_canonical(wallpaper: &Path) -> Result<(), String> {
+  let patch = serde_json::json!({
+    "/appearance/wallpaper": wallpaper.to_string_lossy(),
+    "/appearance/wallpaper_custom": true,
+  });
+  let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+  let status = Command::new("argvus-config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist wallpaper settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the wallpaper settings".into());
+  }
+  reload_argvus_config_service()
 }
 
 /// Executes the `active_wallpaper` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -679,82 +757,12 @@ pub fn active_wallpaper() -> Option<String> {
     .strip_prefix(WALLPAPERS_DIR)
     .map(|name| name.trim_start_matches('/').to_string())
 }
-
-/// Executes the `first_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn first_monitor() -> Option<String> {
-  let output = SystemProcessRunner
-    .run(&ProcessRequest::new("hyprctl").arg("monitors"))
-    .ok()?;
-  if output.status.is_none_or(|status| status != 0) {
-    return None;
-  }
-  String::from_utf8_lossy(&output.stdout)
-    .lines()
-    .find_map(|line| line.strip_prefix("Monitor "))?
-    .split_whitespace()
-    .next()
-    .map(str::to_string)
-}
-
-/// Writes `monitor =` and `path =` lines into the user hyprpaper.conf,
-/// keeping the existing block form used by `hypr-wallpaper-pick.sh`.
-fn write_hyprpaper_config(wallpaper: &Path) -> Result<(), String> {
-  let config_path = hyprpaper_config_path();
-  let existing = fs::read_to_string(&config_path).unwrap_or_default();
-  let relative = wallpaper.to_string_lossy().replace(
-    &argvus_control_center_core::paths::home()
-      .to_string_lossy()
-      .to_string(),
-    "~",
-  );
-  let monitor = first_monitor().unwrap_or_default();
-  if existing
-    .lines()
-    .any(|line| line.trim_start().starts_with("path ="))
-  {
-    let mut text = String::new();
-    for line in existing.lines() {
-      let trimmed = line.trim_start();
-      if trimmed.starts_with("path =") {
-        text.push_str(&format!("  path = {relative}\n"));
-      } else {
-        text.push_str(line);
-        text.push('\n');
-      }
-    }
-    if !text.contains("monitor =") {
-      text = format!("  monitor = {monitor}\n{text}");
-    } else {
-      let mut patched = String::new();
-      for line in text.lines() {
-        if line.trim_start().starts_with("monitor =") {
-          patched.push_str(&format!("  monitor = {monitor}\n"));
-        } else {
-          patched.push_str(line);
-          patched.push('\n');
-        }
-      }
-      text = patched;
-    }
-    write_atomic(&config_path, &text)?;
-    return Ok(());
-  }
-  let text = format!(
-    "wallpaper {{\n  monitor = {monitor}\n  path = {relative}\n  fit_mode = cover\n}}\n\npreload = {relative}\n"
-  );
-  write_atomic(&config_path, &text)
-}
-
-/// Applies the `write_atomic` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
-  if let Some(parent) = path.parent()
-    && !parent.exists()
-  {
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-  }
-  let tmp = path.with_extension("tmp");
-  fs::write(&tmp, content).map_err(|error| error.to_string())?;
-  fs::rename(&tmp, path).map_err(|error| error.to_string())
+/// Discovers and loads official themes (built-in + drop-in packages).
+/// Errors during discovery are collected as warnings and do not fail the operation.
+fn refresh_official_themes(state: &mut AppearanceState) {
+  let report = argvus_theme::discovery::discover_themes(&system_config_root());
+  state.official_themes = report.themes;
+  state.discovery_warnings = report.warnings;
 }
 
 /// Retrieves data for `load_state` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -776,6 +784,7 @@ pub fn load_page(
   if matches!(
     page,
     AppearancePage::Effects
+      | AppearancePage::Blur
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
@@ -784,12 +793,16 @@ pub fn load_page(
     state.animations = effect_state("animations");
     state.transparency = effect_state("transparency");
     state.blur = effect_state("blur");
+    state.global_blur = global_effect_value("blur_global_value");
   }
   if matches!(
     page,
     AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
+      | AppearancePage::Terminal
+      | AppearancePage::Launchers
+      | AppearancePage::TerminalTransparency
       | AppearancePage::SurfaceSection { .. }
   ) {
     state.taskbar_transparency = effect_value("transparency", EffectSurface::Taskbar);
@@ -799,6 +812,8 @@ pub fn load_page(
     state.taskbar_blur = effect_value("blur", EffectSurface::Taskbar);
     state.control_panel_blur = effect_value("blur", EffectSurface::ControlPanel);
     state.widget_telemetry_blur = effect_value("blur", EffectSurface::WidgetTelemetry);
+    state.terminal_transparency = effect_value("transparency", EffectSurface::Terminal);
+    state.launcher_transparency = effect_value("transparency", EffectSurface::Launchers);
     state.taskbar_transparency_enabled = effect_enabled("transparency", EffectSurface::Taskbar);
     state.control_panel_transparency_enabled =
       effect_enabled("transparency", EffectSurface::ControlPanel);
@@ -807,6 +822,8 @@ pub fn load_page(
     state.taskbar_blur_enabled = effect_enabled("blur", EffectSurface::Taskbar);
     state.control_panel_blur_enabled = effect_enabled("blur", EffectSurface::ControlPanel);
     state.widget_telemetry_blur_enabled = effect_enabled("blur", EffectSurface::WidgetTelemetry);
+    state.terminal_transparency_enabled = effect_enabled("transparency", EffectSurface::Terminal);
+    state.launcher_transparency_enabled = effect_enabled("transparency", EffectSurface::Launchers);
   }
   if page == AppearancePage::WidgetTelemetry
     || matches!(
@@ -837,10 +854,12 @@ pub fn load_page(
     AppearancePage::Themes
       | AppearancePage::ThemeFamilies { .. }
       | AppearancePage::CustomThemes
-      | AppearancePage::ThemeModes { .. }
+      | AppearancePage::OfficialThemes
   ) {
     state.custom_themes = custom_themes();
     state.active_custom_theme = active_custom_theme();
+    // Discover and load official themes (built-in + drop-in packages)
+    refresh_official_themes(&mut state);
   }
   if matches!(
     page,
@@ -865,6 +884,7 @@ pub fn load_page(
     if let Some(output) = run_script_output(&script("borders-switch.sh"), &["--status"]) {
       parse_borders_status(&output, &mut state);
     }
+    apply_canonical_layout(&mut state);
   }
   state
 }
@@ -872,9 +892,27 @@ pub fn load_page(
 /// Applies the `set_theme` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn set_theme(name: &str) -> Result<(), String> {
   let canonical_name = canonical_theme_id(name);
-  run_script(&script("theme-switch.sh"), &[canonical_name.as_str()])?;
-  let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
+  run_script_with_env(
+    &script("theme-switch.sh"),
+    &[canonical_name.as_str()],
+    &[("ARGVUS_ACCENT_OFFICIAL", "1")],
+  )?;
+  let _ = fs::remove_file(argvus_data_home().join("state").join("custom-theme"));
   Ok(())
+}
+
+/// Switches the Sticky/Float layout mode without changing the active theme.
+///
+/// Delegates to `layout-mode-switch.sh`, the same entry point the
+/// `SUPER + Shift + M` Rofi picker uses, so the Control Center and the Rofi
+/// menu always apply the mode through a single implementation.
+///
+/// # Errors
+///
+/// Returns an error when `layout-mode-switch.sh` cannot be found or exits
+/// with a non-zero status.
+pub fn set_layout_mode(variant: &str) -> Result<(), String> {
+  run_script(&script("layout-mode-switch.sh"), &[variant])
 }
 
 pub(crate) fn set_theme_static(name: &str) -> Result<(), String> {
@@ -884,13 +922,58 @@ pub(crate) fn set_theme_static(name: &str) -> Result<(), String> {
     &[canonical_name.as_str()],
     &[("ARGVUS_NO_RUNTIME", "1"), ("ARGVUS_THEME_SWITCH", "1")],
   )?;
-  let _ = fs::remove_file(argvus_config_home().join("state").join("custom-theme"));
+  let _ = fs::remove_file(argvus_data_home().join("state").join("custom-theme"));
   Ok(())
 }
 
 /// Applies the `set_accent` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+///
+/// A user-selected highlight color is a canonical decision, not a runtime
+/// detail, so `/appearance/accent_custom` is persisted before the appearance
+/// adapters run. Without that key the compositor keeps the per-theme border
+/// color (`hyprland.lua` only honors `.accent-color` when the canonical flag is
+/// set), and the next `argvus-config project` would otherwise re-derive the
+/// accent from the theme default.
 pub fn set_accent(color: &str) -> Result<(), String> {
+  if color == "--theme-default" {
+    return reset_accent_to_theme_default();
+  }
+  persist_accent_canonical(color, true)?;
   run_script(&script("accent-switch.sh"), &[color])
+}
+
+/// Restores the active theme's default highlight color and clears the custom
+/// flag so a later theme switch keeps the theme owning the accent again.
+fn reset_accent_to_theme_default() -> Result<(), String> {
+  persist_accent_canonical("", false)?;
+  run_script(&script("accent-switch.sh"), &["--theme-default"])
+}
+
+/// Persists the accent decision in the canonical document before the runtime
+/// adapters run, so canonical state and generated state cannot disagree.
+pub(crate) fn persist_accent_canonical(accent: &str, is_custom: bool) -> Result<(), String> {
+  // An empty accent is meaningful only for the "back to theme default" action:
+  // it must not overwrite the stored color, it just drops the custom flag.
+  let mut patch = serde_json::Map::new();
+  if !accent.is_empty() {
+    patch.insert(
+      "/appearance/accent".to_string(),
+      Value::String(accent.to_string()),
+    );
+  }
+  patch.insert(
+    "/appearance/accent_custom".to_string(),
+    Value::Bool(is_custom),
+  );
+  let patch = serde_json::to_string(&Value::Object(patch)).map_err(|error| error.to_string())?;
+  let status = Command::new("argvus-config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist accent settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the accent settings".into());
+  }
+  Ok(())
 }
 
 /// Applies the `set_animations` operation through the shared session helper.
@@ -901,14 +984,35 @@ pub fn set_animations(enabled: bool) -> Result<(), String> {
   )
 }
 
+pub fn set_blur(enabled: bool) -> Result<(), String> {
+  run_script(
+    &script("effects-toggle.sh"),
+    &["blur", if enabled { "enable" } else { "disable" }],
+  )
+}
+
 pub fn set_effect_value(kind: &str, surface: EffectSurface, value: i32) -> Result<(), String> {
   if !matches!(kind, "transparency" | "blur") || !(0..=100).contains(&value) {
     return Err("invalid effect value".into());
+  }
+  if kind == "transparency" && surface == EffectSurface::Terminal {
+    return apply_surface_effects(surface, true, value, true, 0);
   }
   let value = value.to_string();
   run_script(
     &script("effects-toggle.sh"),
     &[&format!("{kind}-value"), surface.key(), "set", &value],
+  )
+}
+
+pub fn set_global_blur_value(value: i32) -> Result<(), String> {
+  if !(0..=100).contains(&value) {
+    return Err("invalid blur value".into());
+  }
+  let value = value.to_string();
+  run_script(
+    &script("effects-toggle.sh"),
+    &["global-value", "blur_global_value", "set", &value],
   )
 }
 
@@ -994,14 +1098,7 @@ pub fn set_wallpaper(name: &str) -> Result<(), String> {
   if !path.is_file() || path.extension().is_none_or(|extension| extension != "jxl") {
     return Err(format!("papel de parede não encontrado: {name}"));
   }
-  write_hyprpaper_config(&path)?;
-  persist_custom_wallpaper(&path)?;
-  let _ = SystemProcessRunner.run(
-    &ProcessRequest::new("systemctl")
-      .arg("--user")
-      .arg("restart")
-      .arg("argvus-wallpaper.service"),
-  );
+  persist_wallpaper_canonical(&path)?;
   if let Ok(output) = SystemProcessRunner.run(
     &ProcessRequest::new("sh")
       .arg(script("hyprlock-theme.sh").to_string_lossy().to_string())
@@ -1049,7 +1146,7 @@ pub fn choose_wallpaper() -> Result<(), String> {
     "--class".to_string(),
     "argvus-wallpaper-picker".to_string(),
     "--term".to_string(),
-    "foot".to_string(),
+    "kitty".to_string(),
     "--".to_string(),
   ];
   for argument in &file_manager {
@@ -1085,14 +1182,7 @@ pub fn choose_wallpaper() -> Result<(), String> {
   if !selected.is_file() {
     return Err("o arquivo selecionado não existe".into());
   }
-  write_hyprpaper_config(selected)?;
-  persist_custom_wallpaper(selected)?;
-  let _ = SystemProcessRunner.run(
-    &ProcessRequest::new("systemctl")
-      .arg("--user")
-      .arg("restart")
-      .arg("argvus-wallpaper.service"),
-  );
+  persist_wallpaper_canonical(selected)?;
   let _ = fs::remove_file(selection);
   Ok(())
 }
@@ -1102,8 +1192,58 @@ pub fn set_spacing(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid spaces key/value".into());
   }
-  run_script(&script("spaces-switch.sh"), &["--set-persist", key, value])?;
-  run_script(&script("spaces-switch.sh"), &["--apply"])
+  let number = value.parse::<u64>().ok();
+  let mut patch = serde_json::Map::new();
+  let pointer = match key {
+    "gaps_in" => "/layout/window/gaps_in",
+    "gaps_out_top" => "/layout/window/gaps_out_top",
+    "gaps_out_left" => "/layout/window/gaps_out_left",
+    "gaps_out_right" => "/layout/window/gaps_out_right",
+    "gaps_out_bottom" => "/layout/window/gaps_out_bottom",
+    "gaps_out" => {
+      let number = number.ok_or_else(|| "invalid spaces value".to_string())?;
+      for edge in ["top", "left", "right", "bottom"] {
+        patch.insert(
+          format!("/layout/window/gaps_out_{edge}"),
+          Value::from(number),
+        );
+      }
+      ""
+    }
+    "waybar_top" => "/layout/taskbar/margin_top",
+    "waybar_left" => "/layout/taskbar/margin_left",
+    "waybar_right" => "/layout/taskbar/margin_right",
+    "waybar_bottom" => "/layout/taskbar/margin_bottom",
+    "waybar" => {
+      let number = number.ok_or_else(|| "invalid spaces value".to_string())?;
+      for edge in ["top", "left", "right", "bottom"] {
+        patch.insert(
+          format!("/layout/taskbar/margin_{edge}"),
+          Value::from(number),
+        );
+      }
+      ""
+    }
+    "waybar_pos" => {
+      if value != "top" && value != "bottom" {
+        return Err("invalid waybar position".into());
+      }
+      patch.insert(
+        "/layout/taskbar/position".into(),
+        Value::String(value.to_owned()),
+      );
+      ""
+    }
+    _ => return Err("invalid spaces key".into()),
+  };
+  if !pointer.is_empty() {
+    patch.insert(
+      pointer.into(),
+      Value::from(number.ok_or_else(|| "invalid spaces value".to_string())?),
+    );
+  }
+  persist_layout_patch(patch)?;
+  Ok(())
 }
 
 /// Applies the `set_waybar_position` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1111,11 +1251,7 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
   if position != "top" && position != "bottom" {
     return Err("invalid waybar position".into());
   }
-  run_script(
-    &script("spaces-switch.sh"),
-    &["--set-persist", "waybar_pos", position],
-  )?;
-  run_script(&script("spaces-switch.sh"), &["--apply"])
+  set_spacing("waybar_pos", position)
 }
 
 /// Persists the taskbar utility-group mode, regenerates its managed Waybar
@@ -1194,14 +1330,44 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
   if key.is_empty() || value.is_empty() {
     return Err("invalid border key/value".into());
   }
-  run_script(&script("borders-switch.sh"), &["--set-persist", key, value])?;
-  run_script(&script("borders-switch.sh"), &["--apply"])?;
+  let mut patch = serde_json::Map::new();
+  match key {
+    "rounded" => {
+      let rounded = match value {
+        "0" => false,
+        "1" => true,
+        _ => return Err("invalid rounded value".into()),
+      };
+      patch.insert("/layout/window/rounded".into(), Value::Bool(rounded));
+    }
+    "rounding" => {
+      let rounding = value
+        .parse::<u64>()
+        .map_err(|_| "invalid rounding value".to_string())?;
+      patch.insert("/layout/window/rounding".into(), Value::from(rounding));
+    }
+    "thickness" => {
+      let thickness = value
+        .parse::<u64>()
+        .map_err(|_| "invalid thickness value".to_string())?;
+      patch.insert("/layout/window/border_size".into(), Value::from(thickness));
+    }
+    _ => return Err("invalid border key".into()),
+  }
+  persist_layout_patch(patch)?;
+  Ok(())
+}
 
-  // `borders-switch.sh --apply` updates the current Hyprland process and
-  // generated styles. Session reload is still required for the managed
-  // components to consume the persisted border contract, and the Control
-  // Center is not one of the components restarted by argvus-sessionctl.
-  reload_session()
+fn persist_layout_patch(patch: serde_json::Map<String, Value>) -> Result<(), String> {
+  let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+  let status = Command::new("argvus-config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist layout settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the layout settings".into());
+  }
+  reload_argvus_config_service()
 }
 
 #[cfg(test)]

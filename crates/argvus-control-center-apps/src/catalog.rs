@@ -330,7 +330,6 @@ pub const CATALOG: &[CategorySpec] = &[
       known("alacritty", "Alacritty", "org.alacritty.Alacritty.desktop"),
       known("wezterm", "WezTerm", "org.wezterm.WezTerm.desktop"),
       known("ghostty", "Ghostty", "com.mitchellh.ghostty.desktop"),
-      known("foot", "Foot", "foot.desktop"),
       known("xfce4-terminal", "Xfce Terminal", "xfce4-terminal.desktop"),
       known(
         "gnome-terminal",

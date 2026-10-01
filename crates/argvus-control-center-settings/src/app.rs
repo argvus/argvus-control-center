@@ -119,7 +119,6 @@ pub struct App {
   keybinding_super_required: bool,
   keybinding_conflict: Option<(String, String, Vec<String>)>,
   keybinding_edit_id: Option<String>,
-  keybinding_reload_deadline: Option<Instant>,
   input_loading: bool,
   input_load_job: Option<JobHandle<input::InputSettings>>,
   input_device_job: Option<JobHandle<(input::Devices, Vec<crate::system::ratbag::Device>)>>,
@@ -145,8 +144,13 @@ pub struct App {
 impl App {
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(initial: Page) -> Self {
-    let lang = Lang::detect();
+    let lang = canonical_language().unwrap_or_else(Lang::detect);
     Self::with_context(initial, lang, Theme::load())
+  }
+
+  /// Replaces the semantic theme used by this page.
+  pub fn set_theme(&mut self, theme: &Theme) {
+    self.theme = theme.clone();
   }
 
   /// Constructs `with_context` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -205,7 +209,6 @@ impl App {
       keybinding_super_required: false,
       keybinding_conflict: None,
       keybinding_edit_id: None,
-      keybinding_reload_deadline: None,
       input_loading: true,
       input_load_job: None,
       input_device_job: None,
@@ -1877,9 +1880,6 @@ impl App {
       PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
         Ok(()) => {
           self.keybindings = keybindings::load();
-          let _ = std::process::Command::new("argvus-sessionctl")
-            .arg("reload")
-            .status();
           self.success(tr(self.lang, "control_center.keybindings_restored_all").to_string());
         }
         Err(error) => self.fail(error),
@@ -2059,16 +2059,6 @@ impl App {
   /// Executes the `poll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
-    if self
-      .keybinding_reload_deadline
-      .is_some_and(|deadline| deadline <= Instant::now())
-    {
-      self.keybinding_reload_deadline = None;
-      let _ = std::process::Command::new("argvus-sessionctl")
-        .arg("reload")
-        .status();
-      changed = true;
-    }
     if self.dnd_job.is_none()
       && self.page() == Page::System
       && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2)
@@ -2482,20 +2472,17 @@ impl App {
   /// Applies the `apply_language` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_language(&mut self, selected: usize) {
     self.lang = language_from_selected(selected);
-    let path = crate::config::paths::argvus_config_home().join("language");
-    if let Err(error) = std::fs::create_dir_all(crate::config::paths::argvus_config_home()) {
-      self.fail(error);
-      return;
-    }
-    let value = if self.lang.locale() == "pt-BR" {
-      "pt_BR"
-    } else {
-      "en_US"
-    };
-    if let Err(error) = std::fs::write(path, format!("{value}\n")) {
-      self.fail(error);
-    } else {
+    let value = serde_json::to_string(&self.lang.locale()).unwrap_or_else(|_| "\"en-US\"".into());
+    let persisted = std::process::Command::new("argvus-config")
+      .args(["set", "/session/language", &value])
+      .status()
+      .is_ok_and(|status| status.success());
+    let projected =
+      persisted && argvus_control_center_core::config::reload_argvus_config_service().is_ok();
+    if projected {
       self.success(tr(self.lang, "control_center.interface_language_applied").to_string());
+    } else {
+      self.fail("argvus-config could not persist the interface language");
     }
   }
 
@@ -2900,7 +2887,6 @@ impl App {
       return;
     }
     self.keybindings = keybindings::load();
-    self.keybinding_reload_deadline = Some(Instant::now() + Duration::from_millis(250));
     self.success(tr(self.lang, "control_center.keybindings_applied").to_string());
   }
 
@@ -2915,9 +2901,6 @@ impl App {
       return;
     }
     self.keybindings = keybindings::load();
-    let _ = std::process::Command::new("argvus-sessionctl")
-      .arg("reload")
-      .status();
     self.success(tr(self.lang, "control_center.keybindings_restored").to_string());
   }
 
@@ -2984,9 +2967,6 @@ impl App {
       return;
     }
     self.keybindings = keybindings::load();
-    let _ = std::process::Command::new("argvus-sessionctl")
-      .arg("reload")
-      .status();
     self.success(tr(self.lang, "control_center.keybindings_replaced").to_string());
     if self.page() == Page::KeybindingCapture {
       self.navigation.back();
@@ -3124,9 +3104,6 @@ impl App {
     }
     self.keybindings = keybindings::load();
     self.keybinding_capturing = false;
-    let _ = std::process::Command::new("argvus-sessionctl")
-      .arg("reload")
-      .status();
     self.success(tr(self.lang, "control_center.keybindings_applied").to_string());
     if self.page() == Page::KeybindingCapture {
       self.navigation.back();
@@ -3599,6 +3576,21 @@ pub(crate) fn task_bottom_offset(output: &str) -> u16 {
 }
 
 /// Executes the `language_from_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+fn canonical_language() -> Option<Lang> {
+  let output = std::process::Command::new("argvus-config")
+    .args(["get", "/session/language", "--effective", "--raw"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  match String::from_utf8_lossy(&output.stdout).trim() {
+    "pt-BR" | "pt_BR" => Some(Lang::for_locale("pt-BR")),
+    "en-US" | "en_US" => Some(Lang::for_locale("en-US")),
+    _ => None,
+  }
+}
+
 fn language_from_selected(selected: usize) -> Lang {
   if selected.saturating_sub(LANGUAGE_INFO_ROWS) == 1 {
     Lang::for_locale("pt-BR")

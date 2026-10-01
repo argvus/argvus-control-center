@@ -2,17 +2,17 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
-use argvus_control_center_core::paths::argvus_config_home;
+use argvus_control_center_core::paths::argvus_data_home;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock, mpsc};
 use std::time::Duration;
 
-/// The ARGVUS hypridle configuration lives under the user config path.
-/// This matches the path resolved by `paths_config power/config/hypridle.conf` when
-/// ARGVUS_MUTABLE_CONFIG=1 (used by argvus-session and argvus-power scripts).
+/// The ARGVUS hypridle configuration lives at the runtime path consumed by
+/// `paths_config power/config/hypridle.conf` when ARGVUS_MUTABLE_CONFIG=1.
+/// The modular power JSON is authoritative; this file is its derived output.
 pub fn config_path() -> PathBuf {
-  argvus_config_home().join("hypr/hypridle.conf")
+  argvus_data_home().join("hypr/hypridle.conf")
 }
 
 /// Defines the constant `DEFAULT_HYPRIDLE_CONF`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -106,6 +106,7 @@ fn with_lock_listener(content: &str, minutes: u32) -> String {
 
 /// Removes the listener block whose `on-timeout` matches, disabling the related
 /// auto action (the "never" option) while preserving every other listener.
+#[cfg(test)]
 fn remove_listener(content: &str, matches: fn(&str) -> bool) -> String {
   let pieces: Vec<&str> = content.split_inclusive('\n').collect();
   let mut drop = vec![false; pieces.len()];
@@ -144,6 +145,20 @@ fn remove_listener(content: &str, matches: fn(&str) -> bool) -> String {
     .collect()
 }
 
+/// Persists a power value into the modular canonical store before it is
+/// persisted in the modular power file. The configuration service owns the
+/// derived hypridle.conf projection and the targeted service restart.
+fn persist_power_to_config(pointer: &str, minutes: u32) -> Result<(), String> {
+  let status = std::process::Command::new("argvus-config")
+    .args(["set", pointer, &minutes.to_string()])
+    .status()
+    .map_err(|error| format!("failed to persist power timeout: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the power timeout".into());
+  }
+  Ok(())
+}
+
 /// Shared apply: persists a listener timeout (or disables it with `0`) and
 /// requests a hypridle restart. Returns the previous value in minutes.
 fn apply_listener_minutes(
@@ -151,71 +166,29 @@ fn apply_listener_minutes(
   matches: fn(&str) -> bool,
   setter: fn(&str, u32) -> Result<String, String>,
   listener_template: fn(&str, u32) -> String,
+  canonical_pointer: &str,
 ) -> Result<u32, String> {
+  // Keep the modular store authoritative. argvus-config.service projects the
+  // value into the runtime hypridle.conf before the targeted restart worker
+  // applies it.
   let path = config_path();
-
-  if let Some(parent) = path.parent() {
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-  }
-
-  if fs::symlink_metadata(&path)
-    .map(|metadata| metadata.file_type().is_symlink())
-    .unwrap_or(false)
-  {
-    return Err("recusando alterar um hypridle.conf simbólico".into());
-  }
-
   let content = if path.exists() {
     fs::read_to_string(&path).map_err(|error| error.to_string())?
   } else {
     DEFAULT_HYPRIDLE_CONF.to_string()
   };
-
   let previous = listener_minutes_from(&content, matches).unwrap_or(0);
-  let updated = if minutes == 0 {
-    remove_listener(&content, matches)
-  } else {
-    match setter(&content, minutes) {
-      Ok(rewritten) => rewritten,
-      Err(_) => listener_template(&content, minutes),
-    }
-  };
-  let tmp = path.with_extension("tmp");
-  fs::write(&tmp, updated).map_err(|error| error.to_string())?;
-  fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
-
+  let _ = (setter, listener_template);
+  persist_power_to_config(canonical_pointer, minutes)?;
   restart_hypridle();
 
   Ok(previous)
 }
 
-/// Writes a new DPMS timeout back to the ARGVUS hypridle config. Returns the
-/// previous timeout when the change was applied.
-pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
-  apply_listener_minutes(
-    minutes,
-    calls_dpms_off,
-    set_screen_off_minutes,
-    with_screen_off_listener,
-  )
-}
-
-/// Writes a new screen-lock timeout back to the ARGVUS hypridle config. Returns
-/// the previous timeout when the change was applied.
-pub fn apply_lock_minutes(minutes: u32) -> Result<u32, String> {
-  apply_listener_minutes(minutes, calls_lock, set_lock_minutes, with_lock_listener)
-}
-
-/// Defines the constant `RESTART_DEBOUNCE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const RESTART_DEBOUNCE: Duration = Duration::from_millis(800);
 
-/// Maintains the static state `RESTART_REQUEST`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 static RESTART_REQUEST: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
 
-/// Restarts the running hypridle through the ARGVUS session wrapper. Rapid
-/// changes are coalesced into a single restart once they settle, and systemd's
-/// start rate-limiter is cleared first so a burst of changes cannot drop the
-/// service into the `start-limit-hit` failed state.
 fn restart_hypridle() {
   let mut guard = RESTART_REQUEST
     .get_or_init(|| Mutex::new(None))
@@ -226,16 +199,15 @@ fn restart_hypridle() {
     *guard = Some(sender.clone());
     drop(guard);
     std::thread::Builder::new()
-      .name("hypridle-restart".to_string())
+      .name("argvus-config-reload".to_string())
       .spawn(move || hypridle_restart_worker(receiver))
-      .expect("failed to spawn the hypridle restart worker");
+      .expect("failed to spawn argvus config reload worker");
     let _ = sender.send(());
     return;
   };
   let _ = sender.send(());
 }
 
-/// Executes the `hypridle_restart_worker` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn hypridle_restart_worker(receiver: mpsc::Receiver<()>) {
   loop {
     match receiver.recv_timeout(RESTART_DEBOUNCE) {
@@ -243,21 +215,34 @@ fn hypridle_restart_worker(receiver: mpsc::Receiver<()>) {
       Err(mpsc::RecvTimeoutError::Timeout) => continue,
       Ok(()) => {
         while matches!(receiver.recv_timeout(RESTART_DEBOUNCE), Ok(())) {}
-        restart_hypridle_now();
+        let _ = argvus_control_center_core::config::reload_argvus_config_service();
       }
     }
   }
 }
 
-/// Executes the `restart_hypridle_now` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn restart_hypridle_now() {
-  use std::process::Command;
-  let _ = Command::new("systemctl")
-    .args(["--user", "reset-failed", "argvus-hypridle.service"])
-    .status();
-  let _ = Command::new("argvus-sessionctl")
-    .args(["restart", "hypridle"])
-    .status();
+/// Writes a new DPMS timeout back to the ARGVUS hypridle config. Returns the
+/// previous timeout when the change was applied.
+pub fn apply_screen_off_minutes(minutes: u32) -> Result<u32, String> {
+  apply_listener_minutes(
+    minutes,
+    calls_dpms_off,
+    set_screen_off_minutes,
+    with_screen_off_listener,
+    "/power/screen_off_minutes",
+  )
+}
+
+/// Writes a new screen-lock timeout back to the ARGVUS hypridle config. Returns
+/// the previous timeout when the change was applied.
+pub fn apply_lock_minutes(minutes: u32) -> Result<u32, String> {
+  apply_listener_minutes(
+    minutes,
+    calls_lock,
+    set_lock_minutes,
+    with_lock_listener,
+    "/power/lock_minutes",
+  )
 }
 
 /// Extracts the timeout (in minutes) of the listener whose `on-timeout`
@@ -361,6 +346,11 @@ fn lock_minutes_from(content: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn config_path_matches_the_session_runtime_consumer() {
+    assert!(config_path().ends_with("argvus/data/hypr/hypridle.conf"));
+  }
 
   /// Defines the constant `SAMPLE`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const SAMPLE: &str = "\

@@ -4,9 +4,10 @@
 //! existing appearance scripts. A custom theme is only a validated snapshot
 //! plus a registry entry; it is not a second theme engine.
 
-use crate::model::{CustomTheme, THEMES, WidgetTelemetryBlock, canonical_theme_id};
+use crate::model::{CustomTheme, WidgetTelemetryBlock, canonical_theme_id};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
@@ -42,10 +43,12 @@ enum FileId {
   TaskbarRight2Mode,
   WidgetTelemetryBlocks,
   ControlPanelCards,
+  /// Version 4 canonical `appearance` scope embedded in newer profiles.
+  CanonicalConfig,
 }
 
 impl FileId {
-  const ALL: [Self; 13] = [
+  const ALL: [Self; 14] = [
     Self::ActiveTheme,
     Self::Accent,
     Self::GtkMode,
@@ -59,6 +62,7 @@ impl FileId {
     Self::TaskbarRight2Mode,
     Self::WidgetTelemetryBlocks,
     Self::ControlPanelCards,
+    Self::CanonicalConfig,
   ];
   fn id(self) -> &'static str {
     match self {
@@ -76,6 +80,7 @@ impl FileId {
       Self::TaskbarRight2Mode => "taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel-cards",
+      Self::CanonicalConfig => "canonical-config",
     }
   }
   fn archive_path(self) -> &'static str {
@@ -94,6 +99,7 @@ impl FileId {
       Self::TaskbarRight2Mode => "payload/config/argvus/state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "payload/config/argvus/state/widget-telemetry-blocks",
       Self::ControlPanelCards => "payload/config/argvus/control-panel/cards.json",
+      Self::CanonicalConfig => "payload/config/argvus/config.json",
     }
   }
   fn destination(self, root: &Path) -> PathBuf {
@@ -110,7 +116,8 @@ impl FileId {
       Self::Spaces => ".spaces",
       Self::Borders => ".borders",
       Self::WallpaperCustom => ".wallpaper-custom",
-      Self::Fonts => "fonts.conf",
+      // Every consumer reads the generated projection, not the data root.
+      Self::Fonts => "generated/fonts.conf",
       Self::Effects => "state/effects",
       Self::Animations => "state/animations",
       Self::Transparency => "state/transparency",
@@ -118,6 +125,8 @@ impl FileId {
       Self::TaskbarRight2Mode => "state/taskbar-right-2-mode",
       Self::WidgetTelemetryBlocks => "state/widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel/cards.json",
+      // Never copied as a single file; the canonical document is imported.
+      Self::CanonicalConfig => "config.json",
     })
   }
   fn parse(value: &str) -> Option<Self> {
@@ -158,11 +167,11 @@ struct ManifestFile {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WallpaperMeta {
-  original_path: String,
-  original_home: String,
-  filename: String,
-  archive_path: String,
-  sha256: String,
+  pub(crate) original_path: String,
+  pub(crate) original_home: String,
+  pub(crate) filename: String,
+  pub(crate) archive_path: String,
+  pub(crate) sha256: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Registry {
@@ -226,10 +235,27 @@ pub fn custom_themes() -> Vec<CustomTheme> {
         && !theme.name.trim().is_empty()
         && theme.profile_path == expected_profile
         && Path::new(&theme.profile_path).is_file()
-        && THEMES.iter().any(|(name, _)| *name == theme.base_theme)
+        && is_valid_base_theme(&theme.base_theme)
     })
     .map(Into::into)
     .collect()
+}
+
+// Check if a base theme ID is valid (built-in or has valid format for discovered themes)
+fn is_valid_base_theme(id: &str) -> bool {
+  if id.is_empty() {
+    return false;
+  }
+  // Built-in themes are always valid
+  if id == "argvus-dark" || id == "argvus-light" {
+    return true;
+  }
+  // Discovered themes must have valid ID format: lowercase, hyphens, alphanumeric
+  id.chars()
+    .all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
+    && !id.starts_with('-')
+    && !id.ends_with('-')
+    && !id.ends_with("-float")
 }
 
 pub fn active_custom_theme() -> Option<String> {
@@ -270,7 +296,24 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
     suffix += 1;
   }
   let root = argvus_root();
-  let active_theme = read_first(&root.join(".active-theme"), "argvus-dark");
+  let canonical_export = tempdir().map_err(|error| error.to_string())?;
+  let canonical_config_path = canonical_export.path().join("config.json");
+  let has_canonical_config = export_canonical_appearance(&canonical_config_path)?;
+  let canonical_theme = if has_canonical_config {
+    fs::read_to_string(&canonical_config_path)
+      .ok()
+      .and_then(|contents| serde_json::from_str::<serde_json::Value>(&contents).ok())
+      .and_then(|document| {
+        document
+          .pointer("/appearance/theme")
+          .and_then(|value| value.as_str())
+          .map(str::to_owned)
+      })
+  } else {
+    None
+  };
+  let active_theme =
+    canonical_theme.unwrap_or_else(|| read_first(&root.join(".active-theme"), "argvus-dark"));
   let effects_path = theme_effects_destination(&root, &active_theme);
   if !effects_path.is_file() {
     write_atomic(
@@ -280,7 +323,26 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
   }
   let mut files = Vec::new();
   let mut contents = Vec::new();
-  for (id, source) in source_paths(&root) {
+  let mut profile_sources = source_paths(&root)
+    .into_iter()
+    .filter(|(id, _)| {
+      *id != FileId::CanonicalConfig
+        && (!has_canonical_config
+          || !matches!(
+            id,
+            FileId::ActiveTheme
+              | FileId::Accent
+              | FileId::GtkMode
+              | FileId::Spaces
+              | FileId::Borders
+              | FileId::WallpaperCustom
+          ))
+    })
+    .collect::<Vec<_>>();
+  if has_canonical_config {
+    profile_sources.push((FileId::CanonicalConfig, canonical_config_path));
+  }
+  for (id, source) in profile_sources {
     if !source.is_file() {
       continue;
     }
@@ -299,13 +361,23 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
   let wallpaper = current_wallpaper().map(|path| wallpaper_meta(&path));
   let manifest = Manifest {
     format: "argvus-theme-profile".into(),
-    format_version: Some(2),
+    format_version: Some(if has_canonical_config { 4 } else { 2 }),
     schema_version: None,
     name: display_name,
     created_at: OffsetDateTime::now_utc().to_string(),
     argvus: ManifestArgvus {
-      theme: canonical_theme_id(&read_first(&root.join(".active-theme"), "argvus-dark")),
-      mode: "sticky".into(),
+      theme: canonical_theme_id(&active_theme),
+      // Sticky/Float is independent of the theme (`/layout/variant`), so the
+      // export must capture the mode that is actually active instead of
+      // assuming Sticky.
+      mode: crate::backend::canonical_layout()
+        .and_then(|layout| {
+          layout
+            .get("variant")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "sticky".into()),
     },
     files: files.clone(),
     wallpaper: wallpaper.clone(),
@@ -319,13 +391,21 @@ pub fn export_named(name: &str) -> Result<PathBuf, String> {
   Ok(output)
 }
 
+/// Mirrors the filename that [`export_named`] will produce, including the
+/// collision suffix, so the UI can show the user the real destination before
+/// the export runs instead of a name that may differ.
 pub fn preview_export_path(name: &str) -> Option<PathBuf> {
   let display_name = clean_display_name(name).ok()?;
+  let slug = filename_slug(&display_name);
   let timestamp = local_timestamp().ok()?;
-  Some(argvus_control_center_core::paths::home().join(format!(
-    "{}-{timestamp}.tar.gz",
-    filename_slug(&display_name)
-  )))
+  let home = argvus_control_center_core::paths::home();
+  let mut output = home.join(format!("{slug}-{timestamp}.tar.gz"));
+  let mut suffix = 2;
+  while output.exists() {
+    output = home.join(format!("{slug}-{suffix}-{timestamp}.tar.gz"));
+    suffix += 1;
+  }
+  Some(output)
 }
 
 pub fn import_archive(path: &Path) -> Result<CustomTheme, String> {
@@ -448,6 +528,21 @@ fn apply_staged(
   let backup = tempdir().map_err(|e| e.to_string())?;
   let mut backups = Vec::new();
   let mut payload = Vec::new();
+  let has_canonical = staged
+    .manifest
+    .files
+    .iter()
+    .any(|file| file.id == FileId::CanonicalConfig.id());
+  let canonical_backup = if has_canonical {
+    let path = backup.path().join("canonical-appearance.json");
+    if export_canonical_appearance(&path)? {
+      Some(path)
+    } else {
+      None
+    }
+  } else {
+    None
+  };
   let previous_theme = read_first(&root.join(".active-theme"), "argvus-dark");
   let previous_wallpaper = fs::read_to_string(root.join(".wallpaper-custom"))
     .ok()
@@ -455,6 +550,9 @@ fn apply_staged(
     .filter(|value| !value.is_empty());
   let previous_custom_marker = fs::read(custom_current_path()).ok();
   for id in FileId::ALL {
+    if id == FileId::CanonicalConfig {
+      continue;
+    }
     let destination = id.destination(&root);
     let old = if destination.is_file() {
       let old = backup.path().join(id.id());
@@ -482,6 +580,25 @@ fn apply_staged(
       .entries
       .get(&file.archive_path)
       .ok_or("missing theme profile payload")?;
+    if has_canonical && id == FileId::CanonicalConfig {
+      // Applied through `argvus-config import` instead of a file copy.
+      continue;
+    }
+    if has_canonical
+      && matches!(
+        id,
+        FileId::ActiveTheme
+          | FileId::Accent
+          | FileId::GtkMode
+          | FileId::Spaces
+          | FileId::Borders
+          | FileId::WallpaperCustom
+      )
+    {
+      // Canonical profiles keep this state inside config.json; the projected
+      // dot-files are regenerated from the imported appearance scope.
+      continue;
+    }
     if id == FileId::Effects {
       // Format v1 stored one combined setting. Preserve that profile's
       // meaning by initializing both independent settings.
@@ -501,9 +618,14 @@ fn apply_staged(
       }
     }
     crate::backend::set_theme_static(&staged.manifest.argvus.theme)?;
+    if has_canonical {
+      import_canonical_appearance(staged)?;
+      project_canonical_config()?;
+    }
     for (source, destination) in &payload {
       copy_atomic(source, destination)?;
     }
+    persist_profile_accent(staged, has_canonical)?;
     let wallpaper_missing = apply_overrides_static(wallpaper)?;
     write_atomic(&marker_path, &format!("{custom_theme_id}\n"))?;
     Ok(wallpaper_missing)
@@ -517,6 +639,7 @@ fn apply_staged(
         previous_custom_marker.as_deref(),
         &previous_theme,
         previous_wallpaper.as_deref(),
+        canonical_backup.as_deref(),
       );
       if let Err(recovery) = recovery {
         let retained = backup.keep();
@@ -535,6 +658,7 @@ fn apply_staged(
       previous_custom_marker.as_deref(),
       &previous_theme,
       previous_wallpaper.as_deref(),
+      canonical_backup.as_deref(),
     );
     if let Err(recovery) = recovery.and_then(|()| crate::backend::reload_session_for_profile()) {
       let retained = backup.keep();
@@ -566,6 +690,7 @@ fn rollback_staged(
   previous_marker: Option<&[u8]>,
   previous_theme: &str,
   previous_wallpaper: Option<&str>,
+  canonical_backup: Option<&Path>,
 ) -> Result<(), String> {
   // Fonts must precede theme generation; reset-prone overrides follow it.
   if let Some((destination, old)) = backups
@@ -573,6 +698,10 @@ fn rollback_staged(
     .find(|(path, _)| *path == FileId::Fonts.destination(&argvus_root()))
   {
     restore_backup(destination, old.as_deref())?;
+  }
+  if let Some(backup) = canonical_backup {
+    import_canonical_from(backup)?;
+    project_canonical_config()?;
   }
   crate::backend::set_theme_static(previous_theme)?;
   for (destination, old) in backups {
@@ -702,10 +831,7 @@ fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
       .map_err(|e| format!("invalid theme profile manifest: {e}"))?;
   manifest.argvus.theme = canonical_theme_id(&manifest.argvus.theme);
   if manifest.format != "argvus-theme-profile"
-    || !matches!(
-      manifest.format_version.or(manifest.schema_version),
-      Some(1 | 2)
-    )
+    || !is_supported_profile_version(manifest.format_version.or(manifest.schema_version))
   {
     return Err("unsupported theme profile version".into());
   }
@@ -717,15 +843,17 @@ fn stage_archive(path: &Path) -> Result<StagedProfile, String> {
   })
 }
 
+fn is_supported_profile_version(version: Option<u32>) -> bool {
+  matches!(version, Some(1..=4))
+}
+
 fn validate_manifest(
   manifest: &Manifest,
   entries: &HashMap<String, StagedEntry>,
 ) -> Result<(), String> {
   if manifest.name.trim().is_empty()
     || manifest.name.chars().count() > 120
-    || !THEMES
-      .iter()
-      .any(|(name, _)| *name == manifest.argvus.theme)
+    || !is_valid_base_theme(&manifest.argvus.theme)
   {
     return Err("invalid theme profile metadata".into());
   }
@@ -748,17 +876,37 @@ fn validate_manifest(
     validate_content(id, &fs::read(&entry.path).map_err(|e| e.to_string())?)?;
     expected.insert(file.archive_path.clone());
   }
-  if !seen.contains(&FileId::ActiveTheme) {
+  if !seen.contains(&FileId::ActiveTheme) && !seen.contains(&FileId::CanonicalConfig) {
     return Err("theme profile active theme is missing".into());
   }
-  let active_theme = manifest
-    .files
-    .iter()
-    .find(|file| file.id == FileId::ActiveTheme.id())
-    .and_then(|file| entries.get(&file.archive_path))
-    .ok_or("theme profile active theme is missing")?;
-  if canonical_theme_id(&read_first(&active_theme.path, "")) != manifest.argvus.theme {
-    return Err("theme profile base theme does not match active theme".into());
+  if seen.contains(&FileId::ActiveTheme) {
+    let active_theme = manifest
+      .files
+      .iter()
+      .find(|file| file.id == FileId::ActiveTheme.id())
+      .and_then(|file| entries.get(&file.archive_path))
+      .ok_or("theme profile active theme is missing")?;
+    if canonical_theme_id(&read_first(&active_theme.path, "")) != manifest.argvus.theme {
+      return Err("theme profile base theme does not match active theme".into());
+    }
+  }
+  if seen.contains(&FileId::CanonicalConfig) {
+    let canonical = manifest
+      .files
+      .iter()
+      .find(|file| file.id == FileId::CanonicalConfig.id())
+      .and_then(|file| entries.get(&file.archive_path))
+      .ok_or("theme profile canonical configuration is missing")?;
+    let document: serde_json::Value =
+      serde_json::from_slice(&fs::read(&canonical.path).map_err(|e| e.to_string())?)
+        .map_err(|_| "invalid canonical configuration JSON")?;
+    if let Some(theme) = document
+      .pointer("/appearance/theme")
+      .and_then(|value| value.as_str())
+      && canonical_theme_id(theme) != manifest.argvus.theme
+    {
+      return Err("theme profile base theme does not match canonical configuration".into());
+    }
   }
   if let Some(wallpaper) = &manifest.wallpaper {
     if wallpaper.original_path.is_empty()
@@ -796,7 +944,7 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
   let text = std::str::from_utf8(data).map_err(|_| format!("invalid UTF-8: {}", id.id()))?;
   let value = text.trim();
   match id {
-    FileId::ActiveTheme if !THEMES.iter().any(|(name, _)| *name == value) => {
+    FileId::ActiveTheme if !is_valid_base_theme(value) => {
       return Err("unknown active theme".into());
     }
     FileId::Accent
@@ -805,6 +953,27 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
         || !value[1..].bytes().all(|b| b.is_ascii_hexdigit()) =>
     {
       return Err("invalid accent".into());
+    }
+    FileId::CanonicalConfig => {
+      let document: serde_json::Value =
+        serde_json::from_slice(data).map_err(|_| "invalid canonical configuration JSON")?;
+      if document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+        || !document.is_object()
+      {
+        return Err("invalid canonical configuration schema".into());
+      }
+      for section in ["appearance", "layout", "effects", "fonts", "control_panel"] {
+        if let Some(value) = document.get(section)
+          && !value.is_object()
+        {
+          return Err(format!(
+            "invalid canonical configuration section: {section}"
+          ));
+        }
+      }
     }
     FileId::GtkMode if !matches!(value, "light" | "dark" | "auto" | "sticky") => {
       return Err("invalid GTK mode".into());
@@ -815,7 +984,43 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
       return Err("invalid effects state".into());
     }
     FileId::ThemeEffects => {
-      let mut seen = HashSet::new();
+      const TRANSPARENCY_SURFACES: &[(&str, &str)] = &[
+        ("taskbar.transparency", "taskbar.transparency.enabled"),
+        (
+          "control-panel.transparency",
+          "control-panel.transparency.enabled",
+        ),
+        (
+          "widget-telemetry.transparency",
+          "widget-telemetry.transparency.enabled",
+        ),
+        ("terminal.transparency", "terminal.transparency.enabled"),
+        ("launchers.transparency", "launchers.transparency.enabled"),
+      ];
+      const BLUR_SURFACES: &[(&str, &str)] = &[
+        ("taskbar.blur", "taskbar.blur.enabled"),
+        ("control-panel.blur", "control-panel.blur.enabled"),
+        ("widget-telemetry.blur", "widget-telemetry.blur.enabled"),
+      ];
+      const ALLOWED_KEYS: &[&str] = &[
+        "taskbar.transparency",
+        "taskbar.transparency.enabled",
+        "control-panel.transparency",
+        "control-panel.transparency.enabled",
+        "widget-telemetry.transparency",
+        "widget-telemetry.transparency.enabled",
+        "terminal.transparency",
+        "terminal.transparency.enabled",
+        "launchers.transparency",
+        "launchers.transparency.enabled",
+        "taskbar.blur",
+        "taskbar.blur.enabled",
+        "control-panel.blur",
+        "control-panel.blur.enabled",
+        "widget-telemetry.blur",
+        "widget-telemetry.blur.enabled",
+      ];
+      let mut seen: HashSet<&str> = HashSet::new();
       for line in text.lines() {
         let (key, value) = line.split_once('=').ok_or("invalid theme effects")?;
         let valid_value = if key.ends_with(".enabled") {
@@ -823,28 +1028,16 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
         } else {
           value.parse::<u8>().ok().is_some_and(|number| number <= 100)
         };
-        if !matches!(
-          key,
-          "taskbar.transparency"
-            | "control-panel.transparency"
-            | "widget-telemetry.transparency"
-            | "taskbar.transparency.enabled"
-            | "control-panel.transparency.enabled"
-            | "widget-telemetry.transparency.enabled"
-            | "taskbar.blur"
-            | "control-panel.blur"
-            | "widget-telemetry.blur"
-            | "taskbar.blur.enabled"
-            | "control-panel.blur.enabled"
-            | "widget-telemetry.blur.enabled"
-        ) || !seen.insert(key)
-          || !valid_value
-        {
+        if !ALLOWED_KEYS.contains(&key) || !seen.insert(key) || !valid_value {
           return Err("invalid theme effects".into());
         }
       }
-      if seen.len() != 6 && seen.len() != 12 {
-        return Err("invalid theme effects".into());
+      // A surface is only meaningful when both its value and its enabled flag
+      // are present, so a half-specified surface is rejected.
+      for (base, enabled) in TRANSPARENCY_SURFACES.iter().chain(BLUR_SURFACES.iter()) {
+        if seen.contains(base) != seen.contains(enabled) {
+          return Err("invalid theme effects".into());
+        }
       }
     }
     FileId::TaskbarRight2Mode if !matches!(value, "auto" | "always-expanded") => {
@@ -1111,6 +1304,113 @@ fn source_paths(root: &Path) -> Vec<(FileId, PathBuf)> {
     .collect()
 }
 
+/// Exports the canonical `appearance` scope into `destination`.
+///
+/// Returns `false` when `argvus-config` is unavailable so legacy profiles can
+/// still be produced; any other failure is surfaced to the caller. The child
+/// process inherits the environment, so it resolves the same ARGVUS root as
+/// this process.
+fn export_canonical_appearance(destination: &Path) -> Result<bool, String> {
+  let output = std::process::Command::new("argvus-config")
+    .args(["export", "--scope", "appearance", "--output"])
+    .arg(destination)
+    .output();
+  match output {
+    Ok(output) if output.status.success() => Ok(true),
+    Ok(output) if output.status.code() == Some(127) => Ok(false),
+    Ok(output) => {
+      let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+      Err(if error.is_empty() {
+        "argvus-config export failed".into()
+      } else {
+        error
+      })
+    }
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(error) => Err(format!("could not run argvus-config export: {error}")),
+  }
+}
+
+fn import_canonical_appearance(staged: &StagedProfile) -> Result<(), String> {
+  let entry = staged
+    .manifest
+    .files
+    .iter()
+    .find(|file| file.id == FileId::CanonicalConfig.id())
+    .and_then(|file| staged.entries.get(&file.archive_path))
+    .ok_or("theme profile canonical configuration is missing")?;
+  import_canonical_from(&entry.path)
+}
+
+fn import_canonical_from(source: &Path) -> Result<(), String> {
+  let source = source.to_string_lossy().into_owned();
+  run_canonical_config_command(&["import", "--scope", "appearance", "--input", &source])
+}
+
+fn project_canonical_config() -> Result<(), String> {
+  run_canonical_config_command(&["project"])
+}
+
+fn run_canonical_config_command(arguments: &[&str]) -> Result<(), String> {
+  let output = std::process::Command::new("argvus-config")
+    .args(arguments)
+    .output()
+    .map_err(|error| format!("could not run argvus-config: {error}"))?;
+  if output.status.success() {
+    Ok(())
+  } else {
+    let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(if error.is_empty() {
+      format!("argvus-config failed with {}", output.status)
+    } else {
+      error
+    })
+  }
+}
+
+/// Returns the accent carried by the staged profile, if any.
+///
+/// Version 4 profiles embed the accent in the canonical `appearance` scope;
+/// legacy profiles store it in the dedicated accent payload.
+fn profile_accent(staged: &StagedProfile, has_canonical: bool) -> Option<String> {
+  if has_canonical {
+    let entry = staged
+      .manifest
+      .files
+      .iter()
+      .find(|file| file.id == FileId::CanonicalConfig.id())
+      .and_then(|file| staged.entries.get(&file.archive_path))?;
+    let document: serde_json::Value = serde_json::from_slice(&fs::read(&entry.path).ok()?).ok()?;
+    let accent = document.pointer("/appearance/accent")?.as_str()?.trim();
+    return normalize_profile_accent(accent);
+  }
+  let entry = staged
+    .manifest
+    .files
+    .iter()
+    .find(|file| file.id == FileId::Accent.id())
+    .and_then(|file| staged.entries.get(&file.archive_path))?;
+  let text = fs::read_to_string(&entry.path).ok()?;
+  normalize_profile_accent(text.trim())
+}
+
+fn normalize_profile_accent(value: &str) -> Option<String> {
+  (value.len() == 7 && value.starts_with('#') && value[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+    .then(|| value.to_owned())
+}
+
+/// Persists the profile accent into the canonical document.
+///
+/// A custom theme always owns its highlight color, so a profile that carries an
+/// accent enables the custom accent; a profile without one disables it and lets
+/// the base theme provide the default.
+fn persist_profile_accent(staged: &StagedProfile, has_canonical: bool) -> Result<(), String> {
+  match profile_accent(staged, has_canonical) {
+    Some(accent) => crate::backend::persist_accent_canonical(&accent, true),
+    None => crate::backend::persist_accent_canonical("", false),
+  }
+}
+
 fn theme_effects_destination(root: &Path, theme: &str) -> PathBuf {
   root
     .join("state")
@@ -1118,7 +1418,7 @@ fn theme_effects_destination(root: &Path, theme: &str) -> PathBuf {
     .join(format!("{theme}.conf"))
 }
 fn argvus_root() -> PathBuf {
-  argvus_control_center_core::paths::argvus_config_home()
+  argvus_control_center_core::paths::argvus_data_home()
 }
 fn registry_path() -> PathBuf {
   argvus_root().join("custom-themes.json")
@@ -1263,9 +1563,7 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::sync::Mutex;
-
-  static ENV_LOCK: Mutex<()> = Mutex::new(());
+  use crate::test_support::env_lock;
   #[test]
   fn filenames_are_safe() {
     assert_eq!(filename_slug("  Meu   Tema  "), "meu_tema");
@@ -1275,12 +1573,19 @@ mod tests {
   fn rejects_bad_values() {
     assert!(validate_content(FileId::Accent, b"#GGGGGG\n").is_err());
     assert!(validate_content(FileId::Effects, b"maybe\n").is_err());
+    // 16-key theme effects set for hackerman-float (5 transparency surfaces + 3 blur surfaces)
     assert!(validate_content(
       FileId::ThemeEffects,
-      b"taskbar.transparency=50\ncontrol-panel.transparency=50\nwidget-telemetry.transparency=50\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency.enabled=enabled\ntaskbar.blur=50\ncontrol-panel.blur=50\nwidget-telemetry.blur=50\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur.enabled=enabled\n"
+      b"taskbar.transparency=100\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency=100\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency=100\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency=100\nterminal.transparency.enabled=enabled\nlaunchers.transparency=100\nlaunchers.transparency.enabled=enabled\ntaskbar.blur=100\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur=100\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur=100\nwidget-telemetry.blur.enabled=enabled\n"
     )
     .is_ok());
     assert!(validate_content(FileId::ThemeEffects, b"taskbar.transparency=101\n").is_err());
+    assert!(validate_content(
+      FileId::ThemeEffects,
+      b"taskbar.transparency=50\ntaskbar.transparency.enabled=enabled\nunknown.key=5\nunknown.key.enabled=enabled\n"
+    )
+    .is_err());
+    assert!(validate_content(FileId::ThemeEffects, b"taskbar.transparency=50\n").is_err());
   }
   #[test]
   fn registry_validation_is_strict() {
@@ -1288,8 +1593,56 @@ mod tests {
   }
 
   #[test]
+  fn profile_versions_cover_legacy_and_canonical_formats() {
+    assert!(is_supported_profile_version(Some(1)));
+    assert!(is_supported_profile_version(Some(2)));
+    assert!(is_supported_profile_version(Some(3)));
+    assert!(is_supported_profile_version(Some(4)));
+    assert!(!is_supported_profile_version(Some(0)));
+    assert!(!is_supported_profile_version(Some(5)));
+    assert!(!is_supported_profile_version(None));
+  }
+
+  #[test]
+  fn canonical_config_content_is_validated() {
+    assert!(validate_content(FileId::CanonicalConfig, b"{\"schema_version\":1}").is_ok());
+    assert!(
+      validate_content(
+        FileId::CanonicalConfig,
+        b"{\"schema_version\":1,\"appearance\":{\"accent\":\"#AABBCC\"}}"
+      )
+      .is_ok()
+    );
+    assert!(validate_content(FileId::CanonicalConfig, b"not-json").is_err());
+    assert!(validate_content(FileId::CanonicalConfig, b"{\"schema_version\":2}").is_err());
+    assert!(
+      validate_content(
+        FileId::CanonicalConfig,
+        b"{\"schema_version\":1,\"appearance\":\"oops\"}"
+      )
+      .is_err()
+    );
+  }
+
+  #[test]
+  fn accent_normalization_accepts_only_hex_colors() {
+    assert_eq!(
+      normalize_profile_accent("#aAbBcC").as_deref(),
+      Some("#aAbBcC")
+    );
+    assert_eq!(
+      normalize_profile_accent("#123456").as_deref(),
+      Some("#123456")
+    );
+    assert!(normalize_profile_accent("#12345").is_none());
+    assert!(normalize_profile_accent("1234567").is_none());
+    assert!(normalize_profile_accent("#GGGGGG").is_none());
+    assert!(normalize_profile_accent("").is_none());
+  }
+
+  #[test]
   fn export_and_import_round_trip_across_xdg_homes() {
-    let _guard = ENV_LOCK.lock().expect("profile test lock");
+    let _guard = env_lock();
     let old_home = std::env::var_os("HOME");
     let old_config = std::env::var_os("XDG_CONFIG_HOME");
     let old_data = std::env::var_os("XDG_DATA_HOME");
@@ -1300,14 +1653,18 @@ mod tests {
     let target_config = target_home.path().join("config");
     let source_data = source_home.path().join("data");
     let target_data = target_home.path().join("data");
-    fs::create_dir_all(source_config.join("argvus")).expect("source config");
-    fs::create_dir_all(target_config.join("argvus")).expect("target config");
-    fs::write(source_config.join("argvus/.active-theme"), "universe\n").expect("active theme");
+    fs::create_dir_all(source_config.join("argvus/data")).expect("source config");
+    fs::create_dir_all(target_config.join("argvus/data")).expect("target config");
+    fs::write(
+      source_config.join("argvus/data/.active-theme"),
+      "universe\n",
+    )
+    .expect("active theme");
     let source_wallpaper = source_home.path().join("Pictures/Wallpapers/foo.png");
     fs::create_dir_all(source_wallpaper.parent().unwrap()).expect("wallpaper directory");
     fs::write(&source_wallpaper, b"wallpaper-bytes").expect("wallpaper");
     fs::write(
-      source_config.join("argvus/.wallpaper-custom"),
+      source_config.join("argvus/data/.wallpaper-custom"),
       format!("{}\n", source_wallpaper.display()),
     )
     .expect("wallpaper state");
@@ -1338,6 +1695,9 @@ mod tests {
       .collect::<HashSet<_>>();
     assert!(members.contains(MANIFEST_PATH));
     assert!(members.contains(SUMS_PATH));
+    assert!(members.contains("argvus-theme-profile/payload/config/argvus/config.json"));
+    assert!(!members.contains("argvus-theme-profile/payload/config/argvus/.active-theme"));
+    assert!(!members.contains("argvus-theme-profile/payload/config/argvus/.wallpaper-custom"));
     assert!(
       members
         .iter()
@@ -1383,7 +1743,7 @@ mod tests {
 
   #[test]
   fn deleting_inactive_custom_theme_keeps_wallpaper() {
-    let _guard = ENV_LOCK.lock().expect("profile test lock");
+    let _guard = env_lock();
     let old_home = std::env::var_os("HOME");
     let old_config = std::env::var_os("XDG_CONFIG_HOME");
     let old_data = std::env::var_os("XDG_DATA_HOME");

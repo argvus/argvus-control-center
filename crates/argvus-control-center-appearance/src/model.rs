@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 
+use argvus_theme::discovery::ThemeCategory;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,83 +48,8 @@ impl FromStr for HexColor {
 pub fn normalize_hex_color(value: &str) -> Option<String> {
   value.parse::<HexColor>().ok().map(HexColor::normalized)
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ThemeCategory {
-  Dark,
-  Light,
-}
-
-impl ThemeCategory {
-  pub const ALL: [Self; 2] = [Self::Dark, Self::Light];
-
-  pub fn contains_family(self, family_id: &str) -> bool {
-    match self {
-      Self::Dark => matches!(
-        family_id,
-        "argvus-dark"
-          | "argvus-dark-float"
-          | "dracula"
-          | "gruvbox-dark"
-          | "gruvbox-high-dark"
-          | "monokai-dark"
-          | "one-dark"
-          | "rose-pine"
-          | "silver-dark"
-          | "slate-dark"
-          | "sunset"
-          | "tokyo-night"
-          | "hackerman"
-          | "solitude"
-          | "universe"
-          | "dracula-float"
-          | "gruvbox-dark-float"
-          | "gruvbox-high-dark-float"
-          | "monokai-dark-float"
-          | "one-dark-float"
-          | "rose-pine-float"
-          | "silver-dark-float"
-          | "slate-dark-float"
-          | "sunset-float"
-          | "tokyo-night-float"
-          | "hackerman-float"
-          | "solitude-float"
-          | "universe-float"
-      ),
-      Self::Light => matches!(
-        family_id,
-        "argvus-light"
-          | "argvus-light-float"
-          | "catppuccin-latte"
-          | "frost"
-          | "github-light"
-          | "gruvbox-light"
-          | "solarized-light"
-          | "one-light"
-          | "everforest-light"
-          | "catppuccin-latte-float"
-          | "frost-float"
-          | "github-light-float"
-          | "gruvbox-light-float"
-          | "solarized-light-float"
-          | "one-light-float"
-          | "everforest-light-float"
-      ),
-    }
-  }
-
-  pub fn label_key(self) -> &'static str {
-    match self {
-      Self::Dark => "control_center.theme_category_dark",
-      Self::Light => "control_center.theme_category_light",
-    }
-  }
-
-  pub fn for_family_id(family_id: &str) -> Option<Self> {
-    Self::ALL
-      .into_iter()
-      .find(|category| category.contains_family(family_id))
-  }
-}
+// ThemeCategory is now from argvus_theme::discovery
+// Use it via: use argvus_theme::discovery::ThemeCategory;
 
 /// Canonicalizes identifiers from profiles and persisted state after the
 /// official theme identifiers were simplified.
@@ -230,9 +156,8 @@ pub enum AppearancePage {
   ThemeImport,
   ThemeImportConfirm,
   ThemeDeleteConfirm,
-  ThemeModes {
-    family: usize,
-  },
+  /// Sticky/Float, independent of theme selection (Appearance > Mode).
+  Mode,
   Wallpapers,
   WallpaperModes {
     collection: WallpaperCollection,
@@ -244,6 +169,9 @@ pub enum AppearancePage {
   Accents,
   AccentEdit,
   Effects,
+  Terminal,
+  TerminalTransparency,
+  Launchers,
   #[allow(dead_code)]
   Transparency,
   #[allow(dead_code)]
@@ -279,6 +207,8 @@ pub enum EffectSurface {
   Taskbar,
   ControlPanel,
   WidgetTelemetry,
+  Terminal,
+  Launchers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,6 +227,8 @@ impl EffectSurface {
       Self::Taskbar => "taskbar",
       Self::ControlPanel => "control-panel",
       Self::WidgetTelemetry => "widget-telemetry",
+      Self::Terminal => "terminal",
+      Self::Launchers => "launchers",
     }
   }
 
@@ -305,6 +237,8 @@ impl EffectSurface {
       Self::Taskbar => "control_center.taskbar",
       Self::ControlPanel => "control_center.control_panel",
       Self::WidgetTelemetry => "control_center.widget_telemetry",
+      Self::Terminal => "control_center.terminal",
+      Self::Launchers => "control_center.launcher",
     }
   }
 }
@@ -753,6 +687,7 @@ pub struct AppearanceState {
   pub animations: bool,
   pub transparency: bool,
   pub blur: bool,
+  pub global_blur: i32,
   pub taskbar_transparency_enabled: bool,
   pub control_panel_transparency_enabled: bool,
   pub widget_telemetry_transparency_enabled: bool,
@@ -765,6 +700,10 @@ pub struct AppearanceState {
   pub taskbar_blur: i32,
   pub control_panel_blur: i32,
   pub widget_telemetry_blur: i32,
+  pub terminal_transparency_enabled: bool,
+  pub terminal_transparency: i32,
+  pub launcher_transparency_enabled: bool,
+  pub launcher_transparency: i32,
   pub widget_telemetry: bool,
   pub control_panel_enabled: bool,
   pub widget_telemetry_blocks: WidgetTelemetryBlocks,
@@ -785,6 +724,12 @@ pub struct AppearanceState {
   pub thickness: i32,
   pub custom_themes: Vec<CustomTheme>,
   pub active_custom_theme: Option<String>,
+  /// Discovered official themes (built-in + drop-in packages).
+  /// This replaces the hard-coded `THEMES`/`THEME_FAMILIES` constants.
+  /// Loaded on page entry via backend::refresh_official_themes().
+  pub official_themes: Vec<argvus_theme::discovery::ThemeEntry>,
+  /// Warnings from theme discovery (e.g., malformed manifests).
+  pub discovery_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -806,6 +751,7 @@ impl Default for AppearanceState {
       animations: true,
       transparency: true,
       blur: true,
+      global_blur: 50,
       taskbar_transparency_enabled: true,
       control_panel_transparency_enabled: true,
       widget_telemetry_transparency_enabled: true,
@@ -818,6 +764,10 @@ impl Default for AppearanceState {
       taskbar_blur: 50,
       control_panel_blur: 50,
       widget_telemetry_blur: 50,
+      terminal_transparency_enabled: true,
+      terminal_transparency: 50,
+      launcher_transparency_enabled: true,
+      launcher_transparency: 50,
       widget_telemetry: true,
       control_panel_enabled: true,
       widget_telemetry_blocks: WidgetTelemetryBlocks::default(),
@@ -838,6 +788,25 @@ impl Default for AppearanceState {
       thickness: 1,
       custom_themes: Vec::new(),
       active_custom_theme: None,
+      official_themes: vec![
+        argvus_theme::discovery::ThemeEntry {
+          id: "argvus-dark".to_string(),
+          name: "ARGVUS Dark".to_string(),
+          category: argvus_theme::discovery::ThemeCategory::Dark,
+          accent: "#3590bd".to_string(),
+          wallpaper: "argvus-dark.jxl".to_string(),
+          name_i18n: std::collections::HashMap::new(),
+        },
+        argvus_theme::discovery::ThemeEntry {
+          id: "argvus-light".to_string(),
+          name: "ARGVUS Light".to_string(),
+          category: argvus_theme::discovery::ThemeCategory::Light,
+          accent: "#181818".to_string(),
+          wallpaper: "argvus-light.jxl".to_string(),
+          name_i18n: std::collections::HashMap::new(),
+        },
+      ],
+      discovery_warnings: Vec::new(),
     }
   }
 }

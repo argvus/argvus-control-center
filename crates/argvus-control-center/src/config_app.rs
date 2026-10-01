@@ -7,8 +7,9 @@ use std::sync::Arc;
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
+  paths::system_config_root,
   privileged::{PrivilegedOperation, PrivilegedRequest, SystemSettingsOperation},
-  process::SystemProcessRunner,
+  process::{ProcessRequest, ProcessRunner, SystemProcessRunner},
   sanitize::terminal_text,
 };
 use argvus_i18n::{Lang, tr};
@@ -25,57 +26,93 @@ use ratatui::text::Line;
 /// Names the type `ConfigOperation`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 type ConfigOperation = Arc<dyn PrivilegedOperation>;
 
-/// The ARGVUS Control Center configuration screen. Currently hosts the
-/// option that enables/disables the decorative icons across the whole layout.
+/// The ARGVUS Control Center configuration screen. Hosts the option that
+/// enables/disables the decorative icons across the whole layout plus the
+/// transparency and blur controls for the Control Center window itself.
 pub struct ConfigApp {
   lang: Lang,
   theme: Theme,
   pub icons: bool,
+  pub transparency: bool,
+  pub transparency_value: i32,
+  pub blur: bool,
   selected: usize,
   pub status: Option<StatusMessage>,
   operation: ConfigOperation,
+  runner: Arc<dyn ProcessRunner + Send + Sync>,
   jobs: JobManager,
   save_job: Option<JobHandle<()>>,
+  effects_job: Option<JobHandle<()>>,
 }
 
 impl ConfigApp {
+  /// Replaces the semantic theme used by this page.
+  pub fn set_theme(&mut self, theme: &Theme) {
+    self.theme = theme.clone();
+  }
+
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme) -> Self {
     let executable = std::env::current_exe()
       .map(|path| path.to_string_lossy().into_owned())
       .unwrap_or_else(|_| "argvus-control-center".into());
-    Self::with_operation(
+    Self::from_inputs(
       lang,
       theme,
       Arc::new(SystemSettingsOperation::new(
         SystemProcessRunner,
         executable,
       )),
+      Arc::new(SystemProcessRunner),
     )
   }
 
-  /// Constructs `with_operation` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn with_operation(lang: Lang, theme: Theme, operation: ConfigOperation) -> Self {
+  /// Constructs `from_inputs` with this module's expected initial state. The `runner` handles the user-owned effects hops so the Control Center effects can be persisted without privilege elevation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn from_inputs(
+    lang: Lang,
+    theme: Theme,
+    operation: ConfigOperation,
+    runner: Arc<dyn ProcessRunner + Send + Sync>,
+  ) -> Self {
     let config = AppConfig::load();
+    let (transparency, transparency_value, blur) = load_effects(&runner);
     Self {
       lang,
       theme,
       icons: config.icons(),
+      transparency,
+      transparency_value,
+      blur,
       selected: 0,
       status: None,
       operation,
+      runner,
       jobs: JobManager::default(),
       save_job: None,
+      effects_job: None,
     }
   }
 
   /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows(&self) -> Vec<String> {
-    vec![format!(
-      "[{}] {}",
-      if self.icons { "✓" } else { " " },
-      tr(self.lang, "control_center.icons")
-    )]
+    vec![
+      format!(
+        "[{}] {}",
+        checkbox(self.icons),
+        tr(self.lang, "control_center.icons")
+      ),
+      format!(
+        "[{}] {} {}%",
+        checkbox(self.transparency),
+        tr(self.lang, "control_center.control_center_transparency"),
+        self.transparency_value
+      ),
+      format!(
+        "[{}] {}",
+        checkbox(self.blur),
+        tr(self.lang, "control_center.control_center_blur")
+      ),
+    ]
   }
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -87,17 +124,40 @@ impl ConfigApp {
   pub fn footer_hints(&self) -> &'static str {
     tr(
       self.lang,
-      "control_center.navigate_enter_space_toggle_esc_back_help",
+      "control_center.navigate_enter_space_toggle_left_right_value_esc_back_help",
     )
   }
 
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     match key {
-      KeyCode::Esc | KeyCode::Left => true,
+      KeyCode::Esc => true,
+      KeyCode::Left => {
+        if self.selected == 1 {
+          self.adjust_value(-5);
+          false
+        } else {
+          true
+        }
+      }
+      KeyCode::Right => {
+        if self.selected == 1 {
+          self.adjust_value(5);
+        }
+        false
+      }
       KeyCode::Enter | KeyCode::Char(' ') => {
-        if self.selected == 0 {
-          self.toggle();
+        match self.selected {
+          0 => self.toggle(),
+          1 => {
+            self.transparency = !self.transparency;
+            self.save_effects();
+          }
+          2 => {
+            self.blur = !self.blur;
+            self.save_effects();
+          }
+          _ => {}
         }
         false
       }
@@ -120,7 +180,7 @@ impl ConfigApp {
     self.selected = self.selected.min(self.rows().len().saturating_sub(1));
   }
 
-  /// Applies the toggle in-session immediately and persists it through the
+  /// Applies the icons toggle in-session immediately and persists it through the
   /// privileged system-settings flow (polkit). Result is reported on poll().
   pub fn toggle(&mut self) {
     if self.save_job.is_some() {
@@ -159,6 +219,60 @@ impl ConfigApp {
     }));
   }
 
+  /// Persists the Control Center transparency and blur values through the
+  /// user-owned `effects-toggle.sh` surface-apply hop. The script writes the
+  /// argvus-config keys, rematerializes the tab-less Kitty profile and asks
+  /// running instances to reload, so the running window updates live.
+  fn save_effects(&mut self) {
+    if self.effects_job.is_some() {
+      return;
+    }
+    self.status = Some(StatusMessage {
+      kind: StatusKind::Info,
+      text: tr(self.lang, "control_center.saving_configuration").into(),
+    });
+    let script = system_config_root()
+      .join("session/sh/effects-toggle.sh")
+      .to_string_lossy()
+      .into_owned();
+    let transparency_enabled = if self.transparency {
+      "enabled"
+    } else {
+      "disabled"
+    };
+    let transparency_value = self.transparency_value.to_string();
+    let blur_enabled = if self.blur { "enabled" } else { "disabled" };
+    // The Control Center surface reads the blur enable flag only; the blur
+    // value argument is still required to keep the shared surface contract.
+    let blur_value = "50";
+    let runner = Arc::clone(&self.runner);
+    self.effects_job = Some(self.jobs.spawn(move |_| {
+      let request = ProcessRequest::new("sh")
+        .arg(script)
+        .arg("surface-apply")
+        .arg("control-center")
+        .arg(transparency_enabled)
+        .arg(transparency_value)
+        .arg(blur_enabled)
+        .arg(blur_value);
+      let output = runner.run(&request).map_err(|error| error.to_string())?;
+      if output.status == Some(0) {
+        Ok(())
+      } else {
+        Err(terminal_text(
+          String::from_utf8_lossy(&output.stderr).trim(),
+        ))
+      }
+    }));
+  }
+
+  /// Steps `transparency_value` by `delta` while keeping it inside its range and
+  /// persists the new value immediately.
+  fn adjust_value(&mut self, delta: i32) {
+    self.transparency_value = (self.transparency_value + delta).clamp(0, 100);
+    self.save_effects();
+  }
+
   /// Executes the `persist_failed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn persist_failed(&mut self, text: String) {
     self.status = Some(StatusMessage {
@@ -183,6 +297,29 @@ impl ConfigApp {
             } else {
               tr(self.lang, "control_center.icons_disabled").into()
             },
+          });
+        }
+        Err(error) => {
+          self.persist_failed(format!(
+            "{}: {error}",
+            tr(
+              self.lang,
+              "control_center.applied_this_session_but_the_configuration_could_not_be_saved"
+            )
+          ));
+        }
+      }
+      changed = true;
+    }
+    if let Some(job) = &self.effects_job
+      && let JobState::Finished(result) = job.try_state()
+    {
+      self.effects_job = None;
+      match result {
+        Ok(()) => {
+          self.status = Some(StatusMessage {
+            kind: StatusKind::Success,
+            text: tr(self.lang, "control_center.effects_applied").into(),
           });
         }
         Err(error) => {
@@ -234,10 +371,71 @@ impl ConfigApp {
   }
 }
 
+/// Renders the checkbox glyph for `enabled`. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+fn checkbox(enabled: bool) -> &'static str {
+  if enabled { "✓" } else { " " }
+}
+
+/// Reads the Control Center effect keys from argvus-config in a best-effort
+/// way. When the tool is unavailable or the keys are missing, the session
+/// defaults are used so the screen still reflects what the effect path applies.
+fn load_effects(runner: &Arc<dyn ProcessRunner + Send + Sync>) -> (bool, i32, bool) {
+  let transparency = read_effect_flag(runner, "transparency_control-center_enabled", true);
+  let transparency_value = read_effect_value(runner, "transparency_control-center_value", 50);
+  let blur = read_effect_flag(runner, "blur_control-center_enabled", true);
+  (transparency, transparency_value, blur)
+}
+
+/// Executes `argvus-config get` for a single effects key and returns the raw
+/// effective value when the process succeeds.
+fn read_effect(runner: &Arc<dyn ProcessRunner + Send + Sync>, key: &str) -> Option<String> {
+  let request = ProcessRequest::new("argvus-config")
+    .arg("get")
+    .arg(format!("/effects/{key}"))
+    .arg("--effective")
+    .arg("--raw");
+  match runner.run(&request) {
+    Ok(output) if output.status == Some(0) => {
+      let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+      if value.is_empty() { None } else { Some(value) }
+    }
+    _ => None,
+  }
+}
+
+/// Parses `read_effect` as an enabled/disabled flag with a `default` fallback.
+fn read_effect_flag(
+  runner: &Arc<dyn ProcessRunner + Send + Sync>,
+  key: &str,
+  default: bool,
+) -> bool {
+  match read_effect(runner, key).as_deref() {
+    Some("true") | Some("enabled") => true,
+    Some("false") | Some("disabled") => false,
+    _ => default,
+  }
+}
+
+/// Parses `read_effect` as a percentage value with a `default` fallback.
+fn read_effect_value(
+  runner: &Arc<dyn ProcessRunner + Send + Sync>,
+  key: &str,
+  default: i32,
+) -> i32 {
+  match read_effect(runner, key) {
+    Some(value) => value
+      .parse::<i32>()
+      .ok()
+      .filter(|parsed| (0..=100).contains(parsed))
+      .unwrap_or(default),
+    None => default,
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
-  use argvus_control_center_core::process::ProcessOutput;
+  use argvus_control_center_core::process::{ProcessError, ProcessOutput};
   use std::path::PathBuf;
   use std::sync::Mutex;
   use std::sync::atomic::AtomicUsize;
@@ -276,6 +474,42 @@ mod tests {
     }
   }
 
+  #[derive(Default)]
+  /// Represents `RecordingRunner`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
+  struct RecordingRunner(Mutex<Option<ProcessRequest>>);
+
+  impl ProcessRunner for RecordingRunner {
+    /// Executes the `run` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+    fn run(&self, request: &ProcessRequest) -> Result<ProcessOutput, ProcessError> {
+      *self.0.lock().unwrap() = Some(request.clone());
+      Ok(ProcessOutput {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        status: Some(0),
+        timed_out: false,
+      })
+    }
+  }
+
+  /// Constructs `with_operation` with this module's expected initial state. Uses a hermetic runner so effect reads never touch the real system. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn with_operation(operation: ConfigOperation) -> ConfigApp {
+    ConfigApp::from_inputs(
+      Lang::for_locale("pt-BR"),
+      Theme::load(),
+      operation,
+      Arc::new(RecordingRunner::default()),
+    )
+  }
+
+  /// Acquires `ENV_TEST_LOCK`, recovering from a poisoned state left behind by
+  /// a previously failed test; the env var each test guards is reset between
+  /// runs, so a stale poison is safe to ignore.
+  fn env_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    ENV_TEST_LOCK
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
+  }
+
   /// Constructs `with_config` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn with_config(on_icons: bool) -> (PathBuf, PathBuf) {
     let sequence = ENV_TEST_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -311,15 +545,11 @@ mod tests {
   #[test]
   /// Executes the `toggling_icons_flips_the_session_and_requests_a_privileged_save` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggling_icons_flips_the_session_and_requests_a_privileged_save() {
-    let _guard = ENV_TEST_LOCK.lock().unwrap();
+    let _guard = env_test_guard();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
     let recorder = Arc::new(RecordingOperation::default());
-    let mut app = ConfigApp::with_operation(
-      Lang::for_locale("pt-BR"),
-      Theme::load(),
-      Arc::clone(&recorder) as ConfigOperation,
-    );
+    let mut app = with_operation(Arc::clone(&recorder) as ConfigOperation);
     assert!(app.icons);
     app.toggle();
     assert!(!app.icons);
@@ -343,14 +573,10 @@ mod tests {
   #[test]
   /// Executes the `failed_save_reports_applied_this_session_warning` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn failed_save_reports_applied_this_session_warning() {
-    let _guard = ENV_TEST_LOCK.lock().unwrap();
+    let _guard = env_test_guard();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let mut app = ConfigApp::with_operation(
-      Lang::for_locale("pt-BR"),
-      Theme::load(),
-      Arc::new(FailingOperation),
-    );
+    let mut app = with_operation(Arc::new(FailingOperation));
     app.toggle();
     assert!(!app.icons);
     drain_poll(&mut app);
@@ -366,10 +592,10 @@ mod tests {
   #[test]
   /// Executes the `checkbox_label_tracks_icon_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn checkbox_label_tracks_icon_state() {
-    let _guard = ENV_TEST_LOCK.lock().unwrap();
+    let _guard = env_test_guard();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let app = ConfigApp::new(Lang::for_locale("pt-BR"), Theme::load());
+    let app = with_operation(Arc::new(RecordingOperation::default()));
     let row = app.rows().into_iter().next().unwrap();
     assert!(row.starts_with("[✓] Icones"), "{row}");
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
@@ -379,14 +605,10 @@ mod tests {
   #[test]
   /// Executes the `escape_leaves_and_enter_toggles` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn escape_leaves_and_enter_toggles() {
-    let _guard = ENV_TEST_LOCK.lock().unwrap();
+    let _guard = env_test_guard();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let mut app = ConfigApp::with_operation(
-      Lang::for_locale("pt-BR"),
-      Theme::load(),
-      Arc::new(RecordingOperation::default()),
-    );
+    let mut app = with_operation(Arc::new(RecordingOperation::default()));
     assert!(app.handle(KeyCode::Esc), "Esc must signal going back");
     assert!(!app.handle(KeyCode::Enter));
     assert!(!app.icons);
@@ -395,12 +617,121 @@ mod tests {
   }
 
   #[test]
-  /// Renders `draws_the_checkbox_screen` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn draws_the_checkbox_screen() {
-    let _guard = ENV_TEST_LOCK.lock().unwrap();
+  /// Executes the `transparency_toggle_applies_the_control_center_surface` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn transparency_toggle_applies_the_control_center_surface() {
+    let _guard = env_test_guard();
     let (dir, path) = with_config(true);
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
-    let app = ConfigApp::new(Lang::for_locale("pt-BR"), Theme::load());
+    let recorder = Arc::new(RecordingRunner::default());
+    let mut app = ConfigApp::from_inputs(
+      Lang::for_locale("pt-BR"),
+      Theme::load(),
+      Arc::new(RecordingOperation::default()),
+      Arc::clone(&recorder) as Arc<dyn ProcessRunner + Send + Sync>,
+    );
+    assert!(app.transparency);
+    assert!(!app.handle(KeyCode::Down));
+    assert!(!app.handle(KeyCode::Enter));
+    assert!(!app.transparency);
+    drain_poll(&mut app);
+    let requested = recorder.0.lock().unwrap().clone().unwrap();
+    assert_eq!(requested.program, "sh");
+    let tail = requested.args[requested.args.len() - 6..].to_vec();
+    assert_eq!(
+      tail,
+      vec![
+        "surface-apply",
+        "control-center",
+        "disabled",
+        "50",
+        "enabled",
+        "50"
+      ]
+    );
+    assert!(matches!(
+      app.status,
+      Some(StatusMessage {
+        kind: StatusKind::Success,
+        ..
+      })
+    ));
+    unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  /// Executes the `left_and_right_step_the_transparency_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn left_and_right_step_the_transparency_value() {
+    let _guard = env_test_guard();
+    let (dir, path) = with_config(true);
+    unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
+    let recorder = Arc::new(RecordingRunner::default());
+    let mut app = ConfigApp::from_inputs(
+      Lang::for_locale("pt-BR"),
+      Theme::load(),
+      Arc::new(RecordingOperation::default()),
+      Arc::clone(&recorder) as Arc<dyn ProcessRunner + Send + Sync>,
+    );
+    assert!(!app.handle(KeyCode::Down));
+    assert!(!app.handle(KeyCode::Right));
+    assert_eq!(app.transparency_value, 55);
+    drain_poll(&mut app);
+    let requested = recorder.0.lock().unwrap().clone().unwrap();
+    let tail = requested.args[requested.args.len() - 6..].to_vec();
+    assert_eq!(
+      tail,
+      vec![
+        "surface-apply",
+        "control-center",
+        "enabled",
+        "55",
+        "enabled",
+        "50"
+      ]
+    );
+    assert!(!app.handle(KeyCode::Left));
+    assert_eq!(app.transparency_value, 50);
+    drain_poll(&mut app);
+    let requested = recorder.0.lock().unwrap().clone().unwrap();
+    let tail = requested.args[requested.args.len() - 6..].to_vec();
+    assert_eq!(
+      tail,
+      vec![
+        "surface-apply",
+        "control-center",
+        "enabled",
+        "50",
+        "enabled",
+        "50"
+      ]
+    );
+    assert!(!app.handle(KeyCode::Left));
+    assert_eq!(app.transparency_value, 45);
+    drain_poll(&mut app);
+    let requested = recorder.0.lock().unwrap().clone().unwrap();
+    let tail = requested.args[requested.args.len() - 6..].to_vec();
+    assert_eq!(
+      tail,
+      vec![
+        "surface-apply",
+        "control-center",
+        "enabled",
+        "45",
+        "enabled",
+        "50"
+      ]
+    );
+    unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  /// Renders `draws_the_checkbox_screen` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn draws_the_checkbox_screen() {
+    let _guard = env_test_guard();
+    let (dir, path) = with_config(true);
+    unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
+    let app = with_operation(Arc::new(RecordingOperation::default()));
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 24)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
     let text = terminal

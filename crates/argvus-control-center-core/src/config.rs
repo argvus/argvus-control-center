@@ -4,13 +4,48 @@
 //! the UI consumes normalized models and results.
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+
+use crate::process::{ProcessRequest, ProcessRunner, SystemProcessRunner};
 
 /// Default location of the ARGVUS Control Center configuration file.
 pub const CONFIG_DIR: &str = "/etc/argvus/control-center";
 /// Defines the constant `CONFIG_PATH`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub const CONFIG_PATH: &str = "/etc/argvus/control-center/config.toml";
+
+/// Applies the canonical ARGVUS configuration through the user service that
+/// owns projection and runtime reload. Callers must persist the modular
+/// canonical configuration
+/// first; this function intentionally does not mutate canonical state.
+pub fn reload_argvus_config_service() -> Result<(), String> {
+  reload_argvus_config_service_with(&SystemProcessRunner)
+}
+
+/// Applies the canonical configuration through a caller-provided process
+/// runner. Backends use this variant when their persistence and reload steps
+/// must share the same injectable process boundary during tests.
+pub fn reload_argvus_config_service_with(runner: &impl ProcessRunner) -> Result<(), String> {
+  let output = runner
+    .run(
+      &ProcessRequest::new("systemctl")
+        .arg("--user")
+        .arg("reload")
+        .arg("argvus-config.service")
+        .timeout(Duration::from_secs(60)),
+    )
+    .map_err(|error| format!("failed to reload argvus-config.service: {error}"))?;
+  if output.status == Some(0) {
+    return Ok(());
+  }
+  let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+  if detail.is_empty() {
+    Err("argvus-config.service could not apply the configuration".into())
+  } else {
+    Err(detail)
+  }
+}
 
 /// Maintains the static state `ICONS_ENABLED`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 static ICONS_ENABLED: AtomicBool = AtomicBool::new(true);

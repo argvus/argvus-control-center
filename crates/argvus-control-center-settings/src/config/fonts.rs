@@ -133,7 +133,10 @@ pub struct FontSettings {
 impl FontSettings {
   /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn load() -> Self {
-    let state = parse_state(&fs::read_to_string(paths::fonts_file()).unwrap_or_default());
+    let mut state = parse_state(&fs::read_to_string(paths::fonts_file()).unwrap_or_default());
+    if let Some(fonts) = canonical_fonts() {
+      overlay_canonical_fonts(&mut state, &fonts);
+    }
     let mut profile = HashMap::new();
     for target in FontTarget::ALL {
       let key = target.key();
@@ -412,7 +415,34 @@ impl FontSettings {
     let _ = writeln!(output, "subpixel={}", self.subpixel);
     let _ = writeln!(output, "custom_dpi={}", self.custom_dpi);
     let _ = writeln!(output, "dpi={}", self.dpi);
-    write_file(&paths::fonts_file(), &output)
+    let targets = FontTarget::ALL
+      .into_iter()
+      .map(|target| {
+        let font = self.get(target);
+        (
+          target.key().to_owned(),
+          serde_json::json!({
+            "family": font.family,
+            "style": font.style,
+            "size": font.size,
+          }),
+        )
+      })
+      .collect::<serde_json::Map<_, _>>();
+    let patch = serde_json::json!({
+      "/fonts/targets": targets,
+      "/fonts/rendering": {
+        "antialias": self.antialias,
+        "hinting": self.hinting,
+        "subpixel": self.subpixel,
+        "custom_dpi": self.custom_dpi,
+        "dpi": self.dpi,
+      },
+      "/fonts/legacy": output,
+    });
+    let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+    run_checked("argvus-config", &["patch", &patch])?;
+    argvus_control_center_core::config::reload_argvus_config_service()
   }
 
   /// Applies the `write_gtk_settings` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -421,8 +451,8 @@ impl FontSettings {
     for directory in [
       paths::config_home().join("gtk-3.0"),
       paths::config_home().join("gtk-4.0"),
-      paths::argvus_config_home().join("gtk-3.0"),
-      paths::argvus_config_home().join("gtk-4.0"),
+      paths::argvus_data_home().join("gtk-3.0"),
+      paths::argvus_data_home().join("gtk-4.0"),
     ] {
       replace_ini_setting(&directory.join("settings.ini"), "gtk-font-name", &value)?;
     }
@@ -432,14 +462,14 @@ impl FontSettings {
   /// Applies the `write_rofi_settings` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn write_rofi_settings(&self) -> Result<(), String> {
     let system = paths::system_config_root().join("launcher/config/theme.rasi");
-    let user_theme = paths::argvus_config_home().join("rofi/theme.rasi");
+    let user_theme = paths::argvus_data_home().join("rofi/theme.rasi");
     let theme = if user_theme.exists() {
       user_theme
     } else {
       system
     };
     let font = escape(&self.get(FontTarget::Apps).value());
-    let generated = paths::argvus_config_home().join("generated/rofi/config.rasi");
+    let generated = paths::argvus_data_home().join("generated/rofi/config.rasi");
     write_file(
       &generated,
       &format!(
@@ -447,7 +477,7 @@ impl FontSettings {
         escape(&theme.display().to_string())
       ),
     )?;
-    let user = paths::argvus_config_home().join("rofi/config.rasi");
+    let user = paths::argvus_data_home().join("rofi/config.rasi");
     if user.exists() {
       write_managed_block(
         &user,
@@ -479,7 +509,7 @@ impl FontSettings {
 
   /// Applies the `write_waybar_profile` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn write_waybar_profile(&self, name: &str, block: &str) -> Result<(), String> {
-    let user = paths::argvus_config_home().join("waybar").join(name);
+    let user = paths::argvus_data_home().join("waybar").join(name);
     if user.exists() {
       return write_managed_block(&user, block);
     }
@@ -492,7 +522,7 @@ impl FontSettings {
       .join(project)
       .join("config")
       .join(name);
-    let generated = paths::argvus_config_home()
+    let generated = paths::argvus_data_home()
       .join("generated/waybar")
       .join(name);
     write_file(
@@ -506,27 +536,9 @@ impl FontSettings {
 
   /// Applies the `write_terminal_settings` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn write_terminal_settings(&self) -> Result<(), String> {
-    let foot = paths::argvus_config_home().join("foot/foot.ini");
-    if !foot.exists() {
-      let system = paths::system_config_root().join("app-profiles/config/foot/foot.ini");
-      if system.exists() {
-        write_file(
-          &foot,
-          &fs::read_to_string(system).map_err(|error| error.to_string())?,
-        )?;
-      }
-    }
-    if foot.exists() {
-      let font = self.get(FontTarget::Terminal);
-      replace_prefixed_setting(
-        &foot,
-        "font",
-        &format!(
-          "{}:size={}, Noto Color Emoji:size=12",
-          font.family, font.size
-        ),
-      )?;
-    }
+    // The terminal family and size were already written to fonts.conf by
+    // write_state; argvus-terminal --apply folds them into the Kitty profiles
+    // consumed by the ARGVUS terminal windows.
     spawn_if_available("argvus-terminal", &["--apply"]);
     Ok(())
   }
@@ -574,6 +586,62 @@ impl FontSettings {
 }
 
 /// Converts input data into `parse_state` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+fn canonical_fonts() -> Option<serde_json::Value> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/fonts", "--effective"])
+    .output()
+    .ok()?;
+  output
+    .status
+    .success()
+    .then(|| serde_json::from_slice(&output.stdout).ok())
+    .flatten()
+}
+
+fn overlay_canonical_fonts(state: &mut HashMap<String, String>, fonts: &serde_json::Value) {
+  if let Some(targets) = fonts.get("targets").and_then(serde_json::Value::as_object) {
+    for (target, selection) in targets {
+      for key in ["family", "style"] {
+        if let Some(value) = selection.get(key).and_then(serde_json::Value::as_str) {
+          state.insert(format!("{target}_{key}"), value.to_owned());
+        }
+      }
+      if let Some(size) = selection.get("size").and_then(serde_json::Value::as_u64) {
+        state.insert(format!("{target}_size"), size.to_string());
+      }
+    }
+  }
+  if let Some(rendering) = fonts
+    .get("rendering")
+    .and_then(serde_json::Value::as_object)
+  {
+    for key in ["antialias", "custom_dpi"] {
+      if let Some(value) = rendering.get(key).and_then(serde_json::Value::as_bool) {
+        state.insert(key.into(), value.to_string());
+      }
+    }
+    for key in ["hinting", "subpixel"] {
+      if let Some(value) = rendering.get(key).and_then(serde_json::Value::as_str) {
+        state.insert(key.into(), value.to_owned());
+      }
+    }
+    if let Some(value) = rendering.get("dpi").and_then(serde_json::Value::as_u64) {
+      state.insert("dpi".into(), value.to_string());
+    }
+  }
+}
+
+fn run_checked(command: &str, arguments: &[&str]) -> Result<(), String> {
+  let status = Command::new(command)
+    .args(arguments)
+    .status()
+    .map_err(|error| format!("failed to run {command}: {error}"))?;
+  status
+    .success()
+    .then_some(())
+    .ok_or_else(|| format!("{command} exited with {status}"))
+}
+
 pub fn parse_state(contents: &str) -> HashMap<String, String> {
   contents
     .lines()
@@ -638,17 +706,6 @@ fn replace_ini_setting(path: &Path, key: &str, value: &str) -> Result<(), String
     lines.insert(0, "[Settings]".to_string());
   }
   replace_or_append(&mut lines, key, &format!("{key}={value}"));
-  write_file(path, &(lines.join("\n") + "\n"))
-}
-
-/// Executes the `replace_prefixed_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn replace_prefixed_setting(path: &Path, key: &str, value: &str) -> Result<(), String> {
-  let mut lines: Vec<String> = fs::read_to_string(path)
-    .map_err(|error| error.to_string())?
-    .lines()
-    .map(str::to_string)
-    .collect();
-  replace_or_append(&mut lines, key, &format!("{key}      {value}"));
   write_file(path, &(lines.join("\n") + "\n"))
 }
 

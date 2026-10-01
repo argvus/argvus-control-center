@@ -30,6 +30,11 @@ pub struct StorageApp {
   pub status: Option<StatusMessage>,
 }
 impl StorageApp {
+  /// Replaces the semantic theme used by this page.
+  pub fn set_theme(&mut self, theme: &Theme) {
+    self.theme = theme.clone();
+  }
+
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, cap: Capabilities) -> Self {
     let mut s = Self {

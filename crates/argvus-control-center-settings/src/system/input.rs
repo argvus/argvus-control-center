@@ -3,7 +3,6 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -78,11 +77,130 @@ impl Default for TouchpadSettings {
 }
 /// Executes the `path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn path() -> PathBuf {
-  argvus_control_center_core::paths::argvus_config_home().join("input.toml")
+  argvus_control_center_core::paths::argvus_data_home().join("hypr/input.toml")
+}
+
+/// Runs `argvus-config set` for `pointer` with `value`. Failures are tolerated
+/// so the compositor-side apply already performed by the caller still stands.
+/// Reads a raw effective modular value for `pointer`. Returns `None` when
+/// the tool is unavailable or the value is missing/empty, which forces the
+/// caller to fall back to the local replica.
+fn read_config(pointer: &str) -> Option<String> {
+  let output = Command::new("argvus-config")
+    .args(["get", pointer, "--effective", "--raw"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  if value.is_empty() || value == "null" {
+    None
+  } else {
+    Some(value)
+  }
+}
+
+/// Loads the input settings from the modular canonical store. When the
+/// tool is unavailable no value is returned and the caller uses the replica.
+fn input_from_config() -> Option<InputSettings> {
+  let mut settings = InputSettings::default();
+  let mut observed = 0usize;
+
+  if let Some(value) = read_config("/hyprland/input/mouse/sensitivity")
+    && let Ok(parsed) = value.parse::<f64>()
+  {
+    settings.mouse.sensitivity = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/mouse/accel_profile") {
+    settings.mouse.accel_profile = value;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/mouse/natural_scroll")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.mouse.natural_scroll = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/mouse/scroll_factor")
+    && let Ok(parsed) = value.parse::<f64>()
+  {
+    settings.mouse.scroll_factor = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/mouse/left_handed")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.mouse.left_handed = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/touchpad/natural_scroll")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.touchpad.natural_scroll = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/touchpad/tap_to_click")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.touchpad.tap_to_click = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/touchpad/tap_and_drag")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.touchpad.tap_and_drag = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/touchpad/two_finger_right_click")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.touchpad.two_finger_right_click = parsed;
+    observed += 1;
+  }
+  if let Some(value) = read_config("/hyprland/input/touchpad/disable_while_typing")
+    && let Ok(parsed) = value.parse::<bool>()
+  {
+    settings.touchpad.disable_while_typing = parsed;
+    observed += 1;
+  }
+
+  (observed > 0).then_some(settings)
+}
+
+/// Persists the current input settings into the modular canonical store
+/// before the derived replicas are updated. A missing argvus-config tool is
+/// tolerated; the live `hyprctl` apply performed by the caller still stands.
+fn sync_to_config(settings: &InputSettings) -> Result<(), String> {
+  let patch = serde_json::json!({
+    "/hyprland/input/mouse": settings.mouse,
+    "/hyprland/input/touchpad": settings.touchpad,
+  });
+  let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+  let status = Command::new("argvus-config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist input settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the input settings".into());
+  }
+  argvus_control_center_core::config::reload_argvus_config_service()
 }
 
 /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn load() -> InputSettings {
+  let mut settings = input_from_config()
+    .or_else(load_from_replica)
+    .unwrap_or_default();
+  settings.devices = detect_devices();
+  settings.ratbag = ratbag::devices();
+  settings
+}
+
+/// Reads the persisted `input.toml` replica, falling back to live Hyprland
+/// values when the replica has not been materialized yet.
+fn load_from_replica() -> Option<InputSettings> {
   let persisted = fs::read_to_string(path());
   let mut settings: InputSettings = persisted
     .as_deref()
@@ -92,10 +210,7 @@ pub fn load() -> InputSettings {
   if persisted.is_err() {
     settings.load_runtime_values();
   }
-  settings.devices = detect_devices();
-  settings.ratbag = ratbag::devices();
-  let _ = write_generated_hypr_input(&settings);
-  settings
+  Some(settings)
 }
 
 impl InputSettings {
@@ -125,56 +240,10 @@ impl InputSettings {
 
 /// Applies the `save` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn save(settings: &InputSettings) -> Result<(), String> {
-  let target = path();
-  fs::create_dir_all(target.parent().ok_or("invalid input configuration path")?)
-    .map_err(|e| e.to_string())?;
-  let tmp = target.with_extension("toml.tmp");
-  fs::write(
-    &tmp,
-    toml::to_string_pretty(settings).map_err(|e| e.to_string())?,
-  )
-  .map_err(|e| e.to_string())?;
-  fs::rename(tmp, target).map_err(|e| e.to_string())?;
-  write_generated_hypr_input(settings)
+  sync_to_config(settings)
 }
 
 /// Executes the `generated_hypr_input_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn generated_hypr_input_path() -> PathBuf {
-  argvus_control_center_core::paths::argvus_config_home().join("generated/hypr/input-settings.lua")
-}
-
-/// Executes the `lua_escape` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn lua_escape(value: &str) -> String {
-  value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-/// Applies the `write_generated_hypr_input` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn write_generated_hypr_input(settings: &InputSettings) -> Result<(), String> {
-  let path = generated_hypr_input_path();
-  fs::create_dir_all(path.parent().ok_or("invalid generated input path")?)
-    .map_err(|e| e.to_string())?;
-  let contents = format!(
-    "-- Generated by argvus-control-center. Do not edit this file directly.\nreturn {{\n  sensitivity = {},\n  accel_profile = \"{}\",\n  natural_scroll = {},\n  scroll_factor = {},\n  left_handed = {},\n  touchpad = {{\n    natural_scroll = {},\n    tap_to_click = {},\n    tap_and_drag = {},\n    clickfinger_behavior = {},\n    disable_while_typing = {},\n  }},\n}}\n",
-    settings.mouse.sensitivity,
-    lua_escape(&settings.mouse.accel_profile),
-    settings.mouse.natural_scroll,
-    settings.mouse.scroll_factor,
-    settings.mouse.left_handed,
-    settings.touchpad.natural_scroll,
-    settings.touchpad.tap_to_click,
-    settings.touchpad.tap_and_drag,
-    settings.touchpad.two_finger_right_click,
-    settings.touchpad.disable_while_typing,
-  );
-  let tmp = path.with_extension("lua.tmp");
-  let mut file = fs::File::create(&tmp).map_err(|e| e.to_string())?;
-  file
-    .write_all(contents.as_bytes())
-    .map_err(|e| e.to_string())?;
-  file.sync_all().map_err(|e| e.to_string())?;
-  fs::rename(tmp, path).map_err(|e| e.to_string())
-}
-
 impl InputSettings {
   /// Applies the `toggle` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn toggle(&mut self, index: usize) -> Result<(), String> {

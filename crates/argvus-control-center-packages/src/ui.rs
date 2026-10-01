@@ -149,6 +149,11 @@ fn transaction_bottom_offset(output: &str) -> u16 {
 }
 
 impl PackagesApp {
+  /// Replaces the semantic theme used by this page.
+  pub fn set_theme(&mut self, theme: &Theme) {
+    self.theme = theme.clone();
+  }
+
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {

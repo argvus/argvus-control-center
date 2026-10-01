@@ -138,11 +138,11 @@ pub struct PowerState {
   /// HandleLidSwitch (battery) and HandleLidSwitchExternalPower (AC).
   pub lid: [PowerBehavior; 2],
   pub power_button: PowerButtonBehavior,
-  /// Screen-off idle timeout in minutes, when the ARGVUS hypridle config
-  /// exposes a DPMS listener (None = not configured/unknown).
+  /// Screen-off idle timeout in minutes from the canonical power module,
+  /// with the derived hypridle file as a compatibility fallback.
   pub screen_off_minutes: Option<u32>,
-  /// Screen-lock idle timeout in minutes, when the ARGVUS hypridle config
-  /// exposes a lock listener (None = not configured/unknown).
+  /// Screen-lock idle timeout in minutes from the canonical power module,
+  /// with the derived hypridle file as a compatibility fallback.
   pub lock_minutes: Option<u32>,
   pub keep_awake: bool,
   pub can_suspend: bool,

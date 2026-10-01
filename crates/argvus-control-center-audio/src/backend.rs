@@ -52,6 +52,26 @@ impl<R: ProcessRunner> AudioBackend<R> {
     }
     Ok(terminal_text(&String::from_utf8_lossy(&o.stdout)))
   }
+
+  fn persist_default_output(&self, pointer: &str, value: &str) -> Result<(), AudioError> {
+    let request = ProcessRequest::new("argvus-config")
+      .arg("set")
+      .arg(pointer)
+      .arg(value)
+      .timeout(Duration::from_secs(60));
+    let output = match self.runner.run(&request) {
+      Ok(output) => output,
+      Err(ProcessError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+      Err(error) => return Err(AudioError::Process(error)),
+    };
+    if output.status != Some(0) {
+      return Err(AudioError::Command(terminal_text(
+        &String::from_utf8_lossy(&output.stderr),
+      )));
+    }
+    argvus_control_center_core::config::reload_argvus_config_service_with(&self.runner)
+      .map_err(AudioError::Command)
+  }
   /// Retrieves data for `snapshot` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn snapshot(&self) -> Result<AudioSnapshot, AudioError> {
     if !self.capabilities.has_wpctl {
@@ -101,16 +121,14 @@ impl<R: ProcessRunner> AudioBackend<R> {
     if percent > 100 {
       return Err(AudioError::InvalidValue);
     }
-    self
-      .run(&["set-volume", &id.to_string(), &format!("{}%", percent)])
-      .map(|_| ())
+    self.run(&["set-volume", &id.to_string(), &format!("{}%", percent)])?;
+    self.persist_default_output("/audio/output_volume", &percent.to_string())
   }
   /// Applies the `set_mute` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn set_mute(&self, id: u32, mute: bool) -> Result<(), AudioError> {
     validate_node_id(id)?;
-    self
-      .run(&["set-mute", &id.to_string(), if mute { "1" } else { "0" }])
-      .map(|_| ())
+    self.run(&["set-mute", &id.to_string(), if mute { "1" } else { "0" }])?;
+    self.persist_default_output("/audio/output_muted", if mute { "true" } else { "false" })
   }
 }
 /// Executes the `validate_node_id` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -252,9 +270,13 @@ mod tests {
     backend.set_volume(46, 75).unwrap();
     backend.set_mute(57, true).unwrap();
     let requests = backend.runner.0.lock().unwrap();
-    assert_eq!(requests[0].args, ["set-default", "46"]);
-    assert_eq!(requests[1].args, ["set-volume", "46", "75%"]);
-    assert_eq!(requests[2].args, ["set-mute", "57", "1"]);
+    let wpctl_requests: Vec<_> = requests
+      .iter()
+      .filter(|request| request.program == "wpctl")
+      .collect();
+    assert_eq!(wpctl_requests[0].args, ["set-default", "46"]);
+    assert_eq!(wpctl_requests[1].args, ["set-volume", "46", "75%"]);
+    assert_eq!(wpctl_requests[2].args, ["set-mute", "57", "1"]);
   }
   #[test]
   /// Executes the `volume_is_bounded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

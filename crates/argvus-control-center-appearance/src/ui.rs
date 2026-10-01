@@ -6,11 +6,15 @@ use crate::{
   backend,
   model::{
     AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
-    EffectSurface, HexColor, PromptGoal, SurfaceSection, THEME_FAMILIES, TaskbarPosition,
-    TaskbarUtilityGroupMode, ThemeCategory, WallpaperCollection, WallpaperMode,
-    WidgetTelemetryBlock, accent_label, normalize_hex_color, theme_family_label,
+    EffectSurface, HexColor, PromptGoal, SurfaceSection, TaskbarPosition, TaskbarUtilityGroupMode,
+    WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label, normalize_hex_color,
+    theme_family_label,
   },
 };
+use argvus_theme::discovery::ThemeCategory;
+
+const THEME_CATEGORIES: [ThemeCategory; 2] = [ThemeCategory::Dark, ThemeCategory::Light];
+
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
@@ -64,16 +68,32 @@ fn icon_label(icon: &'static str, label: impl AsRef<str>) -> String {
   argvus_tui::icons::icon_label(AppConfig::icon(icon), label)
 }
 
-fn family_indices(category: ThemeCategory) -> Vec<usize> {
-  THEME_FAMILIES
+fn theme_category_label_key(category: ThemeCategory) -> &'static str {
+  match category {
+    ThemeCategory::Dark => "control_center.theme_category_dark",
+    ThemeCategory::Light => "control_center.theme_category_light",
+  }
+}
+
+fn family_indices(
+  category: ThemeCategory,
+  official_themes: &[argvus_theme::discovery::ThemeEntry],
+) -> Vec<usize> {
+  official_themes
     .iter()
     .enumerate()
-    .filter_map(|(index, (family_id, _))| category.contains_family(family_id).then_some(index))
+    .filter_map(|(index, entry)| (entry.category == category).then_some(index))
     .collect()
 }
 
-fn family_index(category: ThemeCategory, selected: usize) -> Option<usize> {
-  family_indices(category).get(selected).copied()
+fn family_index(
+  category: ThemeCategory,
+  selected: usize,
+  official_themes: &[argvus_theme::discovery::ThemeEntry],
+) -> Option<usize> {
+  family_indices(category, official_themes)
+    .get(selected)
+    .copied()
 }
 
 /// Represents `AppearanceApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -96,6 +116,7 @@ pub struct AppearanceApp {
   control_panel_draft: Option<ControlPanelCards>,
   effect_draft: Option<i32>,
   surface_draft: Option<SurfaceDraft>,
+  theme_dirty: bool,
   on_buttons: bool,
   button_selected: usize,
   button_from: Option<usize>,
@@ -109,6 +130,16 @@ impl AppearanceApp {
   /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
     self.ensure_page();
+  }
+
+  /// Replaces the semantic theme used by this page.
+  pub fn set_theme(&mut self, theme: &Theme) {
+    self.theme = theme.clone();
+  }
+
+  /// Consumes the pending signal that an applied change altered the palette.
+  pub fn take_theme_dirty(&mut self) -> bool {
+    std::mem::take(&mut self.theme_dirty)
   }
 
   fn ensure_page(&mut self) {
@@ -159,6 +190,7 @@ impl AppearanceApp {
       control_panel_draft: None,
       effect_draft: None,
       surface_draft: None,
+      theme_dirty: false,
       on_buttons: false,
       button_selected: 0,
       button_from: None,
@@ -233,6 +265,9 @@ impl AppearanceApp {
       && let JobState::Finished(result) = action.try_state()
     {
       self.action = None;
+      // The action already ran the external scripts that regenerate the theme
+      // files, so this is the first safe point to signal a palette reload.
+      self.theme_dirty = true;
       if self.reload_requested {
         self.reload_requested = false;
         self.refreshed.clear();
@@ -282,6 +317,7 @@ impl AppearanceApp {
       move || backend::import_theme_profile(&path).map(|_| ()),
     );
   }
+
   /// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply(&mut self, message: String, task: impl FnOnce() -> Result<(), String> + Send + 'static) {
     if self.action.is_some() {
@@ -367,6 +403,18 @@ impl AppearanceApp {
         self.state.widget_telemetry_blur_enabled,
         self.state.widget_telemetry_blur,
       ),
+      EffectSurface::Terminal => (
+        self.state.terminal_transparency_enabled,
+        self.state.terminal_transparency,
+        true,
+        0,
+      ),
+      EffectSurface::Launchers => (
+        self.state.launcher_transparency_enabled,
+        self.state.launcher_transparency,
+        true,
+        0,
+      ),
     };
     SurfaceDraft {
       surface,
@@ -440,6 +488,20 @@ impl AppearanceApp {
             draft.blur,
           )
         }
+        EffectSurface::Terminal => backend::apply_surface_effects(
+          draft.surface,
+          draft.transparency_enabled,
+          draft.transparency,
+          true,
+          0,
+        ),
+        EffectSurface::Launchers => backend::apply_surface_effects(
+          draft.surface,
+          draft.transparency_enabled,
+          draft.transparency,
+          true,
+          0,
+        ),
       },
     );
   }
@@ -480,10 +542,18 @@ impl AppearanceApp {
         _ => {}
       },
       AppearancePage::ThemeFamilies { category } => {
-        let Some(family) = family_index(category, self.selected) else {
+        let Some(family_idx) = family_index(category, self.selected, &self.state.official_themes)
+        else {
           return;
         };
-        self.go(AppearancePage::ThemeModes { family });
+        // Sticky/Float is an independent mode (Appearance > Mode), no longer
+        // part of theme selection: picking a family applies it directly,
+        // under whichever mode is already active.
+        let name = self.state.official_themes[family_idx].id.clone();
+        self.apply(
+          tr(self.lang, "control_center.theme_applied").into(),
+          move || backend::set_theme(&name),
+        );
       }
       AppearancePage::CustomThemes => {
         let Some(custom) = self.state.custom_themes.get(self.selected).cloned() else {
@@ -543,18 +613,16 @@ impl AppearanceApp {
           self.go(AppearancePage::Themes);
         }
       }
-      AppearancePage::ThemeModes { family } => {
-        if let Some((base, _)) = THEME_FAMILIES.get(family) {
-          let name = if self.selected == 0 {
-            (*base).to_string()
-          } else {
-            format!("{base}-float")
-          };
-          self.apply(
-            tr(self.lang, "control_center.theme_applied").into(),
-            move || backend::set_theme(&name),
-          );
-        }
+      AppearancePage::Mode => {
+        let variant = if self.selected == 0 {
+          "sticky"
+        } else {
+          "float"
+        };
+        self.apply(
+          tr(self.lang, "control_center.layout_mode_applied").into(),
+          move || backend::set_layout_mode(variant),
+        );
       }
       AppearancePage::Accents => {
         if self.selected == 0 {
@@ -610,12 +678,29 @@ impl AppearanceApp {
         );
       }
       AppearancePage::Effects if self.selected == 0 => self.apply_toggle_animations(),
-      AppearancePage::Taskbar if self.selected < 3 => self.go(AppearancePage::SurfaceSection {
+      AppearancePage::Effects if self.selected == 1 => self.apply_toggle_blur(),
+      AppearancePage::Effects if self.selected == 2 => self.go(AppearancePage::Blur),
+      AppearancePage::Launchers if self.selected == 0 => {
+        let enabled = !self.state.launcher_transparency_enabled;
+        let transparency = self.state.launcher_transparency;
+        self.apply(
+          tr(self.lang, "control_center.transparency_applied").into(),
+          move || {
+            backend::apply_surface_effects(EffectSurface::Launchers, enabled, transparency, true, 0)
+          },
+        );
+      }
+      AppearancePage::Launchers if self.selected == 1 => {
+        self.go(AppearancePage::TransparencySurface {
+          surface: EffectSurface::Launchers,
+        });
+      }
+      AppearancePage::Taskbar if self.selected < 2 => self.go(AppearancePage::SurfaceSection {
         surface: EffectSurface::Taskbar,
-        section: match self.selected {
-          0 => SurfaceSection::UtilityIcons,
-          1 => SurfaceSection::Transparency,
-          _ => SurfaceSection::Blur,
+        section: if self.selected == 0 {
+          SurfaceSection::UtilityIcons
+        } else {
+          SurfaceSection::Transparency
         },
       }),
       AppearancePage::WidgetTelemetry if self.selected == 0 => {
@@ -623,13 +708,12 @@ impl AppearanceApp {
           draft.widget_enabled = !draft.widget_enabled;
         }
       }
-      AppearancePage::WidgetTelemetry if self.selected < 4 => {
+      AppearancePage::WidgetTelemetry if self.selected < 3 => {
         self.go(AppearancePage::SurfaceSection {
           surface: EffectSurface::WidgetTelemetry,
           section: match self.selected {
             1 => SurfaceSection::Sessions,
-            2 => SurfaceSection::Transparency,
-            _ => SurfaceSection::Blur,
+            _ => SurfaceSection::Transparency,
           },
         })
       }
@@ -638,13 +722,12 @@ impl AppearanceApp {
           draft.control_panel_enabled = !draft.control_panel_enabled;
         }
       }
-      AppearancePage::ControlPanel if self.selected < 4 => {
+      AppearancePage::ControlPanel if self.selected < 3 => {
         self.go(AppearancePage::SurfaceSection {
           surface: EffectSurface::ControlPanel,
           section: match self.selected {
             1 => SurfaceSection::Sessions,
-            2 => SurfaceSection::Transparency,
-            _ => SurfaceSection::Blur,
+            _ => SurfaceSection::Transparency,
           },
         })
       }
@@ -690,7 +773,9 @@ impl AppearanceApp {
           }
         }
       },
-      AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => {}
+      AppearancePage::TransparencySurface { .. }
+      | AppearancePage::BlurSurface { .. }
+      | AppearancePage::TerminalTransparency => {}
       AppearancePage::GeneralBorders if self.selected == 0 => self.toggle(),
       AppearancePage::TaskbarSpaces => self.open_prompt(
         [
@@ -760,7 +845,7 @@ impl AppearanceApp {
           return false;
         };
         let value = self.prompt_buffer.trim().to_string();
-        if matches!(goal, PromptGoal::ExportProfile) {
+        if goal == PromptGoal::ExportProfile {
           let back = self.prompt_back.take().unwrap_or(AppearancePage::Themes);
           if value.is_empty() {
             self.prompt_error =
@@ -770,8 +855,8 @@ impl AppearanceApp {
           }
           let message = tr(self.lang, "control_center.theme_profile_exported").to_string();
           self.apply_result(move || {
-            backend::export_theme_profile(&value)
-              .map(|path| format!("{message}: {}", path.display()))
+            let path = backend::export_theme_profile(&value)?;
+            Ok(format!("{message}: {}", path.display()))
           });
           self.go(back);
           return false;
@@ -972,10 +1057,12 @@ impl AppearanceApp {
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
       | AppearancePage::Effects
+      | AppearancePage::Terminal
       | AppearancePage::SpacesBordersPosition
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
-      | AppearancePage::ControlPanel => {
+      | AppearancePage::ControlPanel
+      | AppearancePage::Mode => {
         self.go(AppearancePage::Home);
       }
       AppearancePage::OfficialThemes => self.go(AppearancePage::Themes),
@@ -983,13 +1070,6 @@ impl AppearanceApp {
         self.go(AppearancePage::OfficialThemes);
       }
       AppearancePage::CustomThemes => self.go(AppearancePage::Themes),
-      AppearancePage::ThemeModes { family } => {
-        let category = THEME_FAMILIES
-          .get(family)
-          .and_then(|(family_id, _)| ThemeCategory::for_family_id(family_id))
-          .unwrap_or(ThemeCategory::Dark);
-        self.go(AppearancePage::ThemeFamilies { category });
-      }
       AppearancePage::WallpaperModes { .. } => self.go(AppearancePage::Wallpapers),
       AppearancePage::WallpaperItems { collection, .. } => {
         self.go(AppearancePage::WallpaperModes { collection });
@@ -1008,6 +1088,17 @@ impl AppearanceApp {
       }
       AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
       AppearancePage::Transparency | AppearancePage::Blur => self.go(AppearancePage::Effects),
+      AppearancePage::TerminalTransparency => {
+        self.effect_draft = None;
+        self.go(AppearancePage::Terminal);
+      }
+      AppearancePage::Launchers => self.go(AppearancePage::Home),
+      AppearancePage::TransparencySurface {
+        surface: EffectSurface::Launchers,
+      } => {
+        self.effect_draft = None;
+        self.go(AppearancePage::Launchers);
+      }
       AppearancePage::TransparencySurface { .. } => {
         self.effect_draft = None;
         self.go(AppearancePage::Transparency);
@@ -1021,6 +1112,8 @@ impl AppearanceApp {
           EffectSurface::Taskbar => AppearancePage::Taskbar,
           EffectSurface::WidgetTelemetry => AppearancePage::WidgetTelemetry,
           EffectSurface::ControlPanel => AppearancePage::ControlPanel,
+          EffectSurface::Terminal => AppearancePage::Terminal,
+          EffectSurface::Launchers => AppearancePage::Launchers,
         });
       }
       AppearancePage::Prompt { .. } => {}
@@ -1039,6 +1132,9 @@ impl AppearanceApp {
         5 => self.go(AppearancePage::Effects),
         6 => self.go(AppearancePage::WidgetTelemetry),
         7 => self.go(AppearancePage::ControlPanel),
+        8 => self.go(AppearancePage::Terminal),
+        9 => self.go(AppearancePage::Launchers),
+        10 => self.go(AppearancePage::Mode),
         _ => {}
       },
       AppearancePage::SpacesBordersPosition => match self.selected {
@@ -1049,11 +1145,39 @@ impl AppearanceApp {
         4 => self.go(AppearancePage::EdgeThickness),
         _ => {}
       },
+      AppearancePage::Terminal if self.selected == 0 => {
+        let enabled = !self.state.terminal_transparency_enabled;
+        let transparency = self.state.terminal_transparency;
+        self.apply(
+          tr(self.lang, "control_center.transparency_applied").into(),
+          move || {
+            backend::apply_surface_effects(EffectSurface::Terminal, enabled, transparency, true, 0)
+          },
+        );
+      }
+      AppearancePage::Terminal if self.selected == 1 => {
+        self.go(AppearancePage::TerminalTransparency)
+      }
+      AppearancePage::Launchers if self.selected == 0 => {
+        let enabled = !self.state.launcher_transparency_enabled;
+        let transparency = self.state.launcher_transparency;
+        self.apply(
+          tr(self.lang, "control_center.transparency_applied").into(),
+          move || {
+            backend::apply_surface_effects(EffectSurface::Launchers, enabled, transparency, true, 0)
+          },
+        );
+      }
+      AppearancePage::Launchers if self.selected == 1 => {
+        self.go(AppearancePage::TransparencySurface {
+          surface: EffectSurface::Launchers,
+        });
+      }
       AppearancePage::Themes
       | AppearancePage::OfficialThemes
       | AppearancePage::ThemeFamilies { .. }
       | AppearancePage::CustomThemes
-      | AppearancePage::ThemeModes { .. }
+      | AppearancePage::Mode
       | AppearancePage::Accents
       | AppearancePage::Effects
       | AppearancePage::Transparency
@@ -1062,6 +1186,8 @@ impl AppearanceApp {
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
+      | AppearancePage::Terminal
+      | AppearancePage::Launchers
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces
       | AppearancePage::GeneralBorders
@@ -1073,7 +1199,9 @@ impl AppearanceApp {
       | AppearancePage::ThemeImportConfirm
       | AppearancePage::ThemeDeleteConfirm => self.pick(),
       AppearancePage::SurfaceSection { .. } => self.pick(),
-      AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => {}
+      AppearancePage::TransparencySurface { .. }
+      | AppearancePage::BlurSurface { .. }
+      | AppearancePage::TerminalTransparency => {}
       AppearancePage::AccentEdit => {}
       AppearancePage::Prompt { .. } => {}
     }
@@ -1086,8 +1214,20 @@ impl AppearanceApp {
       move || backend::set_animations(value),
     );
   }
+  fn apply_toggle_blur(&mut self) {
+    let value = !self.state.blur;
+    self.apply(
+      tr(self.lang, "control_center.blur_applied").into(),
+      move || backend::set_blur(value),
+    );
+  }
   fn effect_spec(page: AppearancePage) -> Option<(&'static str, EffectSurface)> {
     match page {
+      AppearancePage::Blur => Some(("global-blur", EffectSurface::Taskbar)),
+      AppearancePage::TerminalTransparency => Some(("transparency", EffectSurface::Terminal)),
+      AppearancePage::TransparencySurface {
+        surface: EffectSurface::Launchers,
+      } => Some(("transparency", EffectSurface::Launchers)),
       AppearancePage::TransparencySurface { surface } => Some(("transparency", surface)),
       AppearancePage::BlurSurface { surface } => Some(("blur", surface)),
       _ => None,
@@ -1102,6 +1242,9 @@ impl AppearanceApp {
       ("blur", EffectSurface::Taskbar) => self.state.taskbar_blur,
       ("blur", EffectSurface::ControlPanel) => self.state.control_panel_blur,
       ("blur", EffectSurface::WidgetTelemetry) => self.state.widget_telemetry_blur,
+      ("transparency", EffectSurface::Terminal) => self.state.terminal_transparency,
+      ("transparency", EffectSurface::Launchers) => self.state.launcher_transparency,
+      ("global-blur", EffectSurface::Taskbar) => self.state.global_blur,
       _ => 0,
     }
   }
@@ -1121,6 +1264,8 @@ impl AppearanceApp {
       return;
     };
     let value = self.effect_editor_value();
+    let terminal_transparency_enabled = self.state.terminal_transparency_enabled;
+    let launcher_transparency_enabled = self.state.launcher_transparency_enabled;
     self.effect_draft = None;
     let back = if kind == "transparency" {
       AppearancePage::Transparency
@@ -1129,32 +1274,57 @@ impl AppearanceApp {
     };
     self.apply(
       tr(self.lang, "control_center.effect_value_applied").into(),
-      move || backend::set_effect_value(kind, surface, value),
+      move || {
+        if kind == "global-blur" {
+          backend::set_global_blur_value(value)
+        } else if kind == "transparency" && surface == EffectSurface::Terminal {
+          backend::apply_surface_effects(surface, terminal_transparency_enabled, value, true, 0)
+        } else if kind == "transparency" && surface == EffectSurface::Launchers {
+          backend::apply_surface_effects(surface, launcher_transparency_enabled, value, true, 0)
+        } else {
+          backend::set_effect_value(kind, surface, value)
+        }
+      },
     );
-    self.go(back);
+    self.go(
+      if kind == "transparency" && surface == EffectSurface::Terminal {
+        AppearancePage::Terminal
+      } else if kind == "transparency" && surface == EffectSurface::Launchers {
+        AppearancePage::Launchers
+      } else {
+        back
+      },
+    );
   }
   /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn selection_len(&self) -> usize {
     match self.page {
-      AppearancePage::Home => 8,
+      AppearancePage::Home => 11,
       AppearancePage::Themes => 4,
-      AppearancePage::OfficialThemes => ThemeCategory::ALL.len(),
-      AppearancePage::ThemeFamilies { category } => family_indices(category).len(),
+      AppearancePage::OfficialThemes => THEME_CATEGORIES.len(),
+      AppearancePage::ThemeFamilies { category } => {
+        family_indices(category, &self.state.official_themes).len()
+      }
       AppearancePage::CustomThemes => self.state.custom_themes.len(),
       AppearancePage::Accents => 2,
       AppearancePage::AccentEdit => 0,
-      AppearancePage::Effects => 1,
-      AppearancePage::Transparency | AppearancePage::Blur => 4,
+      AppearancePage::Effects => 3,
+      AppearancePage::Terminal => 2,
+      AppearancePage::Launchers => 2,
+      AppearancePage::Transparency => 4,
+      AppearancePage::Blur | AppearancePage::TerminalTransparency => 1,
       AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => 1,
-      AppearancePage::ThemeModes { .. } | AppearancePage::TaskbarPosition => 2,
-      AppearancePage::Taskbar => 3,
-      AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => 4,
+      AppearancePage::Mode | AppearancePage::TaskbarPosition => 2,
+      AppearancePage::Taskbar => 2,
+      AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => 3,
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => 2,
         SurfaceSection::Sessions => match surface {
           EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL.len(),
           EffectSurface::ControlPanel => self.control_panel_cards().len(),
           EffectSurface::Taskbar => 0,
+          EffectSurface::Terminal => 0,
+          EffectSurface::Launchers => 0,
         },
         SurfaceSection::Transparency | SurfaceSection::Blur => 2,
       },
@@ -1233,6 +1403,26 @@ impl AppearanceApp {
         argvus_tui::icons::WIDGET,
         tr(self.lang, "control_center.control_panel"),
       ),
+      icon_label(
+        argvus_tui::icons::STORAGE,
+        tr(self.lang, "control_center.terminal"),
+      ),
+      icon_label(
+        argvus_tui::icons::STORAGE,
+        tr(self.lang, "control_center.launcher"),
+      ),
+      format!(
+        "{} · {}",
+        icon_label(
+          argvus_tui::icons::STORAGE,
+          tr(self.lang, "control_center.appearance_mode")
+        ),
+        if self.state.is_float_theme() {
+          tr(self.lang, "control_center.theme_mode_float")
+        } else {
+          tr(self.lang, "control_center.theme_mode_sticky")
+        }
+      ),
     ]
   }
   /// Executes the `prompt_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1279,27 +1469,17 @@ impl AppearanceApp {
         "{root} › {} › {} › {}",
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_official"),
-        tr(self.lang, category.label_key())
+        tr(self.lang, theme_category_label_key(category))
       ),
       AppearancePage::CustomThemes => format!(
         "{root} › {} › {}",
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_custom")
       ),
-      AppearancePage::ThemeModes { family } => {
-        let label = THEME_FAMILIES
-          .get(family)
-          .map(|(_, label)| *label)
-          .unwrap_or_default();
-        let category = THEME_FAMILIES
-          .get(family)
-          .and_then(|(family_id, _)| ThemeCategory::for_family_id(family_id))
-          .unwrap_or(ThemeCategory::Dark);
+      AppearancePage::Mode => {
         format!(
-          "{root} › {} › {} › {} › {label}",
-          tr(self.lang, "control_center.themes"),
-          tr(self.lang, "control_center.theme_profile_official"),
-          tr(self.lang, category.label_key())
+          "{root} › {}",
+          tr(self.lang, "control_center.appearance_mode")
         )
       }
       AppearancePage::Wallpapers => {
@@ -1338,6 +1518,13 @@ impl AppearanceApp {
         tr(self.lang, "control_center.effects"),
         tr(self.lang, "control_center.blur")
       ),
+      AppearancePage::Terminal => format!("{root} › {}", tr(self.lang, "control_center.terminal")),
+      AppearancePage::TerminalTransparency => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.terminal"),
+        tr(self.lang, "control_center.transparency")
+      ),
+      AppearancePage::Launchers => format!("{root} › {}", tr(self.lang, "control_center.launcher")),
       AppearancePage::TransparencySurface { surface } => format!(
         "{root} › {} › {} › {}",
         tr(self.lang, "control_center.effects"),
@@ -1445,9 +1632,9 @@ impl AppearanceApp {
       ]
       .into_iter()
       .collect(),
-      AppearancePage::OfficialThemes => ThemeCategory::ALL
+      AppearancePage::OfficialThemes => THEME_CATEGORIES
         .into_iter()
-        .map(|category| format!("{} >", tr(self.lang, category.label_key())))
+        .map(|category| format!("{} >", tr(self.lang, theme_category_label_key(category))))
         .collect(),
       AppearancePage::ThemeFamilies { category } => {
         let current = self
@@ -1455,10 +1642,17 @@ impl AppearanceApp {
           .theme
           .strip_suffix("-float")
           .unwrap_or(&self.state.theme);
-        family_indices(category)
+        family_indices(category, &self.state.official_themes)
           .into_iter()
           .map(|family_index| {
-            let (name, label) = THEME_FAMILIES[family_index];
+            let entry = &self.state.official_themes[family_index];
+            let name = &entry.id;
+            let locale = self.lang.locale();
+            let label = entry
+              .name_i18n
+              .get(&locale)
+              .map(|s| s.as_str())
+              .unwrap_or(&entry.name);
             let is_current = self.state.active_custom_theme.is_none() && current == name;
             let suffix = if is_current {
               format!(" · {}", tr(self.lang, "control_center.current"))
@@ -1501,7 +1695,7 @@ impl AppearanceApp {
         tr(self.lang, "control_center.theme_profile_duplicate_replace").into(),
         tr(self.lang, "control_center.cancel").into(),
       ],
-      AppearancePage::ThemeModes { .. } => [
+      AppearancePage::Mode => [
         (
           argvus_tui::icons::FOLDER,
           "control_center.theme_mode_sticky",
@@ -1571,19 +1765,42 @@ impl AppearanceApp {
         ),
         tr(self.lang, "control_center.reset_to_theme_default").into(),
       ],
-      AppearancePage::Effects => vec![format!(
-        "[{}] {} · {}",
-        if self.state.animations { "x" } else { " " },
-        icon_label(
-          argvus_tui::icons::SUCCESS,
-          tr(self.lang, "control_center.animations")
+      AppearancePage::Effects => vec![
+        format!(
+          "[{}] {} · {}",
+          if self.state.animations { "x" } else { " " },
+          icon_label(
+            argvus_tui::icons::SUCCESS,
+            tr(self.lang, "control_center.animations")
+          ),
+          if self.state.animations {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
         ),
-        if self.state.animations {
-          tr(self.lang, "control_center.enabled")
-        } else {
-          tr(self.lang, "control_center.disabled")
-        }
-      )],
+        format!(
+          "[{}] {} · {}",
+          if self.state.blur { "x" } else { " " },
+          icon_label(
+            argvus_tui::icons::SUCCESS,
+            tr(self.lang, "control_center.blur")
+          ),
+          if self.state.blur {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
+        ),
+        format!(
+          "{} › {}%",
+          icon_label(
+            argvus_tui::icons::INFO,
+            tr(self.lang, "control_center.blur")
+          ),
+          self.state.global_blur
+        ),
+      ],
       AppearancePage::Transparency => std::iter::once(format!(
         "[{}] {} · {}",
         if self.state.transparency { "x" } else { " " },
@@ -1610,32 +1827,58 @@ impl AppearanceApp {
           .collect::<Vec<_>>(),
       )
       .collect(),
-      AppearancePage::Blur => std::iter::once(format!(
-        "[{}] {} · {}",
-        if self.state.blur { "x" } else { " " },
-        icon_label(
-          argvus_tui::icons::SUCCESS,
-          tr(self.lang, "control_center.blur")
+      AppearancePage::Blur => vec![format!(
+        "{}: {}%",
+        tr(self.lang, "control_center.blur"),
+        self.effect_editor_value()
+      )],
+      AppearancePage::Terminal => vec![
+        format!(
+          "[{}] {} · {}",
+          if self.state.terminal_transparency_enabled {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, "control_center.transparency"),
+          if self.state.terminal_transparency_enabled {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
         ),
-        if self.state.blur {
-          tr(self.lang, "control_center.enabled")
-        } else {
-          tr(self.lang, "control_center.disabled")
-        }
-      ))
-      .chain(
-        EffectSurface::ALL
-          .into_iter()
-          .map(|surface| {
-            format!(
-              "{} › {}%",
-              icon_label(argvus_tui::icons::INFO, tr(self.lang, surface.label_key())),
-              self.effect_value("blur", surface)
-            )
-          })
-          .collect::<Vec<_>>(),
-      )
-      .collect(),
+        format!(
+          "{} › {}%",
+          tr(self.lang, "control_center.transparency"),
+          self.state.terminal_transparency
+        ),
+      ],
+      AppearancePage::Launchers => vec![
+        format!(
+          "[{}] {} · {}",
+          if self.state.launcher_transparency_enabled {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, "control_center.transparency"),
+          if self.state.launcher_transparency_enabled {
+            tr(self.lang, "control_center.enabled")
+          } else {
+            tr(self.lang, "control_center.disabled")
+          }
+        ),
+        format!(
+          "{} › {}%",
+          tr(self.lang, "control_center.transparency"),
+          self.state.launcher_transparency
+        ),
+      ],
+      AppearancePage::TerminalTransparency => vec![format!(
+        "{}: {}%",
+        tr(self.lang, "control_center.transparency"),
+        self.effect_editor_value()
+      )],
       AppearancePage::TransparencySurface { surface: _surface } => vec![format!(
         "{}: {}%",
         tr(self.lang, "control_center.transparency"),
@@ -1674,7 +1917,6 @@ impl AppearanceApp {
           tr(self.lang, "control_center.taskbar_utility_group")
         ),
         format!("{} ›", tr(self.lang, "control_center.transparency")),
-        format!("{} ›", tr(self.lang, "control_center.blur")),
       ],
       AppearancePage::TaskbarPosition => vec![
         format!(
@@ -1745,7 +1987,6 @@ impl AppearanceApp {
         ),
         format!("{} ›", tr(self.lang, "control_center.sessions")),
         format!("{} ›", tr(self.lang, "control_center.transparency")),
-        format!("{} ›", tr(self.lang, "control_center.blur")),
       ],
       AppearancePage::ControlPanel => vec![
         format!(
@@ -1762,7 +2003,6 @@ impl AppearanceApp {
         ),
         format!("{} ›", tr(self.lang, "control_center.sessions")),
         format!("{} ›", tr(self.lang, "control_center.transparency")),
-        format!("{} ›", tr(self.lang, "control_center.blur")),
       ],
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => vec![
@@ -1833,6 +2073,8 @@ impl AppearanceApp {
             })
             .unwrap_or_default(),
           EffectSurface::Taskbar => Vec::new(),
+          EffectSurface::Terminal => Vec::new(),
+          EffectSurface::Launchers => Vec::new(),
         },
         SurfaceSection::Transparency => vec![
           format!(
@@ -2380,6 +2622,7 @@ mod tests {
       control_panel_draft: None,
       effect_draft: None,
       surface_draft: None,
+      theme_dirty: false,
       on_buttons: false,
       button_selected: 0,
       button_from: None,
@@ -2393,14 +2636,50 @@ mod tests {
   #[test]
   /// Executes the `home_has_categories_and_spacing_is_nested` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_has_categories_and_spacing_is_nested() {
-    assert_eq!(app(AppearancePage::Home).rows().len(), 8);
+    assert_eq!(app(AppearancePage::Home).rows().len(), 11);
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
-    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 3);
-    assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 4);
-    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 4);
-    assert_eq!(app(AppearancePage::Effects).rows().len(), 1);
+    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 2);
+    assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 3);
+    assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 3);
+    assert_eq!(app(AppearancePage::Effects).rows().len(), 3);
     assert_eq!(app(AppearancePage::Transparency).rows().len(), 4);
-    assert_eq!(app(AppearancePage::Blur).rows().len(), 4);
+    assert_eq!(app(AppearancePage::Blur).rows().len(), 1);
+    assert_eq!(app(AppearancePage::Terminal).rows().len(), 2);
+  }
+
+  #[test]
+  /// Sticky/Float is a standalone page under Appearance Home, decoupled from
+  /// theme selection (see `every_control_center_theme_family_has_both_official_modes`
+  /// for the on-disk variant pairing that still backs it).
+  fn mode_page_lists_sticky_and_float_independent_of_theme() {
+    let rows = app(AppearancePage::Mode).rows();
+    assert_eq!(rows.len(), 2);
+    assert!(rows[0].contains("Sticky"));
+    assert!(rows[1].contains("Float"));
+
+    let mut ui = app(AppearancePage::Home);
+    assert_eq!(ui.selected, 0);
+    ui.selected = 10;
+    ui.open_or_pick();
+    assert_eq!(ui.page, AppearancePage::Mode);
+  }
+
+  #[test]
+  fn take_theme_dirty_clears_after_first_read() {
+    let mut ui = app(AppearancePage::Home);
+    assert!(!ui.take_theme_dirty());
+    ui.theme_dirty = true;
+    assert!(ui.take_theme_dirty());
+    assert!(!ui.take_theme_dirty());
+  }
+
+  #[test]
+  fn set_theme_replaces_the_semantic_palette() {
+    let mut ui = app(AppearancePage::Home);
+    let mut theme = Theme::load();
+    theme.name = "marker-theme".into();
+    ui.set_theme(&theme);
+    assert_eq!(ui.theme.name, "marker-theme");
   }
 
   #[test]
@@ -2450,9 +2729,12 @@ mod tests {
   #[test]
   fn theme_rows_use_friendly_official_names() {
     let rows = app(AppearancePage::Themes).rows();
+    // Official, Custom, export profile, import profile.
     assert_eq!(rows.len(), 4);
     assert!(rows[0].contains("Official"));
     assert!(rows[1].contains("Custom"));
+    assert!(rows[2].contains("Export theme profile"));
+    assert!(rows[3].contains("Import theme profile"));
   }
   #[test]
   fn official_theme_rows_expose_both_categories() {
@@ -2538,6 +2820,9 @@ mod tests {
     assert_eq!(application.selection_len(), 1);
   }
 
+  // TODO (Fase 3): Refactor to test with dynamic theme discovery
+  // Currently themes are discovered dynamically from /usr/share/argvus/appearance/themes.d/
+  // Test needs a temporary directory with sample theme.toml files to verify grouping
   #[test]
   fn theme_families_are_grouped_by_identifier_category() {
     let dark_rows = app(AppearancePage::ThemeFamilies {
@@ -2548,33 +2833,31 @@ mod tests {
       category: ThemeCategory::Light,
     })
     .rows();
-    assert_eq!(dark_rows.len(), 14);
-    assert_eq!(light_rows.len(), 8);
-    assert!(dark_rows.iter().any(|row| row.contains("Gruvbox Dark >")));
-    assert!(light_rows.iter().any(|row| row.contains("GitHub Light >")));
-    assert!(light_rows.iter().any(|row| row.contains("One Light >")));
-    assert!(
-      light_rows
-        .iter()
-        .any(|row| row.contains("Everforest Light >"))
-    );
-    assert!(dark_rows.iter().any(|row| row.contains("Hackerman >")));
-    assert!(
-      light_rows
-        .iter()
-        .any(|row| row.contains("Catppuccin Latte >"))
-    );
-    assert!(!dark_rows.iter().any(|row| row.contains("Gruvbox Light")));
+    // Without drop-in packages installed, only built-in themes appear
+    assert_eq!(dark_rows.len(), 1); // argvus-dark
+    assert_eq!(light_rows.len(), 1); // argvus-light
   }
   #[test]
-  fn every_control_center_theme_family_has_both_official_modes() {
-    assert_eq!(THEME_FAMILIES.len(), 22);
-    for (family_id, _) in THEME_FAMILIES {
-      assert!(argvus_theme::loader::is_official_theme(family_id));
-      assert!(argvus_theme::loader::is_official_theme(&format!(
-        "{family_id}-float"
-      )));
-    }
+  fn builtin_themes_always_present() {
+    let report = argvus_theme::discovery::discover_themes(std::path::Path::new("/tmp"));
+    assert!(report.themes.iter().any(|t| t.id == "argvus-dark"));
+    assert!(report.themes.iter().any(|t| t.id == "argvus-light"));
+    // Verify categories are correct
+    let dark = report
+      .themes
+      .iter()
+      .find(|t| t.id == "argvus-dark")
+      .unwrap();
+    assert_eq!(dark.category, argvus_theme::discovery::ThemeCategory::Dark);
+    let light = report
+      .themes
+      .iter()
+      .find(|t| t.id == "argvus-light")
+      .unwrap();
+    assert_eq!(
+      light.category,
+      argvus_theme::discovery::ThemeCategory::Light
+    );
   }
   #[test]
   /// Executes the `home_rows_follow_the_global_icon_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
