@@ -1063,6 +1063,30 @@ impl App {
       ),
       #[cfg(feature = "appearance")]
       (
+        "appearance.taskbar_icons",
+        "appearance",
+        "Taskbar icons",
+        "taskbar barra icones icons audio player spotify launcher search utilities network power profile keyboard layout memory cpu temperature gpu usage",
+        "appearance/taskbar-icons",
+      ),
+      #[cfg(feature = "appearance")]
+      (
+        "appearance.taskbar_date",
+        "appearance",
+        "Taskbar date",
+        "taskbar barra data date format weekday dia mes month year ano",
+        "appearance/taskbar-date",
+      ),
+      #[cfg(feature = "appearance")]
+      (
+        "appearance.taskbar_time",
+        "appearance",
+        "Taskbar time",
+        "taskbar barra hora time clock relogio seconds segundos 24h am pm",
+        "appearance/taskbar-time",
+      ),
+      #[cfg(feature = "appearance")]
+      (
         "appearance.widget_telemetry",
         "appearance",
         "Widget Telemetry",
@@ -1739,6 +1763,12 @@ impl App {
       ("appearance", "taskbar-position") | ("appearance", "position") => {
         self.open_appearance_page(AppearancePage::TaskbarPosition)
       }
+      #[cfg(feature = "appearance")]
+      ("appearance", "taskbar-icons") => self.open_appearance_page(AppearancePage::TaskbarIcons),
+      #[cfg(feature = "appearance")]
+      ("appearance", "taskbar-date") => self.open_appearance_page(AppearancePage::TaskbarDate),
+      #[cfg(feature = "appearance")]
+      ("appearance", "taskbar-time") => self.open_appearance_page(AppearancePage::TaskbarTime),
       #[cfg(feature = "appearance")]
       ("appearance", "widget-telemetry") => {
         self.open_appearance_page(AppearancePage::WidgetTelemetry)

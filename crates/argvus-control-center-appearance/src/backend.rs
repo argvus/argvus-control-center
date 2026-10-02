@@ -3,9 +3,10 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::model::{
-  AppearanceState, ControlPanelCard, ControlPanelCards, EffectSurface, TaskbarPosition,
-  TaskbarUtilityGroupMode, WallpaperCollection, WallpaperEntry, WallpaperMode,
-  WidgetTelemetryBlock, WidgetTelemetryBlocks, canonical_theme_id, normalize_hex_color,
+  AppearanceState, ControlPanelCard, ControlPanelCards, EffectSurface, TaskbarDateFormat,
+  TaskbarPosition, TaskbarTimeFormat, TaskbarUtilityGroupMode, TaskbarUtilityWidget,
+  TaskbarUtilityWidgets, WallpaperCollection, WallpaperEntry, WallpaperMode, WidgetTelemetryBlock,
+  WidgetTelemetryBlocks, canonical_theme_id, normalize_hex_color,
 };
 use argvus_control_center_core::{
   config::reload_argvus_config_service,
@@ -42,6 +43,7 @@ fn script(name: &str) -> PathBuf {
     | "accent-switch.sh"
     | "hypr-wallpaper-pick.sh"
     | "taskbar-right-2-mode.sh"
+    | "taskbar-widgets-mode.sh"
     | "brightness-switch.sh"
     | "layout-mode-switch.sh" => "appearance",
     "bluetooth-control.sh" => "network",
@@ -472,6 +474,57 @@ fn apply_canonical_layout(state: &mut AppearanceState) {
   }
 }
 
+pub(crate) fn canonical_taskbar() -> Option<Value> {
+  let output = Command::new("argvus-config")
+    .args(["get", "/taskbar", "--effective"])
+    .output()
+    .ok()?;
+  if !output.status.success() {
+    return None;
+  }
+  serde_json::from_slice(&output.stdout).ok()
+}
+
+fn apply_canonical_taskbar(state: &mut AppearanceState) {
+  let Some(taskbar) = canonical_taskbar() else {
+    return;
+  };
+  let icons = taskbar.get("icons").and_then(Value::as_object);
+  let date = taskbar.get("date").and_then(Value::as_object);
+  let time = taskbar.get("time").and_then(Value::as_object);
+  let boolean = |object: Option<&serde_json::Map<String, Value>>, key: &str| {
+    object
+      .and_then(|values| values.get(key))
+      .and_then(Value::as_bool)
+  };
+  if let Some(value) = boolean(icons, "audio_player_enabled") {
+    state.taskbar_audio_player_enabled = value;
+  }
+  if let Some(value) = boolean(icons, "launcher_enabled") {
+    state.taskbar_launcher_enabled = value;
+  }
+  for widget in TaskbarUtilityWidget::ALL {
+    if let Some(value) = boolean(icons, &format!("{}_enabled", widget.key())) {
+      state.taskbar_utility_widgets.set(widget, value);
+    }
+  }
+  if let Some(value) = date
+    .and_then(|values| values.get("format"))
+    .and_then(Value::as_str)
+  {
+    state.taskbar_date_format = TaskbarDateFormat::from_value(value);
+  }
+  if let Some(value) = boolean(time, "seconds_enabled") {
+    state.taskbar_time_seconds_enabled = value;
+  }
+  if let Some(value) = time
+    .and_then(|values| values.get("format"))
+    .and_then(Value::as_str)
+  {
+    state.taskbar_time_format = TaskbarTimeFormat::from_value(value);
+  }
+}
+
 /// Reads one independent visual state from the shared session contract.
 fn effect_state(component: &str) -> bool {
   let path = argvus_data_home().join("state").join(component);
@@ -886,6 +939,21 @@ pub fn load_page(
     }
     apply_canonical_layout(&mut state);
   }
+  if matches!(
+    page,
+    AppearancePage::Taskbar
+      | AppearancePage::TaskbarIcons
+      | AppearancePage::TaskbarDate
+      | AppearancePage::TaskbarDateFormat
+      | AppearancePage::TaskbarTime
+      | AppearancePage::TaskbarTimeFormat
+      | AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        ..
+      }
+  ) {
+    apply_canonical_taskbar(&mut state);
+  }
   state
 }
 
@@ -1254,11 +1322,102 @@ pub fn set_waybar_position(position: &str) -> Result<(), String> {
   set_spacing("waybar_pos", position)
 }
 
-/// Persists the taskbar utility-group mode, regenerates its managed Waybar
-/// configuration, and restarts the session components that consume it.
+/// Persists the taskbar utility-group mode (the `group/right-2` drawer's
+/// expanded/collapsed presentation) and regenerates its managed Waybar
+/// configuration. Reload is left to the caller, which also applies the rest
+/// of the taskbar icon/date/time preferences in the same action and restarts
+/// the taskbar exactly once.
 pub fn set_taskbar_utility_group(mode: TaskbarUtilityGroupMode) -> Result<(), String> {
-  run_script(&script("taskbar-right-2-mode.sh"), &["set", mode.value()])?;
-  reload_session()
+  run_script(&script("taskbar-right-2-mode.sh"), &["set", mode.value()])
+}
+
+/// Persists the taskbar icon/date/time preferences to the canonical document,
+/// re-derives the generated Waybar config from them, then restarts the
+/// taskbar so it picks up the regenerated file.
+///
+/// A plain `argvus-sessionctl reload` only reloads `argvus-config.service`
+/// and never touches `argvus-taskbar.service`, so module visibility and
+/// clock/date format changes would silently never apply — the taskbar must
+/// be restarted explicitly (see `reload_taskbar()`).
+pub fn apply_taskbar_icons_and_format(
+  audio_player_enabled: bool,
+  launcher_enabled: bool,
+  utility_widgets: &TaskbarUtilityWidgets,
+  date_format: TaskbarDateFormat,
+  time_seconds_enabled: bool,
+  time_format: TaskbarTimeFormat,
+) -> Result<(), String> {
+  let mut patch = serde_json::Map::new();
+  patch.insert(
+    "/taskbar/icons/audio_player_enabled".into(),
+    Value::Bool(audio_player_enabled),
+  );
+  patch.insert(
+    "/taskbar/icons/launcher_enabled".into(),
+    Value::Bool(launcher_enabled),
+  );
+  for widget in TaskbarUtilityWidget::ALL {
+    patch.insert(
+      format!("/taskbar/icons/{}_enabled", widget.key()),
+      Value::Bool(utility_widgets.enabled(widget)),
+    );
+  }
+  patch.insert(
+    "/taskbar/date/format".into(),
+    Value::String(date_format.value().into()),
+  );
+  patch.insert(
+    "/taskbar/time/seconds_enabled".into(),
+    Value::Bool(time_seconds_enabled),
+  );
+  patch.insert(
+    "/taskbar/time/format".into(),
+    Value::String(time_format.value().into()),
+  );
+  persist_taskbar_patch(patch)?;
+  run_script(&script("taskbar-widgets-mode.sh"), &["apply"])?;
+  reload_taskbar()
+}
+
+/// Restarts the taskbar (Waybar) process so it re-parses its generated
+/// JSONC from scratch. `argvus-sessionctl reload` is not sufficient here: it
+/// only reload-or-restarts `argvus-config.service` and never touches
+/// `argvus-taskbar.service` (confirmed in `de/argvus-session`'s
+/// `argvus-sessionctl`/`test-session-reload.py`). A full restart is also the
+/// only way Waybar re-reads anything beyond CSS — `reload_style_on_change`
+/// only watches the stylesheet, and the SIGUSR1 binding in Hyprland merely
+/// toggles bar visibility, not a config reload.
+fn reload_taskbar() -> Result<(), String> {
+  let output = SystemProcessRunner
+    .run(
+      &ProcessRequest::new("argvus-sessionctl")
+        .arg("restart")
+        .arg("taskbar"),
+    )
+    .map_err(|error| error.to_string())?;
+  if output.status.is_none_or(|status| status != 0) {
+    let stderr = terminal_text(&String::from_utf8_lossy(&output.stderr))
+      .trim()
+      .to_string();
+    return Err(if stderr.is_empty() {
+      "argvus-sessionctl restart taskbar falhou".into()
+    } else {
+      stderr
+    });
+  }
+  Ok(())
+}
+
+fn persist_taskbar_patch(patch: serde_json::Map<String, Value>) -> Result<(), String> {
+  let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+  let status = Command::new("argvus-config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist taskbar settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the taskbar settings".into());
+  }
+  reload_argvus_config_service()
 }
 
 /// Persists a complete batch of Control Panel preferences and performs one

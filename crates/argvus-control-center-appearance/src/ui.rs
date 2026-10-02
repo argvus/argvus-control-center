@@ -6,7 +6,8 @@ use crate::{
   backend,
   model::{
     AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
-    EffectSurface, HexColor, PromptGoal, SurfaceSection, TaskbarPosition, TaskbarUtilityGroupMode,
+    EffectSurface, HexColor, PromptGoal, SurfaceSection, TaskbarDateFormat, TaskbarPosition,
+    TaskbarTimeFormat, TaskbarUtilityGroupMode, TaskbarUtilityWidget, TaskbarUtilityWidgets,
     WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label, normalize_hex_color,
     theme_family_label,
   },
@@ -53,6 +54,12 @@ enum JobData {
 struct SurfaceDraft {
   surface: EffectSurface,
   utility_group: TaskbarUtilityGroupMode,
+  audio_player_enabled: bool,
+  launcher_enabled: bool,
+  utility_widgets: TaskbarUtilityWidgets,
+  date_format: TaskbarDateFormat,
+  time_seconds_enabled: bool,
+  time_format: TaskbarTimeFormat,
   widget_enabled: bool,
   widget_blocks: crate::model::WidgetTelemetryBlocks,
   control_panel_enabled: bool,
@@ -375,7 +382,12 @@ impl AppearanceApp {
 
   fn surface_for_page(page: AppearancePage) -> Option<EffectSurface> {
     match page {
-      AppearancePage::Taskbar => Some(EffectSurface::Taskbar),
+      AppearancePage::Taskbar
+      | AppearancePage::TaskbarIcons
+      | AppearancePage::TaskbarDate
+      | AppearancePage::TaskbarDateFormat
+      | AppearancePage::TaskbarTime
+      | AppearancePage::TaskbarTimeFormat => Some(EffectSurface::Taskbar),
       AppearancePage::WidgetTelemetry => Some(EffectSurface::WidgetTelemetry),
       AppearancePage::ControlPanel => Some(EffectSurface::ControlPanel),
       AppearancePage::SurfaceSection { surface, .. } => Some(surface),
@@ -419,6 +431,12 @@ impl AppearanceApp {
     SurfaceDraft {
       surface,
       utility_group: self.state.taskbar_utility_group,
+      audio_player_enabled: self.state.taskbar_audio_player_enabled,
+      launcher_enabled: self.state.taskbar_launcher_enabled,
+      utility_widgets: self.state.taskbar_utility_widgets.clone(),
+      date_format: self.state.taskbar_date_format,
+      time_seconds_enabled: self.state.taskbar_time_seconds_enabled,
+      time_format: self.state.taskbar_time_format,
       widget_enabled: self.state.widget_telemetry,
       widget_blocks: self.state.widget_telemetry_blocks.clone(),
       control_panel_enabled: self.state.control_panel_enabled,
@@ -442,13 +460,25 @@ impl AppearanceApp {
     let Some(draft) = self.surface_draft.clone() else {
       return;
     };
-    self.surface_draft = None;
+    // Keep rendering the just-applied draft values until the background
+    // refresh (triggered by `reload_requested` once the task below finishes)
+    // replaces it with a freshly loaded one. Clearing it here immediately
+    // made every toggle/radio on the page flash back to its pre-edit state
+    // for the duration of the apply + refresh round trip.
     let current_state = self.state.clone();
     self.apply(
       tr(self.lang, "control_center.surface_settings_applied").into(),
       move || match draft.surface {
         EffectSurface::Taskbar => {
           backend::set_taskbar_utility_group(draft.utility_group)?;
+          backend::apply_taskbar_icons_and_format(
+            draft.audio_player_enabled,
+            draft.launcher_enabled,
+            &draft.utility_widgets,
+            draft.date_format,
+            draft.time_seconds_enabled,
+            draft.time_format,
+          )?;
           backend::apply_surface_effects(
             draft.surface,
             draft.transparency_enabled,
@@ -695,14 +725,70 @@ impl AppearanceApp {
           surface: EffectSurface::Launchers,
         });
       }
-      AppearancePage::Taskbar if self.selected < 2 => self.go(AppearancePage::SurfaceSection {
-        surface: EffectSurface::Taskbar,
-        section: if self.selected == 0 {
-          SurfaceSection::UtilityIcons
-        } else {
-          SurfaceSection::Transparency
-        },
-      }),
+      AppearancePage::Taskbar => match self.selected {
+        0 => self.go(AppearancePage::SurfaceSection {
+          surface: EffectSurface::Taskbar,
+          section: SurfaceSection::Transparency,
+        }),
+        1 => self.go(AppearancePage::TaskbarIcons),
+        2 => self.go(AppearancePage::TaskbarDate),
+        3 => self.go(AppearancePage::TaskbarTime),
+        _ => {}
+      },
+      AppearancePage::TaskbarIcons => {
+        let selected = self.selected;
+        match selected {
+          0 => {
+            if let Some(draft) = self.surface_draft_mut() {
+              draft.audio_player_enabled = !draft.audio_player_enabled;
+            }
+          }
+          1 => {
+            if let Some(draft) = self.surface_draft_mut() {
+              draft.launcher_enabled = !draft.launcher_enabled;
+            }
+          }
+          selected if selected == 2 + TaskbarUtilityWidget::ALL.len() => {
+            self.go(AppearancePage::SurfaceSection {
+              surface: EffectSurface::Taskbar,
+              section: SurfaceSection::UtilityIcons,
+            });
+          }
+          _ => {
+            if let Some(widget) = TaskbarUtilityWidget::ALL.get(selected - 2).copied()
+              && let Some(draft) = self.surface_draft_mut()
+            {
+              let enabled = !draft.utility_widgets.enabled(widget);
+              draft.utility_widgets.set(widget, enabled);
+            }
+          }
+        }
+      }
+      AppearancePage::TaskbarDate if self.selected == 0 => {
+        self.go(AppearancePage::TaskbarDateFormat);
+      }
+      AppearancePage::TaskbarDateFormat => {
+        if let Some(format) = TaskbarDateFormat::ALL.get(self.selected).copied()
+          && let Some(draft) = self.surface_draft_mut()
+        {
+          draft.date_format = format;
+        }
+      }
+      AppearancePage::TaskbarTime if self.selected == 0 => {
+        if let Some(draft) = self.surface_draft_mut() {
+          draft.time_seconds_enabled = !draft.time_seconds_enabled;
+        }
+      }
+      AppearancePage::TaskbarTime if self.selected == 1 => {
+        self.go(AppearancePage::TaskbarTimeFormat);
+      }
+      AppearancePage::TaskbarTimeFormat => {
+        if let Some(format) = TaskbarTimeFormat::ALL.get(self.selected).copied()
+          && let Some(draft) = self.surface_draft_mut()
+        {
+          draft.time_format = format;
+        }
+      }
       AppearancePage::WidgetTelemetry if self.selected == 0 => {
         if let Some(draft) = self.surface_draft_mut() {
           draft.widget_enabled = !draft.widget_enabled;
@@ -736,9 +822,9 @@ impl AppearanceApp {
           let selected = self.selected;
           if let Some(draft) = self.surface_draft_mut() {
             draft.utility_group = if selected == 0 {
-              TaskbarUtilityGroupMode::Auto
-            } else {
               TaskbarUtilityGroupMode::AlwaysExpanded
+            } else {
+              TaskbarUtilityGroupMode::Auto
             };
           }
         }
@@ -993,6 +1079,11 @@ impl AppearanceApp {
     if (matches!(
       self.page,
       AppearancePage::Taskbar
+        | AppearancePage::TaskbarIcons
+        | AppearancePage::TaskbarDate
+        | AppearancePage::TaskbarDateFormat
+        | AppearancePage::TaskbarTime
+        | AppearancePage::TaskbarTimeFormat
         | AppearancePage::WidgetTelemetry
         | AppearancePage::ControlPanel
         | AppearancePage::SurfaceSection { .. }
@@ -1086,6 +1177,11 @@ impl AppearanceApp {
       | AppearancePage::EdgeThickness => {
         self.go(AppearancePage::SpacesBordersPosition);
       }
+      AppearancePage::TaskbarIcons | AppearancePage::TaskbarDate | AppearancePage::TaskbarTime => {
+        self.go(AppearancePage::Taskbar);
+      }
+      AppearancePage::TaskbarDateFormat => self.go(AppearancePage::TaskbarDate),
+      AppearancePage::TaskbarTimeFormat => self.go(AppearancePage::TaskbarTime),
       AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
       AppearancePage::Transparency | AppearancePage::Blur => self.go(AppearancePage::Effects),
       AppearancePage::TerminalTransparency => {
@@ -1107,13 +1203,14 @@ impl AppearanceApp {
         self.effect_draft = None;
         self.go(AppearancePage::Blur);
       }
-      AppearancePage::SurfaceSection { surface, .. } => {
-        self.go(match surface {
-          EffectSurface::Taskbar => AppearancePage::Taskbar,
-          EffectSurface::WidgetTelemetry => AppearancePage::WidgetTelemetry,
-          EffectSurface::ControlPanel => AppearancePage::ControlPanel,
-          EffectSurface::Terminal => AppearancePage::Terminal,
-          EffectSurface::Launchers => AppearancePage::Launchers,
+      AppearancePage::SurfaceSection { surface, section } => {
+        self.go(match (surface, section) {
+          (EffectSurface::Taskbar, SurfaceSection::UtilityIcons) => AppearancePage::TaskbarIcons,
+          (EffectSurface::Taskbar, _) => AppearancePage::Taskbar,
+          (EffectSurface::WidgetTelemetry, _) => AppearancePage::WidgetTelemetry,
+          (EffectSurface::ControlPanel, _) => AppearancePage::ControlPanel,
+          (EffectSurface::Terminal, _) => AppearancePage::Terminal,
+          (EffectSurface::Launchers, _) => AppearancePage::Launchers,
         });
       }
       AppearancePage::Prompt { .. } => {}
@@ -1184,6 +1281,11 @@ impl AppearanceApp {
       | AppearancePage::Blur
       | AppearancePage::TaskbarPosition
       | AppearancePage::Taskbar
+      | AppearancePage::TaskbarIcons
+      | AppearancePage::TaskbarDate
+      | AppearancePage::TaskbarDateFormat
+      | AppearancePage::TaskbarTime
+      | AppearancePage::TaskbarTimeFormat
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
       | AppearancePage::Terminal
@@ -1315,7 +1417,12 @@ impl AppearanceApp {
       AppearancePage::Blur | AppearancePage::TerminalTransparency => 1,
       AppearancePage::TransparencySurface { .. } | AppearancePage::BlurSurface { .. } => 1,
       AppearancePage::Mode | AppearancePage::TaskbarPosition => 2,
-      AppearancePage::Taskbar => 2,
+      AppearancePage::Taskbar => 4,
+      AppearancePage::TaskbarIcons => 2 + TaskbarUtilityWidget::ALL.len() + 1,
+      AppearancePage::TaskbarDate => 1,
+      AppearancePage::TaskbarDateFormat => TaskbarDateFormat::ALL.len(),
+      AppearancePage::TaskbarTime => 2,
+      AppearancePage::TaskbarTimeFormat => TaskbarTimeFormat::ALL.len(),
       AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => 3,
       AppearancePage::SurfaceSection { surface, section } => match section {
         SurfaceSection::UtilityIcons => 2,
@@ -1554,6 +1661,33 @@ impl AppearanceApp {
       AppearancePage::Taskbar => {
         format!("{root} › {}", tr(self.lang, "control_center.taskbar"))
       }
+      AppearancePage::TaskbarIcons => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.icons")
+      ),
+      AppearancePage::TaskbarDate => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.date")
+      ),
+      AppearancePage::TaskbarDateFormat => format!(
+        "{root} › {} › {} › {}",
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.date"),
+        tr(self.lang, "control_center.format")
+      ),
+      AppearancePage::TaskbarTime => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.time")
+      ),
+      AppearancePage::TaskbarTimeFormat => format!(
+        "{root} › {} › {} › {}",
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.time"),
+        tr(self.lang, "control_center.format")
+      ),
       AppearancePage::WidgetTelemetry => format!(
         "{root} › {}",
         tr(self.lang, "control_center.widget_telemetry")
@@ -1561,6 +1695,15 @@ impl AppearanceApp {
       AppearancePage::ControlPanel => {
         format!("{root} › {}", tr(self.lang, "control_center.control_panel"))
       }
+      AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: SurfaceSection::UtilityIcons,
+      } => format!(
+        "{root} › {} › {} › {}",
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.icons"),
+        tr(self.lang, "control_center.utilities")
+      ),
       AppearancePage::SurfaceSection { surface, section } => format!(
         "{root} › {} › {}",
         tr(self.lang, surface.label_key()),
@@ -1912,12 +2055,105 @@ impl AppearanceApp {
         ),
       ],
       AppearancePage::Taskbar => vec![
-        format!(
-          "{} ›",
-          tr(self.lang, "control_center.taskbar_utility_group")
-        ),
         format!("{} ›", tr(self.lang, "control_center.transparency")),
+        format!("{} ›", tr(self.lang, "control_center.icons")),
+        format!("{} ›", tr(self.lang, "control_center.date")),
+        format!("{} ›", tr(self.lang, "control_center.time")),
       ],
+      AppearancePage::TaskbarIcons => {
+        let mut rows = vec![
+          format!(
+            "[{}] {}",
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.audio_player_enabled)
+            {
+              "x"
+            } else {
+              " "
+            },
+            tr(self.lang, "control_center.taskbar_audio_player_view")
+          ),
+          format!(
+            "[{}] {}",
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.launcher_enabled)
+            {
+              "x"
+            } else {
+              " "
+            },
+            tr(self.lang, "control_center.launcher")
+          ),
+        ];
+        rows.extend(TaskbarUtilityWidget::ALL.into_iter().map(|widget| {
+          format!(
+            "[{}] {}",
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.utility_widgets.enabled(widget))
+            {
+              "x"
+            } else {
+              " "
+            },
+            tr(self.lang, widget.label_key())
+          )
+        }));
+        rows.push(format!("{} ›", tr(self.lang, "control_center.utilities")));
+        rows
+      }
+      AppearancePage::TaskbarDate => vec![format!("{} ›", tr(self.lang, "control_center.format"))],
+      AppearancePage::TaskbarDateFormat => TaskbarDateFormat::ALL
+        .into_iter()
+        .map(|format| {
+          format!(
+            "{}{}",
+            tr(self.lang, format.label_key()),
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.date_format == format)
+            {
+              format!(" · {}", tr(self.lang, "control_center.current"))
+            } else {
+              String::new()
+            }
+          )
+        })
+        .collect(),
+      AppearancePage::TaskbarTime => vec![
+        format!(
+          "[{}] {}",
+          if self
+            .surface_draft()
+            .is_some_and(|draft| draft.time_seconds_enabled)
+          {
+            "x"
+          } else {
+            " "
+          },
+          tr(self.lang, "control_center.seconds")
+        ),
+        format!("{} ›", tr(self.lang, "control_center.format")),
+      ],
+      AppearancePage::TaskbarTimeFormat => TaskbarTimeFormat::ALL
+        .into_iter()
+        .map(|format| {
+          format!(
+            "{}{}",
+            tr(self.lang, format.label_key()),
+            if self
+              .surface_draft()
+              .is_some_and(|draft| draft.time_format == format)
+            {
+              format!(" · {}", tr(self.lang, "control_center.current"))
+            } else {
+              String::new()
+            }
+          )
+        })
+        .collect(),
       AppearancePage::TaskbarPosition => vec![
         format!(
           "{}{}",
@@ -2008,10 +2244,13 @@ impl AppearanceApp {
         SurfaceSection::UtilityIcons => vec![
           format!(
             "{}{}",
-            tr(self.lang, "control_center.taskbar_utility_group_auto"),
+            tr(
+              self.lang,
+              "control_center.taskbar_utility_group_always_expanded"
+            ),
             if self
               .surface_draft()
-              .is_some_and(|draft| draft.utility_group == TaskbarUtilityGroupMode::Auto)
+              .is_some_and(|draft| draft.utility_group == TaskbarUtilityGroupMode::AlwaysExpanded)
             {
               format!(" · {}", tr(self.lang, "control_center.current"))
             } else {
@@ -2020,13 +2259,10 @@ impl AppearanceApp {
           ),
           format!(
             "{}{}",
-            tr(
-              self.lang,
-              "control_center.taskbar_utility_group_always_expanded"
-            ),
+            tr(self.lang, "control_center.taskbar_utility_group_auto"),
             if self
               .surface_draft()
-              .is_some_and(|draft| draft.utility_group == TaskbarUtilityGroupMode::AlwaysExpanded)
+              .is_some_and(|draft| draft.utility_group == TaskbarUtilityGroupMode::Auto)
             {
               format!(" · {}", tr(self.lang, "control_center.current"))
             } else {
@@ -2206,6 +2442,11 @@ impl AppearanceApp {
     if !matches!(
       self.page,
       AppearancePage::Taskbar
+        | AppearancePage::TaskbarIcons
+        | AppearancePage::TaskbarDate
+        | AppearancePage::TaskbarDateFormat
+        | AppearancePage::TaskbarTime
+        | AppearancePage::TaskbarTimeFormat
         | AppearancePage::WidgetTelemetry
         | AppearancePage::ControlPanel
         | AppearancePage::SurfaceSection { .. }
@@ -2245,6 +2486,11 @@ impl AppearanceApp {
       if matches!(
         self.page,
         AppearancePage::Taskbar
+          | AppearancePage::TaskbarIcons
+          | AppearancePage::TaskbarDate
+          | AppearancePage::TaskbarDateFormat
+          | AppearancePage::TaskbarTime
+          | AppearancePage::TaskbarTimeFormat
           | AppearancePage::WidgetTelemetry
           | AppearancePage::ControlPanel
           | AppearancePage::SurfaceSection { .. }
@@ -2638,7 +2884,24 @@ mod tests {
   fn home_has_categories_and_spacing_is_nested() {
     assert_eq!(app(AppearancePage::Home).rows().len(), 11);
     assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
-    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 2);
+    assert_eq!(app(AppearancePage::Taskbar).rows().len(), 4);
+    assert_eq!(
+      app(AppearancePage::TaskbarIcons).rows().len(),
+      2 + TaskbarUtilityWidget::ALL.len() + 1
+    );
+    assert_eq!(
+      app(AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: SurfaceSection::UtilityIcons,
+      })
+      .rows()
+      .len(),
+      2
+    );
+    assert_eq!(app(AppearancePage::TaskbarDate).rows().len(), 1);
+    assert_eq!(app(AppearancePage::TaskbarDateFormat).rows().len(), 4);
+    assert_eq!(app(AppearancePage::TaskbarTime).rows().len(), 2);
+    assert_eq!(app(AppearancePage::TaskbarTimeFormat).rows().len(), 2);
     assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 3);
     assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 3);
     assert_eq!(app(AppearancePage::Effects).rows().len(), 3);
@@ -2942,5 +3205,148 @@ mod tests {
         assert!(application.action.is_some());
       }
     }
+  }
+
+  #[test]
+  fn taskbar_icons_date_time_pages_toggle_and_expose_apply_actions() {
+    // Each page is constructed directly (rather than navigated to via
+    // `go()`) so the test interacts with it without tripping the
+    // background-refresh-job guard in `handle()`, matching the pattern used
+    // by `surface_value_navigation_keeps_vertical_focus_and_exposes_apply_actions`.
+    let mut icons = app(AppearancePage::TaskbarIcons);
+    icons.surface_draft = Some(icons.make_surface_draft(EffectSurface::Taskbar));
+
+    let initial_audio_player = icons.surface_draft().unwrap().audio_player_enabled;
+    icons.selected = 0;
+    icons.handle(KeyCode::Enter);
+    assert_eq!(
+      icons.surface_draft().unwrap().audio_player_enabled,
+      !initial_audio_player
+    );
+
+    let initial_launcher = icons.surface_draft().unwrap().launcher_enabled;
+    icons.selected = 1;
+    icons.handle(KeyCode::Enter);
+    assert_eq!(
+      icons.surface_draft().unwrap().launcher_enabled,
+      !initial_launcher
+    );
+
+    assert_eq!(icons.rows().len(), 2 + TaskbarUtilityWidget::ALL.len() + 1);
+
+    let widget = TaskbarUtilityWidget::GpuTemperature;
+    let widget_row = 2
+      + TaskbarUtilityWidget::ALL
+        .iter()
+        .position(|candidate| *candidate == widget)
+        .unwrap();
+    let initial_widget = icons
+      .surface_draft()
+      .unwrap()
+      .utility_widgets
+      .enabled(widget);
+    icons.selected = widget_row;
+    icons.handle(KeyCode::Enter);
+    assert_eq!(
+      icons
+        .surface_draft()
+        .unwrap()
+        .utility_widgets
+        .enabled(widget),
+      !initial_widget
+    );
+
+    // The trailing "Utilities ›" row navigates to the shared
+    // `SurfaceSection{Taskbar, UtilityIcons}` page (the Always
+    // expanded/Expand on hover radio), rather than a dedicated page.
+    let utilities_row = 2 + TaskbarUtilityWidget::ALL.len();
+    icons.selected = utilities_row;
+    icons.handle(KeyCode::Enter);
+    assert_eq!(
+      icons.page,
+      AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: SurfaceSection::UtilityIcons,
+      }
+    );
+
+    let mut utility_group = app(AppearancePage::SurfaceSection {
+      surface: EffectSurface::Taskbar,
+      section: SurfaceSection::UtilityIcons,
+    });
+    utility_group.surface_draft = Some(utility_group.make_surface_draft(EffectSurface::Taskbar));
+    utility_group.selected = 0;
+    utility_group.handle(KeyCode::Enter);
+    assert_eq!(
+      utility_group.surface_draft().unwrap().utility_group,
+      TaskbarUtilityGroupMode::AlwaysExpanded
+    );
+    utility_group.selected = 1;
+    utility_group.handle(KeyCode::Enter);
+    assert_eq!(
+      utility_group.surface_draft().unwrap().utility_group,
+      TaskbarUtilityGroupMode::Auto
+    );
+
+    let mut date_format = app(AppearancePage::TaskbarDateFormat);
+    date_format.surface_draft = Some(date_format.make_surface_draft(EffectSurface::Taskbar));
+    date_format.selected = 1;
+    date_format.handle(KeyCode::Enter);
+    assert_eq!(
+      date_format.surface_draft().unwrap().date_format,
+      TaskbarDateFormat::WeekdayDayMonthYear
+    );
+
+    let mut time = app(AppearancePage::TaskbarTime);
+    time.surface_draft = Some(time.make_surface_draft(EffectSurface::Taskbar));
+    let initial_seconds = time.surface_draft().unwrap().time_seconds_enabled;
+    time.selected = 0;
+    time.handle(KeyCode::Enter);
+    assert_eq!(
+      time.surface_draft().unwrap().time_seconds_enabled,
+      !initial_seconds
+    );
+
+    let mut time_format = app(AppearancePage::TaskbarTimeFormat);
+    time_format.surface_draft = Some(time_format.make_surface_draft(EffectSurface::Taskbar));
+    time_format.selected = 1;
+    time_format.handle(KeyCode::Enter);
+    assert_eq!(
+      time_format.surface_draft().unwrap().time_format,
+      TaskbarTimeFormat::TwelveHour
+    );
+
+    let mut apply_check = app(AppearancePage::TaskbarIcons);
+    apply_check.surface_draft = Some(apply_check.make_surface_draft(EffectSurface::Taskbar));
+    assert_eq!(apply_check.buttons().len(), 1);
+    apply_check.handle(KeyCode::Tab);
+    assert!(apply_check.on_buttons);
+    apply_check.handle(KeyCode::Enter);
+    assert!(apply_check.action.is_some());
+  }
+
+  #[test]
+  fn apply_keeps_rendering_the_just_applied_draft_until_refresh_replaces_it() {
+    // Regression test: pressing Apply used to clear `surface_draft`
+    // immediately, which made every toggle/radio on the page flash back to
+    // its pre-edit (unchecked/default) state for the whole apply+refresh
+    // round trip, since the rows all render from `surface_draft()`.
+    let mut application = app(AppearancePage::TaskbarIcons);
+    application.surface_draft = Some(application.make_surface_draft(EffectSurface::Taskbar));
+    application
+      .surface_draft
+      .as_mut()
+      .unwrap()
+      .audio_player_enabled = false;
+    application.surface_draft.as_mut().unwrap().launcher_enabled = false;
+
+    application.apply_surface_changes();
+
+    let draft = application
+      .surface_draft()
+      .expect("the just-edited draft must still be present right after Apply");
+    assert!(!draft.audio_player_enabled);
+    assert!(!draft.launcher_enabled);
+    assert!(application.action.is_some());
   }
 }
