@@ -1151,7 +1151,7 @@ mod tests {
     assert!(validate_boot("systemd-timeout", &["61".into()]).is_err());
     assert!(validate_boot("grub-cmdline", &["quiet splash".into()]).is_ok());
     assert!(validate_boot("grub-cmdline", &["bad\nline".into()]).is_err());
-    assert!(validate_boot("plymouth-theme", &["argvus-splash".into()]).is_ok());
+    assert!(validate_boot("plymouth-theme", &["argvus-boot-splash".into()]).is_ok());
     assert!(validate_boot("plymouth-theme", &["theme/name".into()]).is_err());
   }
 
