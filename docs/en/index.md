@@ -12,7 +12,7 @@ The Control Center is ARGVUS's keyboard-first settings application. Use it when 
 | **Control Center** | Themes, wallpapers, effects, layout, taskbar behavior, fonts, default applications, keyboard and input settings, language, region and system configuration. |
 | **Control Panel** | Current status and frequent actions such as volume, brightness, network, notifications, power and session controls. |
 
-The Control Panel can expose quick controls for a setting that is configured permanently in Control Center. For example, use the panel for a quick appearance or display action, and Control Center when you want to change the desktop configuration behind it. See [Control Panel](./desktop/control-panel/) and [Where to configure things](./where-to-configure/).
+The Control Panel can expose quick controls for a setting that is configured permanently in Control Center. For example, use the panel for a quick appearance or display action, and Control Center when you want to change the desktop configuration behind it. See [Control Panel](/docs/argvus-control-panel/) and [Where to configure things](/docs/user-guide/where-to-configure/).
 
 ## Main areas
 
@@ -114,7 +114,7 @@ Open **Appearance** to see the integrated visual controls. Its pages are:
 - **Widget Telemetry** — enable the telemetry surface and select its available blocks.
 - **Control Panel** — enable, disable and reorder panel cards.
 
-These actions update the logical ARGVUS state and apply the affected runtime configuration. See [Appearance](./appearance/), [Themes](/docs/argvus-themes/) and [Windows and layout](./desktop/windows-and-layout/).
+These actions update the logical ARGVUS state and apply the affected runtime configuration. See [Appearance](/docs/user-guide/appearance/), [Themes](/docs/argvus-themes/) and [Windows and layout](/docs/argvus-hyprland/windows-and-layout/).
 
 ## Keyboard use
 
@@ -153,8 +153,8 @@ Useful direct routes include `apps`, `fonts`, `locale`, `input`, `keybindings`, 
 
 ## Related
 
-- [First configuration](./getting-started/)
-- [Control Panel](./desktop/control-panel/)
-- [Appearance](./appearance/)
-- [Keyboard shortcuts](./desktop/keyboard-shortcuts/)
-- [Mouse and touchpad](./hardware/input/)
+- [First configuration](/docs/getting-started/)
+- [Control Panel](/docs/argvus-control-panel/)
+- [Appearance](/docs/user-guide/appearance/)
+- [Keyboard shortcuts](/docs/argvus-hyprland/keyboard-shortcuts/)
+- [Mouse and touchpad](/docs/argvus-hyprland/input/)
