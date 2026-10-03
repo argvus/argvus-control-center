@@ -115,7 +115,7 @@ Abra **Aparência** para ver os controles visuais integrados. Suas páginas são
 * **Widgets de telemetria** — ative a superfície de telemetria e selecione seus cards disponíveis.
 * **Control Panel** — ative, desative e reordene os cards do painel.
 
-Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](./appearance/), [Temas](./appearance/themes/) e [Janelas e layout](./desktop/windows-and-layout/).
+Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](./appearance/), [Temas](/pt/docs/argvus-themes/) e [Janelas e layout](./desktop/windows-and-layout/).
 
 ## Uso pelo teclado
 
