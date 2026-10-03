@@ -13,7 +13,7 @@ O Control Center é o aplicativo de configurações do ARGVUS, com navegação o
 | **Control Center** | Temas, wallpapers, efeitos, layout, comportamento da taskbar, fontes, aplicativos padrão, teclado e entrada, idioma, região e configuração do sistema. |
 | **Control Panel** | Status atual e ações frequentes, como volume, brilho, rede, notificações, energia e controles da sessão. |
 
-O Control Panel pode oferecer controles rápidos para uma configuração permanente do Control Center. Por exemplo, use o painel para uma ação rápida de aparência ou display, e o Control Center quando quiser alterar a configuração do desktop por trás dela. Veja [Control Panel](./desktop/control-panel/) e [Onde configurar as coisas](./where-to-configure/).
+O Control Panel pode oferecer controles rápidos para uma configuração permanente do Control Center. Por exemplo, use o painel para uma ação rápida de aparência ou display, e o Control Center quando quiser alterar a configuração do desktop por trás dela. Veja [Control Panel](/pt/docs/argvus-control-panel/) e [Onde configurar as coisas](/pt/docs/user-guide/where-to-configure/).
 
 ## Áreas principais
 
@@ -115,7 +115,7 @@ Abra **Aparência** para ver os controles visuais integrados. Suas páginas são
 * **Widgets de telemetria** — ative a superfície de telemetria e selecione seus cards disponíveis.
 * **Control Panel** — ative, desative e reordene os cards do painel.
 
-Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](./appearance/), [Temas](/pt/docs/argvus-themes/) e [Janelas e layout](./desktop/windows-and-layout/).
+Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](/pt/docs/user-guide/appearance/), [Temas](/pt/docs/argvus-themes/) e [Janelas e layout](/pt/docs/argvus-hyprland/windows-and-layout/).
 
 ## Uso pelo teclado
 
@@ -154,8 +154,8 @@ Rotas diretas úteis incluem `apps`, `fonts`, `locale`, `input`, `keybindings`, 
 
 ## Relacionados
 
-* [Primeira configuração](./getting-started/)
-* [Control Panel](./desktop/control-panel/)
-* [Aparência](./appearance/)
-* [Atalhos de teclado](./desktop/keyboard-shortcuts/)
-* [Mouse e touchpad](./hardware/input/)
+* [Primeira configuração](/pt/docs/getting-started/)
+* [Control Panel](/pt/docs/argvus-control-panel/)
+* [Aparência](/pt/docs/user-guide/appearance/)
+* [Atalhos de teclado](/pt/docs/argvus-hyprland/keyboard-shortcuts/)
+* [Mouse e touchpad](/pt/docs/argvus-hyprland/input/)
