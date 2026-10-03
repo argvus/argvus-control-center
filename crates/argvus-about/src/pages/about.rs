@@ -36,7 +36,11 @@ pub fn doc(app: &App, width: usize, selected: usize) -> Doc<'static> {
       "control_center.about_version",
       app.argvus_version.clone(),
     ),
-    kv_row(lang, "control_center.about_license", "GPL-3.0".to_string()),
+    kv_row(
+      lang,
+      "control_center.about_license",
+      "GPL-3.0-only".to_string(),
+    ),
     Row::Spacer,
   ];
 
