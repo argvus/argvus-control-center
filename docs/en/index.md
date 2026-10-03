@@ -114,7 +114,7 @@ Open **Appearance** to see the integrated visual controls. Its pages are:
 - **Widget Telemetry** — enable the telemetry surface and select its available blocks.
 - **Control Panel** — enable, disable and reorder panel cards.
 
-These actions update the logical ARGVUS state and apply the affected runtime configuration. See [Appearance](./appearance/), [Themes](./appearance/themes/) and [Windows and layout](./desktop/windows-and-layout/).
+These actions update the logical ARGVUS state and apply the affected runtime configuration. See [Appearance](./appearance/), [Themes](/docs/argvus-themes/) and [Windows and layout](./desktop/windows-and-layout/).
 
 ## Keyboard use
 
