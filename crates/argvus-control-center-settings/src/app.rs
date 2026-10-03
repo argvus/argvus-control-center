@@ -468,7 +468,7 @@ impl App {
             label: format!(
               "[{}] {}",
               if self.selected_locales.contains(&key) {
-                "✓"
+                "x"
               } else {
                 " "
               },
@@ -543,29 +543,40 @@ impl App {
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::MouseTouchpad => self.input_rows(),
-      Page::KeyboardLayout => self
-        .keyboard_layouts
-        .iter()
-        .filter(|layout| search_matches(&self.search, &[&layout.code, &layout.description]))
-        .map(|layout| Row {
-          label: format!(
-            "[{}] {}",
-            if self
-              .keyboard_info
-              .hypr_layout
-              .split(',')
-              .any(|selected| selected.trim() == layout.code)
-            {
-              "✓"
-            } else {
-              " "
-            },
-            layout.code
-          ),
-          detail: Some(layout.description.clone()),
-          current: layout.code == self.keyboard_info.x11_layout,
-        })
-        .collect(),
+      Page::KeyboardLayout => {
+        // The configured default is the first entry of the Hyprland layout
+        // list. The "●" marks it, not the layout hyprctl reports as active.
+        let default_layout = self
+          .keyboard_info
+          .hypr_layout
+          .split(',')
+          .map(str::trim)
+          .find(|layout| !layout.is_empty())
+          .unwrap_or_default();
+        self
+          .keyboard_layouts
+          .iter()
+          .filter(|layout| search_matches(&self.search, &[&layout.code, &layout.description]))
+          .map(|layout| Row {
+            label: format!(
+              "[{}] {}",
+              if self
+                .keyboard_info
+                .hypr_layout
+                .split(',')
+                .any(|selected| selected.trim() == layout.code)
+              {
+                "x"
+              } else {
+                " "
+              },
+              layout.code
+            ),
+            detail: Some(layout.description.clone()),
+            current: layout.code == default_layout,
+          })
+          .collect()
+      }
       Page::KeyboardVariant => self
         .keyboard_variants
         .iter()
@@ -1116,11 +1127,11 @@ impl App {
       Page::Keybindings => tr(self.lang, "control_center.keybindings_help"),
       Page::KeybindingEdit => tr(self.lang, "control_center.keybindings_editor_actions"),
       Page::KeybindingCapture => tr(self.lang, "control_center.keybindings_capture_help"),
-      Page::TimeZone
-      | Page::RegionalLocale
-      | Page::KeyboardLayout
-      | Page::KeyboardVariant
-      | Page::ConsoleKeymap => tr(
+      Page::KeyboardLayout => tr(
+        self.lang,
+        "control_center.navigate_space_enable_enter_default_search_esc_back_help",
+      ),
+      Page::TimeZone | Page::RegionalLocale | Page::KeyboardVariant | Page::ConsoleKeymap => tr(
         self.lang,
         "control_center.navigate_enter_apply_search_esc_back_help",
       ),

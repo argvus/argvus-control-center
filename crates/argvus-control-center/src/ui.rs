@@ -815,7 +815,7 @@ mod tests {
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Configuração") || text.contains("Configuration"));
-    assert!(text.contains("[✓]") || text.contains("[ ]"));
+    assert!(text.contains("[x]") || text.contains("[ ]"));
     assert!(text.contains("Icones") || text.contains("Icons"));
   }
 }
