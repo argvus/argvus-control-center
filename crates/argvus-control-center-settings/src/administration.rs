@@ -216,6 +216,14 @@ impl Administration {
   pub fn busy(&self) -> bool {
     self.worker.is_some()
   }
+
+  /// Reports whether the snapshot needed to render `page` has already been loaded.
+  fn has_loaded_data(&self, page: Page) -> bool {
+    match page {
+      Page::Firewall => !self.firewall.is_null(),
+      _ => self.is_loaded(),
+    }
+  }
   /// Executes the `cancel_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cancel_pending(&mut self) {
     self.pending = None;
@@ -423,7 +431,10 @@ impl Administration {
 
   /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn rows(&self, page: Page, lang: Lang) -> Vec<Row> {
-    if self.busy() {
+    // Keep the already-loaded rows on screen while a write is running. The
+    // placeholder is only useful when there is nothing to show yet; replacing
+    // loaded rows made the user's selections vanish until the snapshot returned.
+    if self.busy() && !self.has_loaded_data(page) {
       return vec![row(
         tr(lang, "control_center.waiting_for_backend_authentication"),
         "",

@@ -373,7 +373,8 @@ impl ConfigApp {
 
 /// Renders the checkbox glyph for `enabled`. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn checkbox(enabled: bool) -> &'static str {
-  if enabled { "✓" } else { " " }
+  // Same `[x]` / `[ ]` convention used by every selection list in the Control Center.
+  if enabled { "x" } else { " " }
 }
 
 /// Reads the Control Center effect keys from argvus-config in a best-effort
@@ -597,7 +598,7 @@ mod tests {
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
     let app = with_operation(Arc::new(RecordingOperation::default()));
     let row = app.rows().into_iter().next().unwrap();
-    assert!(row.starts_with("[✓] Icones"), "{row}");
+    assert!(row.starts_with("[x] Icones"), "{row}");
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
     let _ = std::fs::remove_dir_all(&dir);
   }
@@ -743,7 +744,7 @@ mod tests {
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Configuração") || text.contains("Configuration"));
-    assert!(text.contains("[✓]") || text.contains("[ ]"));
+    assert!(text.contains("[x]") || text.contains("[ ]"));
     assert!(text.contains("Icones") || text.contains("Icons"));
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
     let _ = std::fs::remove_dir_all(&dir);
