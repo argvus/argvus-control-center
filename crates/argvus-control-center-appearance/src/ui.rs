@@ -82,6 +82,25 @@ fn theme_category_label_key(category: ThemeCategory) -> &'static str {
   }
 }
 
+/// Name of the active theme family as declared by its manifest, localized for
+/// the current language. Falls back to the built-in label table.
+fn current_family_label(state: &AppearanceState, lang: &Lang) -> String {
+  let family = state.theme.strip_suffix("-float").unwrap_or(&state.theme);
+  state
+    .official_themes
+    .iter()
+    .find(|entry| entry.id == family)
+    .map(|entry| {
+      let locale = lang.locale();
+      entry
+        .name_i18n
+        .get(&locale)
+        .cloned()
+        .unwrap_or_else(|| entry.name.clone())
+    })
+    .unwrap_or_else(|| theme_family_label(&state.theme))
+}
+
 fn family_indices(
   category: ThemeCategory,
   official_themes: &[argvus_theme::discovery::ThemeEntry],
@@ -1463,7 +1482,7 @@ impl AppearanceApp {
           argvus_tui::icons::PALETTE,
           tr(self.lang, "control_center.theme")
         ),
-        theme_family_label(&self.state.theme),
+        current_family_label(&self.state, &self.lang),
         if self.state.is_float_theme() {
           tr(self.lang, "control_center.theme_mode_float")
         } else {
