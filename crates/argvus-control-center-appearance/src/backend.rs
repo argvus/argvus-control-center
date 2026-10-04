@@ -341,6 +341,21 @@ fn accent_file() -> PathBuf {
   argvus_data_home().join(".accent-color")
 }
 
+/// Reads the default accent declared by an installed theme manifest. Drop-in
+/// theme packages are discovered at runtime, so this needs no per-theme entry.
+fn discovered_default_accent(theme: &str) -> Option<String> {
+  discovered_default_accent_in(&system_config_root(), theme)
+}
+
+fn discovered_default_accent_in(system_config: &Path, theme: &str) -> Option<String> {
+  let family = theme.strip_suffix("-float").unwrap_or(theme);
+  argvus_theme::discovery::discover_themes(system_config)
+    .themes
+    .into_iter()
+    .find(|entry| entry.id == family)
+    .and_then(|entry| normalize_hex_color(&entry.accent))
+}
+
 /// Executes the `theme_default_accent` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn theme_default_accent(theme: &str) -> Option<&'static str> {
   match theme {
@@ -827,9 +842,11 @@ pub fn load_page(
   use crate::model::AppearancePage;
   let theme = canonical_theme_id(&read_first(&active_theme_file(), DEFAULT_THEME));
   state.theme = theme.clone();
-  let default_accent = theme_default_accent(&theme).unwrap_or(DEFAULT_ACCENT);
-  state.accent = normalize_hex_color(&read_first(&accent_file(), default_accent))
-    .unwrap_or_else(|| default_accent.to_string());
+  let default_accent = discovered_default_accent(&theme)
+    .or_else(|| theme_default_accent(&theme).map(str::to_string))
+    .unwrap_or_else(|| DEFAULT_ACCENT.to_string());
+  state.accent = normalize_hex_color(&read_first(&accent_file(), &default_accent))
+    .unwrap_or_else(|| default_accent.clone());
   if page == AppearancePage::Wallpapers {
     state.wallpapers = list_wallpapers();
     state.wallpaper_active = active_wallpaper();
@@ -1558,6 +1575,31 @@ mod tests {
     assert_eq!(classify_wallpaper(Path::new("dark/wallpaper.jxl")), None);
     assert_eq!(
       classify_wallpaper(Path::new("abstract/dark/readme.png")),
+      None
+    );
+  }
+
+  #[test]
+  fn drop_in_theme_accent_comes_from_its_manifest() {
+    let system_config = tempfile::tempdir().unwrap();
+    let family_dir = system_config.path().join("appearance/themes.d/nord-light");
+    std::fs::create_dir_all(&family_dir).unwrap();
+    std::fs::write(
+      family_dir.join("theme.toml"),
+      "id = \"nord-light\"\nname = \"Nord Light\"\ncategory = \"light\"\naccent = \"#5E81AC\"\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+      discovered_default_accent_in(system_config.path(), "nord-light").as_deref(),
+      Some("#5E81AC")
+    );
+    assert_eq!(
+      discovered_default_accent_in(system_config.path(), "nord-light-float").as_deref(),
+      Some("#5E81AC")
+    );
+    assert_eq!(
+      discovered_default_accent_in(system_config.path(), "not-installed"),
       None
     );
   }
