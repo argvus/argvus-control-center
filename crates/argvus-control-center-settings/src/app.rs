@@ -1634,7 +1634,7 @@ pub(crate) fn task_bottom_offset(output: &str) -> u16 {
 
 /// Executes the `language_from_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn canonical_language() -> Option<Lang> {
-  let output = std::process::Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", "/session/language", "--effective", "--raw"])
     .output()
     .ok()?;

@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 /// Executes the `hyprctl_version` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn hyprctl_version() -> (u32, u32) {
@@ -350,7 +349,7 @@ pub fn load_config() -> PersistedConfig {
 }
 
 fn load_canonical_config() -> Option<PersistedConfig> {
-  let output = Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", "/displays", "--effective"])
     .output()
     .ok()?;
@@ -649,7 +648,7 @@ pub fn save_config(config: &PersistedConfig) -> Result<(), String> {
     "workspaces": workspaces,
   });
   let value = serde_json::to_string(&value).map_err(|error| error.to_string())?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["set", "/displays", &value])
     .status()
     .map_err(|error| format!("failed to persist display configuration: {error}"))?;

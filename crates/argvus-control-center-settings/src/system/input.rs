@@ -4,7 +4,6 @@
 //! the UI consumes normalized models and results.
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 use super::ratbag;
 use serde::{Deserialize, Serialize};
@@ -86,7 +85,7 @@ pub fn path() -> PathBuf {
 /// the tool is unavailable or the value is missing/empty, which forces the
 /// caller to fall back to the local replica.
 fn read_config(pointer: &str) -> Option<String> {
-  let output = Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", pointer, "--effective", "--raw"])
     .output()
     .ok()?;
@@ -178,7 +177,7 @@ fn sync_to_config(settings: &InputSettings) -> Result<(), String> {
     "/hyprland/input/touchpad": settings.touchpad,
   });
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist input settings: {error}"))?;
@@ -365,7 +364,7 @@ pub fn accel_label(value: &str) -> &str {
 
 /// Applies the `apply` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn apply(key: &str, value: &str) -> Result<(), String> {
-  let output = Command::new("hyprctl")
+  let output = argvus_control_center_core::process::command("hyprctl")
     .args(["keyword", key, value])
     .output()
     .map_err(|e| e.to_string())?;
@@ -378,7 +377,7 @@ fn apply(key: &str, value: &str) -> Result<(), String> {
 
 /// Retrieves data for `detect_devices` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn detect_devices() -> Devices {
-  let output = Command::new("hyprctl")
+  let output = argvus_control_center_core::process::command("hyprctl")
     .args(["devices", "-j"])
     .output()
     .ok();
@@ -410,7 +409,7 @@ fn devices_from_json(root: &Value) -> Devices {
 
 /// Executes the `query_value` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn query_value(key: &str) -> Option<Value> {
-  let output = Command::new("hyprctl")
+  let output = argvus_control_center_core::process::command("hyprctl")
     .args(["getoption", key, "-j"])
     .output()
     .ok()?;

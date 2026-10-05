@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::config::paths;
 use crate::error::SettingsError;
@@ -587,7 +587,7 @@ impl FontSettings {
 
 /// Converts input data into `parse_state` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn canonical_fonts() -> Option<serde_json::Value> {
-  let output = Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", "/fonts", "--effective"])
     .output()
     .ok()?;
@@ -632,7 +632,7 @@ fn overlay_canonical_fonts(state: &mut HashMap<String, String>, fonts: &serde_js
 }
 
 fn run_checked(command: &str, arguments: &[&str]) -> Result<(), String> {
-  let status = Command::new(command)
+  let status = argvus_control_center_core::process::command(command)
     .args(arguments)
     .status()
     .map_err(|error| format!("failed to run {command}: {error}"))?;
@@ -667,7 +667,7 @@ fn rgba_order(subpixel: &str) -> Option<&str> {
 
 /// Executes the `gsettings_set` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn gsettings_set(schema: &str, key: &str, value: &str) -> Result<(), String> {
-  let status = Command::new("gsettings")
+  let status = argvus_control_center_core::process::command("gsettings")
     .args(["set", schema, key, value])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
@@ -683,7 +683,7 @@ fn gsettings_set(schema: &str, key: &str, value: &str) -> Result<(), String> {
 
 /// Executes the `spawn_if_available` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn spawn_if_available(command: &str, args: &[&str]) {
-  let _ = Command::new(command)
+  let _ = argvus_control_center_core::process::command(command)
     .args(args)
     .stdin(Stdio::null())
     .stdout(Stdio::null())

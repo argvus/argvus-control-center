@@ -2,7 +2,6 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
-use std::process::Command;
 
 use crate::AboutError;
 use crate::i18n::{Lang, na, tr};
@@ -355,7 +354,7 @@ impl App {
 
 /// Executes the `open_url` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn open_url(url: &str) -> Result<(), AboutError> {
-  Command::new("xdg-open")
+  argvus_control_center_core::process::command("xdg-open")
     .arg(url)
     .spawn()
     .map(|_| ())

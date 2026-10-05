@@ -14,8 +14,6 @@ use argvus_control_center_core::{
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use std::process::Command;
-
 /// Executes the `list_components` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list_components() -> Vec<Component> {
   let components = manifest();
@@ -417,7 +415,7 @@ pub fn restart_component(id: &str) -> Result<(), String> {
 
 /// Executes the `run_user_command` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_user_command(command: &[String]) -> Result<(), String> {
-  let status = Command::new(&command[0])
+  let status = argvus_control_center_core::process::command(&command[0])
     .args(&command[1..])
     .status()
     .map_err(|error| error.to_string())?;

@@ -3,7 +3,6 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use std::fs;
-use std::process::Command;
 
 pub mod cpu;
 pub mod gpu;
@@ -129,7 +128,10 @@ fn read_to_string(path: &str) -> Option<String> {
 
 /// Executes the `command_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_output(command: &str, args: &[&str]) -> Option<String> {
-  let output = Command::new(command).args(args).output().ok()?;
+  let output = argvus_control_center_core::process::command(command)
+    .args(args)
+    .output()
+    .ok()?;
   output
     .status
     .success()

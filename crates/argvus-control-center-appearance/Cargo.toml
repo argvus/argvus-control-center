@@ -19,3 +19,7 @@ serde.workspace = true
 tar = "0.4"
 tempfile = "3.27"
 time = { version = "0.3", features = ["local-offset", "formatting"] }
+
+[dev-dependencies]
+# Test builds never start external programs (see the core `testing` feature).
+argvus-control-center-core = { path = "../argvus-control-center-core", features = ["testing"] }

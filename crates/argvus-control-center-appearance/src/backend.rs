@@ -17,7 +17,7 @@ use argvus_control_center_core::{
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
 
@@ -425,7 +425,7 @@ fn parse_borders_status(output: &str, state: &mut AppearanceState) {
 }
 
 pub(crate) fn canonical_layout() -> Option<Value> {
-  let output = Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", "/layout", "--effective"])
     .output()
     .ok()?;
@@ -490,7 +490,7 @@ fn apply_canonical_layout(state: &mut AppearanceState) {
 }
 
 pub(crate) fn canonical_taskbar() -> Option<Value> {
-  let output = Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", "/taskbar", "--effective"])
     .output()
     .ok()?;
@@ -796,7 +796,7 @@ fn persist_wallpaper_canonical(wallpaper: &Path) -> Result<(), String> {
     "/appearance/wallpaper_custom": true,
   });
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist wallpaper settings: {error}"))?;
@@ -1051,7 +1051,7 @@ pub(crate) fn persist_accent_canonical(accent: &str, is_custom: bool) -> Result<
     Value::Bool(is_custom),
   );
   let patch = serde_json::to_string(&Value::Object(patch)).map_err(|error| error.to_string())?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist accent settings: {error}"))?;
@@ -1206,7 +1206,7 @@ pub fn choose_wallpaper() -> Result<(), String> {
   if !is_tui_file_manager(&file_manager) {
     let binary = &file_manager[0];
     let class = gui_file_manager_class(binary);
-    let child = Command::new(binary)
+    let child = argvus_control_center_core::process::command(binary)
       .args(file_manager.iter().skip(1))
       .arg(home)
       .stdin(Stdio::null())
@@ -1226,7 +1226,7 @@ pub fn choose_wallpaper() -> Result<(), String> {
   }
   let _ = fs::remove_file(&selection);
 
-  let mut terminal_command = Command::new("argvus-tui-terminal");
+  let mut terminal_command = argvus_control_center_core::process::command("argvus-tui-terminal");
   let mut terminal_args = vec![
     "--class".to_string(),
     "argvus-wallpaper-picker".to_string(),
@@ -1427,7 +1427,7 @@ fn reload_taskbar() -> Result<(), String> {
 
 fn persist_taskbar_patch(patch: serde_json::Map<String, Value>) -> Result<(), String> {
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist taskbar settings: {error}"))?;
@@ -1536,7 +1536,7 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
 
 fn persist_layout_patch(patch: serde_json::Map<String, Value>) -> Result<(), String> {
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist layout settings: {error}"))?;

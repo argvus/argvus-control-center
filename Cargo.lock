@@ -155,6 +155,7 @@ dependencies = [
 name = "argvus-control-center-about"
 version = "0.1.0"
 dependencies = [
+ "argvus-control-center-core",
  "argvus-i18n-core",
  "argvus-theme",
  "argvus-tui",
@@ -237,6 +238,7 @@ dependencies = [
 name = "argvus-control-center-core"
 version = "0.1.0"
 dependencies = [
+ "argvus-control-center-core",
  "argvus-i18n-core",
  "libc",
  "serde",

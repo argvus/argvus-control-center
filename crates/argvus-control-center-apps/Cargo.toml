@@ -9,3 +9,7 @@ rust-version = "1.95"
 argvus-control-center-core = { path = "../argvus-control-center-core" }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+# Test builds never start external programs (see the core `testing` feature).
+argvus-control-center-core = { path = "../argvus-control-center-core", features = ["testing"] }

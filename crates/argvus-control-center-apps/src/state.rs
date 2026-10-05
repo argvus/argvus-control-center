@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -310,7 +309,7 @@ impl AppState {
     let Ok(patch) = serde_json::to_string(&patch) else {
       return;
     };
-    let persisted = Command::new("argvus-config")
+    let persisted = argvus_control_center_core::process::command("argvus-config")
       .args(["patch", &patch])
       .status()
       .is_ok_and(|status| status.success());

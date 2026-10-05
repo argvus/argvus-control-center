@@ -13,3 +13,7 @@ argvus-tui = { path = "../../../argvus-tui/crates/argvus-tui" }
 crossterm.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# Test builds never start external programs (see the core `testing` feature).
+argvus-control-center-core = { path = "../argvus-control-center-core", features = ["testing"] }

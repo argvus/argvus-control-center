@@ -1947,65 +1947,48 @@ fn preview_message(lang: Lang, plan: &TransactionPlan) -> String {
     human_bytes(plan.download_bytes)
   )
 }
-/// Executes the `run_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn run_action(a: Action, caps: Capabilities, live: LiveProcess) -> Result<String, String> {
-  let executable = std::env::current_exe()
-    .map_err(|error| error.to_string())?
-    .to_string_lossy()
-    .into_owned();
-  let privileged = SystemSettingsOperation::new(SystemProcessRunner, executable);
-  let request = |name: &str, args: Vec<String>| -> Result<String, String> {
-    let r = PrivilegedRequest::new("package", name, args)?;
-    let o = privileged.execute_live(&r, &live)?;
-    if o.status == Some(0) {
-      let stdout = terminal_text(&String::from_utf8_lossy(&o.stdout))
-        .trim()
-        .to_owned();
-      Ok(if stdout.is_empty() {
-        "Operation completed.".into()
-      } else {
-        stdout
-      })
-    } else {
-      Err(terminal_text(&String::from_utf8_lossy(&o.stderr)))
-    }
+/// What a package operation runs, built before anything starts so the
+/// exact command can be checked without running it.
+#[derive(Debug, Clone)]
+enum ActionCommand {
+  /// `<executable> system-settings package <action> <arguments>`, which
+  /// elevates itself with `pkexec`.
+  Privileged {
+    /// Line echoed at the top of the live output.
+    echo: String,
+    request: PrivilegedRequest,
+  },
+  /// The AUR helper, run as the normal user (PKGBUILDs must not build as
+  /// root).
+  User {
+    echo: String,
+    process: ProcessRequest,
+  },
+}
+
+/// Builds the command of `a` without running it.
+fn action_command(a: Action, caps: &Capabilities) -> Result<ActionCommand, String> {
+  let privileged = |echo: String, name: &str, args: Vec<String>| {
+    Ok(ActionCommand::Privileged {
+      echo,
+      request: PrivilegedRequest::new("package", name, args)?,
+    })
   };
   match a {
-    Action::Install(v) => {
-      live.push_line(&format!("$ pacman -S --needed {}", v.join(" ")));
-      request("install", v)
-    }
-    Action::Remove(v) => {
-      live.push_line(&format!("$ pacman -Rns {}", v.join(" ")));
-      request("remove", v)
-    }
-    Action::Reinstall(v) => {
-      live.push_line(&format!("$ pacman -S {v}"));
-      request("reinstall", vec![v])
-    }
-    Action::Upgrade => {
-      live.push_line("$ pacman -Syu");
-      request("upgrade", vec![])
-    }
-    Action::UpgradePackage(v) => {
-      live.push_line(&format!("$ pacman -S {v}"));
-      request("upgrade-package", vec![v])
-    }
-    Action::RefreshDatabase => {
-      live.push_line("$ pacman -Syy");
-      request("refresh-db", vec![])
-    }
-    Action::CleanCache(v) => {
-      live.push_line("$ paccache -r");
-      request("clean-cache", vec![v.into()])
-    }
-    Action::Downgrade(v) => {
-      live.push_line(&format!("$ pacman -U {v}"));
-      request("downgrade", vec![v])
-    }
+    Action::Install(v) => privileged(
+      format!("$ pacman -S --needed {}", v.join(" ")),
+      "install",
+      v,
+    ),
+    Action::Remove(v) => privileged(format!("$ pacman -Rns {}", v.join(" ")), "remove", v),
+    Action::Reinstall(v) => privileged(format!("$ pacman -S {v}"), "reinstall", vec![v]),
+    Action::Upgrade => privileged("$ pacman -Syu".into(), "upgrade", vec![]),
+    Action::UpgradePackage(v) => privileged(format!("$ pacman -S {v}"), "upgrade-package", vec![v]),
+    Action::RefreshDatabase => privileged("$ pacman -Syy".into(), "refresh-db", vec![]),
+    Action::CleanCache(v) => privileged("$ paccache -r".into(), "clean-cache", vec![v.into()]),
+    Action::Downgrade(v) => privileged(format!("$ pacman -U {v}"), "downgrade", vec![v]),
     Action::ApplyMirrors(content) => {
-      live.push_line("$ update mirrorlist");
-      request("mirror-apply", vec![content])
+      privileged("$ update mirrorlist".into(), "mirror-apply", vec![content])
     }
     Action::AurInstall(name) => {
       let helper = if caps.has_paru {
@@ -2015,9 +1998,42 @@ fn run_action(a: Action, caps: Capabilities, live: LiveProcess) -> Result<String
       } else {
         return Err("AUR helper is unavailable".into());
       };
-      live.push_line(&format!("$ {helper} -S {name}"));
+      Ok(ActionCommand::User {
+        echo: format!("$ {helper} -S {name}"),
+        process: ProcessRequest::new(helper).arg("-S").arg(name),
+      })
+    }
+  }
+}
+
+/// Runs the command of `a`, streaming its output into `live`.
+fn run_action(a: Action, caps: Capabilities, live: LiveProcess) -> Result<String, String> {
+  match action_command(a, &caps)? {
+    ActionCommand::Privileged { echo, request } => {
+      live.push_line(&echo);
+      let executable = std::env::current_exe()
+        .map_err(|error| error.to_string())?
+        .to_string_lossy()
+        .into_owned();
+      let o = SystemSettingsOperation::new(SystemProcessRunner, executable)
+        .execute_live(&request, &live)?;
+      if o.status == Some(0) {
+        let stdout = terminal_text(&String::from_utf8_lossy(&o.stdout))
+          .trim()
+          .to_owned();
+        Ok(if stdout.is_empty() {
+          "Operation completed.".into()
+        } else {
+          stdout
+        })
+      } else {
+        Err(terminal_text(&String::from_utf8_lossy(&o.stderr)))
+      }
+    }
+    ActionCommand::User { echo, process } => {
+      live.push_line(&echo);
       let o = SystemProcessRunner
-        .run_live(&ProcessRequest::new(helper).arg("-S").arg(&name), &live)
+        .run_live(&process, &live)
         .map_err(|e| e.to_string())?;
       if o.status == Some(0) {
         Ok(terminal_text(&String::from_utf8_lossy(&o.stdout)))
@@ -2819,6 +2835,10 @@ mod tests {
   #[test]
   fn start_pending_opens_the_process_window_immediately() {
     let mut app = app();
+    // The operation is only checked as built; test builds start no process
+    // (the core `testing` feature), so the job below runs nothing.
+    let (_, process) = privileged_process(Action::RefreshDatabase);
+    assert_eq!(process.args, ["system-settings", "package", "refresh-db"]);
     app.pending = Some(Action::RefreshDatabase);
     app.start_pending();
     assert!(
@@ -2878,6 +2898,9 @@ mod tests {
     assert!(app.pending.is_none());
     assert!(app.action.is_none());
     app.request(Action::RefreshDatabase);
+    // y starts the job, which runs no process in test builds (core
+    // `testing` feature); the command itself is checked as built in
+    // `package_operations_build_the_privileged_system_settings_command`.
     app.handle(KeyCode::Char('y'));
     assert!(app.pending.is_none());
     assert!(app.action.is_some(), "y runs the confirmed operation");
@@ -2937,6 +2960,95 @@ mod tests {
     let text = screen(&mut app, 100, 30);
     assert!(text.contains("paru-bin"), "{text}");
     assert!(!text.contains(": 0"), "{text}");
+  }
+
+  /// The process a privileged operation would start, built without running
+  /// it; the executable stands for the installed Control Center.
+  fn privileged_process(action: Action) -> (String, ProcessRequest) {
+    let Ok(ActionCommand::Privileged { echo, request }) =
+      action_command(action, &Capabilities::default())
+    else {
+      panic!("not a privileged operation");
+    };
+    let process =
+      SystemSettingsOperation::new(SystemProcessRunner, "/usr/bin/argvus-control-center")
+        .process_for(&request)
+        .unwrap();
+    (echo, process)
+  }
+
+  #[test]
+  fn package_operations_build_the_privileged_system_settings_command() {
+    let cases = [
+      (
+        Action::Install(vec!["zsh".into(), "jq".into()]),
+        "$ pacman -S --needed zsh jq",
+        vec!["install", "zsh", "jq"],
+      ),
+      (
+        Action::Remove(vec!["zsh".into()]),
+        "$ pacman -Rns zsh",
+        vec!["remove", "zsh"],
+      ),
+      (
+        Action::Reinstall("zsh".into()),
+        "$ pacman -S zsh",
+        vec!["reinstall", "zsh"],
+      ),
+      (Action::Upgrade, "$ pacman -Syu", vec!["upgrade"]),
+      (
+        Action::UpgradePackage("linux".into()),
+        "$ pacman -S linux",
+        vec!["upgrade-package", "linux"],
+      ),
+      (Action::RefreshDatabase, "$ pacman -Syy", vec!["refresh-db"]),
+      (
+        Action::CleanCache("keep-one"),
+        "$ paccache -r",
+        vec!["clean-cache", "keep-one"],
+      ),
+      (
+        Action::Downgrade("/var/cache/pacman/pkg/zsh-5.9-1-x86_64.pkg.tar.zst".into()),
+        "$ pacman -U /var/cache/pacman/pkg/zsh-5.9-1-x86_64.pkg.tar.zst",
+        vec![
+          "downgrade",
+          "/var/cache/pacman/pkg/zsh-5.9-1-x86_64.pkg.tar.zst",
+        ],
+      ),
+      (
+        Action::ApplyMirrors("Server = https://a/$repo/os/$arch\n".into()),
+        "$ update mirrorlist",
+        vec!["mirror-apply", "Server = https://a/$repo/os/$arch\n"],
+      ),
+    ];
+    for (action, expected_echo, expected_args) in cases {
+      let (echo, process) = privileged_process(action);
+      assert_eq!(echo, expected_echo);
+      assert_eq!(process.program, "/usr/bin/argvus-control-center");
+      let mut args = vec!["system-settings", "package"];
+      args.extend(expected_args);
+      assert_eq!(process.args, args);
+    }
+  }
+
+  #[test]
+  fn aur_install_runs_the_helper_as_the_normal_user() {
+    let caps = |paru, yay| Capabilities {
+      has_paru: paru,
+      has_yay: yay,
+      ..Default::default()
+    };
+    for (caps, helper) in [(caps(true, true), "paru"), (caps(false, true), "yay")] {
+      let Ok(ActionCommand::User { echo, process }) =
+        action_command(Action::AurInstall("paru-bin".into()), &caps)
+      else {
+        panic!("the AUR install is not privileged");
+      };
+      assert_eq!(echo, format!("$ {helper} -S paru-bin"));
+      assert_eq!(process.program, helper);
+      assert_eq!(process.args, ["-S", "paru-bin"]);
+    }
+    assert!(action_command(Action::AurInstall("paru-bin".into()), &caps(false, false)).is_err());
   }
 
   #[test]

@@ -3,7 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc::{self, Receiver};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -104,7 +104,7 @@ fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, Stri
   } else {
     "/usr/bin/argvus-accounts"
   };
-  let mut command = Command::new(if privileged {
+  let mut command = argvus_control_center_core::process::command(if privileged {
     "/usr/bin/pkexec"
   } else {
     binary

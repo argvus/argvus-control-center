@@ -2305,7 +2305,7 @@ fn rule_from_persisted(name: &str, persisted: &PersistedMonitor) -> String {
 fn apply_wallpapers_hook() -> Result<(), String> {
   let script = "/usr/bin/argvus-wallpapers-apply";
   if std::path::Path::new(script).exists() {
-    let _ = std::process::Command::new(script).status();
+    let _ = argvus_control_center_core::process::command(script).status();
   }
   Ok(())
 }

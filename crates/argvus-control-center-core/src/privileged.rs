@@ -85,8 +85,11 @@ impl<R> SystemSettingsOperation<R> {
     }
   }
 
-  /// Processes `process_for` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn process_for(&self, request: &PrivilegedRequest) -> Result<ProcessRequest, String> {
+  /// The process that runs `request`: `<executable> system-settings
+  /// <domain> <action> <arguments...>`, which elevates itself with `pkexec`.
+  /// Built without running anything, so callers and tests can check the
+  /// exact operation.
+  pub fn process_for(&self, request: &PrivilegedRequest) -> Result<ProcessRequest, String> {
     request.validate()?;
     let mut process = ProcessRequest::new(&self.executable)
       .arg("system-settings")

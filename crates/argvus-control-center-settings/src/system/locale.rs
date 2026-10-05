@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::error::SettingsError;
 
@@ -229,7 +229,7 @@ pub fn is_encoding_name(value: &str) -> bool {
 
 /// Executes the `command_stdout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
-  let output = Command::new(command)
+  let output = argvus_control_center_core::process::command(command)
     .args(args)
     .stdin(Stdio::null())
     .output()

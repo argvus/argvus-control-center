@@ -1512,6 +1512,9 @@ mod tests {
     app.handle(KeyCode::Enter);
     assert_eq!(app.page, NetworkPage::Firewall);
     assert!(app.firewall.is_some());
+    // fc-list does not run in tests, so the embedded settings page opens with
+    // the font discovery error; the test is about navigation.
+    app.firewall.as_mut().unwrap().error_modal = None;
     assert!(!app.handle(KeyCode::Esc));
     assert_eq!(app.page, NetworkPage::Home);
     assert!(app.firewall.is_none());
@@ -1557,6 +1560,9 @@ mod tests {
     app.page = NetworkPage::Firewall;
     app.reload();
     assert!(app.firewall.is_some());
+    // fc-list does not run in tests, so the embedded settings page opens with
+    // the font discovery error; the test is about navigation.
+    app.firewall.as_mut().unwrap().error_modal = None;
     assert!(!app.handle(KeyCode::Esc));
     assert_eq!(app.page, NetworkPage::Home);
     assert!(app.handle(KeyCode::Esc));

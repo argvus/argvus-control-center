@@ -1254,63 +1254,71 @@ fn action_message(lang: Lang, action: &BootAction) -> String {
     ),
   }
 }
-/// Executes the `run_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+/// The privileged request of `action` and the line echoed at the top of
+/// the live output, built without running anything so the exact operation
+/// can be checked.
+fn boot_request(action: BootAction) -> Result<(String, PrivilegedRequest), String> {
+  let (echo, name, args) = match action {
+    BootAction::SystemdDefault(id) => (
+      format!("$ bootctl set-default {id}"),
+      "systemd-default",
+      vec![id],
+    ),
+    BootAction::SystemdTimeout(seconds) => (
+      format!("$ boot timeout = {seconds}s"),
+      "systemd-timeout",
+      vec![seconds.to_string()],
+    ),
+    BootAction::GrubTimeout(seconds) => (
+      format!("$ GRUB_TIMEOUT = {seconds}s"),
+      "grub-timeout",
+      vec![seconds.to_string()],
+    ),
+    BootAction::GrubCmdline(value) => (
+      "$ GRUB_CMDLINE_LINUX_DEFAULT".to_owned(),
+      "grub-cmdline",
+      vec![value],
+    ),
+    BootAction::GrubRegenerate => ("$ grub-mkconfig".to_owned(), "grub-regenerate", vec![]),
+    BootAction::Initramfs => ("$ mkinitcpio -P".to_owned(), "initramfs-regenerate", vec![]),
+    BootAction::Plymouth(theme) => (
+      format!("$ plymouth-set-default-theme -R {theme}"),
+      "plymouth-theme",
+      vec![theme],
+    ),
+  };
+  Ok((echo, PrivilegedRequest::new("boot", name, args)?))
+}
+
+/// Runs `action` through `<executable> system-settings boot ...`, which
+/// elevates itself with `pkexec`, streaming its output into `live`.
 fn run_action(action: BootAction, live: LiveProcess) -> Result<(ActionResult, String), String> {
+  let (echo, request) = boot_request(action)?;
+  live.push_line(&echo);
   let executable = std::env::current_exe()
     .map_err(|error| error.to_string())?
     .to_string_lossy()
     .into_owned();
-  let operation = SystemSettingsOperation::new(SystemProcessRunner, executable);
-  let run = |name: &str, args: Vec<String>| -> Result<String, String> {
-    let request = PrivilegedRequest::new("boot", name, args)?;
-    let output = operation.execute_live(&request, &live)?;
-    if output.status == Some(0) {
-      let stdout = terminal_text(&String::from_utf8_lossy(&output.stdout))
-        .trim()
-        .to_owned();
-      Ok(if stdout.is_empty() {
+  let output =
+    SystemSettingsOperation::new(SystemProcessRunner, executable).execute_live(&request, &live)?;
+  if output.status == Some(0) {
+    let stdout = terminal_text(&String::from_utf8_lossy(&output.stdout))
+      .trim()
+      .to_owned();
+    Ok((
+      ActionResult::Success,
+      if stdout.is_empty() {
         "ok".to_owned()
       } else {
         stdout
-      })
-    } else {
-      Err(
-        terminal_text(&String::from_utf8_lossy(&output.stderr))
-          .trim()
-          .into(),
-      )
-    }
-  };
-  match action {
-    BootAction::SystemdDefault(id) => {
-      live.push_line(&format!("$ bootctl set-default {id}"));
-      run("systemd-default", vec![id]).map(|output| (ActionResult::Success, output))
-    }
-    BootAction::SystemdTimeout(seconds) => {
-      live.push_line(&format!("$ boot timeout = {seconds}s"));
-      run("systemd-timeout", vec![seconds.to_string()])
-        .map(|output| (ActionResult::Success, output))
-    }
-    BootAction::GrubTimeout(seconds) => {
-      live.push_line(&format!("$ GRUB_TIMEOUT = {seconds}s"));
-      run("grub-timeout", vec![seconds.to_string()]).map(|output| (ActionResult::Success, output))
-    }
-    BootAction::GrubCmdline(value) => {
-      live.push_line("$ GRUB_CMDLINE_LINUX_DEFAULT");
-      run("grub-cmdline", vec![value]).map(|output| (ActionResult::Success, output))
-    }
-    BootAction::GrubRegenerate => {
-      live.push_line("$ grub-mkconfig");
-      run("grub-regenerate", vec![]).map(|output| (ActionResult::Success, output))
-    }
-    BootAction::Initramfs => {
-      live.push_line("$ mkinitcpio -P");
-      run("initramfs-regenerate", vec![]).map(|output| (ActionResult::Success, output))
-    }
-    BootAction::Plymouth(theme) => {
-      live.push_line(&format!("$ plymouth-set-default-theme -R {theme}"));
-      run("plymouth-theme", vec![theme]).map(|output| (ActionResult::Success, output))
-    }
+      },
+    ))
+  } else {
+    Err(
+      terminal_text(&String::from_utf8_lossy(&output.stderr))
+        .trim()
+        .into(),
+    )
   }
 }
 
@@ -1892,12 +1900,76 @@ mod tests {
   }
 
   #[test]
+  fn boot_actions_build_the_privileged_system_settings_command() {
+    let cases = [
+      (
+        BootAction::SystemdDefault("arch.conf".into()),
+        "$ bootctl set-default arch.conf",
+        vec!["systemd-default", "arch.conf"],
+      ),
+      (
+        BootAction::SystemdTimeout(5),
+        "$ boot timeout = 5s",
+        vec!["systemd-timeout", "5"],
+      ),
+      (
+        BootAction::GrubTimeout(3),
+        "$ GRUB_TIMEOUT = 3s",
+        vec!["grub-timeout", "3"],
+      ),
+      (
+        BootAction::GrubCmdline("quiet splash".into()),
+        "$ GRUB_CMDLINE_LINUX_DEFAULT",
+        vec!["grub-cmdline", "quiet splash"],
+      ),
+      (
+        BootAction::GrubRegenerate,
+        "$ grub-mkconfig",
+        vec!["grub-regenerate"],
+      ),
+      (
+        BootAction::Initramfs,
+        "$ mkinitcpio -P",
+        vec!["initramfs-regenerate"],
+      ),
+      (
+        BootAction::Plymouth("bgrt".into()),
+        "$ plymouth-set-default-theme -R bgrt",
+        vec!["plymouth-theme", "bgrt"],
+      ),
+    ];
+    for (action, expected_echo, expected_args) in cases {
+      let (echo, request) = boot_request(action).unwrap();
+      assert_eq!(echo, expected_echo);
+      let process =
+        SystemSettingsOperation::new(SystemProcessRunner, "/usr/bin/argvus-control-center")
+          .process_for(&request)
+          .unwrap();
+      assert_eq!(process.program, "/usr/bin/argvus-control-center");
+      let mut args = vec!["system-settings", "boot"];
+      args.extend(expected_args);
+      assert_eq!(process.args, args);
+    }
+  }
+
+  #[test]
   /// Executes the `boot_start_pending_opens_the_process_window_immediately` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn boot_start_pending_opens_the_process_window_immediately() {
     let mut app = BootApp::new(
       Lang::for_locale("en-US"),
       Theme::load(),
       Capabilities::default(),
+    );
+    // The operation is only checked as built; test builds start no process
+    // (the core `testing` feature), so the job below runs nothing.
+    let (_, request) = boot_request(BootAction::Initramfs).unwrap();
+    let process =
+      SystemSettingsOperation::new(SystemProcessRunner, "/usr/bin/argvus-control-center")
+        .process_for(&request)
+        .unwrap();
+    assert_eq!(
+      process.args,
+      ["system-settings", "boot", "initramfs-regenerate"]
     );
     app.pending = Some(Pending::Action(BootAction::Initramfs));
     app.start_pending();

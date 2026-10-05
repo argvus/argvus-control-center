@@ -3,7 +3,6 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use std::collections::BTreeSet;
-use std::process::Command;
 
 use crate::error::SettingsError;
 
@@ -27,7 +26,7 @@ impl FontEntry {
 
 /// Executes the `list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn list() -> Result<Vec<FontEntry>, SettingsError> {
-  let output = Command::new("fc-list")
+  let output = argvus_control_center_core::process::command("fc-list")
     .args(["--format", "%{family}\t%{style}\n"])
     .output()
     .map_err(|error| SettingsError::FontDiscovery(format!("fontconfig unavailable: {error}")))?;

@@ -9,7 +9,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use argvus_control_center_core::config::AppConfig;
@@ -941,7 +941,7 @@ fn stream_command_path(command: &Path, args: &[&str]) -> Result<(), String> {
 
 /// Executes the `stream_command_display` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn stream_command_display(display: &str, command: &Path, args: &[&str]) -> Result<(), String> {
-  let mut child = Command::new(command)
+  let mut child = argvus_control_center_core::process::command(command)
     .args(args)
     .stdin(Stdio::null())
     .stdout(Stdio::piped())
@@ -1007,7 +1007,7 @@ fn ensure_root(args: &[String]) -> Result<(), String> {
   }
   let pkexec = locate_pkexec().ok_or_else(|| "pkexec was not found; install polkit".to_string())?;
   let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-  let mut command = Command::new(pkexec);
+  let mut command = argvus_control_center_core::process::command(pkexec);
   command
     .arg(exe)
     .arg("system-settings")
@@ -1100,7 +1100,7 @@ fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
 
 /// Executes the `run_command` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn run_command(command: &str, args: &[&str]) -> Result<(), String> {
-  let output = Command::new(command)
+  let output = argvus_control_center_core::process::command(command)
     .args(args)
     .stdin(Stdio::null())
     .output()

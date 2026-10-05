@@ -1311,7 +1311,7 @@ fn source_paths(root: &Path) -> Vec<(FileId, PathBuf)> {
 /// process inherits the environment, so it resolves the same ARGVUS root as
 /// this process.
 fn export_canonical_appearance(destination: &Path) -> Result<bool, String> {
-  let output = std::process::Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["export", "--scope", "appearance", "--output"])
     .arg(destination)
     .output();
@@ -1352,7 +1352,7 @@ fn project_canonical_config() -> Result<(), String> {
 }
 
 fn run_canonical_config_command(arguments: &[&str]) -> Result<(), String> {
-  let output = std::process::Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(arguments)
     .output()
     .map_err(|error| format!("could not run argvus-config: {error}"))?;
@@ -1695,9 +1695,12 @@ mod tests {
       .collect::<HashSet<_>>();
     assert!(members.contains(MANIFEST_PATH));
     assert!(members.contains(SUMS_PATH));
-    assert!(members.contains("argvus-theme-profile/payload/config/argvus/config.json"));
-    assert!(!members.contains("argvus-theme-profile/payload/config/argvus/.active-theme"));
-    assert!(!members.contains("argvus-theme-profile/payload/config/argvus/.wallpaper-custom"));
+    // argvus-config does not run in tests, so the profile takes the path for
+    // systems without it: no canonical config.json in the archive.
+    // The legacy profile carries the theme and wallpaper state files instead.
+    assert!(!members.contains("argvus-theme-profile/payload/config/argvus/config.json"));
+    assert!(members.contains("argvus-theme-profile/payload/config/argvus/.active-theme"));
+    assert!(members.contains("argvus-theme-profile/payload/config/argvus/.wallpaper-custom"));
     assert!(
       members
         .iter()

@@ -317,6 +317,9 @@ mod tests {
   #[test]
   fn ctrl_c_quits_even_while_typing() {
     let mut app = App::new(InitialRoute::Apps);
+    // fc-list does not run in tests, so the font discovery error modal is
+    // open; the test is about typing, not about that error.
+    app.settings.error_modal = None;
     app.settings.searching = true;
     assert!(app.captures_text());
     handle(
@@ -462,6 +465,9 @@ mod tests {
   /// before D10 this test asserted that `q` quit).
   fn q_and_question_mark_are_typed_into_an_active_settings_search() {
     let mut app = App::new(InitialRoute::Fonts);
+    // fc-list does not run in tests, so the font discovery error modal is
+    // open; the test is about typing, not about that error.
+    app.settings.error_modal = None;
     app.settings.searching = true;
     handle(&mut app, press(KeyCode::Char('q')));
     handle(&mut app, press(KeyCode::Char('?')));

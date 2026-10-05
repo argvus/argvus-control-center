@@ -8,6 +8,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+use std::ffi::OsStr;
 use std::io::{self, BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -17,6 +18,27 @@ use std::sync::{
 };
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Path that test builds start instead of the requested program. It never
+/// exists, so spawning fails with `NotFound` before anything runs.
+#[cfg(all(feature = "testing", not(test)))]
+const DISABLED_PROGRAM: &str = "/nonexistent/argvus-control-center-test-process";
+
+/// Builds the [`Command`] for an external program. Every process the
+/// Control Center starts goes through here, directly or through
+/// [`SystemProcessRunner`], so the `testing` feature can guarantee that no
+/// test runs a system tool (`pkexec`, `pacman`, `systemctl`, `hyprctl`,
+/// `argvus-config`...): the spawn fails as if the tool were not installed,
+/// which every caller already handles. Without the feature this is
+/// `Command::new(program)`.
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+  #[cfg(all(feature = "testing", not(test)))]
+  let program = {
+    let _ = program;
+    DISABLED_PROGRAM
+  };
+  Command::new(program)
+}
 
 #[derive(Debug, Clone)]
 /// Represents `ProcessRequest`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -177,7 +199,7 @@ impl ProcessRunner for SystemProcessRunner {
     if request.program.trim().is_empty() {
       return Err(ProcessError::EmptyProgram);
     }
-    let mut child = Command::new(&request.program)
+    let mut child = command(&request.program)
       .process_group(0)
       .args(&request.args)
       .envs(request.env.iter().map(|(name, value)| (name, value)))
@@ -248,7 +270,7 @@ impl ProcessRunner for SystemProcessRunner {
     if request.program.trim().is_empty() {
       return Err(ProcessError::EmptyProgram);
     }
-    let mut child = Command::new(&request.program)
+    let mut child = command(&request.program)
       .process_group(0)
       .args(&request.args)
       .envs(request.env.iter().map(|(name, value)| (name, value)))

@@ -2,7 +2,7 @@
 //! nudge the running Argvus session to re-read the state.
 
 use std::fs;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::catalog::{Category, find_app};
 use crate::detect::{self, DesktopFile};
@@ -77,7 +77,7 @@ fn run_xdg_settings(desktop_id: &str) -> bool {
   if !detect::command_exists("xdg-settings") {
     return false;
   }
-  Command::new("xdg-settings")
+  argvus_control_center_core::process::command("xdg-settings")
     .args(["set", "default-web-browser", desktop_id])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
@@ -190,7 +190,7 @@ pub fn refresh_argvus() -> bool {
   if !detect::command_exists("hyprctl") {
     return false;
   }
-  Command::new("hyprctl")
+  argvus_control_center_core::process::command("hyprctl")
     .args(["reload"])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
@@ -205,7 +205,7 @@ fn notify_user(body: &str) -> bool {
   if !detect::command_exists("notify-send") {
     return false;
   }
-  Command::new("notify-send")
+  argvus_control_center_core::process::command("notify-send")
     .args(["Default Programs", body])
     .stdin(Stdio::null())
     .stdout(Stdio::null())

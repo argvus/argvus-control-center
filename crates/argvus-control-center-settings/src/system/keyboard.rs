@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::error::SettingsError;
 use serde_json::Value;
@@ -381,7 +381,7 @@ fn write_generated_hypr_input(
   });
   let patch =
     serde_json::to_string(&patch).map_err(|error| SettingsError::System(error.to_string()))?;
-  let status = Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| SettingsError::System(error.to_string()))?;
@@ -423,7 +423,7 @@ pub fn is_keymap_name(value: &str) -> bool {
 
 /// Executes the `command_stdout` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
-  let output = Command::new(command)
+  let output = argvus_control_center_core::process::command(command)
     .args(args)
     .stdin(Stdio::null())
     .output()
@@ -436,7 +436,7 @@ fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
 
 /// Applies the `apply_hypr_keyword` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn apply_hypr_keyword(key: &str, value: &str) {
-  let _ = Command::new("hyprctl")
+  let _ = argvus_control_center_core::process::command("hyprctl")
     .args(["keyword", key, value])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
@@ -468,7 +468,7 @@ fn switch_active_layout(layout: &str, layouts: &str) {
     .split(',')
     .position(|part| part == layout)
     .unwrap_or(0);
-  let _ = Command::new("hyprctl")
+  let _ = argvus_control_center_core::process::command("hyprctl")
     .args(["switchxkblayout", "all", &index.to_string()])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
@@ -480,7 +480,7 @@ fn switch_active_layout(layout: &str, layouts: &str) {
 fn reload_taskbar() {
   // Keep this identical to SUPER+SHIFT+R, which is the supported ARGVUS
   // session reload and is required for the managed Waybar configuration.
-  let _ = Command::new("argvus-sessionctl")
+  let _ = argvus_control_center_core::process::command("argvus-sessionctl")
     .args(["reload"])
     .stdin(Stdio::null())
     .stdout(Stdio::null())

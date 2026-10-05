@@ -202,7 +202,7 @@ fn parse_modular_power_value(content: &str, key: &str) -> Option<String> {
 }
 
 fn argvus_config_value(pointer: &str) -> Option<String> {
-  let output = std::process::Command::new("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus-config")
     .args(["get", pointer, "--effective", "--raw"])
     .output()
     .ok()?;
@@ -219,7 +219,7 @@ fn persist_canonical(pointer: &str, value: &str) -> Result<(), String> {
   } else {
     serde_json::to_string(value).map_err(|error| error.to_string())?
   };
-  let status = std::process::Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["set", pointer, &value])
     .status()
     .map_err(|error| format!("failed to persist power setting: {error}"))?;

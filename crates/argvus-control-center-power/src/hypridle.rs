@@ -149,7 +149,7 @@ fn remove_listener(content: &str, matches: fn(&str) -> bool) -> String {
 /// persisted in the modular power file. The configuration service owns the
 /// derived hypridle.conf projection and the targeted service restart.
 fn persist_power_to_config(pointer: &str, minutes: u32) -> Result<(), String> {
-  let status = std::process::Command::new("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus-config")
     .args(["set", pointer, &minutes.to_string()])
     .status()
     .map_err(|error| format!("failed to persist power timeout: {error}"))?;

@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+argvus-control-center-core = { path = "../argvus-control-center-core" }
 argvus-i18n.workspace = true
 argvus-theme = { path = "../../../argvus-tui/crates/argvus-theme" }
 argvus-tui = { path = "../../../argvus-tui/crates/argvus-tui" }
@@ -14,3 +15,7 @@ ratatui.workspace = true
 ratatui-image.workspace = true
 resvg.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# Test builds never start external programs (see the core `testing` feature).
+argvus-control-center-core = { path = "../argvus-control-center-core", features = ["testing"] }
