@@ -16,6 +16,7 @@
     "LICENSE",
     "TODO.txt",
     "cliff.toml",
+    "docs/ux-audit.md",
     "**/PKGBUILD*"
   ]
 }
