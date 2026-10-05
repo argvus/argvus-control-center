@@ -15,11 +15,13 @@ use argvus_control_center_core::{
 };
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
-use argvus_tui::buttons::{Button, ButtonKind};
 use argvus_tui::components::{
   ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
 };
-use argvus_tui::page::{list, readonly, shell, status};
+use argvus_tui::hints::{HintContext, hints};
+use argvus_tui::icons;
+use argvus_tui::menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu};
+use argvus_tui::page::{shell, status};
 use crossterm::event::KeyCode;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -32,6 +34,8 @@ use std::time::{Duration, Instant};
 const REVERT_SECONDS: u64 = 15;
 /// Defines the constant `HOTPLUG_INTERVAL`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 const HOTPLUG_INTERVAL: Duration = Duration::from_millis(1500);
+/// Space between footer segments, as in `argvus_tui::hints`.
+const FOOTER_GAP: &str = "   ";
 
 #[derive(Debug, Clone, PartialEq)]
 /// Defines `PersistChange`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -60,20 +64,6 @@ struct PickerOption {
   prompt: Option<PromptGoal>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Defines `DisplayButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum DisplayButton {
-  Refresh,
-  Apply,
-  Reset,
-  Remove,
-  Profiles,
-  ProfileNew,
-  ProfileApply,
-  ProfileRename,
-  ProfileDelete,
-}
-
 #[derive(Debug, Clone)]
 /// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
@@ -95,14 +85,33 @@ struct RevertState {
   deadline: Instant,
 }
 
-/// Defines `HomeEntry`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum HomeEntry {
-  Live(usize),
-  Stale {
-    name: String,
-    persisted: PersistedMonitor,
-  },
+/// Stable identity of a Displays menu row. Monitors, saved configurations
+/// of disconnected monitors, picker options and profiles keep their index
+/// in the source list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Item {
+  /// Index into the connected monitors.
+  Monitor(usize),
+  /// Index into the saved configurations of monitors that are not present.
+  Stale(usize),
   Profiles,
+  Refresh,
+  Setting(MonitorSetting),
+  /// Re-applies the saved configuration with the revert countdown.
+  Apply,
+  /// Drops the monitor's saved overrides and applies (immediate).
+  Reset,
+  RemoveConfig,
+  /// Index into the picker options of the open setting.
+  Option(usize),
+  /// The free-form value of the open setting.
+  Custom,
+  /// Index into the saved profiles.
+  Profile(usize),
+  NewProfile,
+  ApplyProfile,
+  RenameProfile,
+  DeleteProfile,
 }
 
 /// Represents `DisplaysApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -115,10 +124,8 @@ pub struct DisplaysApp {
   config: PersistedConfig,
   state: crate::model::DisplayState,
   version: (u32, u32),
-  selected: usize,
-  on_buttons: bool,
-  button_selected: usize,
-  button_from: Option<usize>,
+  menu: MenuState,
+  list_height: u16,
   job: Option<JobHandle<JobData>>,
   action: Option<JobHandle<JobData>>,
   hotplug: Option<JobHandle<JobData>>,
@@ -132,8 +139,10 @@ pub struct DisplaysApp {
 }
 
 impl DisplaysApp {
-  /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Reloads the snapshot after a route opened a page; the cursor starts
+  /// on the page's first row.
   pub fn reload(&mut self) {
+    self.menu = MenuState::default();
     self.refresh();
   }
 
@@ -153,10 +162,8 @@ impl DisplaysApp {
       config: PersistedConfig::default(),
       state: crate::model::DisplayState::default(),
       version: (0, 0),
-      selected: 0,
-      on_buttons: false,
-      button_selected: 0,
-      button_from: None,
+      menu: MenuState::default(),
+      list_height: 1,
       job: None,
       action: None,
       hotplug: None,
@@ -172,6 +179,12 @@ impl DisplaysApp {
     };
     app.refresh();
     app
+  }
+
+  /// Opens `page` with the cursor on its first row.
+  fn go(&mut self, page: DisplayPage) {
+    self.page = page;
+    self.menu = MenuState::default();
   }
 
   /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -216,7 +229,6 @@ impl DisplaysApp {
           self.config = config;
           self.state = state;
           self.version = version;
-          self.selected = self.selected.min(self.selection_len().saturating_sub(1));
           self.status = None;
         }
         Ok(JobData::Hotplug(_)) | Ok(JobData::Action(_)) => {}
@@ -253,16 +265,8 @@ impl DisplaysApp {
       };
       changed = true;
     }
-    if let Some(revert) = self.revert.take_if(|r| Instant::now() >= r.deadline) {
-      let previous_config = revert.previous_config;
-      self.spawn_revert(
-        previous_config,
-        format!(
-          "{} {}",
-          tr(self.lang, "control_center.reverted"),
-          revert.previous.name
-        ),
-      );
+    if let Some(revert) = self.take_expired_revert(Instant::now()) {
+      self.revert_to(revert);
       changed = true;
     }
     if let Some(hotplug) = &self.hotplug
@@ -273,13 +277,10 @@ impl DisplaysApp {
         let changed_monitors = fingerprint(&self.monitors) != fingerprint(&monitors);
         if changed_monitors {
           self.monitors = monitors;
-          self.selected = self.selected.min(self.selection_len().saturating_sub(1));
           if let DisplayPage::Detail(index) = self.page
             && index >= self.monitors.len()
           {
-            self.page = DisplayPage::Home;
-            self.selected = 0;
-            self.on_buttons = false;
+            self.go(DisplayPage::Home);
           }
           self.status = Some(StatusMessage {
             kind: StatusKind::Info,
@@ -306,6 +307,40 @@ impl DisplaysApp {
     changed
   }
 
+  /// Arms the revert countdown: without an answer before
+  /// `now + REVERT_SECONDS`, `previous_config` is applied again.
+  fn arm_revert(
+    &mut self,
+    name: String,
+    previous: Monitor,
+    previous_config: PersistedConfig,
+    now: Instant,
+  ) {
+    self.revert = Some(RevertState {
+      name,
+      previous,
+      previous_config,
+      deadline: now + Duration::from_secs(REVERT_SECONDS),
+    });
+  }
+
+  /// The armed revert whose deadline has passed at `now`, if any.
+  fn take_expired_revert(&mut self, now: Instant) -> Option<RevertState> {
+    self.revert.take_if(|revert| now >= revert.deadline)
+  }
+
+  /// Applies the configuration saved before the change ("Reverted <name>").
+  fn revert_to(&mut self, revert: RevertState) {
+    self.spawn_revert(
+      revert.previous_config,
+      format!(
+        "{} {}",
+        tr(self.lang, "control_center.reverted"),
+        revert.previous.name
+      ),
+    );
+  }
+
   /// Whether typed characters currently go to a prompt field (profile name,
   /// custom values), so `q`/`?` must not act as the global quit/help keys.
   /// Mirrors the precedence of [`Self::handle`]: the profile deletion
@@ -317,7 +352,20 @@ impl DisplaysApp {
       && matches!(self.page, DisplayPage::Prompt { .. })
   }
 
-  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Rows of the current page.
+  fn rows(&self) -> Vec<Row<Item>> {
+    match self.page {
+      DisplayPage::Home => self.home_rows(),
+      DisplayPage::Detail(index) => self.detail_rows(index),
+      DisplayPage::Picker { monitor, setting } => self.picker_rows(monitor, setting),
+      DisplayPage::Profiles => self.profile_rows(),
+      DisplayPage::Profile(index) => self.profile_page_rows(index),
+      DisplayPage::Prompt { .. } => Vec::new(),
+    }
+  }
+
+  /// Processes `handle` in this module's event flow. Returns `true` when Esc
+  /// leaves the Displays home.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if let Some((index, mut confirm)) = self.confirm_profile.take() {
       match confirm.handle(key) {
@@ -327,9 +375,7 @@ impl DisplaysApp {
             kind: StatusKind::Success,
             text: tr(self.lang, "control_center.profile_deleted").into(),
           });
-          self.selected = self
-            .selected
-            .min(self.state.profiles.len().saturating_sub(1));
+          self.go(DisplayPage::Profiles);
         }
         ConfirmationOutcome::Cancelled => {
           self.status = Some(StatusMessage {
@@ -356,136 +402,110 @@ impl DisplaysApp {
               ),
             });
           }
-          return false;
         }
         KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
-          let revert = self.revert.take();
-          if let Some(revert) = revert {
-            self.spawn_revert(
-              revert.previous_config,
-              format!(
-                "{} {name}",
-                tr(self.lang, "control_center.reverted"),
-                name = revert.previous.name
-              ),
-            );
+          if let Some(revert) = self.revert.take() {
+            self.revert_to(revert);
           }
-          return false;
         }
-        _ => return false,
+        _ => {}
       }
+      return false;
     }
     if self.prompt_back.is_some() {
       return self.prompt_key(key);
     }
-    if self.on_buttons && !self.buttons().is_empty() {
-      match key {
-        KeyCode::Tab | KeyCode::BackTab => {
-          self.toggle_buttons(key == KeyCode::BackTab);
-          return false;
+    let rows = self.rows();
+    let busy = self.job.is_some() || self.action.is_some();
+    match key {
+      // Tab only switches tabs or panes; Displays has none.
+      KeyCode::Tab | KeyCode::BackTab => return false,
+      KeyCode::Char('r') if !busy => {
+        match self.page {
+          DisplayPage::Home | DisplayPage::Detail(_) => self.refresh(),
+          DisplayPage::Profiles | DisplayPage::Profile(_) => self.reload_state(),
+          // `r` (and `q`, when it reaches the page) cancel the picker.
+          DisplayPage::Picker { .. } => self.exit_picker(),
+          DisplayPage::Prompt { .. } => {}
         }
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.move_button(-1);
-          return false;
-        }
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.move_button(1);
-          return false;
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => {
-          self.activate_button();
-          return false;
-        }
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => return false,
-        _ => {}
+        return false;
       }
-    }
-    if matches!(key, KeyCode::Esc | KeyCode::Left) {
-      match self.page {
-        DisplayPage::Home => return true,
-        DisplayPage::Profiles => {
-          self.page = DisplayPage::Home;
-          self.selected = 0;
-        }
-        DisplayPage::Picker { monitor, .. } => {
-          self.page = DisplayPage::Detail(monitor);
-          self.selected = 0;
-        }
-        DisplayPage::Detail(_) => {
-          self.page = DisplayPage::Home;
-          self.selected = 0;
-        }
-        DisplayPage::Prompt { goal } => self.restore_prompt(goal),
+      KeyCode::Char('q') if matches!(self.page, DisplayPage::Picker { .. }) => {
+        self.exit_picker();
+        return false;
       }
-      self.on_buttons = false;
-      self.button_from = None;
-      return false;
+      _ => {}
     }
-    if self.job.is_some() || self.action.is_some() {
-      return false;
-    }
-    match self.page {
-      DisplayPage::Home => match key {
-        KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
-        KeyCode::Char('r') => self.refresh(),
-        KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
-        KeyCode::Home => self.selected = 0,
-        KeyCode::End => self.selected = self.selection_len().saturating_sub(1),
-        KeyCode::PageUp => self.selected = self.selected.saturating_sub(8),
-        KeyCode::PageDown => {
-          self.selected = self
-            .selected
-            .saturating_add(8)
-            .min(self.selection_len().saturating_sub(1))
-        }
-        KeyCode::Enter | KeyCode::Right => self.open(),
-        _ => {}
-      },
-      DisplayPage::Detail(_) => match key {
-        KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
-        KeyCode::Char('r') => self.refresh(),
-        KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
-        KeyCode::Home => self.selected = 0,
-        KeyCode::End => self.selected = self.selection_len().saturating_sub(1),
-        KeyCode::PageUp => self.selected = self.selected.saturating_sub(8),
-        KeyCode::PageDown => {
-          self.selected = self
-            .selected
-            .saturating_add(8)
-            .min(self.selection_len().saturating_sub(1))
-        }
-        KeyCode::Enter | KeyCode::Right => self.open(),
-        _ => {}
-      },
-      DisplayPage::Profiles => match key {
-        KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
-        KeyCode::Char('r') => self.reload_state(),
-        KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
-        KeyCode::Home => self.selected = 0,
-        KeyCode::End => self.selected = self.selection_len().saturating_sub(1),
-        KeyCode::Enter if self.selected == self.state.profiles.len() => {
-          self.open_prompt(PromptGoal::ProfileCreate)
-        }
-        _ => {}
-      },
-      DisplayPage::Picker { .. } => match key {
-        KeyCode::Char('r') | KeyCode::Char('q') => self.exit_picker(),
-        KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-        KeyCode::Down | KeyCode::Char('j') => self.selected = self.selected.saturating_add(1),
-        KeyCode::Home => self.selected = 0,
-        KeyCode::End => self.selected = self.selection_len().saturating_sub(1),
-        KeyCode::Enter => self.apply_picker_selection(),
-        _ => {}
-      },
-      DisplayPage::Prompt { goal } => {
-        let _ = goal;
+    let key = match key {
+      KeyCode::Char('h') => KeyCode::Left,
+      KeyCode::Char('l') => KeyCode::Right,
+      key => key,
+    };
+    let page_size = usize::from(self.list_height.max(1));
+    let event = self.menu.handle(key, &rows, page_size);
+    match event {
+      MenuEvent::Back => return self.back(),
+      // While a snapshot or an action runs, only navigation and Esc work.
+      _ if busy => {}
+      MenuEvent::Activate(item) | MenuEvent::Toggle(item) | MenuEvent::Confirm(item) => {
+        self.activate(item)
       }
+      MenuEvent::Adjust(..) | MenuEvent::Moved | MenuEvent::None => {}
     }
-    self.selected = self.selected.min(self.selection_len().saturating_sub(1));
     false
+  }
+
+  /// Esc/`←`: one level up; `true` leaves the Displays home.
+  fn back(&mut self) -> bool {
+    match self.page {
+      DisplayPage::Home => return true,
+      DisplayPage::Profiles | DisplayPage::Detail(_) => self.go(DisplayPage::Home),
+      DisplayPage::Profile(_) => self.go(DisplayPage::Profiles),
+      DisplayPage::Picker { monitor, .. } => self.go(DisplayPage::Detail(monitor)),
+      DisplayPage::Prompt { goal } => self.restore_prompt(goal),
+    }
+    false
+  }
+
+  /// Runs the row `item`.
+  fn activate(&mut self, item: Item) {
+    match item {
+      Item::Monitor(index) => self.go(DisplayPage::Detail(index)),
+      Item::Stale(offset) => self.go(DisplayPage::Detail(self.stale_start() + offset)),
+      Item::Profiles => self.go(DisplayPage::Profiles),
+      Item::Refresh => self.refresh(),
+      Item::Setting(setting) => {
+        if let DisplayPage::Detail(monitor) = self.page {
+          self.go(DisplayPage::Picker { monitor, setting });
+        }
+      }
+      Item::Apply => self.apply_button(),
+      Item::Reset => self.reset_button(),
+      Item::RemoveConfig => self.remove_button(),
+      Item::Option(index) => self.apply_picker_selection(index),
+      Item::Custom => {
+        if let Some(prompt) = self.custom_prompt() {
+          self.open_prompt(prompt);
+        }
+      }
+      Item::Profile(index) => self.go(DisplayPage::Profile(index)),
+      Item::NewProfile => self.open_prompt(PromptGoal::ProfileCreate),
+      Item::ApplyProfile => {
+        if let DisplayPage::Profile(index) = self.page {
+          self.apply_profile(index);
+        }
+      }
+      Item::RenameProfile => {
+        if let DisplayPage::Profile(index) = self.page {
+          self.open_prompt(PromptGoal::ProfileRename(index));
+        }
+      }
+      Item::DeleteProfile => {
+        if let DisplayPage::Profile(index) = self.page {
+          self.confirm_profile = Some((index, ConfirmationState::default()));
+        }
+      }
+    }
   }
 
   /// Executes the `prompt_key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -518,16 +538,15 @@ impl DisplaysApp {
   fn restore_prompt(&mut self, goal: PromptGoal) {
     self.prompt_buffer.clear();
     self.prompt_error = None;
-    self.page = self.prompt_back.take().unwrap_or(match goal {
+    let page = self.prompt_back.take().unwrap_or(match goal {
       PromptGoal::Position(i)
       | PromptGoal::Scale(i)
       | PromptGoal::SdrBrightness(i)
       | PromptGoal::SdrSaturation(i) => DisplayPage::Detail(i),
-      PromptGoal::ProfileCreate | PromptGoal::ProfileRename(_) => DisplayPage::Profiles,
+      PromptGoal::ProfileCreate => DisplayPage::Profiles,
+      PromptGoal::ProfileRename(i) => DisplayPage::Profile(i),
     });
-    self.selected = 0;
-    self.on_buttons = false;
-    self.button_from = None;
+    self.go(page);
   }
 
   /// Executes the `commit_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -555,19 +574,12 @@ impl DisplaysApp {
         config.set_monitor(&name, persisted);
         let prev = self.config.clone();
         self.config = config.clone();
-        self.revert = Some(RevertState {
-          name: name.clone(),
-          previous: monitor.clone(),
-          previous_config: prev,
-          deadline: Instant::now() + Duration::from_secs(REVERT_SECONDS),
-        });
+        self.arm_revert(name.clone(), monitor.clone(), prev, Instant::now());
         let message = format!(
           "{} · {name} ({x}, {y})",
           tr(self.lang, "control_center.position")
         );
-        self.page = DisplayPage::Detail(index);
-        self.selected = 0;
-        self.on_buttons = false;
+        self.leave_prompt(DisplayPage::Detail(index));
         self.spawn_apply_with_config(config, message);
       }
       PromptGoal::Scale(index) => {
@@ -594,9 +606,7 @@ impl DisplaysApp {
           "{} · {name}: {value}",
           tr(self.lang, "control_center.scale")
         );
-        self.page = DisplayPage::Detail(index);
-        self.selected = 0;
-        self.on_buttons = false;
+        self.leave_prompt(DisplayPage::Detail(index));
         self.spawn_apply_with_config(config, message);
       }
       PromptGoal::SdrBrightness(index) => {
@@ -651,12 +661,10 @@ impl DisplaysApp {
             buffer.trim()
           ),
         );
-        self.page = DisplayPage::Profiles;
-        self.selected = self.state.profiles.len().saturating_sub(1);
-        self.prompt_buffer.clear();
-        self.prompt_error = None;
-        self.prompt_back = None;
-        self.on_buttons = false;
+        self.leave_prompt(DisplayPage::Profiles);
+        let created = Item::Profile(self.state.profiles.len().saturating_sub(1));
+        let rows = self.rows();
+        self.menu.select(&rows, &created);
       }
       PromptGoal::ProfileRename(index) => {
         if buffer.trim().is_empty() {
@@ -676,14 +684,17 @@ impl DisplaysApp {
             buffer.trim()
           ),
         );
-        self.page = DisplayPage::Profiles;
-        self.selected = index;
-        self.prompt_buffer.clear();
-        self.prompt_error = None;
-        self.prompt_back = None;
-        self.on_buttons = false;
+        self.leave_prompt(DisplayPage::Profile(index));
       }
     }
+  }
+
+  /// Closes the prompt after a committed value and opens `page`.
+  fn leave_prompt(&mut self, page: DisplayPage) {
+    self.prompt_buffer.clear();
+    self.prompt_error = None;
+    self.prompt_back = None;
+    self.go(page);
   }
 
   /// Applies the `apply_sdr` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -698,9 +709,7 @@ impl DisplaysApp {
     config.set_monitor(&name, persisted.clone());
     self.config = config.clone();
     let message = format!("{} · {name}", tr(self.lang, "control_center.sdr"));
-    self.page = DisplayPage::Detail(index);
-    self.selected = 0;
-    self.on_buttons = false;
+    self.leave_prompt(DisplayPage::Detail(index));
     self.spawn_apply_with_config(config, message);
   }
 
@@ -714,63 +723,8 @@ impl DisplaysApp {
 
   /// Executes the `exit_picker` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn exit_picker(&mut self) {
-    let page = self.page;
-    if let DisplayPage::Picker { monitor, .. } = page {
-      self.page = DisplayPage::Detail(monitor);
-    }
-    self.selected = 0;
-    self.on_buttons = false;
-  }
-
-  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn selection_len(&self) -> usize {
-    match self.page {
-      DisplayPage::Home => self.home_entries().len(),
-      DisplayPage::Detail(_) => self.detail_settings().len(),
-      DisplayPage::Profiles => self.profile_rows().len(),
-      DisplayPage::Picker { .. } => self.picker_options().len(),
-      DisplayPage::Prompt { .. } => 0,
-    }
-  }
-
-  /// Executes the `open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn open(&mut self) {
-    match self.page {
-      DisplayPage::Home => match self.home_entries().get(self.selected) {
-        Some(HomeEntry::Live(index)) => {
-          self.page = DisplayPage::Detail(*index);
-          self.selected = 0;
-          self.on_buttons = false;
-        }
-        Some(HomeEntry::Stale { .. }) => {
-          self.page = DisplayPage::Detail(self.stale_start());
-          self.selected = 0;
-          self.on_buttons = false;
-        }
-        Some(HomeEntry::Profiles) => {
-          self.page = DisplayPage::Profiles;
-          self.selected = 0;
-          self.on_buttons = false;
-        }
-        None => {}
-      },
-      DisplayPage::Detail(index) => {
-        if let Some(setting) = self.detail_setting(self.selected) {
-          self.page = DisplayPage::Picker {
-            monitor: index,
-            setting,
-          };
-          self.selected = 0;
-          self.on_buttons = false;
-        }
-      }
-      DisplayPage::Picker { .. } => self.apply_picker_selection(),
-      DisplayPage::Profiles => {
-        if self.selected == self.state.profiles.len() {
-          self.open_prompt(PromptGoal::ProfileCreate);
-        }
-      }
-      DisplayPage::Prompt { .. } => {}
+    if let DisplayPage::Picker { monitor, .. } = self.page {
+      self.go(DisplayPage::Detail(monitor));
     }
   }
 
@@ -779,26 +733,21 @@ impl DisplaysApp {
     self.monitors.len()
   }
 
-  /// Executes the `stale_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn stale_name(&self, index: usize) -> Option<String> {
-    let start = self.stale_start();
-    if index < start {
-      return None;
-    }
-    let stale: Vec<&String> = self
+  /// Names of saved configurations whose monitor is not present.
+  fn stale_names(&self) -> Vec<String> {
+    self
       .config
       .monitors
       .iter()
       .filter(|(name, _)| !self.monitors.iter().any(|monitor| &monitor.name == name))
-      .map(|(name, _)| name)
-      .collect();
-    stale.get(index - start).map(|name| name.to_string())
+      .map(|(name, _)| name.clone())
+      .collect()
   }
 
-  /// Executes the `detail_setting` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn detail_setting(&self, row: usize) -> Option<MonitorSetting> {
-    let settings = self.detail_settings();
-    settings.get(row).copied()
+  /// Executes the `stale_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn stale_name(&self, index: usize) -> Option<String> {
+    let offset = index.checked_sub(self.stale_start())?;
+    self.stale_names().get(offset).cloned()
   }
 
   /// Executes the `detail_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -843,163 +792,194 @@ impl DisplaysApp {
   fn monitor_index(&self) -> Option<usize> {
     match self.page {
       DisplayPage::Detail(index) | DisplayPage::Picker { monitor: index, .. } => Some(index),
-      DisplayPage::Home | DisplayPage::Profiles | DisplayPage::Prompt { .. } => None,
+      DisplayPage::Home
+      | DisplayPage::Profiles
+      | DisplayPage::Profile(_)
+      | DisplayPage::Prompt { .. } => None,
     }
   }
 
-  /// Executes the `detail_info_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn detail_info_rows(&self) -> Vec<(String, String)> {
-    let Some(index) = self.monitor_index() else {
-      return vec![];
-    };
-    let Some(monitor) = self.monitors.get(index) else {
-      return vec![];
-    };
-    monitor.info_rows()
-  }
-
-  /// Executes the `detail_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn detail_rows(&self) -> Vec<String> {
-    let Some(index) = self.monitor_index() else {
-      return vec![];
-    };
-    let Some(monitor) = self.monitors.get(index) else {
-      let name = self.stale_name(index).unwrap_or_default();
-      return vec![format!(
-        " {} {} {name}",
-        AppConfig::icon(argvus_tui::icons::ETHERNET),
-        tr(self.lang, "control_center.monitor_disconnected")
-      )];
-    };
-    if !monitor.connected {
-      return vec![format!(
-        " {} {}",
-        AppConfig::icon(argvus_tui::icons::ETHERNET),
-        tr(self.lang, "control_center.monitor_disconnected")
-      )];
-    }
-    let persisted = self.config.persisted(&monitor.name);
-    let mode = persisted
-      .mode
-      .clone()
-      .unwrap_or_else(|| format!("{}x{}", monitor.width, monitor.height));
-    let rate = persisted
-      .mode
-      .as_deref()
-      .and_then(rate_of)
-      .unwrap_or(monitor.refresh_rate);
-    let scale = persisted.scale.unwrap_or(monitor.scale);
-    let position = persisted
-      .position
-      .as_deref()
-      .map(|value| value.to_string())
-      .unwrap_or(format!("{}x{}", monitor.x, monitor.y));
-    let transform = persisted.transform.unwrap_or(monitor.transform);
-    let vrr = persisted.vrr.unwrap_or(monitor.vrr);
-    let hdr = persisted.hdr.unwrap_or(0);
-    let primary = self.config.primary_monitor.as_deref() == Some(monitor.name.as_str());
-    let mirror = persisted
-      .mirror
-      .clone()
-      .or_else(|| monitor.info.mirror_of.clone())
-      .unwrap_or_else(|| tr(self.lang, "control_center.none").into());
-    let mut rows = vec![
-      format!(
-        " {}  {}  ·  {mode}",
-        tr(self.lang, "control_center.resolution"),
-        monitor.name
-      ),
-      format!(
-        " {}  ·  {:.3} Hz",
-        tr(self.lang, "control_center.refresh_rate"),
-        rate
-      ),
-      format!(" {}  ·  {}", tr(self.lang, "control_center.scale"), scale),
-      format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.position"),
-        position
-      ),
-      format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.orientation"),
-        transform_label(self.lang, transform)
-      ),
-      format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.monitor_enabled"),
-        on_off(self.lang, persisted.disabled != Some(true))
-      ),
-      format!(" {}  ·  {mirror}", tr(self.lang, "control_center.mirror")),
-      format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.color_depth"),
-        self.bitdepth_label(monitor, &persisted)
-      ),
-    ];
-    if self.vrr_supported() {
-      rows.push(format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.vrr"),
-        vrr_label(self.lang, vrr)
-      ));
-    }
-    if self.hdr_supported() && monitor.has_10bit() {
-      rows.push(format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.hdr"),
-        hdr_label(self.lang, hdr)
-      ));
-    }
-    rows.push(format!(
-      " {}  ·  {}",
-      tr(self.lang, "control_center.dpms"),
-      if monitor.dpms_status == "off" {
-        tr(self.lang, "control_center.off")
+  /// Home: connected monitors, saved configurations of absent monitors,
+  /// Profiles and Refresh.
+  fn home_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let mut rows: Vec<Row<Item>> = Vec::new();
+    for (index, monitor) in self.monitors.iter().enumerate() {
+      let role = if self.config.primary_monitor.as_deref() == Some(monitor.name.as_str()) {
+        tr(lang, "control_center.primary_ead365")
+      } else if monitor.focused {
+        tr(lang, "control_center.focused")
       } else {
-        tr(self.lang, "control_center.on")
+        ""
+      };
+      let power = if monitor.disabled || monitor.dpms_status == "off" {
+        tr(lang, "control_center.off")
+      } else {
+        tr(lang, "control_center.on")
+      };
+      let mut detail = format!(
+        "{}x{} @ {:.3} Hz  ·  {}x{}  ·  {} {}  ·  {power}",
+        monitor.width,
+        monitor.height,
+        monitor.refresh_rate,
+        monitor.x,
+        monitor.y,
+        tr(lang, "control_center.scale"),
+        monitor.scale,
+      );
+      if !role.is_empty() {
+        detail.push_str(&format!("  ·  {role}"));
       }
-    ));
-    if self.hdr_supported() && monitor.has_10bit() {
-      rows.push(format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.sdr_brightness"),
-        persisted
-          .sdr_brightness
-          .or(monitor.info.sdr_brightness)
-          .map(|value| format!("{value:.2}"))
-          .unwrap_or_else(|| tr(self.lang, "control_center.auto").into())
-      ));
-      rows.push(format!(
-        " {}  ·  {}",
-        tr(self.lang, "control_center.sdr_saturation"),
-        persisted
-          .sdr_saturation
-          .or(monitor.info.sdr_saturation)
-          .map(|value| format!("{value:.2}"))
-          .unwrap_or_else(|| tr(self.lang, "control_center.auto").into())
+      rows.push(
+        Row::submenu(Item::Monitor(index), monitor.name.clone())
+          .icon(icons::MONITOR)
+          .detail(detail),
+      );
+    }
+    for (offset, name) in self.stale_names().into_iter().enumerate() {
+      let persisted = self.config.persisted(&name);
+      rows.push(
+        Row::submenu(Item::Stale(offset), name)
+          .icon(icons::LINK_OFF)
+          .detail(format!(
+            "{}  ·  {}",
+            tr(lang, "control_center.disconnected"),
+            persisted
+              .mode
+              .as_deref()
+              .unwrap_or(tr(lang, "control_center.configured")),
+          )),
+      );
+    }
+    if rows.is_empty() {
+      rows.push(Row::info(
+        tr(lang, "control_center.no_monitors_found_is_hyprland_running"),
+        "",
       ));
     }
-    let workspaces = self.config.workspaces_of(&monitor.name);
-    rows.push(format!(
-      " {}  ·  {}",
-      tr(self.lang, "control_center.workspaces"),
-      if workspaces.is_empty() {
-        tr(self.lang, "control_center.unbound").into()
-      } else {
-        workspaces
-          .iter()
-          .map(|value| value.to_string())
-          .collect::<Vec<_>>()
-          .join(", ")
-      }
-    ));
-    rows.push(format!(
-      " {}  ·  {}",
-      tr(self.lang, "control_center.primary_monitor"),
-      on_off(self.lang, primary)
-    ));
+    rows.push(
+      Row::submenu(Item::Profiles, tr(lang, "control_center.profiles"))
+        .icon(icons::PROFILE)
+        .detail(self.state.profiles.len().to_string()),
+    );
+    rows.push(Row::separator());
+    rows.push(Row::action(Item::Refresh, tr(lang, "control_center.refresh")).icon(icons::REFRESH));
     rows
+  }
+
+  /// Detail of a monitor: its information, one row per setting and the
+  /// actions; a disconnected monitor only offers to remove its saved
+  /// configuration.
+  fn detail_rows(&self, index: usize) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let connected = self.monitors.get(index).filter(|monitor| monitor.connected);
+    let Some(monitor) = connected else {
+      return vec![
+        Row::info(tr(lang, "control_center.monitor_disconnected"), ""),
+        Row::section(tr(lang, "control_center.danger_zone")),
+        Row::destructive(Item::RemoveConfig, tr(lang, "control_center.remove_config"))
+          .icon(icons::DELETE),
+      ];
+    };
+    let mut rows = Vec::new();
+    let info = monitor.info_rows();
+    if !info.is_empty() {
+      rows.push(Row::section(tr(lang, "control_center.monitor")));
+      rows.extend(
+        info
+          .into_iter()
+          .map(|(label, value)| Row::info(label, value)),
+      );
+    }
+    rows.push(Row::section(tr(lang, "control_center.configuration")));
+    rows.extend(self.detail_settings().into_iter().map(|setting| {
+      Row::submenu(Item::Setting(setting), setting_label(lang, setting))
+        .icon(setting_icon(setting))
+        .detail(self.setting_value(monitor, setting))
+    }));
+    rows.push(Row::section(tr(lang, "control_center.section_actions")));
+    rows.push(Row::action(Item::Apply, tr(lang, "control_center.apply")).icon(icons::APPLY));
+    rows.push(
+      Row::action(Item::Reset, tr(lang, "control_center.restore_default")).icon(icons::RESTORE),
+    );
+    rows
+  }
+
+  /// Current value of `setting`, preferring the saved override.
+  fn setting_value(&self, monitor: &Monitor, setting: MonitorSetting) -> String {
+    let lang = self.lang;
+    let persisted = self.config.persisted(&monitor.name);
+    match setting {
+      MonitorSetting::Resolution => persisted
+        .mode
+        .clone()
+        .and_then(|mode| mode.split('@').next().map(str::to_string))
+        .unwrap_or_else(|| format!("{}x{}", monitor.width, monitor.height)),
+      MonitorSetting::RefreshRate => format!(
+        "{:.3} Hz",
+        persisted
+          .mode
+          .as_deref()
+          .and_then(rate_of)
+          .unwrap_or(monitor.refresh_rate)
+      ),
+      MonitorSetting::Scale => persisted.scale.unwrap_or(monitor.scale).to_string(),
+      MonitorSetting::Position => persisted
+        .position
+        .clone()
+        .unwrap_or(format!("{}x{}", monitor.x, monitor.y)),
+      MonitorSetting::Orientation => {
+        transform_label(lang, persisted.transform.unwrap_or(monitor.transform))
+      }
+      MonitorSetting::Enabled => on_off(lang, persisted.disabled != Some(true)),
+      MonitorSetting::Mirror => self
+        .current_mirror(monitor)
+        .filter(|mirror| !mirror.is_empty())
+        .unwrap_or_else(|| tr(lang, "control_center.none").into()),
+      MonitorSetting::BitDepth => self.bitdepth_label(monitor, &persisted),
+      MonitorSetting::Vrr => vrr_label(lang, persisted.vrr.unwrap_or(monitor.vrr)),
+      MonitorSetting::Hdr => hdr_label(lang, persisted.hdr.unwrap_or(0)),
+      MonitorSetting::Dpms => if monitor.dpms_status == "off" {
+        tr(lang, "control_center.off")
+      } else {
+        tr(lang, "control_center.on")
+      }
+      .into(),
+      MonitorSetting::SdrBrightness => persisted
+        .sdr_brightness
+        .or(monitor.info.sdr_brightness)
+        .map(|value| format!("{value:.2}"))
+        .unwrap_or_else(|| tr(lang, "control_center.auto").into()),
+      MonitorSetting::SdrSaturation => persisted
+        .sdr_saturation
+        .or(monitor.info.sdr_saturation)
+        .map(|value| format!("{value:.2}"))
+        .unwrap_or_else(|| tr(lang, "control_center.auto").into()),
+      MonitorSetting::Workspaces => {
+        let workspaces = self.config.workspaces_of(&monitor.name);
+        if workspaces.is_empty() {
+          tr(lang, "control_center.unbound").into()
+        } else {
+          workspaces
+            .iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+        }
+      }
+      MonitorSetting::Primary => on_off(
+        lang,
+        self.config.primary_monitor.as_deref() == Some(monitor.name.as_str()),
+      ),
+    }
+  }
+
+  fn current_mirror(&self, monitor: &Monitor) -> Option<String> {
+    self
+      .config
+      .persisted(&monitor.name)
+      .mirror
+      .or_else(|| monitor.info.mirror_of.clone())
   }
 
   /// Executes the `bitdepth_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1015,11 +995,141 @@ impl DisplaysApp {
     }
   }
 
+  /// Options of the open setting: Choice rows with `●` on the current
+  /// value, Toggle rows for workspaces, and a Value row for a custom value.
+  fn picker_rows(&self, monitor_index: usize, setting: MonitorSetting) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let Some(monitor) = self.monitors.get(monitor_index) else {
+      return vec![Row::info(
+        tr(lang, "control_center.no_options_available"),
+        "",
+      )];
+    };
+    let mut rows = Vec::new();
+    let mut custom = None;
+    for (index, option) in self
+      .options_for(monitor_index, setting)
+      .into_iter()
+      .enumerate()
+    {
+      if option.prompt.is_some() {
+        custom = Some(option);
+        continue;
+      }
+      let item = Item::Option(index);
+      rows.push(match (&option.persist, setting) {
+        (PersistChange::Workspace(workspace, target), MonitorSetting::Workspaces) => {
+          let (label, detail) = option
+            .label
+            .split_once("  ·  ")
+            .map(|(label, detail)| (label.to_string(), detail.to_string()))
+            .unwrap_or((workspace.to_string(), String::new()));
+          // Bound here means selecting it unbinds (target `None`).
+          Row::toggle(item, label, target.is_none()).detail(detail)
+        }
+        (PersistChange::None, _)
+          if option.label == tr(lang, "control_center.unsupported_7c5d5f") =>
+        {
+          // "Unsupported" placeholder of a gated setting.
+          Row::info(option.label, "")
+        }
+        _ => {
+          let current = self.option_is_current(monitor, setting, index, &option);
+          Row::choice(item, option.label, current)
+        }
+      });
+    }
+    if let Some(option) = custom {
+      rows.push(Row::separator());
+      rows.push(
+        Row::value(
+          Item::Custom,
+          option.label.trim_start_matches("✎ ").to_string(),
+          self.setting_value(monitor, setting),
+          None,
+        )
+        .icon(icons::EDIT),
+      );
+    }
+    if rows.is_empty() {
+      rows.push(Row::info(
+        tr(lang, "control_center.no_options_available"),
+        "",
+      ));
+    }
+    rows
+  }
+
+  /// Whether `option` is the value currently in effect for `setting`.
+  fn option_is_current(
+    &self,
+    monitor: &Monitor,
+    setting: MonitorSetting,
+    index: usize,
+    option: &PickerOption,
+  ) -> bool {
+    let persisted = self.config.persisted(&monitor.name);
+    let current_mode = persisted.mode.clone().unwrap_or_else(|| {
+      format!(
+        "{}x{}@{}",
+        monitor.width,
+        monitor.height,
+        trimmed_rate(monitor.refresh_rate)
+      )
+    });
+    let size_of = |mode: &str| mode.split('@').next().unwrap_or_default().to_string();
+    match (&option.persist, setting) {
+      (PersistChange::Mode(mode), MonitorSetting::Resolution) => {
+        size_of(mode) == size_of(&current_mode)
+      }
+      (PersistChange::Mode(mode), _) => {
+        size_of(mode) == size_of(&current_mode)
+          && match (rate_of(mode), rate_of(&current_mode)) {
+            (Some(left), Some(right)) => (left - right).abs() < 0.01,
+            _ => false,
+          }
+      }
+      (PersistChange::Scale(value), _) => {
+        (value - persisted.scale.unwrap_or(monitor.scale)).abs() < 0.001
+      }
+      (PersistChange::Disabled(disabled), _) => *disabled == (persisted.disabled == Some(true)),
+      (PersistChange::Mirror(mirror), _) => {
+        *mirror == self.current_mirror(monitor).unwrap_or_default()
+      }
+      (PersistChange::BitDepth(depth), _) => {
+        depth.to_string() == self.bitdepth_label(monitor, &persisted)
+      }
+      (PersistChange::Vrr(value), _) => *value == persisted.vrr.unwrap_or(monitor.vrr),
+      (PersistChange::Hdr(value), _) => *value == persisted.hdr.unwrap_or(0),
+      (PersistChange::Dpms(on), _) => *on == (monitor.dpms_status != "off"),
+      (PersistChange::Primary, _) => {
+        self.config.primary_monitor.as_deref() == Some(option.args.as_str())
+      }
+      (PersistChange::None, MonitorSetting::Orientation) => {
+        index as i32 == persisted.transform.unwrap_or(monitor.transform)
+      }
+      _ => false,
+    }
+  }
+
+  /// The free-form editor of the open setting.
+  fn custom_prompt(&self) -> Option<PromptGoal> {
+    self
+      .picker_options()
+      .into_iter()
+      .find_map(|option| option.prompt)
+  }
+
   /// Executes the `picker_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn picker_options(&self) -> Vec<PickerOption> {
-    let Some((monitor_index, setting)) = self.monitor_ctx() else {
-      return vec![];
-    };
+    match self.monitor_ctx() {
+      Some((monitor_index, setting)) => self.options_for(monitor_index, setting),
+      None => vec![],
+    }
+  }
+
+  /// Options offered for `setting` of the monitor `monitor_index`.
+  fn options_for(&self, monitor_index: usize, setting: MonitorSetting) -> Vec<PickerOption> {
     let Some(monitor) = self.monitors.get(monitor_index) else {
       return vec![];
     };
@@ -1029,7 +1139,7 @@ impl DisplaysApp {
       MonitorSetting::Scale => {
         let mut options = scale_options(monitor);
         options.push(PickerOption {
-          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
+          label: tr(self.lang, "control_center.custom").into(),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::Scale(monitor_index)),
@@ -1039,7 +1149,7 @@ impl DisplaysApp {
       MonitorSetting::Position => {
         let mut options = self.position_options(monitor_index);
         options.push(PickerOption {
-          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
+          label: tr(self.lang, "control_center.custom").into(),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::Position(monitor_index)),
@@ -1059,7 +1169,7 @@ impl DisplaysApp {
       MonitorSetting::SdrBrightness if self.hdr_supported() && monitor.has_10bit() => {
         let mut options = sdr_brightness_options(self.lang, monitor);
         options.push(PickerOption {
-          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
+          label: tr(self.lang, "control_center.custom").into(),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::SdrBrightness(monitor_index)),
@@ -1069,7 +1179,7 @@ impl DisplaysApp {
       MonitorSetting::SdrSaturation if self.hdr_supported() && monitor.has_10bit() => {
         let mut options = sdr_saturation_options(self.lang, monitor);
         options.push(PickerOption {
-          label: format!("✎ {}", tr(self.lang, "control_center.custom")),
+          label: tr(self.lang, "control_center.custom").into(),
           args: String::new(),
           persist: PersistChange::None,
           prompt: Some(PromptGoal::SdrSaturation(monitor_index)),
@@ -1104,22 +1214,11 @@ impl DisplaysApp {
       .monitors
       .iter()
       .filter(|monitor| monitor.connected)
-      .map(|monitor| {
-        let is_primary = self.config.primary_monitor.as_deref() == Some(monitor.name.as_str());
-        PickerOption {
-          label: format!(
-            "{} {}",
-            monitor.name,
-            if is_primary {
-              tr(self.lang, "control_center.primary").to_string()
-            } else {
-              String::new()
-            }
-          ),
-          args: monitor.name.clone(),
-          persist: PersistChange::Primary,
-          prompt: None,
-        }
+      .map(|monitor| PickerOption {
+        label: monitor.name.clone(),
+        args: monitor.name.clone(),
+        persist: PersistChange::Primary,
+        prompt: None,
       })
       .collect()
   }
@@ -1224,85 +1323,6 @@ impl DisplaysApp {
     options
   }
 
-  /// Applies the `apply_picker_selection` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn apply_picker_selection(&mut self) {
-    let Some((monitor_index, setting)) = self.monitor_ctx() else {
-      return;
-    };
-    let options = self.picker_options();
-    let Some(option) = options.get(self.selected).cloned() else {
-      return;
-    };
-    if let Some(prompt) = option.prompt {
-      self.open_prompt(prompt);
-      return;
-    }
-    if setting == MonitorSetting::Primary {
-      if let Some(monitor) = self.monitors.get(monitor_index) {
-        let name = monitor.name.clone();
-        self.config.primary_monitor = Some(name.clone());
-        self.state.primary_monitor = Some(name.clone());
-        let config = self.config.clone();
-        let state = self.state.clone();
-        let message = format!(
-          "{}: {name}",
-          tr(self.lang, "control_center.primary_monitor")
-        );
-        self.action = Some(self.manager.spawn(move |_| {
-          backend::save_config(&config)?;
-          backend::save_state(&state)?;
-          Ok(JobData::Action(message))
-        }));
-      }
-      self.page = DisplayPage::Detail(monitor_index);
-      self.selected = 0;
-      self.on_buttons = false;
-      return;
-    }
-    let Some(monitor) = self.monitors.get(monitor_index).cloned() else {
-      return;
-    };
-    let name = monitor.name.clone();
-    let previous = monitor.clone();
-    let prev_config = self.config.clone();
-    let mut config = self.config.clone();
-    Self::apply_persist(&mut config, &name, &option.persist);
-    let risky = option_is_risky(&option.persist);
-    if risky {
-      self.revert = Some(RevertState {
-        name: name.clone(),
-        previous,
-        previous_config: prev_config,
-        deadline: Instant::now() + Duration::from_secs(REVERT_SECONDS),
-      });
-    }
-    let _args = option.args.clone();
-    let persist = option.persist.clone();
-    let message = format!(
-      "{} · {}",
-      monitor.name,
-      option.label.split("  ·  ").next().unwrap_or("")
-    );
-    self.config = config.clone();
-    self.page = DisplayPage::Detail(monitor_index);
-    self.selected = 0;
-    self.on_buttons = false;
-    self.action = Some(self.manager.spawn(move |_| {
-      match persist {
-        PersistChange::Dpms(true) => backend::set_dpms(&name, true)?,
-        PersistChange::Dpms(_) => backend::set_dpms(&name, false)?,
-        PersistChange::Workspace(workspace, target) => {
-          backend::apply_workspace(workspace, target.as_deref())?;
-          backend::save_config(&config)?;
-        }
-        _ => {
-          backend::apply_all(&config)?;
-        }
-      }
-      Ok(JobData::Action(message))
-    }));
-  }
-
   /// Applies the `apply_persist` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn apply_persist(config: &mut PersistedConfig, name: &str, persist: &PersistChange) {
     match persist {
@@ -1344,6 +1364,7 @@ impl DisplaysApp {
       DisplayPage::Detail(_)
       | DisplayPage::Home
       | DisplayPage::Profiles
+      | DisplayPage::Profile(_)
       | DisplayPage::Prompt { .. } => None,
     }
   }
@@ -1382,170 +1403,6 @@ impl DisplaysApp {
     self.version >= (0, 42)
   }
 
-  /// Executes the `home_entries` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_entries(&self) -> Vec<HomeEntry> {
-    let mut entries: Vec<HomeEntry> = self
-      .monitors
-      .iter()
-      .enumerate()
-      .map(|(index, _)| HomeEntry::Live(index))
-      .collect();
-    for (name, persisted) in &self.config.monitors {
-      if !self.monitors.iter().any(|monitor| &monitor.name == name) {
-        entries.push(HomeEntry::Stale {
-          name: name.clone(),
-          persisted: persisted.clone(),
-        });
-      }
-    }
-    if !self.state.profiles.is_empty() || self.monitors.is_empty() {
-      entries.push(HomeEntry::Profiles);
-    }
-    entries
-  }
-
-  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_rows(&self) -> Vec<String> {
-    let mut rows: Vec<String> = Vec::new();
-    for entry in self.home_entries() {
-      match entry {
-        HomeEntry::Live(index) => {
-          let monitor = &self.monitors[index];
-          let primary = if self.config.primary_monitor.as_deref() == Some(monitor.name.as_str()) {
-            tr(self.lang, "control_center.primary_ead365")
-          } else if monitor.focused {
-            tr(self.lang, "control_center.focused")
-          } else {
-            ""
-          };
-          let dpms = if monitor.disabled || monitor.dpms_status == "off" {
-            tr(self.lang, "control_center.off")
-          } else {
-            tr(self.lang, "control_center.on")
-          };
-          rows.push(format!(
-            "{} {}  ·  {}x{} @ {:.3} Hz  ·  {}x{}  ·  escala {}  ·  {} {}",
-            AppConfig::icon(argvus_tui::icons::MONITOR),
-            monitor.name,
-            monitor.width,
-            monitor.height,
-            monitor.refresh_rate,
-            monitor.x,
-            monitor.y,
-            monitor.scale,
-            dpms,
-            primary,
-          ));
-        }
-        HomeEntry::Stale { name, persisted } => {
-          rows.push(format!(
-            "{} {}  ·  {}  ·  {}",
-            AppConfig::icon(argvus_tui::icons::ETHERNET),
-            name,
-            tr(self.lang, "control_center.disconnected"),
-            persisted
-              .mode
-              .as_deref()
-              .unwrap_or(tr(self.lang, "control_center.configured")),
-          ));
-        }
-        HomeEntry::Profiles => {
-          rows.push(format!(
-            " {} {} ({})",
-            AppConfig::icon(argvus_tui::icons::APPS),
-            tr(self.lang, "control_center.profiles"),
-            self.state.profiles.len()
-          ));
-        }
-      }
-    }
-    if rows.is_empty() {
-      rows.push(
-        tr(
-          self.lang,
-          "control_center.no_monitors_found_is_hyprland_running",
-        )
-        .into(),
-      );
-    }
-    rows
-  }
-
-  /// Executes the `profile_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn profile_rows(&self) -> Vec<String> {
-    let mut rows = Vec::new();
-    for profile in &self.state.profiles {
-      let marker = if self.state.active_profile.as_deref() == Some(profile.name.as_str()) {
-        "●"
-      } else {
-        "○"
-      };
-      rows.push(format!(" {marker} {}", profile.name));
-    }
-    rows.push(format!("+ {}", tr(self.lang, "control_center.new_profile")));
-    rows
-  }
-
-  /// Executes the `selected_profile_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn selected_profile_index(&self) -> Option<usize> {
-    let index = self.selected;
-    if index < self.state.profiles.len() {
-      Some(index)
-    } else {
-      None
-    }
-  }
-
-  /// Applies the `apply_profile` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn apply_profile(&mut self) {
-    let Some(index) = self.selected_profile_index() else {
-      self.status = Some(StatusMessage {
-        kind: StatusKind::Warning,
-        text: tr(self.lang, "control_center.select_a_profile_to_apply").into(),
-      });
-      return;
-    };
-    let profile = self.state.profiles[index].clone();
-    let apply_wallpapers = profile.apply_wallpapers;
-    self.config = profile.config.clone();
-    self.state.primary_monitor = profile.config.primary_monitor.clone();
-    self.state.active_profile = Some(profile.name.clone());
-    let config = self.config.clone();
-    let state = self.state.clone();
-    let rules: Vec<String> = profile
-      .config
-      .monitors
-      .iter()
-      .map(|(name, persisted)| rule_from_persisted(name, persisted))
-      .collect();
-    let workspaces: Vec<(u32, String)> = profile
-      .config
-      .workspaces
-      .iter()
-      .flat_map(|(monitor, ids)| ids.iter().map(|id| (*id, monitor.clone())))
-      .collect();
-    let lang = self.lang;
-    let profile_applied = tr(lang, "control_center.profile_applied").to_string();
-    self.action = Some(self.manager.spawn(move |_| {
-      for rule in &rules {
-        backend::apply_keyword(rule)?;
-      }
-      for (workspace, monitor) in &workspaces {
-        backend::apply_workspace(*workspace, Some(monitor))?;
-      }
-      if apply_wallpapers {
-        apply_wallpapers_hook()?;
-      }
-      backend::save_config(&config)?;
-      backend::save_state(&state)?;
-      Ok(JobData::Action(format!(
-        "{profile_applied} · {}",
-        state.active_profile.as_deref().unwrap_or("")
-      )))
-    }));
-    self.refresh();
-  }
-
   /// Executes the `delete_profile` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn delete_profile(&mut self, index: usize) {
     if index < self.state.profiles.len() {
@@ -1564,8 +1421,6 @@ impl DisplaysApp {
     self.prompt_buffer = self.prompt_prefill(goal);
     self.prompt_error = None;
     self.page = DisplayPage::Prompt { goal };
-    self.selected = 0;
-    self.on_buttons = false;
   }
 
   /// Executes the `prompt_prefill` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1632,137 +1487,6 @@ impl DisplaysApp {
   /// Executes the `reload_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn reload_state(&mut self) {
     self.state = backend::load_state();
-    self.selected = self.selected.min(self.selection_len().saturating_sub(1));
-  }
-
-  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn buttons(&self) -> Vec<(DisplayButton, Button)> {
-    let secondary = ButtonKind::Secondary;
-    let primary = ButtonKind::Primary;
-    match self.page {
-      DisplayPage::Home => vec![
-        (
-          DisplayButton::Refresh,
-          Button::new(tr(self.lang, "control_center.refresh"), secondary),
-        ),
-        (
-          DisplayButton::Profiles,
-          Button::new(tr(self.lang, "control_center.profiles"), secondary),
-        ),
-      ],
-      DisplayPage::Detail(index) => {
-        let Some(monitor) = self.monitors.get(index) else {
-          return vec![(
-            DisplayButton::Remove,
-            Button::new(tr(self.lang, "control_center.remove_config"), secondary),
-          )];
-        };
-        if monitor.connected {
-          vec![
-            (
-              DisplayButton::Apply,
-              Button::new(tr(self.lang, "control_center.apply"), primary),
-            ),
-            (
-              DisplayButton::Reset,
-              Button::new(tr(self.lang, "control_center.default"), secondary),
-            ),
-          ]
-        } else {
-          vec![(
-            DisplayButton::Remove,
-            Button::new(tr(self.lang, "control_center.remove_config"), secondary),
-          )]
-        }
-      }
-      DisplayPage::Profiles => vec![
-        (
-          DisplayButton::ProfileNew,
-          Button::new(tr(self.lang, "control_center.new"), primary),
-        ),
-        (
-          DisplayButton::ProfileApply,
-          Button::new(tr(self.lang, "control_center.apply"), secondary),
-        ),
-        (
-          DisplayButton::ProfileRename,
-          Button::new(tr(self.lang, "control_center.rename"), secondary),
-        ),
-        (
-          DisplayButton::ProfileDelete,
-          Button::new(tr(self.lang, "control_center.delete"), ButtonKind::Danger),
-        ),
-      ],
-      DisplayPage::Picker { .. } | DisplayPage::Prompt { .. } => Vec::new(),
-    }
-  }
-
-  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn toggle_buttons(&mut self, backwards: bool) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    if self.on_buttons {
-      self.on_buttons = false;
-      if let Some(index) = self.button_from.take() {
-        self.selected = index;
-      }
-    } else {
-      self.button_from = Some(self.selected);
-      self.button_selected = if backwards { count - 1 } else { 0 };
-      self.on_buttons = true;
-    }
-  }
-
-  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn move_button(&mut self, delta: isize) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    self.button_selected =
-      (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
-  }
-
-  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn activate_button(&mut self) {
-    if self.job.is_some() || self.action.is_some() {
-      return;
-    }
-    let actions = self.buttons();
-    let Some((button, _)) = actions.get(self.button_selected) else {
-      return;
-    };
-    match button {
-      DisplayButton::Refresh => self.refresh(),
-      DisplayButton::Apply => self.apply_button(),
-      DisplayButton::Reset => self.reset_button(),
-      DisplayButton::Remove => self.remove_button(),
-      DisplayButton::Profiles => {
-        self.page = DisplayPage::Profiles;
-        self.selected = 0;
-        self.on_buttons = false;
-      }
-      DisplayButton::ProfileNew => {
-        if let DisplayPage::Profiles = self.page {
-          self.open_prompt(PromptGoal::ProfileCreate);
-        }
-      }
-      DisplayButton::ProfileApply => self.apply_profile(),
-      DisplayButton::ProfileRename => {
-        if let Some(index) = self.selected_profile_index() {
-          self.open_prompt(PromptGoal::ProfileRename(index));
-        } else if let DisplayPage::Profiles = self.page {
-          self.open_prompt(PromptGoal::ProfileCreate);
-        }
-      }
-      DisplayButton::ProfileDelete => {
-        if let Some(index) = self.selected_profile_index() {
-          self.confirm_profile = Some((index, ConfirmationState::default()));
-        }
-      }
-    }
   }
 
   /// Executes the `remove_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1797,9 +1521,7 @@ impl DisplaysApp {
       backend::save_state(&state)?;
       Ok(JobData::Action(format!("{removed} · {name}")))
     }));
-    self.page = DisplayPage::Home;
-    self.selected = 0;
-    self.on_buttons = false;
+    self.go(DisplayPage::Home);
   }
 
   /// Executes the `reset_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1837,47 +1559,11 @@ impl DisplaysApp {
     let _persisted = self.config.persisted(&name);
     let previous = monitor.clone();
     let previous_config = self.config.clone();
-    self.revert = Some(RevertState {
-      name: name.clone(),
-      previous,
-      previous_config,
-      deadline: Instant::now() + Duration::from_secs(REVERT_SECONDS),
-    });
+    self.arm_revert(name.clone(), previous, previous_config, Instant::now());
     self.spawn_apply_with_config(
       self.config.clone(),
       format!("{} · {name}", tr(self.lang, "control_center.applied")),
     );
-  }
-
-  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn footer_hints(&self) -> String {
-    match self.page {
-      DisplayPage::Picker { .. } => tr(
-        self.lang,
-        "control_center.navigate_enter_apply_r_cancel_help",
-      )
-      .into(),
-      DisplayPage::Prompt { .. } => tr(
-        self.lang,
-        "control_center.type_value_enter_confirm_esc_cancel",
-      )
-      .into(),
-      DisplayPage::Profiles => tr(
-        self.lang,
-        "control_center.navigate_tab_actions_enter_new_r_reload_esc_back_help",
-      )
-      .into(),
-      DisplayPage::Detail(_) => tr(
-        self.lang,
-        "control_center.navigate_tab_actions_enter_open_r_refresh_esc_back_help",
-      )
-      .into(),
-      DisplayPage::Home => tr(
-        self.lang,
-        "control_center.navigate_enter_open_r_refresh_esc_back_help",
-      )
-      .into(),
-    }
   }
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1898,6 +1584,16 @@ impl DisplaysApp {
         format!("{root} > {}", setting_label(self.lang, setting))
       }
       DisplayPage::Profiles => format!("{root} > {}", tr(self.lang, "control_center.profiles")),
+      DisplayPage::Profile(index) => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.profiles"),
+        self
+          .state
+          .profiles
+          .get(index)
+          .map(|profile| profile.name.as_str())
+          .unwrap_or_default()
+      ),
       DisplayPage::Prompt { goal } => format!(
         "{root} > {}",
         match goal {
@@ -1910,118 +1606,6 @@ impl DisplaysApp {
         }
       ),
     }
-  }
-
-  /// Checks the condition represented by `is_picker` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn is_picker(&self) -> bool {
-    matches!(self.page, DisplayPage::Picker { .. })
-  }
-
-  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn draw(&mut self, frame: &mut Frame) {
-    let area = frame.area();
-    let body = shell(
-      frame,
-      area,
-      &self.theme,
-      &self.breadcrumb(),
-      &self.footer_hints(),
-    );
-    if let DisplayPage::Prompt { goal } = self.page {
-      self.draw_prompt(frame, body, goal);
-      return;
-    }
-    if self.is_picker() {
-      let options = self.picker_options();
-      let options: Vec<String> = options.into_iter().map(|option| option.label).collect();
-      let options = if options.is_empty() {
-        vec![tr(self.lang, "control_center.no_options_available").into()]
-      } else {
-        options
-      };
-      list(
-        frame,
-        body,
-        &self.theme,
-        &options,
-        self.selected.min(options.len().saturating_sub(1)),
-      );
-      self.overlays(frame, area);
-      return;
-    }
-    match self.page {
-      DisplayPage::Profiles => {
-        let rows = self.profile_rows();
-        let buttons = self.buttons();
-        let raw_buttons: Vec<Button> = buttons.into_iter().map(|(_, button)| button).collect();
-        let (list_area, button_area) = split_buttons(frame, body, &raw_buttons);
-        let list_selection = if self.job.is_some() {
-          usize::MAX
-        } else {
-          self.selected.min(rows.len().saturating_sub(1))
-        };
-        list(frame, list_area, &self.theme, &rows, list_selection);
-        draw_buttons(frame, button_area, &raw_buttons, self, &self.theme);
-        self.overlays(frame, area);
-      }
-      DisplayPage::Detail(_) => self.draw_detail(frame, area, body),
-      DisplayPage::Home => {
-        let rows = self.home_rows();
-        let buttons = self.buttons();
-        let raw_buttons: Vec<Button> = buttons.into_iter().map(|(_, button)| button).collect();
-        let (list_area, button_area) = split_buttons(frame, body, &raw_buttons);
-        let list_selection = if self.job.is_some() {
-          usize::MAX
-        } else {
-          self.selected.min(rows.len().saturating_sub(1))
-        };
-        list(frame, list_area, &self.theme, &rows, list_selection);
-        draw_buttons(frame, button_area, &raw_buttons, self, &self.theme);
-        self.overlays(frame, area);
-      }
-      DisplayPage::Prompt { .. } | DisplayPage::Picker { .. } => {}
-    }
-  }
-
-  /// Renders `draw_detail` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn draw_detail(&mut self, frame: &mut Frame, area: Rect, body: Rect) {
-    let info = self.detail_info_rows();
-    let buttons = self.buttons();
-    let raw_buttons: Vec<Button> = buttons.into_iter().map(|(_, button)| button).collect();
-    let (rest, button_area) = split_buttons(frame, body, &raw_buttons);
-    let info_height = if info.is_empty() {
-      0
-    } else {
-      (info.len() as u16).min(rest.height.saturating_sub(2))
-    };
-    let (info_area, list_area) = if info_height > 0 {
-      let split =
-        Layout::vertical([Constraint::Length(info_height), Constraint::Min(1)]).split(rest);
-      (split[0], split[1])
-    } else {
-      (Rect::new(rest.x, rest.y, rest.width, 0), rest)
-    };
-    if info_height > 0 {
-      let lines: Vec<Line> = std::iter::once(Line::from(""))
-        .chain(info.iter().map(|(label, value)| {
-          Line::from(vec![
-            Span::styled(format!(" {label}"), Style::new().fg(self.theme.muted)),
-            Span::raw("  ·  "),
-            Span::styled(value.clone(), Style::new().fg(self.theme.foreground)),
-          ])
-        }))
-        .collect();
-      readonly(frame, info_area, &self.theme, &lines);
-    }
-    let rows = self.detail_rows();
-    let list_selection = if self.job.is_some() {
-      usize::MAX
-    } else {
-      self.selected.min(rows.len().saturating_sub(1))
-    };
-    list(frame, list_area, &self.theme, &rows, list_selection);
-    draw_buttons(frame, button_area, &raw_buttons, self, &self.theme);
-    self.overlays(frame, area);
   }
 
   /// Renders `draw_prompt` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -2075,6 +1659,248 @@ impl DisplaysApp {
     self.overlays(frame, area);
   }
 
+  /// Applies the picker option `index` (immediate, as before; risky options
+  /// arm the revert countdown) and goes back to the monitor.
+  fn apply_picker_selection(&mut self, index: usize) {
+    let Some((monitor_index, setting)) = self.monitor_ctx() else {
+      return;
+    };
+    let options = self.picker_options();
+    let Some(option) = options.get(index).cloned() else {
+      return;
+    };
+    if let Some(prompt) = option.prompt {
+      self.open_prompt(prompt);
+      return;
+    }
+    if setting == MonitorSetting::Primary {
+      if let Some(monitor) = self.monitors.get(monitor_index) {
+        let name = monitor.name.clone();
+        self.config.primary_monitor = Some(name.clone());
+        self.state.primary_monitor = Some(name.clone());
+        let config = self.config.clone();
+        let state = self.state.clone();
+        let message = format!(
+          "{}: {name}",
+          tr(self.lang, "control_center.primary_monitor")
+        );
+        self.action = Some(self.manager.spawn(move |_| {
+          backend::save_config(&config)?;
+          backend::save_state(&state)?;
+          Ok(JobData::Action(message))
+        }));
+      }
+      self.go(DisplayPage::Detail(monitor_index));
+      return;
+    }
+    let Some(monitor) = self.monitors.get(monitor_index).cloned() else {
+      return;
+    };
+    let name = monitor.name.clone();
+    let previous = monitor.clone();
+    let prev_config = self.config.clone();
+    let mut config = self.config.clone();
+    Self::apply_persist(&mut config, &name, &option.persist);
+    if option_is_risky(&option.persist) {
+      self.arm_revert(name.clone(), previous, prev_config, Instant::now());
+    }
+    let persist = option.persist.clone();
+    let message = format!(
+      "{} · {}",
+      monitor.name,
+      option.label.split("  ·  ").next().unwrap_or("")
+    );
+    self.config = config.clone();
+    self.go(DisplayPage::Detail(monitor_index));
+    self.action = Some(self.manager.spawn(move |_| {
+      match persist {
+        PersistChange::Dpms(true) => backend::set_dpms(&name, true)?,
+        PersistChange::Dpms(_) => backend::set_dpms(&name, false)?,
+        PersistChange::Workspace(workspace, target) => {
+          backend::apply_workspace(workspace, target.as_deref())?;
+          backend::save_config(&config)?;
+        }
+        _ => {
+          backend::apply_all(&config)?;
+        }
+      }
+      Ok(JobData::Action(message))
+    }));
+  }
+
+  /// Saved profiles (Enter opens one) and New profile.
+  fn profile_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let mut rows: Vec<Row<Item>> = self
+      .state
+      .profiles
+      .iter()
+      .enumerate()
+      .map(|(index, profile)| {
+        let row = Row::submenu(Item::Profile(index), profile.name.clone());
+        if self.state.active_profile.as_deref() == Some(profile.name.as_str()) {
+          row.detail(tr(lang, "control_center.active"))
+        } else {
+          row
+        }
+      })
+      .collect();
+    if !rows.is_empty() {
+      rows.push(Row::separator());
+    }
+    rows
+      .push(Row::action(Item::NewProfile, tr(lang, "control_center.new_profile")).icon(icons::ADD));
+    rows
+  }
+
+  /// One profile: Apply and Rename, with Delete in the Danger zone (D4).
+  fn profile_page_rows(&self, index: usize) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let Some(profile) = self.state.profiles.get(index) else {
+      return vec![Row::info(
+        tr(lang, "control_center.no_options_available"),
+        "",
+      )];
+    };
+    let mut rows = vec![
+      Row::info(tr(lang, "control_center.profiles"), profile.name.clone()),
+      Row::info(
+        tr(lang, "control_center.profile_monitors"),
+        profile.config.monitors.len().to_string(),
+      ),
+    ];
+    if self.state.active_profile.as_deref() == Some(profile.name.as_str()) {
+      rows.push(Row::info(tr(lang, "control_center.active"), ""));
+    }
+    rows.extend([
+      Row::section(tr(lang, "control_center.section_actions")),
+      Row::action(Item::ApplyProfile, tr(lang, "control_center.apply_profile")).icon(icons::APPLY),
+      Row::action(Item::RenameProfile, tr(lang, "control_center.rename")).icon(icons::EDIT),
+      Row::section(tr(lang, "control_center.danger_zone")),
+      Row::destructive(
+        Item::DeleteProfile,
+        tr(lang, "control_center.delete_profile"),
+      )
+      .icon(icons::DELETE),
+    ]);
+    rows
+  }
+
+  /// Applies the `apply_profile` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn apply_profile(&mut self, index: usize) {
+    let Some(profile) = self.state.profiles.get(index).cloned() else {
+      self.status = Some(StatusMessage {
+        kind: StatusKind::Warning,
+        text: tr(self.lang, "control_center.select_a_profile_to_apply").into(),
+      });
+      return;
+    };
+    let apply_wallpapers = profile.apply_wallpapers;
+    self.config = profile.config.clone();
+    self.state.primary_monitor = profile.config.primary_monitor.clone();
+    self.state.active_profile = Some(profile.name.clone());
+    let config = self.config.clone();
+    let state = self.state.clone();
+    let rules: Vec<String> = profile
+      .config
+      .monitors
+      .iter()
+      .map(|(name, persisted)| rule_from_persisted(name, persisted))
+      .collect();
+    let workspaces: Vec<(u32, String)> = profile
+      .config
+      .workspaces
+      .iter()
+      .flat_map(|(monitor, ids)| ids.iter().map(|id| (*id, monitor.clone())))
+      .collect();
+    let lang = self.lang;
+    let profile_applied = tr(lang, "control_center.profile_applied").to_string();
+    self.action = Some(self.manager.spawn(move |_| {
+      for rule in &rules {
+        backend::apply_keyword(rule)?;
+      }
+      for (workspace, monitor) in &workspaces {
+        backend::apply_workspace(*workspace, Some(monitor))?;
+      }
+      if apply_wallpapers {
+        apply_wallpapers_hook()?;
+      }
+      backend::save_config(&config)?;
+      backend::save_state(&state)?;
+      Ok(JobData::Action(format!(
+        "{profile_applied} · {}",
+        state.active_profile.as_deref().unwrap_or("")
+      )))
+    }));
+    self.refresh();
+  }
+
+  /// Footer: the revert keys while the countdown runs, the editor keys in a
+  /// prompt, otherwise derived from the selected row.
+  fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    let label = |key: &str| tr(self.lang, key);
+    if let DisplayPage::Prompt { .. } = self.page {
+      return [
+        ("Enter", label("control_center.hint.confirm")),
+        ("Esc", label("control_center.hint.back")),
+      ]
+      .map(|(keys, action)| format!("{keys} {action}"))
+      .join(FOOTER_GAP);
+    }
+    let mut extra = Vec::new();
+    if matches!(self.page, DisplayPage::Picker { .. }) {
+      extra.push(("r", label("control_center.cancel")));
+    }
+    let mut menu = self.menu;
+    menu.normalize(rows);
+    hints(
+      self.lang,
+      &HintContext {
+        row: menu.selected_kind(rows),
+        can_go_back: true,
+        refresh: matches!(
+          self.page,
+          DisplayPage::Home
+            | DisplayPage::Detail(_)
+            | DisplayPage::Profiles
+            | DisplayPage::Profile(_)
+        ),
+        extra: &extra,
+        ..HintContext::default()
+      },
+    )
+  }
+
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  pub fn draw(&mut self, frame: &mut Frame) {
+    let area = frame.area();
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    let body = shell(
+      frame,
+      area,
+      &self.theme,
+      &self.breadcrumb(),
+      &self.footer_hints(&rows),
+    );
+    if let DisplayPage::Prompt { goal } = self.page {
+      self.draw_prompt(frame, body, goal);
+      return;
+    }
+    self.list_height = body.height;
+    draw_menu(
+      frame,
+      body,
+      &self.theme,
+      &rows,
+      &mut self.menu,
+      MenuStyle {
+        icons: AppConfig::icons_enabled(),
+      },
+    );
+    self.overlays(frame, area);
+  }
+
   /// Executes the `overlays` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn overlays(&self, frame: &mut Frame, area: Rect) {
     if let Some(revert) = &self.revert {
@@ -2113,32 +1939,24 @@ impl DisplaysApp {
   }
 }
 
-/// Executes the `split_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn split_buttons(frame: &mut Frame, body: Rect, raw_buttons: &[Button]) -> (Rect, Option<Rect>) {
-  let _ = frame;
-  if raw_buttons.is_empty() {
-    return (body, None);
-  }
-  let button_height = argvus_tui::buttons::height(raw_buttons, body.width).min(body.height);
-  let split = Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(body);
-  (split[0], Some(split[1]))
-}
-
-/// Renders `draw_buttons` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn draw_buttons(
-  frame: &mut Frame,
-  button_area: Option<Rect>,
-  raw_buttons: &[Button],
-  app: &DisplaysApp,
-  theme: &Theme,
-) {
-  if let Some(button_area) = button_area {
-    let focus = if app.on_buttons {
-      app.button_selected
-    } else {
-      usize::MAX
-    };
-    argvus_tui::buttons::draw(frame, button_area, raw_buttons, focus, theme);
+/// The item's own icon for each monitor setting.
+fn setting_icon(setting: MonitorSetting) -> &'static str {
+  match setting {
+    MonitorSetting::Resolution => icons::ASPECT_RATIO,
+    MonitorSetting::RefreshRate => icons::SINE_WAVE,
+    MonitorSetting::Scale => icons::ZOOM,
+    MonitorSetting::Position => icons::ARROW_ALL,
+    MonitorSetting::Orientation => icons::ROTATE,
+    MonitorSetting::Enabled => icons::POWER,
+    MonitorSetting::Mirror => icons::MONITOR_MULTIPLE,
+    MonitorSetting::BitDepth => icons::PALETTE,
+    MonitorSetting::Vrr => icons::SYNC,
+    MonitorSetting::Hdr => icons::HDR,
+    MonitorSetting::Dpms => icons::SLEEP,
+    MonitorSetting::SdrBrightness => icons::BRIGHTNESS,
+    MonitorSetting::SdrSaturation => icons::CONTRAST,
+    MonitorSetting::Workspaces => icons::GRID,
+    MonitorSetting::Primary => icons::STAR,
   }
 }
 
@@ -2330,33 +2148,16 @@ fn hdr_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
 }
 
 /// Executes the `dpms_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn dpms_options(monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
-  let current_on = monitor.dpms_status != "off";
+fn dpms_options(_monitor: &Monitor, lang: Lang) -> Vec<PickerOption> {
   vec![
     PickerOption {
-      label: format!(
-        "{}  {}",
-        tr(lang, "control_center.on_5ddab3"),
-        if current_on {
-          tr(lang, "control_center.current_4cdf18").into()
-        } else {
-          String::new()
-        }
-      ),
+      label: tr(lang, "control_center.on_5ddab3").into(),
       args: String::new(),
       persist: PersistChange::Dpms(true),
       prompt: None,
     },
     PickerOption {
-      label: format!(
-        "{}  {}",
-        tr(lang, "control_center.off_688c4e"),
-        if !current_on {
-          tr(lang, "control_center.current_4cdf18").into()
-        } else {
-          String::new()
-        }
-      ),
+      label: tr(lang, "control_center.off_688c4e").into(),
       args: String::new(),
       persist: PersistChange::Dpms(false),
       prompt: None,
@@ -2575,237 +2376,4 @@ fn on_off(lang: Lang, on: bool) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::model::Mode;
-
-  /// Executes the `monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn monitor(name: &str) -> Monitor {
-    Monitor {
-      id: 0,
-      name: name.into(),
-      x: 0,
-      y: 0,
-      width: 1920,
-      height: 1080,
-      refresh_rate: 60.0,
-      scale: 1.0,
-      transform: 0,
-      focused: false,
-      vrr: 0,
-      dpms_status: "on".into(),
-      disabled: false,
-      modes: vec![
-        Mode {
-          id: 1,
-          width: 1920,
-          height: 1080,
-          refresh_rate: 60.0,
-          bit_depth: 8,
-        },
-        Mode {
-          id: 2,
-          width: 1280,
-          height: 720,
-          refresh_rate: 59.94,
-          bit_depth: 10,
-        },
-      ],
-      connected: true,
-      info: crate::model::MonitorInfo::default(),
-      active_workspace: Some(1),
-    }
-  }
-
-  /// Executes the `app_with` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn app_with(job: bool) -> DisplaysApp {
-    let mut app = DisplaysApp::new(Lang::for_locale("en-US"), Theme::load());
-    if !job {
-      app.job = None;
-      app.action = None;
-      app.hotplug = None;
-    }
-    app.monitors = vec![monitor("eDP-1")];
-    app
-  }
-
-  #[test]
-  /// Executes the `versions_gate_fancy_features` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn versions_gate_fancy_features() {
-    let mut app = app_with(true);
-    assert!(!app.vrr_supported() && !app.hdr_supported());
-    app.version = (0, 42);
-    assert!(app.vrr_supported() && app.hdr_supported());
-  }
-
-  #[test]
-  /// Executes the `home_rows_merge_profiles_entry` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_rows_merge_profiles_entry() {
-    let mut app = app_with(false);
-    app.state.profiles.push(MonitorProfile {
-      name: "Trabalho".into(),
-      apply_wallpapers: false,
-      config: PersistedConfig::default(),
-    });
-    let rows = app.home_rows();
-    assert!(rows[0].contains("eDP-1"));
-    assert!(!rows[0].contains("Trabalho"));
-    assert!(rows.last().unwrap().contains("Profiles"));
-  }
-
-  #[test]
-  /// Executes the `risky_persist_changes_arm_revert` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn risky_persist_changes_arm_revert() {
-    assert!(option_is_risky(&PersistChange::Mode("x".into())));
-    assert!(option_is_risky(&PersistChange::Position(1, 2)));
-    assert!(option_is_risky(&PersistChange::Disabled(true)));
-    assert!(!option_is_risky(&PersistChange::Scale(1.0)));
-    assert!(!option_is_risky(&PersistChange::Vrr(1)));
-    assert!(!option_is_risky(&PersistChange::Hdr(1)));
-    assert!(!option_is_risky(&PersistChange::Workspace(3, None)));
-  }
-
-  #[test]
-  /// Executes the `prompt_validation_rejects_bad_positions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn prompt_validation_rejects_bad_positions() {
-    assert_eq!(parse_position("1920,0"), Some((1920, 0)));
-    assert_eq!(parse_position("0x0"), None);
-    assert_eq!(parse_position("abc"), None);
-    assert_eq!(parse_number("1.5"), Some(1.5));
-    assert_eq!(parse_number("x"), None);
-  }
-
-  #[test]
-  /// Executes the `workspace_binding_persist_moves_workspace` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn workspace_binding_persist_moves_workspace() {
-    let mut config = PersistedConfig::default();
-    config.set_workspaces("eDP-1", vec![1, 2]);
-    config.set_workspaces("DP-1", vec![3]);
-    DisplaysApp::apply_persist(
-      &mut config,
-      "DP-1",
-      &PersistChange::Workspace(2, Some("DP-1".into())),
-    );
-    assert_eq!(config.workspaces_of("eDP-1"), vec![1]);
-    assert_eq!(config.workspaces_of("DP-1"), vec![2, 3]);
-    DisplaysApp::apply_persist(&mut config, "DP-1", &PersistChange::Workspace(2, None));
-    assert_eq!(config.workspaces_of("DP-1"), vec![3]);
-  }
-
-  #[test]
-  /// Executes the `profile_rule_replays_persisted_fields` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn profile_rule_replays_persisted_fields() {
-    let persisted = PersistedMonitor {
-      mode: Some("1920x1080@144".into()),
-      position: Some("0x0".into()),
-      scale: Some(1.25),
-      transform: Some(1),
-      vrr: Some(1),
-      hdr: Some(1),
-      bitdepth: Some(10),
-      disabled: Some(false),
-      ..Default::default()
-    };
-    let rule = rule_from_persisted("eDP-1", &persisted);
-    assert!(
-      rule.starts_with("eDP-1, 1920x1080@144, 0x0, 1.25, transform, 1"),
-      "{rule}"
-    );
-    assert!(rule.contains("vrr, 1"), "{rule}");
-    assert!(rule.contains("bitdepth, 10"), "{rule}");
-    assert!(rule.contains("supports_hdr, 1"), "{rule}");
-    let disabled = PersistedMonitor {
-      disabled: Some(true),
-      ..Default::default()
-    };
-    assert_eq!(rule_from_persisted("eDP-1", &disabled), "eDP-1, disabled");
-  }
-
-  #[test]
-  /// Executes the `detail_settings_include_supported_and_gated` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn detail_settings_include_supported_and_gated() {
-    let mut app = app_with(false);
-    app.version = (0, 42);
-    app.page = DisplayPage::Detail(0);
-    let settings = app.detail_settings();
-    assert!(settings.contains(&MonitorSetting::Workspaces));
-    assert!(settings.contains(&MonitorSetting::SdrBrightness));
-    assert!(settings.contains(&MonitorSetting::SdrSaturation));
-    assert!(settings.contains(&MonitorSetting::Enabled));
-    assert!(settings.contains(&MonitorSetting::Hdr));
-    app.version = (0, 30);
-    let settings = app.detail_settings();
-    assert!(!settings.contains(&MonitorSetting::Vrr));
-    assert!(!settings.contains(&MonitorSetting::Hdr));
-    assert!(!settings.contains(&MonitorSetting::SdrBrightness));
-  }
-
-  #[test]
-  /// Executes the `primary_option_rows_list_every_connected_monitor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn primary_option_rows_list_every_connected_monitor() {
-    let mut app = app_with(false);
-    app.monitors.push(Monitor {
-      name: "DP-1".into(),
-      x: 1920,
-      y: 0,
-      ..monitor("DP-1")
-    });
-    let options = app.primary_options();
-    assert_eq!(options.len(), 2);
-    assert!(
-      options
-        .iter()
-        .all(|option| option.persist == PersistChange::Primary)
-    );
-  }
-
-  #[test]
-  /// Executes the `workspace_editor_marks_this_monitor_and_others` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn workspace_editor_marks_this_monitor_and_others() {
-    let mut app = app_with(false);
-    app.monitors.push(Monitor {
-      name: "DP-1".into(),
-      x: 1920,
-      y: 0,
-      ..monitor("DP-1")
-    });
-    app.config.set_workspaces("eDP-1", vec![1, 2]);
-    app.config.set_workspaces("DP-1", vec![3]);
-    let options = app.workspace_options(0);
-    assert!(
-      options[0].label.contains("this monitor"),
-      "{:?}",
-      options[0].label
-    );
-    assert!(
-      options[2].label.contains("another monitor"),
-      "{:?}",
-      options[2].label
-    );
-    assert!(
-      options[4].label.contains("unbound"),
-      "{:?}",
-      options[4].label
-    );
-  }
-
-  #[test]
-  /// Executes the `app_navigates_home_to_detail_picker_and_back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn app_navigates_home_to_detail_picker_and_back() {
-    let mut app = app_with(false);
-    app.handle(KeyCode::Enter);
-    assert!(matches!(app.page, DisplayPage::Detail(0)));
-    app.handle(KeyCode::Enter);
-    assert!(matches!(
-      app.page,
-      DisplayPage::Picker {
-        setting: MonitorSetting::Resolution,
-        ..
-      }
-    ));
-    app.handle(KeyCode::Esc);
-    assert!(matches!(app.page, DisplayPage::Detail(0)));
-    app.handle(KeyCode::Esc);
-    assert_eq!(app.page, DisplayPage::Home);
-  }
-}
+mod tests;

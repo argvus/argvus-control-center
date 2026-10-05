@@ -6,6 +6,8 @@
 pub enum DisplayPage {
   Home,
   Profiles,
+  /// One saved profile, with its Apply, Rename and Delete rows.
+  Profile(usize),
   Detail(usize),
   Picker {
     monitor: usize,
