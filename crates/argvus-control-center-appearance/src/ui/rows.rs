@@ -1,0 +1,753 @@
+//! Menu rows of every Appearance page.
+//!
+//! Each entry is identified by an [`Item`] instead of its position on the
+//! screen, and the item carries its own icon, so pages never pick glyphs by
+//! index or splice them into labels.
+use super::{AppearanceApp, THEME_CATEGORIES, current_family_label, family_indices};
+use crate::model::{
+  AppearancePage, ControlPanelCard, EffectSurface, PromptGoal, SurfaceSection, TaskbarDateFormat,
+  TaskbarPosition, TaskbarTimeFormat, TaskbarUtilityGroupMode, TaskbarUtilityWidget,
+  WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label,
+};
+use argvus_i18n::tr;
+use argvus_theme::discovery::ThemeCategory;
+use argvus_tui::{icons, menu::Row};
+
+/// Stable identity of an Appearance menu entry.
+///
+/// List entries carry the identity of the data they stand for (an index into
+/// the loaded state or a model enum), never their position on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Item {
+  // Home
+  Themes,
+  Accent,
+  Wallpaper,
+  SpacesBordersPosition,
+  Taskbar,
+  Effects,
+  WidgetTelemetry,
+  ControlPanel,
+  Terminal,
+  Launcher,
+  Mode,
+  // Themes
+  OfficialThemes,
+  CustomThemes,
+  ExportTheme,
+  ImportTheme,
+  ThemeCategory(ThemeCategory),
+  /// Index into `AppearanceState::official_themes`.
+  Family(usize),
+  /// Index into `AppearanceState::custom_themes`.
+  CustomTheme(usize),
+  /// Index into `AppearanceApp::import_archives`.
+  ImportArchive(usize),
+  ModeSticky,
+  ModeFloat,
+  // Wallpapers
+  ChooseWallpaper,
+  Collection(WallpaperCollection),
+  WallpaperMode(WallpaperMode),
+  /// Index into `AppearanceState::wallpapers`.
+  WallpaperFile(usize),
+  // Accent
+  EditAccent,
+  ResetAccent,
+  // Effects, Terminal, Launcher
+  Animations,
+  BlurEnabled,
+  BlurIntensity,
+  TerminalTransparency,
+  TerminalTransparencyValue,
+  LauncherTransparency,
+  LauncherTransparencyValue,
+  /// The value row of an effect editor page.
+  EffectValue,
+  // Spaces, borders and position
+  TaskbarPosition,
+  TaskbarSpaces,
+  WindowSpaces,
+  GeneralBorders,
+  EdgeThickness,
+  Position(TaskbarPosition),
+  Spacing(PromptGoal),
+  Rounded,
+  Rounding,
+  Thickness,
+  // Draft pages
+  TaskbarTransparency,
+  TaskbarIcons,
+  TaskbarDate,
+  TaskbarTime,
+  AudioPlayer,
+  TaskbarLauncher,
+  UtilityWidget(TaskbarUtilityWidget),
+  Utilities,
+  DateFormats,
+  DateFormat(TaskbarDateFormat),
+  Seconds,
+  TimeFormats,
+  TimeFormat(TaskbarTimeFormat),
+  UtilityGroup(TaskbarUtilityGroupMode),
+  /// "Enable" on Widget Telemetry and Control Panel.
+  SurfaceEnabled,
+  Sessions,
+  SurfaceTransparency,
+  TelemetryBlock(WidgetTelemetryBlock),
+  PanelCard(ControlPanelCard),
+  /// "Enable" on a transparency/blur section.
+  SectionEnabled,
+  /// The percentage row of a transparency/blur section.
+  SectionValue,
+  // Theme confirmation pages (`ThemeDeleteConfirm`, `ThemeImportConfirm`).
+  ConfirmAccept,
+  ConfirmCancel,
+}
+
+impl Item {
+  /// The item's own glyph. Entries of homogeneous data lists (theme
+  /// families, files, formats, blocks, cards, widgets) carry none, so the
+  /// icon column disappears on those pages.
+  pub(super) fn icon(self) -> Option<&'static str> {
+    let glyph = match self {
+      Self::Themes => icons::PALETTE,
+      Self::Accent => icons::ACCENT,
+      Self::Wallpaper => icons::WALLPAPER,
+      Self::SpacesBordersPosition => icons::LAYOUT,
+      Self::Taskbar => icons::TASKBAR,
+      Self::Effects => icons::EFFECT,
+      Self::WidgetTelemetry => icons::TELEMETRY,
+      Self::ControlPanel => icons::CONTROL_PANEL,
+      Self::Terminal => icons::TERMINAL,
+      Self::Launcher => icons::LAUNCHER,
+      Self::Mode => icons::THEME_MODE,
+      Self::OfficialThemes => icons::PALETTE,
+      Self::CustomThemes => icons::EDIT,
+      Self::ExportTheme => icons::EXPORT,
+      Self::ImportTheme => icons::IMPORT,
+      Self::ThemeCategory(_) => icons::THEME_MODE,
+      Self::ModeSticky => icons::WINDOW_STICKY,
+      Self::ModeFloat => icons::WINDOW_FLOAT,
+      Self::ChooseWallpaper => icons::FOLDER,
+      Self::Collection(_) | Self::WallpaperMode(_) => icons::IMAGE,
+      Self::EditAccent => icons::EDIT,
+      Self::ResetAccent => icons::RESTORE,
+      Self::Animations => icons::ANIMATION,
+      Self::BlurEnabled | Self::BlurIntensity => icons::BLUR,
+      Self::TerminalTransparency
+      | Self::TerminalTransparencyValue
+      | Self::LauncherTransparency
+      | Self::LauncherTransparencyValue
+      | Self::TaskbarTransparency
+      | Self::SurfaceTransparency => icons::OPACITY,
+      Self::TaskbarPosition => icons::TASKBAR,
+      Self::TaskbarSpaces => icons::GAP,
+      Self::WindowSpaces => icons::WINDOW_STICKY,
+      Self::GeneralBorders => icons::BORDER,
+      Self::EdgeThickness | Self::Thickness => icons::THICKNESS,
+      Self::Position(TaskbarPosition::Top) => icons::ARROW_UP,
+      Self::Position(TaskbarPosition::Bottom) => icons::ARROW_DOWN,
+      Self::Spacing(goal) => return spacing_icon(goal),
+      Self::Rounded | Self::Rounding => icons::ROUNDED,
+      Self::TaskbarIcons => icons::APPS,
+      Self::TaskbarDate | Self::DateFormats => icons::CALENDAR,
+      Self::TaskbarTime | Self::TimeFormats => icons::CLOCK,
+      Self::AudioPlayer => icons::MUSIC,
+      Self::TaskbarLauncher => icons::LAUNCHER,
+      Self::Utilities => icons::WIDGET,
+      Self::Seconds => icons::TIMER,
+      Self::Sessions => icons::LAYOUT,
+      Self::Family(_)
+      | Self::CustomTheme(_)
+      | Self::ImportArchive(_)
+      | Self::WallpaperFile(_)
+      | Self::UtilityWidget(_)
+      | Self::DateFormat(_)
+      | Self::TimeFormat(_)
+      | Self::UtilityGroup(_)
+      | Self::TelemetryBlock(_)
+      | Self::PanelCard(_)
+      | Self::ConfirmAccept
+      | Self::ConfirmCancel => return None,
+      // These depend on the page; see `AppearanceApp::page_icon`.
+      Self::EffectValue | Self::SurfaceEnabled | Self::SectionEnabled | Self::SectionValue => {
+        return None;
+      }
+    };
+    Some(glyph)
+  }
+}
+
+/// Arrows name the side a spacing value applies to; the inner gap uses the
+/// gap glyph.
+fn spacing_icon(goal: PromptGoal) -> Option<&'static str> {
+  match goal {
+    PromptGoal::WaybarTop | PromptGoal::GapsOutTop => Some(icons::ARROW_UP),
+    PromptGoal::WaybarLeft | PromptGoal::GapsOutLeft => Some(icons::ARROW_LEFT),
+    PromptGoal::WaybarRight | PromptGoal::GapsOutRight => Some(icons::ARROW_RIGHT),
+    PromptGoal::WaybarBottom | PromptGoal::GapsOutBottom => Some(icons::ARROW_DOWN),
+    PromptGoal::GapsIn => Some(icons::GAP),
+    PromptGoal::Rounding => Some(icons::ROUNDED),
+    PromptGoal::Thickness => Some(icons::THICKNESS),
+    PromptGoal::ExportProfile | PromptGoal::ImportProfile => None,
+  }
+}
+
+/// Attaches the item's icon, when it has one.
+fn with_icon(row: Row<Item>, icon: Option<&'static str>) -> Row<Item> {
+  match icon {
+    Some(glyph) => row.icon(glyph),
+    None => row,
+  }
+}
+
+fn percent(value: i32) -> String {
+  format!("{value}%")
+}
+
+impl AppearanceApp {
+  fn label(&self, key: &str) -> &'static str {
+    tr(self.lang, key)
+  }
+
+  fn submenu(&self, item: Item, key: &str) -> Row<Item> {
+    with_icon(Row::submenu(item, self.label(key)), item.icon())
+  }
+
+  fn toggle_row(&self, item: Item, key: &str, on: bool) -> Row<Item> {
+    with_icon(Row::toggle(item, self.label(key), on), self.item_icon(item))
+  }
+
+  fn choice_row(&self, item: Item, label: impl Into<String>, current: bool) -> Row<Item> {
+    with_icon(Row::choice(item, label, current), item.icon())
+  }
+
+  /// Icon of an item whose glyph depends on the page it is shown on.
+  pub(super) fn item_icon(&self, item: Item) -> Option<&'static str> {
+    match (item, self.page) {
+      (Item::SurfaceEnabled, AppearancePage::WidgetTelemetry) => Some(icons::TELEMETRY),
+      (Item::SurfaceEnabled, AppearancePage::ControlPanel) => Some(icons::CONTROL_PANEL),
+      (
+        Item::SectionEnabled | Item::SectionValue,
+        AppearancePage::SurfaceSection {
+          section: SurfaceSection::Blur,
+          ..
+        },
+      ) => Some(icons::BLUR),
+      (Item::SectionEnabled | Item::SectionValue, _) => Some(icons::OPACITY),
+      (Item::EffectValue, AppearancePage::Blur | AppearancePage::BlurSurface { .. }) => {
+        Some(icons::BLUR)
+      }
+      (Item::EffectValue, _) => Some(icons::OPACITY),
+      _ => item.icon(),
+    }
+  }
+
+  /// Rows of the current page, in display order.
+  pub(super) fn rows(&self) -> Vec<Row<Item>> {
+    match self.page {
+      AppearancePage::Home => self.home_rows(),
+      AppearancePage::Themes => vec![
+        self.submenu(
+          Item::OfficialThemes,
+          "control_center.theme_profile_official",
+        ),
+        self.submenu(Item::CustomThemes, "control_center.theme_profile_custom"),
+        with_icon(
+          Row::action(
+            Item::ExportTheme,
+            self.label("control_center.theme_profile_export"),
+          ),
+          Item::ExportTheme.icon(),
+        ),
+        self.submenu(Item::ImportTheme, "control_center.theme_profile_import"),
+      ],
+      AppearancePage::OfficialThemes => THEME_CATEGORIES
+        .into_iter()
+        .map(|category| {
+          let key = super::theme_category_label_key(category);
+          self.submenu(Item::ThemeCategory(category), key)
+        })
+        .collect(),
+      AppearancePage::ThemeFamilies { category } => {
+        let current = self
+          .state
+          .theme
+          .strip_suffix("-float")
+          .unwrap_or(&self.state.theme);
+        let locale = self.lang.locale();
+        family_indices(category, &self.state.official_themes)
+          .into_iter()
+          .map(|index| {
+            let entry = &self.state.official_themes[index];
+            let label = entry
+              .name_i18n
+              .get(&locale)
+              .cloned()
+              .unwrap_or_else(|| entry.name.clone());
+            let is_current = self.state.active_custom_theme.is_none() && current == entry.id;
+            self.choice_row(Item::Family(index), label, is_current)
+          })
+          .collect()
+      }
+      AppearancePage::CustomThemes => self
+        .state
+        .custom_themes
+        .iter()
+        .enumerate()
+        .map(|(index, theme)| {
+          let is_current = self.state.active_custom_theme.as_deref() == Some(theme.id.as_str());
+          self.choice_row(Item::CustomTheme(index), theme.name.clone(), is_current)
+        })
+        .collect(),
+      AppearancePage::ThemeImport => self
+        .import_archives
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+          let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+          Row::action(Item::ImportArchive(index), name)
+        })
+        .collect(),
+      AppearancePage::ThemeDeleteConfirm => vec![
+        Row::destructive(
+          Item::ConfirmAccept,
+          self.label("control_center.theme_profile_delete"),
+        ),
+        Row::action(Item::ConfirmCancel, self.label("control_center.cancel")),
+      ],
+      AppearancePage::ThemeImportConfirm => vec![
+        Row::action(
+          Item::ConfirmAccept,
+          self.label("control_center.theme_profile_duplicate_replace"),
+        ),
+        Row::action(Item::ConfirmCancel, self.label("control_center.cancel")),
+      ],
+      AppearancePage::Mode => {
+        let float = self.state.is_float_theme();
+        vec![
+          self.choice_row(
+            Item::ModeSticky,
+            self.label("control_center.theme_mode_sticky"),
+            !float,
+          ),
+          self.choice_row(
+            Item::ModeFloat,
+            self.label("control_center.theme_mode_float"),
+            float,
+          ),
+        ]
+      }
+      AppearancePage::Wallpapers => std::iter::once(with_icon(
+        Row::action(
+          Item::ChooseWallpaper,
+          self.label("control_center.choose_image_from_home"),
+        ),
+        Item::ChooseWallpaper.icon(),
+      ))
+      .chain(
+        WallpaperCollection::ALL
+          .into_iter()
+          .map(|collection| self.submenu(Item::Collection(collection), collection.label_key())),
+      )
+      .collect(),
+      AppearancePage::WallpaperModes { .. } => WallpaperMode::ALL
+        .into_iter()
+        .map(|mode| self.submenu(Item::WallpaperMode(mode), mode.label_key()))
+        .collect(),
+      AppearancePage::WallpaperItems { collection, mode } => self
+        .state
+        .wallpapers
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.collection == collection && entry.mode == mode)
+        .map(|(index, entry)| {
+          let filename = std::path::Path::new(&entry.path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&entry.path);
+          let is_current = self.state.wallpaper_active.as_deref() == Some(entry.path.as_str());
+          self.choice_row(Item::WallpaperFile(index), filename, is_current)
+        })
+        .collect(),
+      AppearancePage::Accents => vec![
+        with_icon(
+          Row::value(
+            Item::EditAccent,
+            self.label("control_center.edit_highlight_color"),
+            self.state.accent.clone(),
+            None,
+          ),
+          Item::EditAccent.icon(),
+        ),
+        with_icon(
+          Row::action(
+            Item::ResetAccent,
+            self.label("control_center.reset_to_theme_default"),
+          ),
+          Item::ResetAccent.icon(),
+        ),
+      ],
+      AppearancePage::Effects => vec![
+        self.toggle_row(
+          Item::Animations,
+          "control_center.animations",
+          self.state.animations,
+        ),
+        self.toggle_row(Item::BlurEnabled, "control_center.blur", self.state.blur),
+        self
+          .submenu(Item::BlurIntensity, "control_center.blur")
+          .detail(percent(self.state.global_blur)),
+      ],
+      // Unreachable page kept until the Phase 4 cleanup; its entries never
+      // had an action, so they are read-only.
+      AppearancePage::Transparency => std::iter::once(Row::info(
+        self.label("control_center.transparency"),
+        self.label(if self.state.transparency {
+          "control_center.enabled"
+        } else {
+          "control_center.disabled"
+        }),
+      ))
+      .chain(EffectSurface::ALL.into_iter().map(|surface| {
+        Row::info(
+          self.label(surface.label_key()),
+          percent(self.effect_value("transparency", surface)),
+        )
+      }))
+      .collect(),
+      AppearancePage::Terminal => vec![
+        self.toggle_row(
+          Item::TerminalTransparency,
+          "control_center.transparency",
+          self.state.terminal_transparency_enabled,
+        ),
+        self
+          .submenu(
+            Item::TerminalTransparencyValue,
+            "control_center.transparency",
+          )
+          .detail(percent(self.state.terminal_transparency)),
+      ],
+      AppearancePage::Launchers => vec![
+        self.toggle_row(
+          Item::LauncherTransparency,
+          "control_center.transparency",
+          self.state.launcher_transparency_enabled,
+        ),
+        self
+          .submenu(
+            Item::LauncherTransparencyValue,
+            "control_center.transparency",
+          )
+          .detail(percent(self.state.launcher_transparency)),
+      ],
+      AppearancePage::Blur
+      | AppearancePage::BlurSurface { .. }
+      | AppearancePage::TerminalTransparency
+      | AppearancePage::TransparencySurface { .. } => {
+        let key = if matches!(
+          self.page,
+          AppearancePage::Blur | AppearancePage::BlurSurface { .. }
+        ) {
+          "control_center.blur"
+        } else {
+          "control_center.transparency"
+        };
+        vec![self.value_row(
+          Item::EffectValue,
+          key,
+          percent(self.effect_editor_value()),
+          Some(5),
+        )]
+      }
+      AppearancePage::SpacesBordersPosition => vec![
+        self.submenu(Item::TaskbarPosition, "control_center.taskbar_position"),
+        self.submenu(Item::TaskbarSpaces, "control_center.taskbar_spaces"),
+        self.submenu(Item::WindowSpaces, "control_center.window_spaces"),
+        self.submenu(Item::GeneralBorders, "control_center.general_borders"),
+        self.submenu(Item::EdgeThickness, "control_center.edge_thickness"),
+      ],
+      AppearancePage::TaskbarPosition => [TaskbarPosition::Top, TaskbarPosition::Bottom]
+        .into_iter()
+        .map(|position| {
+          let key = match position {
+            TaskbarPosition::Top => "control_center.top",
+            TaskbarPosition::Bottom => "control_center.bottom",
+          };
+          self.choice_row(
+            Item::Position(position),
+            self.label(key),
+            self.state.waybar_pos == position,
+          )
+        })
+        .collect(),
+      AppearancePage::TaskbarSpaces => [
+        (PromptGoal::WaybarTop, self.state.waybar_top),
+        (PromptGoal::WaybarLeft, self.state.waybar_left),
+        (PromptGoal::WaybarRight, self.state.waybar_right),
+        (PromptGoal::WaybarBottom, self.state.waybar_bottom),
+      ]
+      .into_iter()
+      .map(|(goal, value)| self.spacing_row(goal, value))
+      .collect(),
+      AppearancePage::WindowSpaces => [
+        (PromptGoal::GapsIn, self.state.gaps_in),
+        (PromptGoal::GapsOutTop, self.state.gaps_out_top),
+        (PromptGoal::GapsOutLeft, self.state.gaps_out_left),
+        (PromptGoal::GapsOutRight, self.state.gaps_out_right),
+        (PromptGoal::GapsOutBottom, self.state.gaps_out_bottom),
+      ]
+      .into_iter()
+      .map(|(goal, value)| self.spacing_row(goal, value))
+      .collect(),
+      AppearancePage::GeneralBorders => {
+        let rounding = if self.state.rounded {
+          self.state.rounding.to_string()
+        } else {
+          format!(
+            "{} · {}",
+            self.state.rounding,
+            self.label("control_center.disabled")
+          )
+        };
+        vec![
+          self.toggle_row(Item::Rounded, "control_center.rounded", self.state.rounded),
+          // Rounding has no visible effect while Rounded is off, so the row
+          // is disabled and skipped instead of opening a pointless prompt.
+          self
+            .value_row(Item::Rounding, "control_center.rounding", rounding, None)
+            .enabled(self.state.rounded),
+        ]
+      }
+      AppearancePage::EdgeThickness => vec![self.value_row(
+        Item::Thickness,
+        "control_center.thickness",
+        self.state.thickness.to_string(),
+        None,
+      )],
+      AppearancePage::Taskbar => vec![
+        self.submenu(Item::TaskbarTransparency, "control_center.transparency"),
+        self.submenu(Item::TaskbarIcons, "control_center.icons"),
+        self.submenu(Item::TaskbarDate, "control_center.date"),
+        self.submenu(Item::TaskbarTime, "control_center.time"),
+      ],
+      AppearancePage::TaskbarIcons => {
+        let draft = self.surface_draft();
+        let mut rows = vec![
+          self.toggle_row(
+            Item::AudioPlayer,
+            "control_center.taskbar_audio_player_view",
+            draft.is_some_and(|draft| draft.audio_player_enabled),
+          ),
+          self.toggle_row(
+            Item::TaskbarLauncher,
+            "control_center.launcher",
+            draft.is_some_and(|draft| draft.launcher_enabled),
+          ),
+        ];
+        rows.extend(TaskbarUtilityWidget::ALL.into_iter().map(|widget| {
+          self.toggle_row(
+            Item::UtilityWidget(widget),
+            widget.label_key(),
+            draft.is_some_and(|draft| draft.utility_widgets.enabled(widget)),
+          )
+        }));
+        rows.push(self.submenu(Item::Utilities, "control_center.utilities"));
+        rows
+      }
+      AppearancePage::TaskbarDate => vec![self.submenu(Item::DateFormats, "control_center.format")],
+      AppearancePage::TaskbarDateFormat => TaskbarDateFormat::ALL
+        .into_iter()
+        .map(|format| {
+          self.choice_row(
+            Item::DateFormat(format),
+            self.label(format.label_key()),
+            self
+              .surface_draft()
+              .is_some_and(|draft| draft.date_format == format),
+          )
+        })
+        .collect(),
+      AppearancePage::TaskbarTime => vec![
+        self.toggle_row(
+          Item::Seconds,
+          "control_center.seconds",
+          self
+            .surface_draft()
+            .is_some_and(|draft| draft.time_seconds_enabled),
+        ),
+        self.submenu(Item::TimeFormats, "control_center.format"),
+      ],
+      AppearancePage::TaskbarTimeFormat => TaskbarTimeFormat::ALL
+        .into_iter()
+        .map(|format| {
+          self.choice_row(
+            Item::TimeFormat(format),
+            self.label(format.label_key()),
+            self
+              .surface_draft()
+              .is_some_and(|draft| draft.time_format == format),
+          )
+        })
+        .collect(),
+      AppearancePage::WidgetTelemetry => vec![
+        self.toggle_row(
+          Item::SurfaceEnabled,
+          "control_center.enable",
+          self
+            .surface_draft()
+            .is_some_and(|draft| draft.widget_enabled),
+        ),
+        self.submenu(Item::Sessions, "control_center.sessions"),
+        self.submenu(Item::SurfaceTransparency, "control_center.transparency"),
+      ],
+      AppearancePage::ControlPanel => vec![
+        self.toggle_row(
+          Item::SurfaceEnabled,
+          "control_center.enable",
+          self
+            .surface_draft()
+            .is_some_and(|draft| draft.control_panel_enabled),
+        ),
+        self.submenu(Item::Sessions, "control_center.sessions"),
+        self.submenu(Item::SurfaceTransparency, "control_center.transparency"),
+      ],
+      AppearancePage::SurfaceSection { surface, section } => self.section_rows(surface, section),
+      AppearancePage::AccentEdit | AppearancePage::Prompt { .. } => Vec::new(),
+    }
+  }
+
+  fn home_rows(&self) -> Vec<Row<Item>> {
+    let mode = self.label(if self.state.is_float_theme() {
+      "control_center.theme_mode_float"
+    } else {
+      "control_center.theme_mode_sticky"
+    });
+    let wallpaper = self
+      .state
+      .wallpaper_active
+      .clone()
+      .unwrap_or_else(|| self.label("control_center.none").to_string());
+    vec![
+      self
+        .submenu(Item::Themes, "control_center.theme")
+        .detail(format!(
+          "{} [{mode}]",
+          current_family_label(&self.state, &self.lang)
+        )),
+      self
+        .submenu(Item::Accent, "control_center.highlight_color")
+        .detail(accent_label(&self.state.accent)),
+      self
+        .submenu(Item::Wallpaper, "control_center.wallpaper")
+        .detail(wallpaper),
+      self.submenu(
+        Item::SpacesBordersPosition,
+        "control_center.spaces_borders_position",
+      ),
+      self.submenu(Item::Taskbar, "control_center.taskbar"),
+      self.submenu(Item::Effects, "control_center.effects"),
+      self.submenu(Item::WidgetTelemetry, "control_center.widget_telemetry"),
+      self.submenu(Item::ControlPanel, "control_center.control_panel"),
+      self.submenu(Item::Terminal, "control_center.terminal"),
+      self.submenu(Item::Launcher, "control_center.launcher"),
+      self
+        .submenu(Item::Mode, "control_center.appearance_mode")
+        .detail(mode),
+    ]
+  }
+
+  fn section_rows(&self, surface: EffectSurface, section: SurfaceSection) -> Vec<Row<Item>> {
+    let draft = self.surface_draft();
+    match section {
+      SurfaceSection::UtilityIcons => [
+        (
+          TaskbarUtilityGroupMode::AlwaysExpanded,
+          "control_center.taskbar_utility_group_always_expanded",
+        ),
+        (
+          TaskbarUtilityGroupMode::Auto,
+          "control_center.taskbar_utility_group_auto",
+        ),
+      ]
+      .into_iter()
+      .map(|(mode, key)| {
+        self.choice_row(
+          Item::UtilityGroup(mode),
+          self.label(key),
+          draft.is_some_and(|draft| draft.utility_group == mode),
+        )
+      })
+      .collect(),
+      SurfaceSection::Sessions => match surface {
+        EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL
+          .into_iter()
+          .map(|block| {
+            self.toggle_row(
+              Item::TelemetryBlock(block),
+              block.label_key(),
+              draft.is_some_and(|draft| draft.widget_blocks.enabled(block)),
+            )
+          })
+          .collect(),
+        EffectSurface::ControlPanel => draft
+          .map(|draft| {
+            ControlPanelCard::ALL
+              .into_iter()
+              .filter(|card| draft.control_panel_cards.available(*card))
+              .map(|card| {
+                self.toggle_row(
+                  Item::PanelCard(card),
+                  card.label_key(),
+                  draft.control_panel_cards.enabled(card),
+                )
+              })
+              .collect()
+          })
+          .unwrap_or_default(),
+        EffectSurface::Taskbar | EffectSurface::Terminal | EffectSurface::Launchers => Vec::new(),
+      },
+      SurfaceSection::Transparency | SurfaceSection::Blur => {
+        let (enabled, value) = match (section, draft) {
+          (SurfaceSection::Transparency, Some(draft)) => {
+            (draft.transparency_enabled, draft.transparency)
+          }
+          (_, Some(draft)) => (draft.blur_enabled, draft.blur),
+          (_, None) => (false, 50),
+        };
+        vec![
+          self.toggle_row(Item::SectionEnabled, "control_center.enable", enabled),
+          self.value_row(
+            Item::SectionValue,
+            "control_center.value",
+            percent(value),
+            Some(5),
+          ),
+        ]
+      }
+    }
+  }
+
+  fn value_row(
+    &self,
+    item: Item,
+    key: &str,
+    text: impl Into<String>,
+    step: Option<i32>,
+  ) -> Row<Item> {
+    with_icon(
+      Row::value(item, self.label(key), text, step),
+      self.item_icon(item),
+    )
+  }
+
+  fn spacing_row(&self, goal: PromptGoal, value: i32) -> Row<Item> {
+    let item = Item::Spacing(goal);
+    self.value_row(item, self.prompt_label(goal), value.to_string(), None)
+  }
+}
