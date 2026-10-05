@@ -58,18 +58,13 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   if app.hostname_editing {
     popup::draw_hostname_input(frame, area, app);
   }
-  if app.has_keybinding_conflict() {
-    popup::draw_keybinding_conflict(frame, area, app);
-  }
   if let Some(editor) = &app.admin.editor {
     editor.draw(frame, area, app);
   }
   if let Some(message) = app.error_modal.as_deref() {
     popup::draw_error(frame, area, app, message);
   }
-  if let Some(action) = app.confirm.as_ref() {
-    popup::draw_confirm(frame, area, app, action);
-  }
+  popup::draw_confirmation(frame, area, app);
   draw_task_window(app, frame, area);
 }
 

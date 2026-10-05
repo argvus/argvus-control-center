@@ -6,7 +6,7 @@
 use crossterm::event::KeyCode;
 
 use argvus_control_center_apps::catalog::Category;
-use argvus_tui::hints::{HintContext, hints};
+use argvus_tui::hints::{HintContext, confirm_hints, hints};
 use argvus_tui::menu::{MenuEvent, MenuState, Row, RowKind};
 
 use super::rows::LANGUAGES;
@@ -382,7 +382,14 @@ impl App {
   /// Footer derived from the selected row and the page's shortcuts.
   pub fn footer(&self) -> String {
     if self.confirm.is_some() {
-      return tr(self.lang, "control_center.enter_confirm_esc_cancel").into();
+      return confirm_hints(self.lang);
+    }
+    if self.has_keybinding_conflict() {
+      return format!(
+        "{}   r {}",
+        confirm_hints(self.lang),
+        tr(self.lang, "control_center.replace")
+      );
     }
     if self.searching {
       return tr(

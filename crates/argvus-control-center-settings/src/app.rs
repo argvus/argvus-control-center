@@ -8,6 +8,8 @@ mod rows;
 pub(crate) use actions::setting_values;
 
 use std::collections::BTreeSet;
+
+use argvus_tui::confirm::{ConfirmOutcome, ConfirmState};
 use std::time::{Duration, Instant};
 
 use argvus_control_center_apps::catalog::Category;
@@ -58,7 +60,11 @@ impl Status {
 #[derive(Debug, Clone)]
 /// Defines `PendingAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PendingAction {
-  Administration(String),
+  /// An accounts or firewall request; `danger` marks deletions.
+  Administration {
+    message: String,
+    danger: bool,
+  },
   ResetApps,
   ResetApp(Category),
   ResetFonts,
@@ -91,7 +97,8 @@ pub struct App {
   pub status: Option<Status>,
   pub error_modal: Option<String>,
   pub confirm: Option<PendingAction>,
-  pub confirm_apply_selected: bool,
+  /// Focus of the open confirmation (pending action or shortcut conflict).
+  pub confirm_focus: ConfirmState,
   pub hostname_editing: bool,
   pub hostname_input: String,
   pub width: u16,
@@ -180,7 +187,7 @@ impl App {
       status: None,
       error_modal,
       confirm: None,
-      confirm_apply_selected: false,
+      confirm_focus: ConfirmState::new(),
       hostname_editing: false,
       hostname_input: hostname.clone(),
       width: 80,
@@ -506,12 +513,19 @@ impl App {
     self.ratbag_pending_path = Some(device_path);
   }
 
-  /// Executes the `confirm_accept` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn confirm_accept(&mut self) {
-    if !self.confirm_apply_selected {
-      self.cancel_modal();
-      return;
+  /// A key while the confirmation is open: Enter runs the focused row
+  /// (Cancel first), `y` confirms, `n`/Esc cancel, arrows and Tab move.
+  pub fn confirm_key(&mut self, key: crossterm::event::KeyCode) {
+    match self.confirm_focus.handle(key) {
+      ConfirmOutcome::Confirmed => self.confirm_accept(),
+      ConfirmOutcome::Cancelled => self.cancel_modal(),
+      ConfirmOutcome::Pending => {}
     }
+  }
+
+  /// Runs the confirmed pending action.
+  pub fn confirm_accept(&mut self) {
+    self.confirm_focus = ConfirmState::new();
     let Some(action) = self.confirm.take() else {
       return;
     };
@@ -566,7 +580,7 @@ impl App {
       }
       PendingAction::ApplySystemLocales => self.apply_system_locales(),
       PendingAction::DiscardDraft => self.discard_and_leave(),
-      PendingAction::Administration(_) => self.admin.submit(),
+      PendingAction::Administration { .. } => self.admin.submit(),
       PendingAction::SetNtp(enabled) => match time::set_ntp(enabled) {
         Ok(()) => {
           self.refresh_time();
@@ -581,14 +595,43 @@ impl App {
   pub fn cancel_modal(&mut self) {
     self.admin.cancel_pending();
     self.confirm = None;
-    self.confirm_apply_selected = false;
+    self.confirm_focus = ConfirmState::new();
   }
 
-  /// Applies the `toggle_confirm_button` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn toggle_confirm_button(&mut self) {
-    if self.confirm.is_some() {
-      self.confirm_apply_selected = !self.confirm_apply_selected;
+  /// Texts of the open confirmation: title, message, confirm label and
+  /// whether it uses the danger style.
+  pub fn confirm_dialog(&self) -> Option<(String, String, &'static str, bool)> {
+    let label = |key: &str| tr(self.lang, key);
+    if let Some((_, keys, conflicts)) = self.keybinding_conflict_state() {
+      let mut message = format!(
+        "{}\n{keys}\n\n{}",
+        label("control_center.keybindings_conflict"),
+        label("control_center.keybindings_used_by")
+      );
+      for id in conflicts {
+        message.push_str(&format!("\n• {}", self.keybinding_label_for(&id)));
+      }
+      return Some((
+        label("control_center.keybindings_conflict_title").into(),
+        message,
+        label("control_center.replace"),
+        false,
+      ));
     }
+    let action = self.confirm.as_ref()?;
+    let (title, message) = pending_action_text(self.lang, action);
+    let (confirm, danger) = match action {
+      PendingAction::Administration { danger: true, .. } => (label("control_center.delete"), true),
+      PendingAction::DiscardDraft => (label("control_center.discard"), false),
+      PendingAction::ResetApps
+      | PendingAction::ResetApp(_)
+      | PendingAction::ResetFonts
+      | PendingAction::ResetFont(_)
+      | PendingAction::ResetFontSetting(_)
+      | PendingAction::ResetKeybindings => (label("control_center.confirm"), true),
+      _ => (label("control_center.confirm"), false),
+    };
+    Some((title, message, confirm, danger))
   }
 
   /// Executes the `hostname_input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -867,7 +910,7 @@ impl App {
   /// Executes the `open_confirm` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_confirm(&mut self, action: PendingAction) {
     self.confirm = Some(action);
-    self.confirm_apply_selected = false;
+    self.confirm_focus = ConfirmState::new();
   }
 
   /// Applies the `apply_system_locales` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1160,6 +1203,7 @@ impl App {
     );
     if !conflicts.is_empty() {
       self.keybinding_conflict = Some((binding.id.clone(), keys, conflicts));
+      self.confirm_focus = ConfirmState::new();
       self.keybinding_capturing = false;
       return;
     }
@@ -1468,9 +1512,9 @@ pub fn setting_label(lang: Lang, setting: SettingKind) -> &'static str {
 /// Executes the `pending_action_text` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, String) {
   match action {
-    PendingAction::Administration(body) => (
+    PendingAction::Administration { message, .. } => (
       tr(lang, "control_center.confirm_administrative_operation").into(),
-      body.clone(),
+      message.clone(),
     ),
     PendingAction::ResetApps => (
       tr(lang, "control_center.reset_default_applications").to_string(),

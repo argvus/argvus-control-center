@@ -2,6 +2,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+use argvus_tui::confirm::ConfirmOutcome;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::app::App;
@@ -57,14 +58,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
   }
 
   if app.confirm.is_some() {
-    match key.code {
-      KeyCode::Enter => app.confirm_accept(),
-      KeyCode::Esc => app.cancel_modal(),
-      KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => {
-        app.toggle_confirm_button()
-      }
-      _ => {}
-    }
+    app.confirm_key(key.code);
     return;
   }
 
@@ -90,10 +84,15 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     Page::Keybindings | Page::KeybindingEdit | Page::KeybindingCapture
   ) && app.has_keybinding_conflict()
   {
-    match key.code {
-      KeyCode::Char('r') => app.replace_keybinding_conflict(),
-      KeyCode::Esc => app.cancel_keybinding_conflict(),
-      _ => {}
+    // The conflict uses the single confirmation; `r` keeps replacing.
+    if key.code == KeyCode::Char('r') {
+      app.replace_keybinding_conflict();
+      return;
+    }
+    match app.confirm_focus.handle(key.code) {
+      ConfirmOutcome::Confirmed => app.replace_keybinding_conflict(),
+      ConfirmOutcome::Cancelled => app.cancel_keybinding_conflict(),
+      ConfirmOutcome::Pending => {}
     }
     return;
   }

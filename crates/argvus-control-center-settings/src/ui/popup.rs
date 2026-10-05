@@ -2,6 +2,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+use argvus_tui::confirm::{ConfirmDialog, draw_confirm};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
@@ -9,7 +10,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
 use crate::app::App;
-use crate::app::{PendingAction, pending_action_text};
 use crate::i18n::tr;
 
 /// Renders `draw_error` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -47,57 +47,21 @@ pub fn draw_error(frame: &mut Frame, area: Rect, app: &App, message: &str) {
   );
 }
 
-/// Renders `draw_confirm` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn draw_confirm(frame: &mut Frame, area: Rect, app: &App, action: &PendingAction) {
-  let width = area.width.saturating_sub(8).clamp(34, 72);
-  let height = 9.min(area.height);
-  let popup = super::layout::centered(area, width, height);
-  frame.render_widget(Clear, popup);
-  let (title, body) = pending_action_text(app.lang, action);
-  let apply_style = if app.confirm_apply_selected {
-    Style::new()
-      .fg(app.theme.selected_foreground)
-      .bg(app.theme.selected_background)
-      .add_modifier(Modifier::BOLD)
-  } else {
-    Style::new().fg(app.theme.accent)
+/// Draws the open confirmation (pending action or shortcut conflict) with
+/// the single confirmation component.
+pub fn draw_confirmation(frame: &mut Frame, area: Rect, app: &App) {
+  let Some((title, message, confirm, danger)) = app.confirm_dialog() else {
+    return;
   };
-  let cancel_style = if app.confirm_apply_selected {
-    Style::new().fg(app.theme.accent)
-  } else {
-    Style::new()
-      .fg(app.theme.selected_foreground)
-      .bg(app.theme.selected_background)
-      .add_modifier(Modifier::BOLD)
+  let dialog = ConfirmDialog {
+    title: &title,
+    message: &message,
+    confirm,
+    cancel: tr(app.lang, "control_center.cancel"),
+    danger,
+    deadline: None,
   };
-  let content = vec![Line::from("")];
-  let mut content = content;
-  content.extend(body.lines().map(|line| {
-    Line::from(Span::styled(
-      line.to_string(),
-      Style::new().fg(app.theme.foreground),
-    ))
-  }));
-  content.extend([
-    Line::from(""),
-    Line::from(vec![
-      Span::styled(tr(app.lang, "control_center.apply"), apply_style),
-      Span::raw("  "),
-      Span::styled(tr(app.lang, "control_center.cancel_f8378f"), cancel_style),
-    ]),
-  ]);
-  frame.render_widget(
-    Paragraph::new(content)
-      .alignment(Alignment::Center)
-      .wrap(ratatui::widgets::Wrap { trim: true })
-      .block(
-        Block::bordered()
-          .title(format!(" {title} "))
-          .border_style(Style::new().fg(app.theme.border_active))
-          .style(Style::new().bg(app.theme.background)),
-      ),
-    popup,
-  );
+  draw_confirm(frame, area, &app.theme, dialog, &app.confirm_focus);
 }
 
 /// Renders `draw_hostname_input` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -119,41 +83,6 @@ pub fn draw_hostname_input(frame: &mut Frame, area: Rect, app: &App) {
         .border_style(Style::new().fg(app.theme.border_active))
         .style(Style::new().bg(app.theme.background)),
     ),
-    popup,
-  );
-}
-
-/// Renders `draw_keybinding_conflict` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-pub fn draw_keybinding_conflict(frame: &mut Frame, area: Rect, app: &App) {
-  let Some((_, keys, conflicts)) = app.keybinding_conflict_state() else {
-    return;
-  };
-  let popup = super::layout::centered(area, area.width.saturating_sub(10).clamp(46, 70), 10);
-  let mut content = vec![
-    Line::from(tr(app.lang, "control_center.keybindings_conflict")),
-    Line::from(keys.to_string()),
-    Line::from(""),
-    Line::from(tr(app.lang, "control_center.keybindings_used_by")),
-  ];
-  for id in conflicts {
-    content.push(Line::from(format!("  • {}", app.keybinding_label_for(&id))));
-  }
-  content.extend([
-    Line::from(""),
-    Line::from(tr(app.lang, "control_center.keybindings_choose_replace")),
-  ]);
-  frame.render_widget(
-    Paragraph::new(content)
-      .block(
-        Block::bordered()
-          .title(format!(
-            " {} ",
-            tr(app.lang, "control_center.keybindings_conflict_title")
-          ))
-          .border_style(Style::new().fg(app.theme.error))
-          .style(Style::new().bg(app.theme.background)),
-      )
-      .style(Style::new().fg(app.theme.foreground)),
     popup,
   );
 }

@@ -858,9 +858,18 @@ impl App {
   }
   /// Executes the `admin_confirm` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn admin_confirm(&mut self, firewall: bool, value: Value, message: String) {
+    self.open_admin_confirm(firewall, value, message, false);
+  }
+
+  /// Confirmation of a deletion: drawn with the danger style.
+  fn admin_confirm_danger(&mut self, value: Value, message: String) {
+    self.open_admin_confirm(false, value, message, true);
+  }
+
+  fn open_admin_confirm(&mut self, firewall: bool, value: Value, message: String, danger: bool) {
     self.admin.pending = Some((firewall, value));
-    self.confirm = Some(PendingAction::Administration(message));
-    self.confirm_apply_selected = false;
+    self.confirm = Some(PendingAction::Administration { message, danger });
+    self.confirm_focus = argvus_tui::confirm::ConfirmState::new();
   }
 
   /// Runs the row `item` of an account or firewall page. Toggles, actions,
@@ -1049,8 +1058,7 @@ impl App {
         } else {
           (false, "control_center.delete_user_keep_home")
         };
-        self.admin_confirm(
-          false,
+        self.admin_confirm_danger(
           json!({"action":"delete", "user":user, "remove_home":remove_home}),
           confirm_user(key),
         );
@@ -1155,8 +1163,7 @@ impl App {
       }
       Item::DeleteGroup => {
         let group = text(&self.admin.group, "original");
-        self.admin_confirm(
-          false,
+        self.admin_confirm_danger(
           json!({"action":"delete-group", "group":group}),
           format!("{}: {group}?", tr(lang, "control_center.delete_group")),
         );
@@ -1536,9 +1543,10 @@ mod tests {
     assert!(app.confirm.is_none(), "selecting does not run anything");
     press(&mut app, KeyCode::Enter);
     assert!(app.confirm.is_some());
-    assert!(!app.confirm_apply_selected);
+    assert!(!app.confirm_focus.is_confirm_focused());
     assert!(!app.admin.busy());
-    app.confirm_accept();
+    press(&mut app, KeyCode::Enter);
+    assert!(app.confirm.is_none(), "Enter right after opening cancels");
     assert!(app.admin.pending.is_none());
     assert!(!app.admin.busy());
   }
@@ -1924,7 +1932,7 @@ mod tests {
     assert_eq!(app.admin.editor.take().unwrap().target, EditTarget::Rules);
     app.admin_activate(Item::ApplyRules);
     assert!(app.admin.pending.is_some());
-    let Some(PendingAction::Administration(message)) = app.confirm.clone() else {
+    let Some(PendingAction::Administration { message, .. }) = app.confirm.clone() else {
       panic!("Apply saved rules must ask first");
     };
     assert!(
@@ -2027,7 +2035,10 @@ mod tests {
     app.admin.user["name"] = json!("Changed");
     press(&mut app, KeyCode::Esc);
     assert!(matches!(app.confirm, Some(PendingAction::DiscardDraft)));
-    assert!(!app.confirm_apply_selected, "focus starts on Cancel");
+    assert!(
+      !app.confirm_focus.is_confirm_focused(),
+      "focus starts on Cancel"
+    );
     press(&mut app, KeyCode::Enter);
     assert_eq!(
       app.page(),
@@ -2037,8 +2048,7 @@ mod tests {
     assert_eq!(text(&app.admin.user, "name"), "Changed");
 
     press(&mut app, KeyCode::Esc);
-    app.confirm_apply_selected = true;
-    app.confirm_accept();
+    press(&mut app, KeyCode::Char('y'));
     assert_eq!(app.page(), Page::UserList);
     assert_eq!(text(&app.admin.user, "name"), "Alice");
   }
@@ -2120,8 +2130,7 @@ mod tests {
       firewall.confirm,
       Some(PendingAction::DiscardDraft)
     ));
-    firewall.confirm_apply_selected = true;
-    firewall.confirm_accept();
+    press(&mut firewall, KeyCode::Char('y'));
     assert_eq!(firewall.admin.config["ALLOW_SSH"], "y", "discard restores");
 
     let mut create = app(Page::Users);
@@ -2151,10 +2160,83 @@ mod tests {
       password.confirm,
       Some(PendingAction::DiscardDraft)
     ));
-    password.confirm_apply_selected = true;
-    password.confirm_accept();
+    press(&mut password, KeyCode::Char('y'));
     assert_eq!(password.page(), Page::User);
     assert!(!password.admin.passwords_changed());
+  }
+
+  #[test]
+  fn confirmation_uses_the_single_component_keys() {
+    let mut app = app(Page::User);
+    app.admin.user["name"] = json!("Changed");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.confirm.is_some());
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.confirm.is_none(), "n cancels");
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Down);
+    assert!(
+      !app.confirm_focus.is_confirm_focused(),
+      "Cancel is the lower row"
+    );
+    press(&mut app, KeyCode::Char('k'));
+    assert!(app.confirm_focus.is_confirm_focused());
+    press(&mut app, KeyCode::Tab);
+    assert!(!app.confirm_focus.is_confirm_focused());
+    press(&mut app, KeyCode::Up);
+    press(&mut app, KeyCode::Enter);
+    assert!(app.confirm.is_none());
+    assert_eq!(
+      app.page(),
+      Page::Main,
+      "Enter on Confirm discards and leaves"
+    );
+    assert_eq!(text(&app.admin.user, "name"), "Alice");
+  }
+
+  #[test]
+  fn deletions_use_the_danger_style_and_other_actions_do_not() {
+    let mut user = app(Page::User);
+    for (item, danger) in [
+      (Item::DeleteUser, true),
+      (Item::DeleteUserAndHome, true),
+      (Item::RemoveAvatar, false),
+      (Item::LockPassword, false),
+    ] {
+      user.admin_activate(item);
+      let (_, message, confirm, is_danger) = user.confirm_dialog().unwrap();
+      assert_eq!(is_danger, danger, "{item:?}");
+      assert!(message.ends_with("alice?"), "{message}");
+      if danger {
+        assert_eq!(confirm, tr(user.lang, "control_center.delete"));
+      }
+      user.cancel_modal();
+    }
+    let mut group = app(Page::Group);
+    group.admin.group = json!({"name":"wheel","original":"wheel","gid":998,"members":[]});
+    group.admin_activate(Item::DeleteGroup);
+    assert!(group.confirm_dialog().unwrap().3);
+  }
+
+  #[test]
+  fn confirmation_renders_vertical_rows_without_button_labels() {
+    use ratatui::{Terminal, backend::TestBackend};
+    let mut app = app(Page::User);
+    app.admin_activate(Item::DeleteUser);
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+      .draw(|frame| crate::ui::draw(&mut app, frame))
+      .unwrap();
+    let rendered: String = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .map(|cell| cell.symbol())
+      .collect();
+    assert!(rendered.contains(tr(app.lang, "control_center.delete")));
+    assert!(rendered.contains(tr(app.lang, "control_center.cancel")));
+    assert!(!rendered.contains(tr(app.lang, "control_center.cancel_f8378f")));
   }
 
   #[test]

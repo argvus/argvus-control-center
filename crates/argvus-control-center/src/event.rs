@@ -90,6 +90,7 @@ pub fn handle(app: &mut App, event: Event) {
         && !app.settings.searching
         && app.settings.error_modal.is_none()
         && app.settings.confirm.is_none()
+        && !app.settings.has_keybinding_conflict()
         && !app.settings.hostname_editing
         && !app.settings.task_open
       {

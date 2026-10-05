@@ -372,6 +372,27 @@ fn keyboard_layout_footer_lists_enter_and_space() {
 }
 
 #[test]
+fn shortcut_conflict_is_a_confirmation_that_esc_cancels() {
+  let mut app = app(Page::Keybindings);
+  app.keybinding_conflict = Some(("a".into(), "SUPER + Q".into(), vec!["b".into()]));
+  let (title, message, confirm, danger) = app.confirm_dialog().unwrap();
+  assert_eq!(
+    title,
+    tr(app.lang, "control_center.keybindings_conflict_title")
+  );
+  assert!(message.contains("SUPER + Q"));
+  assert_eq!(confirm, tr(app.lang, "control_center.replace"));
+  assert!(!danger);
+  assert!(app.footer().contains("r "), "{}", app.footer());
+  press(&mut app, KeyCode::Enter);
+  assert!(!app.has_keybinding_conflict(), "Enter on Cancel cancels");
+  app.keybinding_conflict = Some(("a".into(), "SUPER + Q".into(), vec!["b".into()]));
+  press(&mut app, KeyCode::Esc);
+  assert!(!app.has_keybinding_conflict());
+  assert_eq!(app.page(), Page::Keybindings);
+}
+
+#[test]
 fn task_window_scrolls_and_closes() {
   let mut app = app(Page::Main);
   let live = LiveProcess::new();
