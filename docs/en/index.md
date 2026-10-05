@@ -120,6 +120,8 @@ These actions update the logical ARGVUS state and apply the affected runtime con
 
 The settings application supports keyboard navigation. Use the arrow keys or `j`/`k` to move, `Enter` to open or apply, `Esc` to go back, `/` to search lists, `Tab` to move between fields or actions, and `?` for contextual help. While a text field, a search or a list filter is active, `q` and `?` are typed as text instead of quitting or opening the help. A page can show a **Reset defaults** or **Restore all shortcuts** action when that page supports it.
 
+In **Appearance**, every page is a single list: the footer shows only the keys that apply to the selected row, and `Space` also opens or selects the row. Pages that collect changes before applying them (Taskbar, Widget Telemetry, Control Panel and the effect sliders) end with an **Apply** row, which stays dimmed until something changed. On percentage rows, `←`/`→` (or `+`/`-`) change the value in steps of 5 and `Enter` lets you type it; use `Esc` to go back. If going back would discard changes that were not applied, Control Center asks first. Deleting a custom theme (`d`) or replacing an imported one asks for confirmation; the focus starts on **Cancel**, `y` confirms and `n` or `Esc` cancel.
+
 ## Persistence and reset
 
 Settings pages apply changes through their owning provider and save the supported user state. Appearance changes are stored in the canonical configuration, and `argvus-config` is the only component that writes the derived consumer files under `~/.config/argvus/data/generated/`; those generated files are not the place to make a permanent edit. Input and keybinding pages have their own persisted state and reset actions. Other system changes may require permissions or a service reload.

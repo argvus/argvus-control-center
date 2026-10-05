@@ -89,74 +89,83 @@ Páginas com **rascunho** (`surface_draft`/`effect_draft`, aplicação só via
 `Apply`): Taskbar, TaskbarIcons, TaskbarDate, TaskbarDateFormat, TaskbarTime,
 TaskbarTimeFormat, WidgetTelemetry, ControlPanel, SurfaceSection{...} e as
 páginas de editor de efeito (`effect_spec`: Blur global, TerminalTransparency,
-TransparencySurface). Hoje `Esc` descarta o rascunho **sem perguntar**.
+TransparencySurface). Até a Fase 2, `Esc` descartava o rascunho **sem
+perguntar**.
+
+**Fase 2 (2026-10-04): todas as linhas abaixo migradas.** Commits
+`2f57d07` (lista única), `75d3dc1` (`Apply` como linha) e `4737a4c`
+(`ConfirmDialog`). O crate não tem mais `Button`, `ActionButton` nem
+`on_buttons`.
 
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
-| Home | Tema · família [modo] | Abre Temas | Submenu | `Enter` | pendente |
-| Home | Cor de destaque · valor | Abre Destaques | Submenu | `Enter` | pendente |
-| Home | Wallpaper · ativo | Abre Wallpapers | Submenu | `Enter` | pendente |
-| Home | Espaços/Bordas/Posição | Abre página | Submenu | `Enter` | pendente |
-| Home | Taskbar | Abre página | Submenu | `Enter` | pendente |
-| Home | Efeitos | Abre página | Submenu | `Enter` | pendente |
-| Home | Widget Telemetry | Abre página | Submenu | `Enter` | pendente |
-| Home | Control Panel | Abre página | Submenu | `Enter` | pendente |
-| Home | Terminal | Abre página | Submenu | `Enter` | pendente |
-| Home | Launcher | Abre página | Submenu | `Enter` | pendente |
-| Home | Modo de aparência · valor | Abre Modo | Submenu | `Enter` | pendente |
-| Global | Recarregar | Recarrega estado | Atalho mantido | `r` | pendente |
-| Temas | Oficiais › | Abre categorias | Submenu | `Enter` | pendente |
-| Temas | Personalizados › | Abre lista | Submenu | `Enter` | pendente |
-| Temas | Exportar | Prompt de nome → exporta (imediato) | Action (abre Value) | `Enter`, `e` | pendente |
-| Temas | Importar | Abre lista de arquivos | Submenu | `Enter`, `i` | pendente |
-| Temas oficiais | Categorias › | Abre famílias | Submenu | `Enter` | pendente |
-| Famílias | Tema (· atual) | Aplica tema (imediato) | Choice (`●` no atual) | `Enter` | pendente |
-| Temas personalizados | Tema (· atual) | Aplica tema (imediato) | Choice | `Enter` | pendente |
-| Temas personalizados | Excluir tema | Abre `ThemeDeleteConfirm` | Destructive (componente único de confirmação), atalho na linha do item | `d` | pendente |
-| ThemeDeleteConfirm | `Delete` / `Cancel` (linhas) | Exclui / volta | **Substituído** pelo componente de confirmação (Confirm/Cancel, `y`/`n`) | `Enter`/`Esc` | pendente |
-| Importar | Arquivo `.zip` | Importa (imediato, ou pede substituição) | Action por arquivo | `Enter` | pendente |
-| ThemeImportConfirm | `Replace` / `Cancel` (linhas) | Substitui / volta | **Substituído** pelo componente de confirmação | `Enter`/`Esc` | pendente |
-| Prompts (exportar/importar, espaços, bordas) | Campo numérico/texto | Enter confirma (imediato), Esc volta | Value (edição inline/popup) | `0-9`, `Enter`, `Esc` | pendente |
-| Modo | Sticky / Float (· atual) | Troca modo (imediato) | Choice | `Enter` | pendente |
-| Wallpapers | Escolher imagem da home | Abre seletor de arquivo | Action | `Enter` | pendente |
-| Wallpapers | Coleções › | Abre modos | Submenu | `Enter` | pendente |
-| Modos de wallpaper | Modo › | Abre itens | Submenu | `Enter` | pendente |
-| Itens de wallpaper | Arquivo (· atual) | Aplica wallpaper (imediato) | Choice | `Enter` | pendente |
-| Destaques | Editar cor: `#hex` | Abre AccentEdit (hex; Enter aplica, imediato) | Value | `Enter` | pendente |
-| Destaques | Restaurar padrão do tema | Reseta acento (imediato) | Action | `Enter` | pendente |
-| Efeitos | `[x] Animações` | Alterna (imediato) | Toggle | `Enter`/`Space` | pendente |
-| Efeitos | `[x] Blur` | Alterna (imediato) | Toggle | `Enter`/`Space` | pendente |
-| Efeitos | Blur › N% | Abre editor de efeito | Submenu | `Enter` | pendente |
-| Editor de efeito (Blur global, Terminal/Launcher transparência) | Valor N% | Ajusta rascunho ±5 / 0 / 100 | Value | `←→ h l + -`, `Home/End` | pendente |
-| Editor de efeito | **`[ Apply ]`** (botão, `Tab`) | Aplica valor (rascunho → imediato) | Action `Apply` no fim da lista, desabilitada sem mudança | `Enter` na linha | pendente |
-| Terminal | `[x] Transparência` | Alterna (imediato) | Toggle | `Enter`/`Space` | pendente |
-| Terminal | Transparência › N% | Abre editor de efeito | Submenu | `Enter` | pendente |
-| Launcher | `[x] Transparência` | Alterna (imediato) | Toggle | `Enter`/`Space` | pendente |
-| Launcher | Transparência › N% | Abre editor de efeito | Submenu | `Enter` | pendente |
-| Espaços/Bordas/Posição | Posição da taskbar / Espaços da taskbar / Espaços das janelas / Bordas gerais / Espessura | Abre página | Submenu ×5 | `Enter` | pendente |
-| Posição da taskbar | Topo / Base (· atual) | Move taskbar (imediato) | Choice | `Enter` | pendente |
-| Espaços da taskbar | Topo/Esquerda/Direita/Base · valor | Prompt (imediato ao confirmar) | Value ×4 | `Enter` | pendente |
-| Espaços das janelas | Gap interno, gaps externos ×4 | Prompt (imediato) | Value ×5 | `Enter` | pendente |
-| Bordas gerais | `[x] Arredondado` | Alterna (imediato) | Toggle | `Enter`/`Space` | pendente |
-| Bordas gerais | Arredondamento · valor (· desativado) | Prompt (imediato) | Value; **desabilitada e pulada** quando Arredondado está desligado | `Enter` | pendente |
-| Espessura | Espessura · valor | Prompt (imediato) | Value | `Enter` | pendente |
-| Taskbar | Transparência ›, Ícones ›, Data ›, Hora › | Abre páginas | Submenu ×4 | `Enter` | pendente |
-| Taskbar e subpáginas | **`[ Apply ]`** | Aplica rascunho da taskbar | Action `Apply` no fim da lista | `Enter` na linha | pendente |
-| Ícones da taskbar | `[x]` player de áudio, launcher, widgets utilitários | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | pendente |
-| Ícones da taskbar | Utilitários › | Abre agrupamento | Submenu | `Enter` | pendente |
-| Data | Formato › | Abre formatos | Submenu | `Enter` | pendente |
-| Formato de data/hora | Formato (· atual) | Seleciona no rascunho | Choice (rascunho) | `Enter` | pendente |
-| Hora | `[x] Segundos` | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | pendente |
-| Widget Telemetry | `[x] Ativar`, Sessões ›, Transparência › | Rascunho / abre páginas | Toggle + Submenu ×2 | `Enter` | pendente |
-| Widget Telemetry | **`[ Apply ]`** | Aplica rascunho | Action `Apply` | `Enter` | pendente |
-| Control Panel | `[x] Ativar`, Sessões ›, Transparência › | Rascunho / abre páginas | Toggle + Submenu ×2 | `Enter` | pendente |
-| Control Panel | **`[ Apply ]`** | Aplica rascunho | Action `Apply` | `Enter` | pendente |
-| Seção: ícones utilitários | Sempre expandido / Automático | Seleciona no rascunho | Choice (rascunho) | `Enter` | pendente |
-| Seção: sessões | `[x]` blocos/cards | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | pendente |
-| Seção: transparência/blur | `[x] Ativar` | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | pendente |
-| Seção: transparência/blur | `Valor > N%` | Ajusta rascunho ±5 / 0 / 100 | Value | `+ -`, `Home/End` (ver D3) | pendente |
-| Seção: * | **`[ Apply ]`** | Aplica rascunho | Action `Apply` | `Enter` | pendente |
-| Páginas com rascunho | `Esc` | Descarta rascunho em silêncio | `Esc` pede confirmação se houver rascunho; linha `Cancel` só se D2 aprovar | `Esc` | pendente |
+| Home | Tema · família [modo] | Abre Temas | Submenu | `Enter` | migrado |
+| Home | Cor de destaque · valor | Abre Destaques | Submenu | `Enter` | migrado |
+| Home | Wallpaper · ativo | Abre Wallpapers | Submenu | `Enter` | migrado |
+| Home | Espaços/Bordas/Posição | Abre página | Submenu | `Enter` | migrado |
+| Home | Taskbar | Abre página | Submenu | `Enter` | migrado |
+| Home | Efeitos | Abre página | Submenu | `Enter` | migrado |
+| Home | Widget Telemetry | Abre página | Submenu | `Enter` | migrado |
+| Home | Control Panel | Abre página | Submenu | `Enter` | migrado |
+| Home | Terminal | Abre página | Submenu | `Enter` | migrado |
+| Home | Launcher | Abre página | Submenu | `Enter` | migrado |
+| Home | Modo de aparência · valor | Abre Modo | Submenu | `Enter` | migrado |
+| Global | Recarregar | Recarrega estado | Atalho mantido | `r` | migrado |
+| Temas | Oficiais › | Abre categorias | Submenu | `Enter` | migrado |
+| Temas | Personalizados › | Abre lista | Submenu | `Enter` | migrado |
+| Temas | Exportar | Prompt de nome → exporta (imediato) | Action (abre Value) | `Enter`, `e` | migrado |
+| Temas | Importar | Abre lista de arquivos | Submenu | `Enter`, `i` | migrado |
+| Temas oficiais | Categorias › | Abre famílias | Submenu | `Enter` | migrado |
+| Famílias | Tema (· atual) | Aplica tema (imediato) | Choice (`●` no atual) | `Enter` | migrado |
+| Temas personalizados | Tema (· atual) | Aplica tema (imediato) | Choice | `Enter` | migrado |
+| Temas personalizados | Excluir tema | Abre `ThemeDeleteConfirm` | Atalho `d` na linha do item abre o componente único de confirmação (danger, foco em Cancel); mostrado no rodapé | `d` | migrado |
+| ThemeDeleteConfirm | `Delete` / `Cancel` (linhas) | Exclui / volta | **Substituído** pelo componente de confirmação (Confirm/Cancel, `y`/`n`) | `Enter`/`Esc` | migrado |
+| Importar | Arquivo `.zip` | Importa (imediato, ou pede substituição) | Action por arquivo | `Enter` | migrado |
+| ThemeImportConfirm | `Replace` / `Cancel` (linhas) | Substitui / volta | **Substituído** pelo componente de confirmação | `Enter`/`Esc` | migrado |
+| Prompts (exportar/importar, espaços, bordas) | Campo numérico/texto | Enter confirma (imediato), Esc volta | Value (edição inline/popup) | `0-9`, `Enter`, `Esc` | migrado |
+| Modo | Sticky / Float (· atual) | Troca modo (imediato) | Choice | `Enter` | migrado |
+| Wallpapers | Escolher imagem da home | Abre seletor de arquivo | Action | `Enter` | migrado |
+| Wallpapers | Coleções › | Abre modos | Submenu | `Enter` | migrado |
+| Modos de wallpaper | Modo › | Abre itens | Submenu | `Enter` | migrado |
+| Itens de wallpaper | Arquivo (· atual) | Aplica wallpaper (imediato) | Choice | `Enter` | migrado |
+| Destaques | Editar cor: `#hex` | Abre AccentEdit (hex; Enter aplica, imediato) | Value | `Enter` | migrado |
+| Destaques | Restaurar padrão do tema | Reseta acento (imediato) | Action | `Enter` | migrado |
+| Efeitos | `[x] Animações` | Alterna (imediato) | Toggle | `Enter`/`Space` | migrado |
+| Efeitos | `[x] Blur` | Alterna (imediato) | Toggle | `Enter`/`Space` | migrado |
+| Efeitos | Blur › N% | Abre editor de efeito | Submenu | `Enter` | migrado |
+| Editor de efeito (Blur global, Terminal/Launcher transparência) | Valor N% | Ajusta rascunho ±5 / 0 / 100 | Value (passo 5) no rascunho; Enter abre prompt 0–100 que grava só no rascunho (substitui `Home/End` = 0/100, D14) | `←→ h l + -`, `Enter` | migrado |
+| Editor de efeito | **`[ Apply ]`** (botão, `Tab`) | Aplica valor (rascunho → imediato) | Action `Apply` no fim da lista, desabilitada sem mudança | `Enter` na linha | migrado |
+| Terminal | `[x] Transparência` | Alterna (imediato) | Toggle | `Enter`/`Space` | migrado |
+| Terminal | Transparência › N% | Abre editor de efeito | Submenu | `Enter` | migrado |
+| Launcher | `[x] Transparência` | Alterna (imediato) | Toggle | `Enter`/`Space` | migrado |
+| Launcher | Transparência › N% | Abre editor de efeito | Submenu | `Enter` | migrado |
+| Espaços/Bordas/Posição | Posição da taskbar / Espaços da taskbar / Espaços das janelas / Bordas gerais / Espessura | Abre página | Submenu ×5 | `Enter` | migrado |
+| Posição da taskbar | Topo / Base (· atual) | Move taskbar (imediato) | Choice | `Enter` | migrado |
+| Espaços da taskbar | Topo/Esquerda/Direita/Base · valor | Prompt (imediato ao confirmar) | Value ×4 | `Enter` | migrado |
+| Espaços das janelas | Gap interno, gaps externos ×4 | Prompt (imediato) | Value ×5 | `Enter` | migrado |
+| Bordas gerais | `[x] Arredondado` | Alterna (imediato) | Toggle | `Enter`/`Space` | migrado |
+| Bordas gerais | Arredondamento · valor (· desativado) | Prompt (imediato) | Value; **desabilitada e pulada** quando Arredondado está desligado | `Enter` | migrado |
+| Espessura | Espessura · valor | Prompt (imediato) | Value | `Enter` | migrado |
+| Taskbar | Transparência ›, Ícones ›, Data ›, Hora › | Abre páginas | Submenu ×4 | `Enter` | migrado |
+| Taskbar e subpáginas | **`[ Apply ]`** | Aplica rascunho da taskbar | Action `Apply` no fim da lista | `Enter` na linha | migrado |
+| Ícones da taskbar | `[x]` player de áudio, launcher, widgets utilitários | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Ícones da taskbar | Utilitários › | Abre agrupamento | Submenu | `Enter` | migrado |
+| Data | Formato › | Abre formatos | Submenu | `Enter` | migrado |
+| Formato de data/hora | Formato (· atual) | Seleciona no rascunho | Choice (rascunho) | `Enter` | migrado |
+| Hora | `[x] Segundos` | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Widget Telemetry | `[x] Ativar`, Sessões ›, Transparência › | Rascunho / abre páginas | Toggle + Submenu ×2 | `Enter` | migrado |
+| Widget Telemetry | **`[ Apply ]`** | Aplica rascunho | Action `Apply` | `Enter` | migrado |
+| Control Panel | `[x] Ativar`, Sessões ›, Transparência › | Rascunho / abre páginas | Toggle + Submenu ×2 | `Enter` | migrado |
+| Control Panel | **`[ Apply ]`** | Aplica rascunho | Action `Apply` | `Enter` | migrado |
+| Seção: ícones utilitários | Sempre expandido / Automático | Seleciona no rascunho | Choice (rascunho) | `Enter` | migrado |
+| Seção: sessões | `[x]` blocos/cards | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Seção: transparência/blur | `[x] Ativar` | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Seção: transparência/blur | `Valor > N%` | Ajusta rascunho ±5 / 0 / 100 | Value (passo 5) no rascunho; Enter abre prompt 0–100 (D14) | `←→ h l + -`, `Enter` | migrado |
+| Seção: * | **`[ Apply ]`** | Aplica rascunho | Action `Apply` | `Enter` | migrado |
+| Páginas com rascunho | `Esc` | Descarta rascunho em silêncio | `Esc` pede confirmação (Descartar/Cancelar, foco em Cancelar) só quando a volta descarta o rascunho (sair de Taskbar, Widget Telemetry, Control Panel ou de um editor de efeito); entre as subpáginas da Taskbar o rascunho continua mantido. Sem linha `Cancel` (D2) | `Esc` | migrado |
+| Páginas com rascunho | Recarregar (`r` ou automático ao entrar na página) | Trocava o rascunho pelo estado recarregado | Rascunho com alterações é mantido; rascunho limpo é reconstruído (D15) | `r` | migrado |
+| Todas as páginas | `Space` | Ativava a linha (como Enter) | Mantido: ativa Action, Submenu e Choice e abre o editor de Value sem passo; em Toggle alterna (D16) | `Space` | migrado |
+| Linhas Value com passo (efeitos, seções) | `←/→` | `←` voltava; `→` ajustava só nos editores de efeito | `←/→` ajustam o valor (D3); `Esc` é o jeito de voltar nesses editores; o rodapé mostra `←/→ Ajustar` e `Esc Voltar` | `←→`, `Esc` | migrado |
 
 Páginas mortas (`#[allow(dead_code)]`, inalcançáveis pela navegação):
 `Transparency`, `TransparencySurface` (exceto Launchers), `Blur` como página de
@@ -512,6 +521,16 @@ Itens (`home_icon_for_item(action: usize)`, por índice):
 
 ### 1.4 `appearance`
 
+Migrado na Fase 2 (`2f57d07`), com os ícones da proposta abaixo. Os itens
+fora desta tabela seguem o D9 registrado em 6.1: listas homogêneas
+(famílias, temas personalizados, `.zip`, arquivos de wallpaper, formatos,
+blocos, cards, widgets utilitários) ficam sem ícone; Escuro/Claro dos
+temas oficiais = `THEME_MODE`; player de áudio = `MUSIC`; launcher =
+`LAUNCHER`; Utilitários › = `WIDGET`; Formato › = `CALENDAR` (data) /
+`CLOCK` (hora); Segundos = `TIMER`; Ativar = `TELEMETRY` / `CONTROL_PANEL`;
+Sessões › = `LAYOUT`; editores de valor = `BLUR` / `OPACITY`; `Apply` =
+`APPLY`.
+
 | Tela | Item | Ícone atual | Ícone proposto |
 | --- | --- | --- | --- |
 | Home | Tema | `PALETTE` | `PALETTE` |
@@ -764,7 +783,7 @@ Notas de projeto:
 | 1 | Rodapé contextual (`hints`) | concluída (`argvus-tui` `bee7e32`, `argvus-i18n` `0c2d823`) |
 | 1 | Testes de cursor e confirmação | concluída (junto com cada componente) |
 | 1 | Campo de texto ativo captura `q`/`?` (D10) | concluída (`argvus-control-center` `5b346ca`) |
-| 2 | `appearance` | pendente |
+| 2 | `appearance` | concluída (`2f57d07`, `75d3dc1`, `4737a4c`; `argvus-i18n` `a62346d`) |
 | 3 | `settings` | pendente |
 | 3 | `displays` | pendente |
 | 3 | `boot` | pendente |
@@ -836,6 +855,46 @@ Achados fora do escopo, sem alteração:
 - O cspell não está instalado nesta máquina; `docs/ux-audit.md` já está no
   `ignorePaths`.
 
+### 5.2 Notas da Fase 2 (2026-10-04)
+
+Dependências: a Fase 2 compila contra `argvus-tui` e `argvus-i18n` na
+branch `ux_ui` (path dependencies). Nada disso está em `main`: o
+`packaging/arch/ci/PKGBUILD` baixa `main` dos dois repositórios e só
+compila depois da mesclagem; em execução, as chaves `control_center.hint.*`,
+`confirm`, `discard*`, `draft_changed`, `export` e `import` exigem o
+`argvus-i18n` instalado a partir de `ux_ui` (sem elas o rodapé mostra a
+chave).
+
+Mudanças de comportamento, além da apresentação:
+
+- `Esc` que descartaria um rascunho pede confirmação; `r` e o recarregamento
+  automático não descartam mais um rascunho com alterações (D15).
+- `←` em linhas Value com passo ajusta em vez de voltar (D3); `Home/End`
+  navegam e o 0/100 direto passou para o prompt do Enter (D14).
+- Correções encontradas na migração: Control Panel > Sessões alternava o
+  card errado quando havia card indisponível (o cursor indexava
+  `ControlPanelCard::ALL`, a lista mostrava só os disponíveis); o editor de
+  Blur global não limpava o valor não aplicado ao voltar, e o valor
+  reaparecia na entrada seguinte; o editor de efeito aceitava valor
+  negativo com `-`/`h` repetidos (`saturating_sub` sem limite inferior).
+
+Achados para a Fase 4 (sem alteração):
+
+- Páginas mortas `Transparency`, `TransparencySurface` (exceto Launchers) e
+  `BlurSurface`, além da seção `SurfaceSection::Blur` (nenhuma linha leva a
+  ela). `Transparency` passou a mostrar só linhas Info, porque nunca teve
+  ação.
+- Campo `control_panel_draft`: é escrito e nunca lido.
+- Chaves i18n que o `appearance` deixou de usar:
+  `theme_profile_themes_help`, `theme_profile_import_help`,
+  `theme_profile_delete_help`, `theme_profile_duplicate_help`,
+  `jk_navigate_enter_apply_r_refresh_esc_back`,
+  `jk_navigate_enter_open_space_toggle_r_refresh_esc_back`,
+  `navigate_tab_actions_adjust_enter_activate_esc_back_help`,
+  `navigate_tab_actions_move_enter_activate_esc_back_help`,
+  `navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help`.
+  Conferir uso nos outros crates antes de remover.
+
 ---
 
 ## 6. Pontos de decisão
@@ -852,11 +911,14 @@ Achados fora do escopo, sem alteração:
 | D6 | Manter `r` = restaurar padrões no `settings`, passando pela confirmação única, e criar também a linha `Restore defaults` / `Restaurar padrões`. | decidido |
 | D7 | Recomendação aceita: manter `Tab`/`BackTab` na grade da Home. | decidido (provisório, ver nota) |
 | D8 | Recomendação aceita: listas com filtro por digitação mantêm o comportamento atual (letras viram texto da busca). | decidido (provisório, ver nota) |
-| D9 | Recomendação aceita: ícones com mais de uma opção são decididos com captura de tela, na migração de cada crate. | decidido (provisório, ver nota) |
+| D9 | Recomendação aceita: ícones com mais de uma opção são decididos com captura de tela, na migração de cada crate. No `appearance`, aprovada a proposta da Fase 2 (seção 1.4). | decidido para o `appearance`; provisório para os demais crates |
 | D10 | Incluir. Campo de texto ativo captura as teclas; `q` e `?` globais não fecham o app nem abrem a ajuda durante a digitação. | decidido (Fase 1) |
 | D11 | Fora do escopo. Mouse nas páginas de domínio fica para outra tarefa; o critério "com e sem mouse" vale para a Home (que já trata clique) e não é exigido das páginas de domínio neste refactor. | decidido |
-| D12 | Recomendação aceita: hints em inglês fixo resolvidos pelo rodapé contextual; chave i18n nova para `Hostname`. | decidido (provisório, ver nota) |
+| D12 | Recomendação aceita: hints em inglês fixo resolvidos pelo rodapé contextual; chave i18n nova para `Hostname`. | decidido (confirmado na Fase 2; `Hostname` pendente no `settings`) |
 | D13 | `docs/ux-audit.md` entra no `ignorePaths` do `cspell.json`. Verificado: o site só publica `docs/en/` e `docs/pt-br/`; arquivos na raiz de `docs/` são ignorados (`web/argvus-website/src/lib/documentation/loader.ts`, filtro de locale `en`/`pt-br`). | decidido |
+| D14 | `Home/End` navegam (D3); para preservar o 0/100 direto, Enter numa linha Value com passo abre o prompt numérico 0–100, que grava só no rascunho (`Apply` continua necessário). | decidido (Fase 2) |
+| D15 | Recarregar (`r` ou o automático ao entrar numa página) preserva um rascunho com alterações e só reconstrói um rascunho limpo. | decidido (Fase 2) |
+| D16 | `Space` não é removido no `appearance`: continua ativando Action, Submenu e Choice (e abrindo o editor de Value sem passo), tratado na página sem mudar o padrão do componente para os outros crates. | decidido (Fase 2) |
 
 Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
 `[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram
