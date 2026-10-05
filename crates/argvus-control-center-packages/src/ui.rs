@@ -21,11 +21,9 @@ use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
   chrome,
-  components::{
-    ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-    draw_confirmation,
-  },
-  hints::{HintContext, hints},
+  components::{StatusKind, StatusMessage},
+  confirm::{ConfirmDialog, ConfirmOutcome, ConfirmState, draw_confirm},
+  hints::{HintContext, confirm_hints, hints},
   icons,
   menu::{MenuEvent, MenuState, MenuStyle, Row, RowKind, draw_menu},
   page::{shell, status},
@@ -64,6 +62,18 @@ enum Action {
   Downgrade(String),
   AurInstall(String),
   ApplyMirrors(String),
+}
+
+impl Action {
+  /// Removals, cache cleanups and downgrades, confirmed in the danger style
+  /// like the Danger zone rows that start them; the other operations use
+  /// the plain confirmation.
+  fn is_destructive(&self) -> bool {
+    matches!(
+      self,
+      Self::Remove(_) | Self::CleanCache(_) | Self::Downgrade(_)
+    )
+  }
 }
 
 /// What the open text field edits.
@@ -196,7 +206,7 @@ pub struct PackagesApp {
   input: Option<String>,
   input_mode: Option<InputMode>,
   pending: Option<Action>,
-  confirmation: ConfirmationState,
+  confirmation: ConfirmState,
   preview: Option<TransactionPlan>,
   pub status: Option<StatusMessage>,
   /// Names of the orphans marked with Space.
@@ -279,7 +289,7 @@ impl PackagesApp {
       input: None,
       input_mode: None,
       pending: None,
-      confirmation: ConfirmationState::default(),
+      confirmation: ConfirmState::new(),
       preview: None,
       status: None,
       marked: vec![],
@@ -611,16 +621,16 @@ impl PackagesApp {
     }
     if self.pending.is_some() {
       match self.confirmation.handle(key) {
-        ConfirmationOutcome::Confirmed => {
-          self.confirmation = ConfirmationState::default();
+        ConfirmOutcome::Confirmed => {
+          self.confirmation = ConfirmState::new();
           self.start_pending();
         }
-        ConfirmationOutcome::Cancelled => {
+        ConfirmOutcome::Cancelled => {
           self.pending = None;
           self.preview = None;
-          self.confirmation = ConfirmationState::default();
+          self.confirmation = ConfirmState::new();
         }
-        ConfirmationOutcome::Pending => {}
+        ConfirmOutcome::Pending => {}
       }
       return false;
     }
@@ -919,7 +929,7 @@ impl PackagesApp {
   }
   /// Asks for confirmation before running `action`.
   fn request(&mut self, action: Action) {
-    self.confirmation = ConfirmationState::default();
+    self.confirmation = ConfirmState::new();
     self.preview = None;
     self.pending = Some(action);
   }
@@ -1126,7 +1136,9 @@ impl PackagesApp {
     if self.open_package_installed() {
       self.begin_plan(Action::Reinstall(name));
     } else if self.details_parent == PackagesPage::Aur {
-      self.begin_plan(Action::AurInstall(name));
+      // The AUR helper has no transaction plan: the confirmation shows only
+      // the PKGBUILD warning, without the empty 0/0/0 counters.
+      self.request(Action::AurInstall(name));
     } else {
       self.begin_plan(Action::Install(vec![name]));
     }
@@ -1622,6 +1634,9 @@ impl PackagesApp {
   }
   /// The footer derived from the selected row.
   fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    if self.pending.is_some() {
+      return confirm_hints(self.lang);
+    }
     let mut menu = self.menu;
     menu.normalize(rows);
     let typing = filters_while_typing(self.page);
@@ -1713,18 +1728,20 @@ impl PackagesApp {
           .map(|plan| preview_message(self.lang, plan))
           .unwrap_or_default()
       );
-      draw_confirmation(
+      draw_confirm(
         f,
         f.area(),
         &self.theme,
-        ConfirmationDialog {
+        ConfirmDialog {
           title: tr(self.lang, "control_center.confirm_transaction"),
           message: &message,
-          confirm_label: tr(self.lang, "control_center.apply"),
-          cancel_label: tr(self.lang, "control_center.cancel"),
-          confirm_selected: self.confirmation.confirm_selected,
+          confirm: tr(self.lang, "control_center.apply"),
+          cancel: tr(self.lang, "control_center.cancel"),
+          danger: a.is_destructive(),
+          deadline: None,
         },
-      )
+        &self.confirmation,
+      );
     }
     if let Some(s) = &self.status {
       status(f, f.area(), &self.theme, s)
@@ -1917,7 +1934,8 @@ fn action_message(lang: Lang, a: &Action) -> String {
     ),
   }
 }
-/// Executes the `preview_message` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+/// The transaction plan counters shown under the confirmation message, with
+/// the download size in readable units.
 fn preview_message(lang: Lang, plan: &TransactionPlan) -> String {
   format!(
     "\n\n{}: {}\n{}: {}\n{}: {}",
@@ -1925,8 +1943,8 @@ fn preview_message(lang: Lang, plan: &TransactionPlan) -> String {
     plan.install.len(),
     tr(lang, "control_center.remove"),
     plan.remove.len(),
-    tr(lang, "control_center.download_bytes"),
-    plan.download_bytes
+    tr(lang, "control_center.download").trim_end_matches(':'),
+    human_bytes(plan.download_bytes)
   )
 }
 /// Executes the `run_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -2848,6 +2866,77 @@ mod tests {
       styled,
       "border should contrast with the background behind it"
     );
+  }
+
+  #[test]
+  fn confirmation_starts_on_cancel_and_answers_y_and_n() {
+    let mut app = app();
+    app.request(Action::RefreshDatabase);
+    assert!(!app.confirmation.is_confirm_focused());
+    assert_eq!(app.footer_hints(&app.rows()), confirm_hints(app.lang));
+    app.handle(KeyCode::Char('n'));
+    assert!(app.pending.is_none());
+    assert!(app.action.is_none());
+    app.request(Action::RefreshDatabase);
+    app.handle(KeyCode::Char('y'));
+    assert!(app.pending.is_none());
+    assert!(app.action.is_some(), "y runs the confirmed operation");
+    assert!(app.transaction_open);
+  }
+
+  #[test]
+  fn only_removals_cleanups_and_downgrades_use_the_danger_style() {
+    for action in [
+      Action::Remove(vec!["zsh".into()]),
+      Action::CleanCache("keep-one"),
+      Action::Downgrade("/tmp/zsh.pkg.tar.zst".into()),
+    ] {
+      assert!(action.is_destructive(), "{action:?}");
+    }
+    for action in [
+      Action::Install(vec!["zsh".into()]),
+      Action::Reinstall("zsh".into()),
+      Action::UpgradePackage("zsh".into()),
+      Action::Upgrade,
+      Action::RefreshDatabase,
+      Action::AurInstall("paru-bin".into()),
+      Action::ApplyMirrors(String::new()),
+    ] {
+      assert!(!action.is_destructive(), "{action:?}");
+    }
+  }
+
+  #[test]
+  fn plan_counters_show_a_readable_download_size() {
+    let lang = Lang::for_locale("en-US");
+    let message = preview_message(
+      lang,
+      &TransactionPlan {
+        install: vec![package("zsh", false)],
+        download_bytes: 5 * 1024 * 1024,
+        ..Default::default()
+      },
+    );
+    assert!(message.contains(": 1\n"), "{message}");
+    assert!(message.ends_with(": 5 MiB"), "{message}");
+  }
+
+  #[test]
+  fn aur_install_confirms_with_the_pkgbuild_warning_only() {
+    let mut app = app();
+    app.page = PackagesPage::Aur;
+    app.aur.push(AurPackage {
+      name: "paru-bin".into(),
+      ..Default::default()
+    });
+    app.handle(KeyCode::Enter);
+    press(&mut app, Item::Install);
+    assert!(app.plan.is_none(), "the AUR helper has no transaction plan");
+    assert_eq!(app.pending, Some(Action::AurInstall("paru-bin".into())));
+    assert!(app.preview.is_none());
+    let text = screen(&mut app, 100, 30);
+    assert!(text.contains("paru-bin"), "{text}");
+    assert!(!text.contains(": 0"), "{text}");
   }
 
   #[test]
