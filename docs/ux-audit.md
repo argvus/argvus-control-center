@@ -173,64 +173,79 @@ lista e `BlurSurface`. Ficam para a Fase 4 se confirmadas.
 
 ### 0.3 `argvus-control-center-settings`
 
-O `settings` desenha a própria lista (`ui/list.rs`) e já tem
-`row_selectable(index)`. Botões (`page_buttons`) ficam **depois** das linhas
-no mesmo cursor (`selected - rows.len()`), desenhados com
-`argvus_tui::buttons::draw`; `Tab` alterna entre lista e botões.
+Até a Fase 3, o `settings` desenhava a própria lista (`ui/list.rs`) com
+`row_selectable(index)`, e os botões (`page_buttons`) ficavam **depois** das
+linhas no mesmo cursor (`selected - rows.len()`), desenhados com
+`argvus_tui::buttons::draw`; `Tab` alternava entre lista e botões.
+
+**Fase 3 (2026-10-04): todas as linhas abaixo migradas.** Commits
+`2f694e3` (lista única), `c423f33` (linhas de rascunho) e `14e51c1`
+(`ConfirmDialog`); `argvus-tui` `0ee7a52` (títulos de seção) e `908e747`
+(ícones); `argvus-i18n` `c49a792`. O crate não tem mais `Button`,
+`ActionButton`, `on_buttons` nem linhas `[ ... ]`.
 
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
-| Aplicativos padrão, Fontes, seletores de app/fonte/ajuste | **`[ Reset Defaults ]`** | `PendingAction::Reset*` → confirmação → reset | Destructive `Restaurar padrões` (linha nova, D6) | `r` (mantido, D6), `Enter` na linha | pendente |
-| Atalhos de teclado | **`[ Restore all shortcuts ]`** | `ResetKeybindings` → confirmação | Destructive `Restaurar todos os atalhos` | `r`, `Enter` | pendente |
-| Aplicativos padrão | Categorias (11) | Abre seletor | Submenu | `Enter` | pendente |
-| Seletor de app | App (atual) | Define app padrão (imediato) | Choice | `Enter`, `/` busca | pendente |
-| Fontes | Alvos de fonte (7) + ajustes (4) | Abre seletor | Submenu | `Enter` | pendente |
-| Fontes | Tamanho | Ajusta tamanho | Value | `+ = -` | pendente |
-| Seletor de fonte/ajuste | Opção (atual) | Aplica (imediato) | Choice | `Enter`, `/` | pendente |
-| Localidade e região | Fuso, Data/hora, Locale regional, Locales do sistema, Teclado | Abre páginas | Submenu ×5 | `Enter` | pendente |
-| Data e hora | Data/hora local (só sem NTP) | Edita | Value (desabilitada com NTP ligado, como hoje) | `Enter` | pendente |
-| Data e hora | Fuso horário | Info | Info | — | pendente |
-| Data e hora | NTP automático | `SetNtp` → confirmação | Toggle confirmado | `Enter`/`Space` | pendente |
-| Locales do sistema | Locales `[x]` | Marca; aplicar = `ApplySystemLocales` → confirmação | Toggle + Action `Apply` (já confirmada) | `Space`, `Enter` | pendente |
-| Teclado | Layout, Variante, Mapa do console | Abre seletores | Submenu ×3 | `Enter` | pendente |
-| Teclado | Modelo, Opções | Info (já não selecionáveis) | Info | — | pendente |
-| Atalhos de teclado | Atalho (linhas com detalhe) | Abre edição | Submenu | `Enter`, `/` | pendente |
-| Edição de atalho | **`[ Change shortcut ]`** | Inicia captura | Action `Alterar atalho` | `Enter`, `e` | pendente |
-| Edição de atalho | **`[ Disable ]`** | Desativa atalho (imediato) | Action `Desativar` | `Enter` | pendente |
-| Edição de atalho | **`[ Restore default ]`** | Restaura padrão (imediato) | Action `Restaurar padrão` | `Enter` | pendente |
-| Captura de atalho | **`[ Apply ]` / `[ Try again ]`** | Aplica atalho capturado / recaptura | Action `Aplicar` (com tecla detectada) ou `Tentar de novo` | `Enter` | pendente |
-| Captura de atalho | **`[ Cancel ]`** | Cancela captura | Action `Cancelar` (Esc equivalente) | `Enter`, `Esc` | pendente |
-| Conflito de atalho | Popup | Substitui / cancela | Componente de confirmação | `r`, `Esc` | pendente |
-| Mouse e touchpad | Velocidade, aceleração, rolagem, mão esquerda, toque, ratbag (dispositivo, perfil, DPI, polling) | Ciclo de valores (imediato) | Toggle / Value / Choice conforme a linha | `←→ h l`, `Space` | pendente |
-| Idioma | Idiomas | Troca idioma (imediato) | Choice | `Enter` | pendente |
-| Sistema | Hostname | Popup de edição → aplica | Value | `Enter` | pendente |
-| Sistema | Usuários, Grupos | Abre páginas | Submenu | `Enter` | pendente |
-| Sistema | Não perturbe | Alterna (imediato) | Toggle | `Enter`/`Space` | pendente |
-| Sistema | Recarregar | `refresh_system` | Atalho mantido | `r` | pendente |
-| Usuários / Grupos | Criar, Lista, Contas do sistema | Abre páginas | Submenu | `Enter` | pendente |
-| Lista de usuários / contas do sistema | **`[ Reload ]`** | Recarrega | Action `Recarregar` | `Enter`, `r` (D6) | pendente |
-| Usuário | Campos (nome, grupos, shell, grupo primário) | Edita no rascunho | Value / Submenu | `Enter` | pendente |
-| Usuário | **`[ Save changes ]`** | `edit` → confirmação | Action `Salvar alterações` (confirmada) | `Enter` | pendente |
-| Usuário | **`[ Change password ]`** | Abre página de senha | Submenu | `Enter` | pendente |
-| Usuário | **`[ Lock password ]` / `[ Unlock password ]`** | `lock` → confirmação | Action ×2 (confirmadas) | `Enter` | pendente |
-| Usuário | **`[ Require password change at login ]`** | `expire-password` → confirmação | Action (confirmada) | `Enter` | pendente |
-| Usuário | **`[ Avatar image ]`** | Editor de caminho → confirmação | Value | `Enter` | pendente |
-| Usuário | **`[ Remove avatar ]`** | `avatar ""` → confirmação | Destructive | `Enter` | pendente |
-| Usuário | **`[ Delete user (keep home) ]`** | `delete` → confirmação | Destructive | `Enter` | pendente |
-| Usuário | **`[ Delete user and home ]`** | `delete remove_home` → confirmação | Destructive | `Enter` | pendente |
-| Criar usuário | Campos | Rascunho | Value | `Enter` | pendente |
-| Criar usuário | **`[ Create account (locked / with password) ]`** | `create` → confirmação | Action (confirmada) | `Enter` | pendente |
-| Senha do usuário | Campos + Salvar senha | `password` → confirmação | Value ×3 + Action | `Enter` | pendente |
-| Criar grupo | **`[ Create group ]`** | `create-group` → confirmação | Action (confirmada) | `Enter` | pendente |
-| Grupo | **`[ Save changes ]`** | `edit-group` → confirmação | Action (confirmada) | `Enter` | pendente |
-| Grupo | **`[ Edit members ]`** | Abre membros | Submenu | `Enter` | pendente |
-| Grupo | **`[ Delete group ]`** | `delete-group` → confirmação | Destructive | `Enter` | pendente |
-| Firewall | Configuração (`y`/`n` → `[x]`) | Alterna no rascunho | Toggle (rascunho) | `Space` | pendente |
-| Firewall | **`[ Save configuration ]`** | `save-config` → confirmação | Action `Salvar configuração` (confirmada) | `Enter` | pendente |
-| Firewall | **`[ Add iptables rules ]`** | Editor de regras → confirmação | Action (abre editor) | `Enter` | pendente |
-| Firewall | **`[ Apply saved rules ]`** | `restart` → confirmação | Action (confirmada) | `Enter` | pendente |
-| Firewall | **`[ Cancel ]`** (Danger) | `admin.load(true)`: descarta rascunho recarregando | Action `Cancelar` (descarta e permanece; ver D2) | `Enter` | pendente |
-| Editor de administração | Texto multilinha | Salva | Mantido | `Ctrl+S`, `Esc` | pendente |
+| Aplicativos padrão, Fontes, seletores de app/fonte/ajuste | **`[ Reset Defaults ]`** | `PendingAction::Reset*` → confirmação → reset | Destructive `Restaurar padrões` na seção Zona de perigo, no fim da página (D6) | `r` (mantido, D6), `Enter` na linha | migrado |
+| Atalhos de teclado | **`[ Restore all shortcuts ]`** | `ResetKeybindings` → confirmação | Destructive `Restaurar todos os atalhos` na Zona de perigo | `Enter` na linha | migrado |
+| Atalhos de teclado | `r` na lista | Restaurava **o atalho selecionado**, imediato e sem confirmação | Mesmo efeito (só o selecionado), agora pela confirmação única (D6, D19) | `r` | migrado |
+| Aplicativos padrão | Categorias (11) | Abre seletor | Submenu (com valor) | `Enter` | migrado |
+| Seletor de app | App (atual) | Define app padrão (imediato) | Choice | `Enter`, `/` busca | migrado |
+| Fontes | Alvos de fonte (7) + ajustes (4) | Abre seletor | Submenu ×11, nas seções Fontes e Renderização | `Enter` | migrado |
+| Fontes | Tamanho | Ajusta tamanho | Value (passo 1, 8–32) no topo do seletor; Enter abre prompt 8–32; vale ao aplicar uma fonte, como antes (D21) | `←→`, `+ = -`, `Enter` | migrado |
+| Seletor de fonte/ajuste | Opção (atual) | Aplica (imediato) | Choice | `Enter`, `/` | migrado |
+| Localidade e região | Fuso, Data/hora, Locale regional, Locales do sistema, Teclado | Abre páginas | Submenu ×5 | `Enter` | migrado |
+| Data e hora | Data/hora local (só sem NTP) | Edita | Value (desabilitada com NTP ligado, como hoje) | `Enter` | migrado |
+| Data e hora | Fuso horário | Info | Info | — | migrado |
+| Data e hora | NTP automático | `SetNtp` → confirmação | Toggle confirmado | `Enter`/`Space` | migrado |
+| Locales do sistema | Locales `[x]` | Marca; aplicar = `ApplySystemLocales` → confirmação | Toggle (rascunho; Enter também alterna) + `Aplicar` (`draft_actions`, última linha, apagada sem mudança, confirmada) (D20) | `Space`/`Enter`, `End` | migrado |
+| Teclado | Layout, Variante, Mapa do console | Abre seletores | Submenu ×3 | `Enter` | migrado |
+| Teclado | Modelo, Opções | Info (já não selecionáveis) | Info | — | migrado |
+| Layouts | Layout | Enter define o padrão; Space liga/desliga na lista | Toggle (`[x]` = na lista; valor "· Padrão" no padrão); Enter mantém "definir padrão"; o rodapé mostra `Enter Definir padrão` e `Space Alternar` (D22) | `Enter`, `Space` | migrado |
+| Atalhos de teclado | Atalho (linhas com detalhe) | Abre edição | Submenu, agrupado por seção | `Enter`, `/`, `Space` (liga/desliga) | migrado |
+| Edição de atalho | **`[ Change shortcut ]`** | Inicia captura | Action `Alterar atalho` | `Enter`, `e` | migrado |
+| Edição de atalho | **`[ Disable ]`** | Desativa atalho (imediato) | Action `Desativar` | `Enter` | migrado |
+| Edição de atalho | **`[ Restore default ]`** | Restaura padrão (imediato) | Action `Restaurar padrão` (imediata, como antes) | `Enter` | migrado |
+| Edição de atalho | `r` | Restaurava o atalho editado e voltava, sem confirmação | Mesmo efeito, pela confirmação única (D19) | `r` | migrado |
+| Captura de atalho | **`[ Apply ]` / `[ Try again ]`** | Aplica atalho capturado / recaptura | Action `Aplicar` (com tecla detectada) ou `Tentar de novo` (mesma linha) | `Enter` | migrado |
+| Captura de atalho | **`[ Cancel ]`** | Cancela captura | Action `Cancelar` | `Enter`, `Esc` | migrado |
+| Conflito de atalho | Popup | Substitui / cancela | Componente de confirmação (`Substituir`/`Cancelar`) | `r`, `y`, `Enter`, `Esc`/`n` | migrado |
+| Mouse e touchpad | Velocidade, aceleração, rolagem, mão esquerda, toque, ratbag (dispositivo, perfil, DPI, polling) | Ciclo de valores (imediato) | Value com passo / Toggle, nas seções Mouse, Touchpad e Mouse de hardware | `←→ h l`, `Space`, `Enter` | migrado |
+| Idioma | Idiomas | Troca idioma (imediato) | Choice (sem bandeira emoji) | `Enter` | migrado |
+| Sistema | Hostname | Página Hostname → popup de edição → aplica | Value; Enter abre o popup direto (a página continua na rota CLI) (D21) | `Enter` | migrado |
+| Sistema | Usuários, Grupos | Abre páginas | Submenu | `Enter` | migrado |
+| Sistema | Não perturbe | Alterna (imediato) | Toggle | `Enter`/`Space` | migrado |
+| Sistema | Recarregar | `refresh_system` | Atalho mantido | `r` | migrado |
+| Usuários / Grupos | Criar, Lista, Contas do sistema | Abre páginas | Submenu | `Enter` | migrado |
+| Lista de usuários / contas do sistema | **`[ Reload ]`** | Recarrega | Action `Recarregar` (primeira linha, como já era na lista de grupos) | `Enter`, `r` (D6) | migrado |
+| Usuário | Usuário, UID / GID, Home | Info | Info na seção Conta (não selecionáveis) | — | migrado |
+| Usuário | Campos (nome completo, shell, grupo principal, grupos suplementares) | Edita no rascunho | Value (nome) / Submenu (shell, grupos) na seção Conta | `Enter` | migrado |
+| Usuário | **`[ Save changes ]`** | `edit` → confirmação | `Salvar alterações` (`draft_actions`) logo após os campos, apagada sem mudança; Esc com rascunho pede descarte | `Enter` | migrado |
+| Usuário | **`[ Change password ]`** | Abre página de senha | Submenu na seção Senha | `Enter` | migrado |
+| Usuário | **`[ Lock password ]` / `[ Unlock password ]`** | `lock` → confirmação | Action ×2 na seção Senha. **Não fundidas:** o snapshot do `argvus-accounts` não informa o estado de bloqueio (D17) | `Enter` | migrado |
+| Usuário | **`[ Require password change at login ]`** | `expire-password` → confirmação | Action (confirmada) na seção Senha | `Enter` | migrado |
+| Usuário | **`[ Avatar image ]`** | Editor de caminho → confirmação | Action na seção Avatar (abre o mesmo editor) | `Enter` | migrado |
+| Usuário | **`[ Remove avatar ]`** | `avatar ""` → confirmação | Action na seção Avatar, confirmação sem estilo de perigo (D18) | `Enter` | migrado |
+| Usuário | **`[ Delete user (keep home) ]`** | `delete` → confirmação | Destructive na Zona de perigo, confirmação com estilo de perigo | `Enter` | migrado |
+| Usuário | **`[ Delete user and home ]`** | `delete remove_home` → confirmação | Destructive na Zona de perigo, confirmação com estilo de perigo | `Enter` | migrado |
+| Criar usuário | Campos | Rascunho | Value / Submenu na seção Conta | `Enter` | migrado |
+| Criar usuário | **`[ Create account (locked / with password) ]`** | `create` → confirmação | `draft_actions` (rótulo dinâmico, apagada com o formulário vazio) | `Enter` | migrado |
+| Senha do usuário | Campos + Salvar senha | `password` → confirmação | Value ×3 + `Salvar senha` (`draft_actions`) | `Enter` | migrado |
+| Shell / Grupo principal | Opção `[x]` | Escolhe no rascunho e volta | Choice (`●`) | `Enter` | migrado |
+| Grupos suplementares / Membros | Opção `[x]` | Alterna no rascunho | Toggle; o grupo principal fica desabilitado | `Enter`/`Space` | migrado |
+| Criar grupo | **`[ Create group ]`** | `create-group` → confirmação | `draft_actions` (apagada sem nome) | `Enter` | migrado |
+| Grupo | **`[ Save changes ]`** | `edit-group` → confirmação | `draft_actions` após Nome/GID/Membros | `Enter` | migrado |
+| Grupo | **`[ Edit members ]`** | Abre membros | Submenu `Membros` (com a lista no valor) | `Enter` | migrado |
+| Grupo | **`[ Delete group ]`** | `delete-group` → confirmação | Destructive na Zona de perigo, confirmação com estilo de perigo | `Enter` | migrado |
+| Firewall | Serviço (Ativo/Parado), Iniciar no boot | Linhas que já pediam confirmação | Linha de estado `Serviço · Ativo/Parado` (Enter alterna, confirmado) + Toggle `Iniciar no boot` (confirmado), na seção Serviço (D23) | `Enter` | migrado |
+| Firewall | Configuração (`y`/`n` → `[x]`) | Alterna no rascunho | Toggle (rascunho); nível de proteção = Value com passo; demais = Value | `Space`/`Enter`, `←→` | migrado |
+| Firewall | **`[ Save configuration ]`** | `save-config` → confirmação | `draft_actions` no fim da seção Configuração | `Enter` | migrado |
+| Firewall | **`[ Add iptables rules ]`** | Editor de regras → confirmação | Action na seção Regras (abre o editor) | `Enter` | migrado |
+| Firewall | **`[ Apply saved rules ]`** | `restart` → confirmação | Action confirmada na seção Regras, fora da Zona de perigo; a confirmação avisa que o firewall será reiniciado (D18) | `Enter` | migrado |
+| Firewall | **`[ Cancel ]`** (Danger) | `admin.load(true)`: descarta rascunho recarregando | Action `Cancelar alterações` logo após Salvar (recarrega e permanece, D2) | `Enter` | migrado |
+| Páginas com rascunho (Usuário, Criar usuário, Senha, Grupo, Criar grupo, Firewall, Locales) | `Esc` | Saía em silêncio (o rascunho ficava na memória ou se perdia) | `Esc`/`←` pede confirmação (Descartar/Cancelar, foco em Cancelar); descartar volta ao estado carregado; subpáginas do mesmo rascunho não perguntam | `Esc` | migrado |
+| Página Usuário / Grupo | Recarregar (snapshot) | Trocava o rascunho pelo snapshot | Rascunho com alterações é mantido (D15) | `r` | migrado |
+| Editor de administração | Texto multilinha | Salva | Mantido | `Ctrl+S`, `Esc` | migrado |
 
 ### 0.4 `argvus-control-center-displays`
 
@@ -585,12 +600,16 @@ Sessões › = `LAYOUT`; editores de valor = `BLUR` / `OPACITY`; `Apply` =
 | session > Home | Componentes / Autostart / Diagnóstico / Logs | `APPS` / `BOOT` / `DIAGNOSTICS` / `LOGS` | `APPS` / `AUTOSTART` / `DIAGNOSTICS` / `LOGS` |
 | settings > Localidade | Fuso / Data e hora / Locale regional / Locales do sistema / Teclado | `NETWORK` / `HISTORY` / `NETWORK` / `APPS` / `KEYBOARD` | `CLOCK` / `CALENDAR` / `EARTH` / `TRANSLATE` / `KEYBOARD` |
 | settings > Data e hora | Local / Fuso / NTP / RTC | `HISTORY` / `NETWORK` / `SATELLITE` / `BATTERY` | `CALENDAR` / `CLOCK` / `SATELLITE` / sem ícone (Info) |
-| settings > Teclado | Layout / Variante / Modelo / Opções / Console | `KEYBOARD` / `FONTS` / `MOUSE` / `SETTINGS` / `MONITOR` | `KEYBOARD` / `EDIT` / sem ícone / sem ícone / `TERMINAL` |
-| settings > Sistema | Hostname / Usuários / Grupos / Não perturbe | `MONITOR` / `USER` / `USERS` / `BELL(_OFF)` | `MONITOR` / `USER` / `USERS` / `BELL`/`BELL_OFF` (codepoints corrigidos) |
+| settings > Teclado | Layout / Variante / Modelo / Opções / Console | `KEYBOARD` / `FONTS` / `MOUSE` / `SETTINGS` / `MONITOR` | `KEYBOARD` / `KEYBOARD_VARIANT` (Fase 3) / sem ícone / sem ícone / `TERMINAL` |
+| settings > Sistema | Hostname / Usuários / Grupos / Não perturbe | `MONITOR` / `USER` / `USERS` / `BELL(_OFF)` | `MONITOR` / `USER` / `GROUP` / `BELL_OFF` fixo (o estado fica no `[x]`) (Fase 3) |
 | settings > Apps padrão | Navegador / Launcher / Terminal | `NETWORK` / `BOOT` / `MONITOR` | `EARTH` / `LAUNCHER` / `TERMINAL` |
 | settings > Fontes | Taskbar / Sysinfo / Control Panel / Sistema / Apps / Terminal / Navegador | `MONITOR` / `DIAGNOSTICS` / `SETTINGS` / `SERVICES` / `PACKAGES` / `KEYBOARD` / `NETWORK` | `TASKBAR` / `DIAGNOSTICS` / `CONTROL_PANEL` / `SETTINGS` / `APPS` / `TERMINAL` / `EARTH` |
 | settings > Fontes | Antialiasing / Hinting / Subpixel / DPI | `SUCCESS` / `SEARCH` / `PALETTE` / `STORAGE` | `EFFECT` / `RULER` / `PALETTE` / `MONITOR` (→ D9) |
-| storage > Home | Resumo / Discos / Partições / Sistemas de arquivos / Pontos de montagem / SMART / Uso | `STORAGE` ×5, `LOCK`, `STORAGE` | `INFO` / `STORAGE` / `LAYOUT` / `FOLDER` / `LINK` / `DIAGNOSTICS` / `DIAGNOSTICS` (SMART e Uso repetem: → D9) |
+| settings > Usuários | Criar / Lista / Contas do sistema | — | `ADD` / `USERS` / `ACCOUNT_COG` (Fase 3) |
+| settings > Usuário | Nome completo / Shell / Grupo principal / Grupos suplementares | — (botões sem ícone) | `ID_CARD` / `TERMINAL` / `ACCOUNT_STAR` / `GROUP` (Fase 3) |
+| settings > Usuário | Alterar senha / Bloquear / Desbloquear / Exigir troca / Imagem do avatar / Remover avatar / Excluir (manter home) / Excluir e home | — | `KEY` / `LOCK` / `LOCK_OPEN` / `LOCK_RESET` / `AVATAR` / `IMAGE_REMOVE` / `ACCOUNT_REMOVE` / `DELETE_FOREVER` (Fase 3) |
+| settings > Firewall | Serviço / Iniciar no boot / Cancelar alterações / Adicionar regras / Aplicar regras salvas | — | `SHIELD` / `AUTOSTART` / `CANCEL` / `SCRIPT` / `SHIELD_REFRESH` (Fase 3) |
+| settings > Atalhos | Alterar / Desativar / Restaurar padrão; Restaurar todos | — | `EDIT` / `KEYBOARD_OFF` / `RESTORE`; `RESTORE` (Fase 3) || storage > Home | Resumo / Discos / Partições / Sistemas de arquivos / Pontos de montagem / SMART / Uso | `STORAGE` ×5, `LOCK`, `STORAGE` | `INFO` / `STORAGE` / `LAYOUT` / `FOLDER` / `LINK` / `DIAGNOSTICS` / `DIAGNOSTICS` (SMART e Uso repetem: → D9) |
 | storage | `disk_icon`, `partition_icon` (SWAP = `REFRESH`, cifrado = `LOCK`) | — | SWAP = `MEMORY`; manter `LOCK` |
 
 Itens marcados com "→ D9" têm mais de uma proposta razoável; a escolha final
@@ -784,7 +803,7 @@ Notas de projeto:
 | 1 | Testes de cursor e confirmação | concluída (junto com cada componente) |
 | 1 | Campo de texto ativo captura `q`/`?` (D10) | concluída (`argvus-control-center` `5b346ca`) |
 | 2 | `appearance` | concluída (`2f57d07`, `75d3dc1`, `4737a4c`; `argvus-i18n` `a62346d`) |
-| 3 | `settings` | pendente |
+| 3 | `settings` | concluída (`2f694e3`, `c423f33`, `14e51c1`; `argvus-tui` `0ee7a52`, `908e747`; `argvus-i18n` `c49a792`) |
 | 3 | `displays` | pendente |
 | 3 | `boot` | pendente |
 | 3 | `packages` | pendente |
@@ -895,6 +914,88 @@ Achados para a Fase 4 (sem alteração):
   `navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help`.
   Conferir uso nos outros crates antes de remover.
 
+### 5.3 Notas da Fase 3: `settings` (2026-10-04)
+
+Dependências: como na Fase 2, compila contra `argvus-tui` e `argvus-i18n`
+na branch `ux_ui`. Em execução, os títulos de seção (`section_*`,
+`danger_zone`), `shell`, `home_directory`, `uid_gid`, `gid`, `groups_label`,
+`font_size`, `discard_config_changes`, `replace`, `set_default`,
+`apply_saved_rules_description` e `restore_shortcut_*` exigem o
+`argvus-i18n` instalado a partir de `ux_ui`; sem elas a tela mostra a chave.
+
+Componentes novos no `argvus-tui`: `Row::section(título)` (separador com
+título na cor de destaque, sem `--`, com valor opcional à direita) e 16
+glyphs no catálogo (`KEY`, `LOCK_OPEN`, `LOCK_RESET`, `AVATAR`,
+`IMAGE_REMOVE`, `ACCOUNT_REMOVE`, `DELETE_FOREVER`, `ACCOUNT_COG`,
+`ACCOUNT_STAR`, `GROUP`, `ID_CARD`, `KEYBOARD_VARIANT`, `KEYBOARD_OFF`,
+`FONT_SIZE`, `SCRIPT`, `SHIELD_REFRESH`), todos conferidos na fonte.
+
+Mudanças de comportamento, além da apresentação:
+
+- `Tab`/`BackTab` não fazem mais nada no `settings` (não há abas); `←/→`
+  não navegam mais entre botões.
+- Locales do sistema: Enter numa linha alterna o locale (antes aplicava de
+  qualquer linha); `Aplicar` é a última linha, apagada sem mudança (D20).
+- Fontes: o Tamanho é a primeira linha do seletor (Value), com prompt 8–32
+  no Enter (D21).
+- Sistema > Hostname abre o popup direto (D21).
+- Idioma: sem bandeiras emoji nem "· em uso"; o `●` marca o atual.
+- Shell e Grupo principal usam `●`; Grupos suplementares, Membros e
+  Layouts usam a coluna `[x]`.
+- `Salvar`/`Criar`/`Aplicar` ficam apagados sem mudança; `Esc` com
+  rascunho pergunta antes de descartar e o descarte volta ao estado
+  carregado; o snapshot não troca um rascunho alterado (D15).
+- `r` na lista e na edição de atalhos restaura o atalho (só o
+  selecionado/editado) depois da confirmação (D19); `r` também recarrega
+  as listas de usuários e grupos.
+- Confirmações usam o componente único (`y`/`n`, `↑↓/jk/Tab`); exclusões
+  de usuário e grupo e as restaurações de padrões usam o estilo de perigo.
+- O conflito de atalho virou o componente de confirmação; `Esc` na rota
+  principal agora cancela o conflito em vez de voltar de página por trás
+  do popup (`argvus-control-center/src/event.rs`).
+
+Correções encontradas na migração:
+
+- `Space` na lista de atalhos alternava o último atalho **editado**
+  (`keybinding_edit_id` nunca era limpo) em vez do selecionado.
+- A busca da lista de contas do sistema sempre mantinha o primeiro usuário
+  (o filtro preservava o índice 0, que só era o `Reload` na lista de grupos).
+- Itens de listas filtradas (fusos, fontes, apps, layouts, usuários,
+  grupos) eram resolvidos recontando as linhas visíveis; agora cada linha
+  carrega o índice da lista original.
+
+Removido: `ui/list.rs` (lista própria), `ui/buttons.rs`, o popup
+`draw_keybinding_editor` e as linhas `keybinding_picker_rows`/
+`select_keybinding_picker`, todos sem chamador.
+
+Verificação visual: a 80x24 (tmux), Fontes e Sistema renderizam com
+seções, ícones, `›` e Zona de perigo no fim. Neste ambiente o tmux não
+entrega teclas ao app (nem à Home, que não mudou), então a navegação foi
+validada só pelos testes.
+
+Achados para a Fase 4 (sem alteração):
+
+- Chaves i18n que o `settings` deixou de usar:
+  `navigate_enter_open_help_q_quit`,
+  `navigate_enter_open_tab_actions_esc_back_help`,
+  `navigate_tab_actions_move_enter_activate_search_esc_back_help`,
+  `navigate_enter_apply_size_search_tab_actions_esc_back_help`,
+  `navigate_space_toggle_search_enter_apply_esc_back`, `keybindings_help`,
+  `keybindings_editor_actions`, `keybindings_capture_help`,
+  `keybindings_editor_navigation`, `keybindings_choose_replace`,
+  `navigate_space_enable_enter_default_search_esc_back_help`,
+  `navigate_enter_apply_search_esc_back_help`, `enter_edit_esc_back_help`,
+  `navigate_enter_apply_esc_back_help`,
+  `navigate_tab_actions_move_enter_activate_esc_back_help`,
+  `navigate_search_enter_open_esc_back_help`,
+  `fields_tab_switch_actions_enter_activate_esc_back_help`,
+  `navigate_enter_open_esc_back_help`, `enter_confirm_esc_cancel`,
+  `cancel_f8378f`, `identity`, `information`, `in_use`. Nenhuma é usada
+  por outro crate (conferido com `git grep`), exceto a asserção de teste de
+  `cancel_f8378f`.
+- `App::keybinding_editor_state` ficou sem chamador.
+- Mouse e touchpad: as linhas seguem sem ícone, como antes (D9 provisório).
+
 ---
 
 ## 6. Pontos de decisão
@@ -914,11 +1015,18 @@ Achados para a Fase 4 (sem alteração):
 | D9 | Recomendação aceita: ícones com mais de uma opção são decididos com captura de tela, na migração de cada crate. No `appearance`, aprovada a proposta da Fase 2 (seção 1.4). | decidido para o `appearance`; provisório para os demais crates |
 | D10 | Incluir. Campo de texto ativo captura as teclas; `q` e `?` globais não fecham o app nem abrem a ajuda durante a digitação. | decidido (Fase 1) |
 | D11 | Fora do escopo. Mouse nas páginas de domínio fica para outra tarefa; o critério "com e sem mouse" vale para a Home (que já trata clique) e não é exigido das páginas de domínio neste refactor. | decidido |
-| D12 | Recomendação aceita: hints em inglês fixo resolvidos pelo rodapé contextual; chave i18n nova para `Hostname`. | decidido (confirmado na Fase 2; `Hostname` pendente no `settings`) |
+| D12 | Recomendação aceita: hints em inglês fixo resolvidos pelo rodapé contextual; chave i18n nova para `Hostname`. | decidido (confirmado na Fase 2; `Hostname` resolvido na Fase 3 com `control_center.hostname`) |
 | D13 | `docs/ux-audit.md` entra no `ignorePaths` do `cspell.json`. Verificado: o site só publica `docs/en/` e `docs/pt-br/`; arquivos na raiz de `docs/` são ignorados (`web/argvus-website/src/lib/documentation/loader.ts`, filtro de locale `en`/`pt-br`). | decidido |
 | D14 | `Home/End` navegam (D3); para preservar o 0/100 direto, Enter numa linha Value com passo abre o prompt numérico 0–100, que grava só no rascunho (`Apply` continua necessário). | decidido (Fase 2) |
 | D15 | Recarregar (`r` ou o automático ao entrar numa página) preserva um rascunho com alterações e só reconstrói um rascunho limpo. | decidido (Fase 2) |
 | D16 | `Space` não é removido no `appearance`: continua ativando Action, Submenu e Choice (e abrindo o editor de Value sem passo), tratado na página sem mudar o padrão do componente para os outros crates. | decidido (Fase 2) |
+| D17 | `Bloquear senha`/`Desbloquear senha` continuam duas linhas: o snapshot do `argvus-accounts` não traz o estado de bloqueio (`crates/argvus-accounts-core/src/admin.rs`, objeto `users`). | decidido (Fase 3) |
+| D18 | `Remover avatar`: Action com confirmação, sem estilo de perigo, na seção Avatar. `Aplicar regras salvas`: Action confirmada na seção Regras, fora da Zona de perigo; a confirmação avisa que o firewall será reiniciado. | decidido (Fase 3) |
+| D19 | `r` em Atalhos mantém o efeito de antes (restaura **só o atalho selecionado**; na edição, o atalho editado e volta) e passa pela confirmação única, como o D6 exige. `Restaurar todos os atalhos` é a linha Destructive da Zona de perigo. A linha `Restaurar padrão` da edição continua imediata, como antes. | decidido (Fase 3) |
+| D20 | Locales do sistema: Enter numa linha alterna o locale; `Aplicar` é a última linha (rascunho, confirmada). | decidido (Fase 3) |
+| D21 | Fontes: Tamanho vira Value no topo do seletor (prompt 8–32 no Enter). Sistema > Hostname abre o popup direto; a página Hostname segue para a rota CLI. | decidido (Fase 3) |
+| D22 | Layouts: Enter define o padrão e Space liga/desliga o layout na lista; o rodapé mostra as duas teclas (`Enter Definir padrão`, `Space Alternar`). | decidido (Fase 3) |
+| D23 | Firewall: Iniciar/Parar viram uma linha de estado `Serviço · Ativo/Parado` cuja Enter alterna (o backend informa `active`), confirmada como antes. | decidido (Fase 3) |
 
 Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
 `[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram
