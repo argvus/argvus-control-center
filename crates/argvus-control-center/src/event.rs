@@ -355,6 +355,8 @@ mod tests {
       .push(argvus_control_center_settings::Page::CreateUser);
     app.settings.normalize_selection();
     app.settings.open_or_apply();
+    app.settings.normalize_selection();
+    app.settings.open_or_apply();
     handle(&mut app, press(KeyCode::Char('q')));
     handle(&mut app, press(KeyCode::Char('?')));
     assert!(!app.quit);
@@ -364,7 +366,7 @@ mod tests {
     assert!(app.settings.admin.editor.is_none());
     assert_eq!(
       app.settings.page(),
-      argvus_control_center_settings::Page::CreateUser
+      argvus_control_center_settings::Page::UserAvatar
     );
   }
 
