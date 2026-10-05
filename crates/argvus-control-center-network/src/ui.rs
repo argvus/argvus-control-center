@@ -20,17 +20,18 @@ use argvus_control_center_settings::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  buttons::{Button, ButtonKind},
   components::{
     ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
     draw_confirmation,
   },
-  page::{Selection, list, readonly, shell, status},
+  hints::{HintContext, hints},
+  icons,
+  menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu},
+  page::{shell, status},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use ratatui::{
   Frame,
-  layout::{Constraint, Layout},
   text::Line,
   widgets::{Block, Clear, Paragraph},
 };
@@ -39,10 +40,8 @@ use ratatui::{
 pub struct NetworkApp {
   pub page: NetworkPage,
   detail_parent: NetworkPage,
-  selected: Selection,
-  on_buttons: bool,
-  button_selected: usize,
-  button_from: Option<usize>,
+  menu: MenuState,
+  list_height: u16,
   snapshot: NetworkSnapshot,
   job: Option<JobHandle<Result<NetworkSnapshot, String>>>,
   updates: Option<std::sync::mpsc::Receiver<NetworkSnapshot>>,
@@ -64,16 +63,25 @@ pub struct NetworkApp {
   firewall: Option<SettingsApp>,
 }
 
+/// Stable identity of a Network menu row. List items carry their index in
+/// the snapshot, so filtering never points an action at another network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum ActionButton {
+enum Item {
+  /// A page opened from the Network home.
+  Open(NetworkPage),
+  /// Index into `snapshot.interfaces`; Enter opens its details.
+  Interface(usize),
+  /// Index into `snapshot.wifi`; Enter connects.
+  WifiNetwork(usize),
+  /// Index into `snapshot.vpn`; Enter connects.
+  VpnConnection(usize),
+  WifiToggle,
   Connect,
   Disconnect,
   Forget,
-  WifiToggle,
+  Refresh,
   DnsManual,
   DnsAutomatic,
-  Refresh,
 }
 
 impl NetworkApp {
@@ -82,15 +90,13 @@ impl NetworkApp {
     self.theme = theme.clone();
   }
 
-  /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Builds the Network page on the home list, with no snapshot loaded.
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: NetworkPage::Home,
       detail_parent: NetworkPage::Interfaces,
-      selected: Selection::default(),
-      on_buttons: false,
-      button_selected: 0,
-      button_from: None,
+      menu: MenuState::default(),
+      list_height: 0,
       snapshot: Default::default(),
       job: None,
       updates: None,
@@ -193,7 +199,6 @@ impl NetworkApp {
         Ok(Ok(snapshot)) => {
           self.accept_snapshot(snapshot);
           self.refreshed = Some(std::time::Instant::now());
-          self.selected.normalize(self.row_count());
           if self.status.is_none() {
             self.status = Some(StatusMessage {
               kind: StatusKind::Success,
@@ -234,25 +239,40 @@ impl NetworkApp {
     changed
   }
 
+  /// Replaces the snapshot. A detail page follows the same network even when
+  /// a refresh reorders the lists, and falls back to its list when it is gone.
   fn accept_snapshot(&mut self, snapshot: NetworkSnapshot) {
-    let selected_name = self
-      .current_index()
-      .and_then(|index| self.snapshot.interfaces.get(index))
-      .map(|interface| interface.name.clone());
+    let interface = match self.page {
+      NetworkPage::Detail(i) => self.snapshot.interfaces.get(i).map(|v| v.name.clone()),
+      _ => None,
+    };
+    let wifi = match self.page {
+      NetworkPage::WifiDetail(i) => self.snapshot.wifi.get(i).map(|w| w.ssid.clone()),
+      _ => None,
+    };
+    let vpn = match self.page {
+      NetworkPage::VpnDetail(i) => self.snapshot.vpn.get(i).map(|v| v.name.clone()),
+      _ => None,
+    };
     self.snapshot = snapshot;
-    if let (NetworkPage::Detail(_), Some(name)) = (self.page, selected_name) {
-      if let Some(index) = self
-        .snapshot
-        .interfaces
-        .iter()
-        .position(|interface| interface.name == name)
-      {
-        self.page = NetworkPage::Detail(index);
-      } else {
-        self.page = NetworkPage::Interfaces;
-      }
+    if let (NetworkPage::Detail(_), Some(name)) = (self.page, interface) {
+      self.page = match self.snapshot.interfaces.iter().position(|v| v.name == name) {
+        Some(index) => NetworkPage::Detail(index),
+        None => NetworkPage::Interfaces,
+      };
     }
-    self.selected.normalize(self.row_count());
+    if let (NetworkPage::WifiDetail(_), Some(ssid)) = (self.page, wifi) {
+      self.page = match self.snapshot.wifi.iter().position(|w| w.ssid == ssid) {
+        Some(index) => NetworkPage::WifiDetail(index),
+        None => NetworkPage::Wifi,
+      };
+    }
+    if let (NetworkPage::VpnDetail(_), Some(name)) = (self.page, vpn) {
+      self.page = match self.snapshot.vpn.iter().position(|v| v.name == name) {
+        Some(index) => NetworkPage::VpnDetail(index),
+        None => NetworkPage::Vpn,
+      };
+    }
   }
   /// Executes the `action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn action<F>(&mut self, label: &'static str, task: F)
@@ -331,19 +351,32 @@ impl NetworkApp {
       format!("{root} > {}", self.page_label())
     }
   }
-  /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn page_label(&self) -> &'static str {
+  /// Label of the current page, as shown in the breadcrumb.
+  fn page_label(&self) -> String {
+    let label = |key| tr(self.lang, key).to_owned();
     match self.page {
-      NetworkPage::Home => tr(self.lang, "control_center.network"),
-      NetworkPage::Status => tr(self.lang, "control_center.status"),
-      NetworkPage::Interfaces => tr(self.lang, "control_center.interfaces"),
-      NetworkPage::Wifi => tr(self.lang, "control_center.wi_fi"),
-      NetworkPage::Ethernet => tr(self.lang, "control_center.ethernet"),
-      NetworkPage::Vpn => tr(self.lang, "control_center.vpn"),
-      NetworkPage::Dns => tr(self.lang, "control_center.dns"),
-      NetworkPage::Proxy => tr(self.lang, "control_center.proxy"),
-      NetworkPage::Firewall => tr(self.lang, "control_center.firewall"),
-      NetworkPage::Detail(_) => tr(self.lang, "control_center.interface"),
+      NetworkPage::Home => label("control_center.network"),
+      NetworkPage::Status => label("control_center.status"),
+      NetworkPage::Interfaces => label("control_center.interfaces"),
+      NetworkPage::Wifi => label("control_center.wi_fi"),
+      NetworkPage::Ethernet => label("control_center.ethernet"),
+      NetworkPage::Vpn => label("control_center.vpn"),
+      NetworkPage::Dns => label("control_center.dns"),
+      NetworkPage::Proxy => label("control_center.proxy"),
+      NetworkPage::Firewall => label("control_center.firewall"),
+      NetworkPage::Detail(_) => label("control_center.interface"),
+      NetworkPage::WifiDetail(i) => self
+        .snapshot
+        .wifi
+        .get(i)
+        .map(|w| terminal_text(&w.ssid))
+        .unwrap_or_else(|| label("control_center.wi_fi")),
+      NetworkPage::VpnDetail(i) => self
+        .snapshot
+        .vpn
+        .get(i)
+        .map(|v| terminal_text(&v.name))
+        .unwrap_or_else(|| label("control_center.vpn")),
     }
   }
   /// Executes the `connect_wifi` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -436,19 +469,30 @@ impl NetworkApp {
       .map(|(i, _)| i)
       .collect()
   }
-  /// Executes the `current_index` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Index into the snapshot of the interface, Wi-Fi network or VPN shown by
+  /// a detail page.
   fn current_index(&self) -> Option<usize> {
     match self.page {
-      NetworkPage::Wifi => self.visible_wifi().get(self.selected.index).copied(),
-      NetworkPage::Interfaces | NetworkPage::Ethernet => {
-        self.visible_interfaces().get(self.selected.index).copied()
-      }
-      NetworkPage::Detail(index) => Some(index),
-      NetworkPage::Vpn => self.visible_vpn().get(self.selected.index).copied(),
+      NetworkPage::Detail(index)
+      | NetworkPage::WifiDetail(index)
+      | NetworkPage::VpnDetail(index) => Some(index),
       _ => None,
     }
   }
-  /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// The menu row under the cursor, if any.
+  fn selected_item(&self) -> Option<Item> {
+    let rows = self.rows();
+    let mut menu = self.menu;
+    menu.normalize(&rows);
+    menu.selected_id(&rows)
+  }
+  /// Whether the page is a list that accepts `/` to filter.
+  fn is_list_page(&self) -> bool {
+    matches!(
+      self.page,
+      NetworkPage::Interfaces | NetworkPage::Ethernet | NetworkPage::Wifi | NetworkPage::Vpn
+    )
+  }
   /// Whether typed characters currently go to text (Wi-Fi password, manual
   /// DNS, the list filter, or a text field of the embedded firewall page), so
   /// `q`/`?` must not act as the global quit/help keys. Mirrors the
@@ -531,233 +575,181 @@ impl NetworkApp {
         KeyCode::Enter => {}
         _ => {}
       }
-      self.selected.index = 0;
+      self.menu = MenuState::default();
       return false;
     }
-    if self.on_buttons && !self.buttons().is_empty() {
-      match key {
-        KeyCode::Tab => {
-          self.toggle_buttons(false);
-          return false;
-        }
-        KeyCode::BackTab => {
-          self.toggle_buttons(true);
-          return false;
-        }
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.move_button(-1);
-          return false;
-        }
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.move_button(1);
-          return false;
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => {
-          self.activate_button();
-          return false;
-        }
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => return false,
-        _ => {}
-      }
-    }
+    let rows = self.rows();
+    let page_size = usize::from(self.list_height.max(1));
     match key {
-      KeyCode::Esc | KeyCode::Left => {
-        if self.page == NetworkPage::Home {
-          return true;
-        }
-        if matches!(self.page, NetworkPage::Detail(_)) {
-          self.page = self.detail_parent;
-        } else {
-          self.page = NetworkPage::Home;
-        }
-        self.selected.index = 0;
-        self.on_buttons = false;
-        self.button_from = None;
-      }
-      KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
       KeyCode::Char('r') => self.start_refresh(self.page == NetworkPage::Wifi),
-      KeyCode::Char('/')
+      KeyCode::Char('/') if self.is_list_page() => self.search = Some(String::new()),
+      KeyCode::Char('i')
         if matches!(
-          self.page,
-          NetworkPage::Interfaces | NetworkPage::Ethernet | NetworkPage::Wifi | NetworkPage::Vpn
+          self.selected_item(),
+          Some(Item::WifiNetwork(_) | Item::VpnConnection(_))
         ) =>
       {
-        self.search = Some(String::new())
+        self.open_details()
       }
-      key if self.selected.handle(key, self.row_count(), 8) => {}
-      KeyCode::Enter | KeyCode::Right => self.open(),
-      _ => {}
+      _ => match self.menu.handle(key, &rows, page_size) {
+        MenuEvent::Back => return self.back(),
+        MenuEvent::Activate(item) | MenuEvent::Toggle(item) | MenuEvent::Confirm(item) => {
+          self.activate(item)
+        }
+        MenuEvent::Adjust(..) | MenuEvent::Moved | MenuEvent::None => {}
+      },
     }
     false
   }
-  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn toggle_buttons(&mut self, backwards: bool) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
+  /// Opens the details of the Wi-Fi network or VPN under the cursor (`i`).
+  fn open_details(&mut self) {
+    match self.selected_item() {
+      Some(Item::WifiNetwork(i)) => self.open_page_detail(NetworkPage::WifiDetail(i)),
+      Some(Item::VpnConnection(i)) => self.open_page_detail(NetworkPage::VpnDetail(i)),
+      _ => {}
     }
-    if self.on_buttons {
-      self.on_buttons = false;
-      if let Some(index) = self.button_from.take() {
-        self.selected.index = index;
-      }
+  }
+  /// Moves into a detail page, remembering the page it was opened from.
+  fn open_page_detail(&mut self, page: NetworkPage) {
+    self.detail_parent = self.page;
+    self.page = page;
+    self.menu = MenuState::default();
+    self.reload();
+  }
+  /// Opens a page from the Network home.
+  fn open_home_page(&mut self, page: NetworkPage) {
+    self.page = page;
+    self.menu = MenuState::default();
+    if page == NetworkPage::Firewall {
+      self.reload();
     } else {
-      self.button_from = Some(self.selected.index);
-      self.button_selected = if backwards { count - 1 } else { 0 };
-      self.on_buttons = true;
+      self.start_refresh(false);
     }
   }
-  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn move_button(&mut self, delta: isize) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    self.button_selected =
-      (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
-  }
-  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn activate_button(&mut self) {
-    let actions = self.buttons();
-    let Some((action, _)) = actions.get(self.button_selected) else {
-      return;
-    };
-    match *action {
-      ActionButton::Connect => self.connect_selected(),
-      ActionButton::Disconnect => self.disconnect_selected(),
-      ActionButton::Forget => self.forget_selected(),
-      ActionButton::WifiToggle => self.toggle_wifi(),
-      ActionButton::DnsManual => self.dns_input = Some(String::new()),
-      ActionButton::DnsAutomatic => self.apply_dns(""),
-      ActionButton::Refresh => self.start_refresh(self.page == NetworkPage::Wifi),
-    }
-  }
-  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn buttons(&self) -> Vec<(ActionButton, Button)> {
-    match self.page {
-      NetworkPage::Status => vec![
-        (
-          ActionButton::WifiToggle,
-          Button::new(
-            if self.snapshot.wifi_enabled == Some(false) {
-              tr(self.lang, "control_center.enable_wi_fi")
-            } else {
-              tr(self.lang, "control_center.disable_wi_fi")
-            },
-            ButtonKind::Secondary,
-          ),
-        ),
-        (
-          ActionButton::Refresh,
-          Button::new(
-            tr(self.lang, "control_center.refresh"),
-            ButtonKind::Secondary,
-          ),
-        ),
-      ],
-      NetworkPage::Interfaces | NetworkPage::Ethernet | NetworkPage::Vpn => vec![
-        (
-          ActionButton::Connect,
-          Button::new(tr(self.lang, "control_center.connect"), ButtonKind::Primary),
-        ),
-        (
-          ActionButton::Disconnect,
-          Button::new(
-            tr(self.lang, "control_center.disconnect"),
-            ButtonKind::Danger,
-          ),
-        ),
-        (
-          ActionButton::Refresh,
-          Button::new(
-            tr(self.lang, "control_center.refresh"),
-            ButtonKind::Secondary,
-          ),
-        ),
-      ],
-      NetworkPage::Wifi => vec![
-        (
-          ActionButton::Connect,
-          Button::new(tr(self.lang, "control_center.connect"), ButtonKind::Primary),
-        ),
-        (
-          ActionButton::Disconnect,
-          Button::new(
-            tr(self.lang, "control_center.disconnect"),
-            ButtonKind::Secondary,
-          ),
-        ),
-        (
-          ActionButton::Forget,
-          Button::new(tr(self.lang, "control_center.forget"), ButtonKind::Danger),
-        ),
-        (
-          ActionButton::Refresh,
-          Button::new(
-            tr(self.lang, "control_center.refresh"),
-            ButtonKind::Secondary,
-          ),
-        ),
-      ],
-      NetworkPage::Dns => vec![
-        (
-          ActionButton::DnsManual,
-          Button::new(
-            tr(self.lang, "control_center.manual_dns"),
-            ButtonKind::Secondary,
-          ),
-        ),
-        (
-          ActionButton::DnsAutomatic,
-          Button::new(
-            tr(self.lang, "control_center.automatic_dns"),
-            ButtonKind::Primary,
-          ),
-        ),
-        (
-          ActionButton::Refresh,
-          Button::new(
-            tr(self.lang, "control_center.refresh"),
-            ButtonKind::Secondary,
-          ),
-        ),
-      ],
-      NetworkPage::Proxy | NetworkPage::Detail(_) => vec![(
-        ActionButton::Refresh,
-        Button::new(
-          tr(self.lang, "control_center.refresh"),
-          ButtonKind::Secondary,
-        ),
-      )],
-      _ => Vec::new(),
-    }
-  }
-  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn footer_hints(&self) -> &'static str {
-    let action = tr(
-      self.lang,
-      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
-    );
-    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
-    let home = tr(
-      self.lang,
-      "control_center.navigate_enter_open_esc_back_r_refresh_help",
-    );
+  /// Leaves a page for its parent and puts the cursor back on the row that
+  /// opened it. Returns `true` when the Network page itself should close.
+  fn back(&mut self) -> bool {
     if self.page == NetworkPage::Home {
-      home
-    } else if self.page == NetworkPage::Firewall {
-      ""
-    } else if !self.buttons().is_empty() {
-      action
-    } else {
-      readonly
+      return true;
     }
+    let from = self.page;
+    let parent = match from {
+      NetworkPage::Detail(_) | NetworkPage::WifiDetail(_) | NetworkPage::VpnDetail(_) => {
+        self.detail_parent
+      }
+      _ => NetworkPage::Home,
+    };
+    let opener = match from {
+      NetworkPage::Detail(i) => Item::Interface(i),
+      NetworkPage::WifiDetail(i) => Item::WifiNetwork(i),
+      NetworkPage::VpnDetail(i) => Item::VpnConnection(i),
+      other => Item::Open(other),
+    };
+    self.page = parent;
+    self.menu = MenuState::default();
+    let rows = self.rows();
+    self.menu.select(&rows, &opener);
+    false
+  }
+  /// Runs the action of a menu row.
+  fn activate(&mut self, item: Item) {
+    match item {
+      Item::Open(page) => self.open_home_page(page),
+      Item::Interface(i) => self.open_page_detail(NetworkPage::Detail(i)),
+      Item::WifiNetwork(i) => self.connect_wifi(i),
+      Item::VpnConnection(i) => self.connect_vpn(i),
+      Item::WifiToggle => self.toggle_wifi(),
+      Item::Connect => self.connect_current(),
+      Item::Disconnect => self.disconnect_current(),
+      Item::Forget => self.forget_selected(),
+      Item::Refresh => self.start_refresh(self.page == NetworkPage::Wifi),
+      Item::DnsManual => self.dns_input = Some(String::new()),
+      Item::DnsAutomatic => self.apply_dns(""),
+    }
+  }
+  /// Connects the network shown by the current detail page.
+  fn connect_current(&mut self) {
+    match self.page {
+      NetworkPage::Detail(i) => self.connect_interface(i),
+      NetworkPage::WifiDetail(i) => self.connect_wifi(i),
+      NetworkPage::VpnDetail(i) => self.connect_vpn(i),
+      _ => {}
+    }
+  }
+  /// Disconnects the network shown by the current detail page.
+  fn disconnect_current(&mut self) {
+    match self.page {
+      NetworkPage::Detail(i) => self.disconnect_interface(i),
+      NetworkPage::WifiDetail(i) => {
+        if let Some(name) = self.snapshot.wifi.get(i).map(|w| w.ssid.clone()) {
+          self.action("Desconectando", move |b| b.connection_action(&name, "down"));
+        }
+      }
+      NetworkPage::VpnDetail(i) => {
+        if let Some(name) = self.snapshot.vpn.get(i).map(|v| v.name.clone()) {
+          self.action("Desconectando", move |b| b.connection_action(&name, "down"));
+        }
+      }
+      _ => {}
+    }
+  }
+  /// Brings an interface up: its connection when it has one, else the device.
+  fn connect_interface(&mut self, i: usize) {
+    if let Some(connection) = self
+      .snapshot
+      .interfaces
+      .get(i)
+      .and_then(|v| v.connection.clone())
+    {
+      self.action("Conectando", move |b| {
+        b.connection_action(&connection, "up")
+      });
+    } else if let Some(name) = self.snapshot.interfaces.get(i).map(|v| v.name.clone()) {
+      self.action("Conectando", move |b| b.device_action(&name, "connect"));
+    }
+  }
+  /// Takes an interface device down.
+  fn disconnect_interface(&mut self, i: usize) {
+    if let Some(name) = self.snapshot.interfaces.get(i).map(|v| v.name.clone()) {
+      self.action("Desconectando", move |b| {
+        b.device_action(&name, "disconnect")
+      });
+    }
+  }
+  /// Brings a VPN connection up.
+  fn connect_vpn(&mut self, i: usize) {
+    if let Some(name) = self.snapshot.vpn.get(i).map(|v| v.name.clone()) {
+      self.action("Conectando", move |b| b.connection_action(&name, "up"));
+    }
+  }
+  /// Footer hints for the current row. `i Details` appears only on a Wi-Fi
+  /// network or a VPN row, where it opens the details page.
+  fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    let mut menu = self.menu;
+    menu.normalize(rows);
+    let details = [("i", tr(self.lang, "control_center.details"))];
+    let on_network = matches!(
+      menu.selected_id(rows),
+      Some(Item::WifiNetwork(_) | Item::VpnConnection(_))
+    );
+    let extra: &[(&str, &str)] = if on_network { &details } else { &[] };
+    hints(
+      self.lang,
+      &HintContext {
+        row: menu.selected_kind(rows),
+        can_go_back: true,
+        search: self.is_list_page(),
+        refresh: self.page != NetworkPage::Firewall,
+        extra,
+        ..HintContext::default()
+      },
+    )
   }
   /// Processes `handle_firewall` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_firewall(&mut self, key: KeyCode) -> bool {
     let Some(settings) = &mut self.firewall else {
       self.page = NetworkPage::Home;
-      self.selected.index = 0;
+      self.menu = MenuState::default();
       return false;
     };
     let event = Event::Key(KeyEvent::new_with_kind_and_state(
@@ -770,106 +762,9 @@ impl NetworkApp {
     if settings.page() == SettingsPage::Main {
       self.firewall = None;
       self.page = NetworkPage::Home;
-      self.selected.index = 0;
+      self.menu = MenuState::default();
     }
     false
-  }
-  /// Executes the `open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn open(&mut self) {
-    if self.page == NetworkPage::Home {
-      let pages = self.home_pages();
-      self.page = pages
-        .get(self.selected.index)
-        .copied()
-        .unwrap_or(NetworkPage::Home);
-      self.selected.index = 0;
-      if self.page == NetworkPage::Firewall {
-        self.reload();
-      } else {
-        self.start_refresh(false);
-      }
-      return;
-    }
-    if matches!(self.page, NetworkPage::Interfaces | NetworkPage::Ethernet) {
-      if let Some(i) = self.current_index() {
-        self.detail_parent = self.page;
-        self.page = NetworkPage::Detail(i);
-        self.selected.index = 0;
-        self.reload();
-      }
-    } else if self.page == NetworkPage::Wifi {
-      if let Some(i) = self.current_index() {
-        self.connect_wifi(i);
-      }
-    } else if self.page == NetworkPage::Vpn {
-      self.connect_selected();
-    }
-  }
-  /// Executes the `connect_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn connect_selected(&mut self) {
-    match self.page {
-      NetworkPage::Wifi => {
-        if let Some(i) = self.current_index() {
-          self.connect_wifi(i);
-        }
-      }
-      NetworkPage::Interfaces | NetworkPage::Ethernet | NetworkPage::Detail(_) => {
-        if let Some(i) = self.current_index() {
-          if let Some(name) = self
-            .snapshot
-            .interfaces
-            .get(i)
-            .and_then(|v| v.connection.clone())
-          {
-            self.action("Conectando", move |b| b.connection_action(&name, "up"));
-          } else if let Some(name) = self.snapshot.interfaces.get(i).map(|v| v.name.clone()) {
-            self.action("Conectando", move |b| b.device_action(&name, "connect"));
-          }
-        }
-      }
-      NetworkPage::Vpn => {
-        if let Some(i) = self
-          .visible_vpn()
-          .get(self.selected.index)
-          .and_then(|i| self.snapshot.vpn.get(*i))
-        {
-          let name = i.name.clone();
-          self.action("Conectando", move |b| b.connection_action(&name, "up"));
-        }
-      }
-      _ => {}
-    }
-  }
-  /// Executes the `disconnect_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn disconnect_selected(&mut self) {
-    match self.page {
-      NetworkPage::Wifi => {
-        if let Some(i) = self.current_index()
-          && let Some(name) = self.snapshot.wifi.get(i).map(|v| v.ssid.clone())
-        {
-          self.action("Desconectando", move |b| b.connection_action(&name, "down"));
-        }
-      }
-      NetworkPage::Interfaces | NetworkPage::Ethernet => {
-        if let Some(i) = self.current_index() {
-          let name = self.snapshot.interfaces[i].name.clone();
-          self.action("Desconectando", move |b| {
-            b.device_action(&name, "disconnect")
-          });
-        }
-      }
-      NetworkPage::Vpn => {
-        if let Some(i) = self
-          .visible_vpn()
-          .get(self.selected.index)
-          .and_then(|i| self.snapshot.vpn.get(*i))
-        {
-          let name = i.name.clone();
-          self.action("Desconectando", move |b| b.connection_action(&name, "down"));
-        }
-      }
-      _ => {}
-    }
   }
   /// Executes the `forget_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn forget_selected(&mut self) {
@@ -896,7 +791,7 @@ impl NetworkApp {
   }
   /// Applies the `toggle_wifi` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn toggle_wifi(&mut self) {
-    let enabled = !self.snapshot.wifi_enabled.unwrap_or(true);
+    let enabled = self.snapshot.wifi_enabled != Some(true);
     self.action("Alterando Wi-Fi", move |b| b.set_wifi_enabled(enabled));
   }
   /// Applies the `apply_dns` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -953,18 +848,8 @@ impl NetworkApp {
       ))
     }));
   }
-  /// Executes the `row_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn row_count(&self) -> usize {
-    match self.page {
-      NetworkPage::Home => self.home_pages().len(),
-      NetworkPage::Interfaces | NetworkPage::Ethernet => self.visible_interfaces().len(),
-      NetworkPage::Detail(_) => 0,
-      NetworkPage::Wifi => self.visible_wifi().len(),
-      NetworkPage::Vpn => self.visible_vpn().len(),
-      NetworkPage::Status | NetworkPage::Dns | NetworkPage::Proxy | NetworkPage::Firewall => 0,
-    }
-  }
-  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Renders the page: the single menu list, then the text fields, the
+  /// confirmation and the status.
   pub fn draw(&mut self, f: &mut Frame) {
     if self.page == NetworkPage::Firewall {
       if let Some(settings) = &mut self.firewall {
@@ -973,49 +858,26 @@ impl NetworkApp {
       return;
     }
     let area = f.area();
-    let readonly_page = matches!(self.page, NetworkPage::Status | NetworkPage::Detail(_));
+    let rows = self.rows();
+    self.menu.normalize(&rows);
     let body = shell(
       f,
       area,
       &self.theme,
       &self.breadcrumb(),
-      self.footer_hints(),
+      &self.footer_hints(&rows),
     );
-    let buttons = self.buttons();
-    let raw_buttons: Vec<Button> = buttons.iter().map(|(_, button)| button.clone()).collect();
-    let (body, button_area) = if raw_buttons.is_empty() {
-      (body, None)
-    } else {
-      let button_height = argvus_tui::buttons::height(&raw_buttons, body.width).min(body.height);
-      let split =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(body);
-      (split[0], Some(split[1]))
-    };
-    let rows = self.rows();
-    if readonly_page {
-      readonly(
-        f,
-        body,
-        &self.theme,
-        &rows.into_iter().map(Line::from).collect::<Vec<_>>(),
-      );
-    } else {
-      list(
-        f,
-        body,
-        &self.theme,
-        &rows,
-        self.selected.index.min(rows.len().saturating_sub(1)),
-      );
-    }
-    if let Some(button_area) = button_area {
-      let focus = if self.on_buttons {
-        self.button_selected
-      } else {
-        usize::MAX
-      };
-      argvus_tui::buttons::draw(f, button_area, &raw_buttons, focus, &self.theme);
-    }
+    self.list_height = body.height;
+    draw_menu(
+      f,
+      body,
+      &self.theme,
+      &rows,
+      &mut self.menu,
+      MenuStyle {
+        icons: AppConfig::icons_enabled(),
+      },
+    );
     if let Some(input) = &self.dns_input {
       let popup = argvus_tui::chrome::centered(area, 48, 7);
       f.render_widget(Clear, popup);
@@ -1088,290 +950,64 @@ impl NetworkApp {
       );
     }
   }
-  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn rows(&self) -> Vec<String> {
+  /// Rows of the current page.
+  fn rows(&self) -> Vec<Row<Item>> {
     match self.page {
       NetworkPage::Home => self.home_rows(),
-      NetworkPage::Status => {
-        let active = self
-          .snapshot
-          .interfaces
-          .iter()
-          .find(|i| i.state == "connected");
-        vec![
-          format!(
-            " {} {}",
-            AppConfig::icon(argvus_tui::icons::NETWORK),
-            tr(self.lang, "control_center.connectivity")
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.state"),
-            self.snapshot.connectivity
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.interface_df13f7"),
-            active.map(|i| i.name.as_str()).unwrap_or("—")
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.ipv4"),
-            active
-              .and_then(|i| i.ipv4.first())
-              .map(String::as_str)
-              .unwrap_or("—")
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.ipv6"),
-            active
-              .map(|i| i.ipv6.join(", "))
-              .filter(|v| !v.is_empty())
-              .unwrap_or_else(|| "—".into())
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.gateway"),
-            active.and_then(|i| i.gateway.as_deref()).unwrap_or("—")
-          ),
-          "".into(),
-          format!(
-            " {} {}",
-            AppConfig::icon(argvus_tui::icons::WIFI),
-            tr(self.lang, "control_center.connections")
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.wi_fi_ac2ca3"),
-            if self.snapshot.wifi_enabled == Some(false) {
-              tr(self.lang, "control_center.disabled_ac84bd")
-            } else {
-              self
-                .snapshot
-                .wifi
-                .iter()
-                .find(|w| w.connected)
-                .map(|w| w.ssid.as_str())
-                .unwrap_or_else(|| tr(self.lang, "control_center.inactive"))
-            }
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.dns_d80a0d"),
-            if self.snapshot.dns.servers.is_empty() {
-              "—".into()
-            } else {
-              self.snapshot.dns.servers.join(", ")
-            }
-          ),
-          format!(
-            "   {:<14} {}",
-            tr(self.lang, "control_center.vpn_fda889"),
-            self
-              .snapshot
-              .vpn
-              .iter()
-              .find(|v| v.active)
-              .map(|v| terminal_text(&v.name))
-              .unwrap_or_else(|| tr(self.lang, "control_center.inactive_6f56ef").into())
-          ),
-        ]
+      NetworkPage::Status => self.status_rows(),
+      NetworkPage::Interfaces | NetworkPage::Ethernet => {
+        let mut rows = self.interface_rows();
+        rows.extend(self.refresh_section());
+        rows
       }
-      NetworkPage::Interfaces | NetworkPage::Ethernet => self
-        .visible_interfaces()
-        .into_iter()
-        .map(|i| {
-          let v = &self.snapshot.interfaces[i];
-          let status_badge = if v.state == "connected" {
-            format!("   ★ {}", tr(self.lang, "control_center.connected"))
-          } else {
-            String::new()
-          };
-          let conn = v
-            .connection
-            .clone()
-            .unwrap_or_else(|| tr(self.lang, "control_center.no_connection").into());
-          format!("{} ({})  ·  {}{}", v.name, v.kind, conn, status_badge)
-        })
-        .collect(),
-      NetworkPage::Detail(i) => self
-        .snapshot
-        .interfaces
-        .get(i)
-        .map(|v| {
-          let status = if v.state == "connected" {
-            format!("★ {}", tr(self.lang, "control_center.connected"))
-          } else {
-            v.state.clone()
-          };
-          vec![
-            format!(
-              " {} {}",
-              AppConfig::icon(argvus_tui::icons::ETHERNET),
-              tr(self.lang, "control_center.network_interface")
-            ),
-            format!("   {:<12} {}", tr(self.lang, "control_center.name"), v.name),
-            format!("   {:<12} {}", tr(self.lang, "control_center.type"), v.kind),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.status_bbe39c"),
-              status
-            ),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.driver"),
-              v.driver.as_deref().unwrap_or("—")
-            ),
-            "".into(),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.operstate"),
-              v.operstate
-            ),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.mac"),
-              v.mac.as_deref().unwrap_or("—")
-            ),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.ipv4"),
-              if v.ipv4.is_empty() {
-                "—".into()
-              } else {
-                v.ipv4.join(", ")
-              }
-            ),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.ipv6"),
-              if v.ipv6.is_empty() {
-                "—".into()
-              } else {
-                v.ipv6.join(", ")
-              }
-            ),
-            format!(
-              "   {:<12} {}",
-              tr(self.lang, "control_center.mtu"),
-              v.mtu.map(|m| m.to_string()).unwrap_or_else(|| "—".into())
-            ),
-          ]
-        })
-        .unwrap_or_default(),
-      NetworkPage::Wifi => self
-        .visible_wifi()
-        .into_iter()
-        .map(|i| {
-          let w = &self.snapshot.wifi[i];
-          let badge = if w.connected {
-            format!("   ★ {}", tr(self.lang, "control_center.connected"))
-          } else if w.known {
-            format!("   ● {}", tr(self.lang, "control_center.saved"))
-          } else {
-            String::new()
-          };
-          let signal = w
-            .signal
-            .map(|s| format!("{s}%"))
-            .unwrap_or_else(|| "—".into());
-          format!(
-            "{}  ·  {}  ·  {}{}",
-            terminal_text(&w.ssid),
-            signal,
-            w.security,
-            badge
-          )
-        })
-        .collect(),
-      NetworkPage::Vpn => self
-        .visible_vpn()
-        .into_iter()
-        .map(|i| {
-          let v = &self.snapshot.vpn[i];
-          let badge = if v.active {
-            format!("   ★ {}", tr(self.lang, "control_center.active_c7cc67"))
-          } else {
-            String::new()
-          };
-          format!("{} ({}){}", terminal_text(&v.name), v.kind, badge)
-        })
-        .collect(),
-      NetworkPage::Dns => vec![
-        format!(
-          " {} {}",
-          AppConfig::icon(argvus_tui::icons::SEARCH),
-          tr(self.lang, "control_center.dns_configuration")
-        ),
-        format!(
-          "   {:<16} {}",
-          tr(self.lang, "control_center.source_2c26d9"),
-          terminal_text(&self.snapshot.dns.source)
-        ),
-        format!(
-          "   {:<16} {}",
-          tr(self.lang, "control_center.servers"),
-          if self.snapshot.dns.servers.is_empty() {
-            "—".into()
-          } else {
-            self.snapshot.dns.servers.join(", ")
-          }
-        ),
-        format!(
-          "   {:<16} {}",
-          tr(self.lang, "control_center.search_domains"),
-          if self.snapshot.dns.search_domains.is_empty() {
-            "—".into()
-          } else {
-            self.snapshot.dns.search_domains.join(", ")
-          }
-        ),
-      ],
-      NetworkPage::Proxy => {
-        let http = self.snapshot.proxy.http.as_deref().unwrap_or("—");
-        let https = self.snapshot.proxy.https.as_deref().unwrap_or("—");
-        let all = self.snapshot.proxy.all.as_deref().unwrap_or("—");
-        let no_proxy = self.snapshot.proxy.no_proxy.as_deref().unwrap_or("—");
-        vec![
-          format!(
-            " {} {}",
-            AppConfig::icon(argvus_tui::icons::LOCK),
-            tr(self.lang, "control_center.proxy_configuration")
-          ),
-          format!("   {:<14} {}", "HTTP_PROXY:", http),
-          format!("   {:<14} {}", "HTTPS_PROXY:", https),
-          format!("   {:<14} {}", "ALL_PROXY:", all),
-          format!("   {:<14} {}", "NO_PROXY:", no_proxy),
-        ]
+      NetworkPage::Detail(i) => self.interface_detail_rows(i),
+      NetworkPage::Wifi => {
+        let mut rows = self.wifi_rows();
+        rows.extend(self.refresh_section());
+        rows
       }
+      NetworkPage::WifiDetail(i) => self.wifi_detail_rows(i),
+      NetworkPage::Vpn => {
+        let mut rows = self.vpn_rows();
+        rows.extend(self.refresh_section());
+        rows
+      }
+      NetworkPage::VpnDetail(i) => self.vpn_detail_rows(i),
+      NetworkPage::Dns => self.dns_rows(),
+      NetworkPage::Proxy => self.proxy_rows(),
       NetworkPage::Firewall => Vec::new(),
     }
   }
-  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_rows(&self) -> Vec<String> {
+  /// The trailing Actions group of the list pages: `Refresh` (`r`).
+  fn refresh_section(&self) -> Vec<Row<Item>> {
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+    ]
+  }
+  /// The Network home: one submenu per available page, with its state.
+  fn home_rows(&self) -> Vec<Row<Item>> {
     let active = self
       .snapshot
       .interfaces
       .iter()
       .find(|i| i.state == "connected");
     let active_iface = active
-      .map(|i| i.name.as_str())
-      .unwrap_or_else(|| tr(self.lang, "control_center.none_247448"));
+      .map(|i| i.name.clone())
+      .unwrap_or_else(|| tr(self.lang, "control_center.none_247448").into());
     let ipv4 = active
-      .and_then(|i| i.ipv4.first())
-      .map(String::as_str)
-      .unwrap_or("—");
+      .and_then(|i| i.ipv4.first().cloned())
+      .unwrap_or_else(|| "—".into());
     let wifi_status = if self.snapshot.wifi_enabled == Some(false) {
-      tr(self.lang, "control_center.disabled_ac84bd")
+      tr(self.lang, "control_center.disabled_ac84bd").into()
     } else {
       self
         .snapshot
         .wifi
         .iter()
         .find(|w| w.connected)
-        .map(|w| w.ssid.as_str())
-        .unwrap_or_else(|| tr(self.lang, "control_center.disconnected"))
+        .map(|w| terminal_text(&w.ssid))
+        .unwrap_or_else(|| tr(self.lang, "control_center.disconnected").into())
     };
     let active_vpn = self
       .snapshot
@@ -1380,79 +1016,380 @@ impl NetworkApp {
       .find(|v| v.active)
       .map(|v| terminal_text(&v.name))
       .unwrap_or_else(|| tr(self.lang, "control_center.inactive_6f56ef").into());
-    let dns_count = self.snapshot.dns.servers.len();
-    let dns_str = if dns_count > 0 {
-      self.snapshot.dns.servers.join(", ")
-    } else {
+    let dns = if self.snapshot.dns.servers.is_empty() {
       tr(self.lang, "control_center.automatic").into()
-    };
-    let proxy_str = if self.snapshot.proxy.http.is_some() || self.snapshot.proxy.https.is_some() {
-      tr(self.lang, "control_center.active_095d39")
     } else {
-      tr(self.lang, "control_center.disabled")
+      self.snapshot.dns.servers.join(", ")
     };
-
-    let pages = self.home_pages();
-    pages
+    let proxy = if self.snapshot.proxy.http.is_some() || self.snapshot.proxy.https.is_some() {
+      tr(self.lang, "control_center.active_095d39").to_owned()
+    } else {
+      tr(self.lang, "control_center.disabled").to_owned()
+    };
+    let ethernet = self
+      .snapshot
+      .interfaces
       .iter()
-      .map(|page| match page {
-        NetworkPage::Status => format!(
-          "{} {}  ·  {} · {}",
-          AppConfig::icon(argvus_tui::icons::NETWORK),
-          tr(self.lang, "control_center.status"),
-          self.snapshot.connectivity,
-          active_iface
-        ),
-        NetworkPage::Interfaces => format!(
-          "{} {}  ·  {} ({})",
-          AppConfig::icon(argvus_tui::icons::ETHERNET),
-          tr(self.lang, "control_center.interfaces"),
-          self.snapshot.interfaces.len(),
-          ipv4
-        ),
-        NetworkPage::Ethernet => format!(
-          "{} {}  ·  {}",
-          AppConfig::icon(argvus_tui::icons::NETWORK),
-          tr(self.lang, "control_center.ethernet"),
-          self
-            .snapshot
-            .interfaces
-            .iter()
-            .filter(|i| i.kind.to_ascii_lowercase().contains("ethernet"))
-            .count()
-        ),
-        NetworkPage::Wifi => format!(
-          "{} {}  ·  {}",
-          AppConfig::icon(argvus_tui::icons::WIFI),
-          tr(self.lang, "control_center.wi_fi"),
-          wifi_status
-        ),
-        NetworkPage::Vpn => format!(
-          "{} {}  ·  {}",
-          AppConfig::icon(argvus_tui::icons::LOCK),
-          tr(self.lang, "control_center.vpn"),
-          active_vpn
-        ),
-        NetworkPage::Dns => format!(
-          "{} {}  ·  {}",
-          AppConfig::icon(argvus_tui::icons::SEARCH),
-          tr(self.lang, "control_center.dns"),
-          dns_str
-        ),
-        NetworkPage::Proxy => format!(
-          "{} {}  ·  {}",
-          AppConfig::icon(argvus_tui::icons::LOCK),
-          tr(self.lang, "control_center.proxy"),
-          proxy_str
-        ),
-        NetworkPage::Firewall => format!(
-          "{} {}",
-          AppConfig::icon(argvus_tui::icons::WARNING),
-          tr(self.lang, "control_center.firewall")
-        ),
-        NetworkPage::Home | NetworkPage::Detail(_) => String::new(),
+      .filter(|i| i.kind.to_ascii_lowercase().contains("ethernet"))
+      .count();
+
+    self
+      .home_pages()
+      .into_iter()
+      .filter_map(|page| {
+        let (label, icon, detail): (&str, &'static str, String) = match page {
+          NetworkPage::Status => (
+            tr(self.lang, "control_center.status"),
+            icons::NETWORK,
+            format!("{} · {}", self.snapshot.connectivity, active_iface),
+          ),
+          NetworkPage::Interfaces => (
+            tr(self.lang, "control_center.interfaces"),
+            icons::LINK,
+            format!("{} ({})", self.snapshot.interfaces.len(), ipv4),
+          ),
+          NetworkPage::Ethernet => (
+            tr(self.lang, "control_center.ethernet"),
+            icons::ETHERNET,
+            ethernet.to_string(),
+          ),
+          NetworkPage::Wifi => (
+            tr(self.lang, "control_center.wi_fi"),
+            icons::WIFI,
+            wifi_status.clone(),
+          ),
+          NetworkPage::Vpn => (
+            tr(self.lang, "control_center.vpn"),
+            icons::VPN,
+            active_vpn.clone(),
+          ),
+          NetworkPage::Dns => (tr(self.lang, "control_center.dns"), icons::DNS, dns.clone()),
+          NetworkPage::Proxy => (
+            tr(self.lang, "control_center.proxy"),
+            icons::PROXY,
+            proxy.clone(),
+          ),
+          NetworkPage::Firewall => (
+            tr(self.lang, "control_center.firewall"),
+            icons::SHIELD,
+            String::new(),
+          ),
+          _ => return None,
+        };
+        Some(
+          Row::submenu(Item::Open(page), label)
+            .icon(icon)
+            .detail(detail),
+        )
       })
       .collect()
+  }
+  /// Connectivity, the active interface and the connections, with actions.
+  fn status_rows(&self) -> Vec<Row<Item>> {
+    let active = self
+      .snapshot
+      .interfaces
+      .iter()
+      .find(|i| i.state == "connected");
+    let wifi_row = match self.snapshot.wifi_enabled {
+      Some(on) => Row::toggle(Item::WifiToggle, tr(self.lang, "control_center.wi_fi"), on),
+      None => Row::toggle(
+        Item::WifiToggle,
+        tr(self.lang, "control_center.wi_fi"),
+        false,
+      )
+      .enabled(false)
+      .detail(tr(self.lang, "control_center.unavailable_no_wifi_card")),
+    };
+    let wifi = if self.snapshot.wifi_enabled == Some(false) {
+      tr(self.lang, "control_center.disabled_ac84bd").into()
+    } else {
+      self
+        .snapshot
+        .wifi
+        .iter()
+        .find(|w| w.connected)
+        .map(|w| terminal_text(&w.ssid))
+        .unwrap_or_else(|| tr(self.lang, "control_center.inactive").into())
+    };
+    let vpn = self
+      .snapshot
+      .vpn
+      .iter()
+      .find(|v| v.active)
+      .map(|v| terminal_text(&v.name))
+      .unwrap_or_else(|| tr(self.lang, "control_center.inactive_6f56ef").into());
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      wifi_row,
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+      Row::section(tr(self.lang, "control_center.section_summary")),
+      Row::info(
+        tr(self.lang, "control_center.connectivity"),
+        self.snapshot.connectivity.clone(),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.interface_df13f7"),
+        active.map(|i| i.name.clone()).unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.ipv4"),
+        active
+          .and_then(|i| i.ipv4.first().cloned())
+          .unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.ipv6"),
+        joined_or_dash(active.map(|i| i.ipv6.as_slice()).unwrap_or_default()),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.gateway"),
+        active
+          .and_then(|i| i.gateway.clone())
+          .unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(tr(self.lang, "control_center.wi_fi_ac2ca3"), wifi),
+      Row::info(
+        tr(self.lang, "control_center.dns_d80a0d"),
+        joined_or_dash(&self.snapshot.dns.servers),
+      ),
+      Row::info(tr(self.lang, "control_center.vpn_fda889"), vpn),
+    ]
+  }
+  /// One row per visible interface. Enter opens its details.
+  fn interface_rows(&self) -> Vec<Row<Item>> {
+    self
+      .visible_interfaces()
+      .into_iter()
+      .map(|i| {
+        let v = &self.snapshot.interfaces[i];
+        let connection = v
+          .connection
+          .clone()
+          .unwrap_or_else(|| tr(self.lang, "control_center.no_connection").into());
+        let detail = if v.state == "connected" {
+          format!(
+            "{connection}   ★ {}",
+            tr(self.lang, "control_center.connected")
+          )
+        } else {
+          connection
+        };
+        Row::submenu(Item::Interface(i), format!("{} ({})", v.name, v.kind)).detail(detail)
+      })
+      .collect()
+  }
+  /// Details of one interface: its actions, then its properties.
+  fn interface_detail_rows(&self, i: usize) -> Vec<Row<Item>> {
+    let Some(v) = self.snapshot.interfaces.get(i) else {
+      return Vec::new();
+    };
+    let status = if v.state == "connected" {
+      format!("★ {}", tr(self.lang, "control_center.connected"))
+    } else {
+      v.state.clone()
+    };
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::action(Item::Connect, tr(self.lang, "control_center.connect")).icon(icons::LINK_ON),
+      Row::action(Item::Disconnect, tr(self.lang, "control_center.disconnect"))
+        .icon(icons::LINK_OFF),
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+      Row::section(tr(self.lang, "control_center.section_summary")),
+      Row::info(tr(self.lang, "control_center.name"), v.name.clone()),
+      Row::info(tr(self.lang, "control_center.type"), v.kind.clone()),
+      Row::info(tr(self.lang, "control_center.status_bbe39c"), status),
+      Row::info(
+        tr(self.lang, "control_center.driver"),
+        v.driver.clone().unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.operstate"),
+        v.operstate.clone(),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.mac"),
+        v.mac.clone().unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.ipv4"),
+        joined_or_dash(&v.ipv4),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.ipv6"),
+        joined_or_dash(&v.ipv6),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.mtu"),
+        v.mtu.map(|m| m.to_string()).unwrap_or_else(|| "—".into()),
+      ),
+    ]
+  }
+  /// One row per visible Wi-Fi network. Enter connects; `i` opens details.
+  fn wifi_rows(&self) -> Vec<Row<Item>> {
+    self
+      .visible_wifi()
+      .into_iter()
+      .map(|i| {
+        let w = &self.snapshot.wifi[i];
+        let badge = if w.connected {
+          format!("   ★ {}", tr(self.lang, "control_center.connected"))
+        } else if w.known {
+          format!("   ● {}", tr(self.lang, "control_center.saved"))
+        } else {
+          String::new()
+        };
+        let signal = w
+          .signal
+          .map(|s| format!("{s}%"))
+          .unwrap_or_else(|| "—".into());
+        Row::action(Item::WifiNetwork(i), terminal_text(&w.ssid))
+          .detail(format!("{signal}  ·  {}{badge}", w.security))
+      })
+      .collect()
+  }
+  /// Details of one Wi-Fi network: its actions, its properties and the
+  /// destructive Forget in the Danger zone, last.
+  fn wifi_detail_rows(&self, i: usize) -> Vec<Row<Item>> {
+    let Some(w) = self.snapshot.wifi.get(i) else {
+      return Vec::new();
+    };
+    let status = if w.connected {
+      tr(self.lang, "control_center.connected_8b5cb3")
+    } else if w.known {
+      tr(self.lang, "control_center.saved")
+    } else {
+      "—"
+    };
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::action(Item::Connect, tr(self.lang, "control_center.connect")).icon(icons::LINK_ON),
+      Row::action(Item::Disconnect, tr(self.lang, "control_center.disconnect"))
+        .icon(icons::LINK_OFF),
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+      Row::section(tr(self.lang, "control_center.section_summary")),
+      Row::info(tr(self.lang, "control_center.name"), terminal_text(&w.ssid)),
+      Row::info(
+        tr(self.lang, "control_center.signal"),
+        w.signal
+          .map(|s| format!("{s}%"))
+          .unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.security"),
+        if w.security.is_empty() {
+          "—".into()
+        } else {
+          w.security.clone()
+        },
+      ),
+      Row::info(
+        tr(self.lang, "control_center.frequency"),
+        w.frequency.clone().unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(tr(self.lang, "control_center.status_bbe39c"), status),
+      Row::section(tr(self.lang, "control_center.danger_zone")),
+      Row::destructive(Item::Forget, tr(self.lang, "control_center.forget")).icon(icons::DELETE),
+    ]
+  }
+  /// One row per VPN connection. Enter connects; `i` opens details.
+  fn vpn_rows(&self) -> Vec<Row<Item>> {
+    self
+      .visible_vpn()
+      .into_iter()
+      .map(|i| {
+        let v = &self.snapshot.vpn[i];
+        let badge = if v.active {
+          format!("   ★ {}", tr(self.lang, "control_center.active_c7cc67"))
+        } else {
+          String::new()
+        };
+        Row::action(Item::VpnConnection(i), terminal_text(&v.name))
+          .detail(format!("{}{badge}", v.kind))
+      })
+      .collect()
+  }
+  /// Details of one VPN connection: its actions, then its properties.
+  fn vpn_detail_rows(&self, i: usize) -> Vec<Row<Item>> {
+    let Some(v) = self.snapshot.vpn.get(i) else {
+      return Vec::new();
+    };
+    let status = if v.active {
+      tr(self.lang, "control_center.active_c7cc67")
+    } else {
+      tr(self.lang, "control_center.inactive_6f56ef")
+    };
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::action(Item::Connect, tr(self.lang, "control_center.connect")).icon(icons::LINK_ON),
+      Row::action(Item::Disconnect, tr(self.lang, "control_center.disconnect"))
+        .icon(icons::LINK_OFF),
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+      Row::section(tr(self.lang, "control_center.section_summary")),
+      Row::info(tr(self.lang, "control_center.name"), terminal_text(&v.name)),
+      Row::info(tr(self.lang, "control_center.type"), v.kind.clone()),
+      Row::info(tr(self.lang, "control_center.status_bbe39c"), status),
+    ]
+  }
+  /// The DNS value is editable (`Enter` opens the server list); automatic
+  /// DNS and the refresh are actions.
+  fn dns_rows(&self) -> Vec<Row<Item>> {
+    let current = if self.snapshot.dns.servers.is_empty() {
+      tr(self.lang, "control_center.automatic").into()
+    } else {
+      self.snapshot.dns.servers.join(", ")
+    };
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::value(
+        Item::DnsManual,
+        tr(self.lang, "control_center.manual_dns"),
+        current,
+        None,
+      ),
+      Row::action(
+        Item::DnsAutomatic,
+        tr(self.lang, "control_center.automatic_dns"),
+      )
+      .icon(icons::AUTORENEW),
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+      Row::section(tr(self.lang, "control_center.section_summary")),
+      Row::info(
+        tr(self.lang, "control_center.source_2c26d9"),
+        terminal_text(&self.snapshot.dns.source),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.servers"),
+        joined_or_dash(&self.snapshot.dns.servers),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.search_domains"),
+        joined_or_dash(&self.snapshot.dns.search_domains),
+      ),
+    ]
+  }
+  /// The proxy variables from the environment, read-only, with a refresh.
+  fn proxy_rows(&self) -> Vec<Row<Item>> {
+    let proxy = &self.snapshot.proxy;
+    let value = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".into());
+    vec![
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::action(Item::Refresh, tr(self.lang, "control_center.refresh")).icon(icons::REFRESH),
+      Row::section(tr(self.lang, "control_center.section_summary")),
+      Row::info("HTTP_PROXY:", value(&proxy.http)),
+      Row::info("HTTPS_PROXY:", value(&proxy.https)),
+      Row::info("ALL_PROXY:", value(&proxy.all)),
+      Row::info("NO_PROXY:", value(&proxy.no_proxy)),
+    ]
+  }
+}
+
+/// Joins values with commas, or `—` when there are none.
+fn joined_or_dash(values: &[String]) -> String {
+  if values.is_empty() {
+    "—".into()
+  } else {
+    values.join(", ")
   }
 }
 
@@ -1489,9 +1426,10 @@ fn apply_dns_privileged(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::model::InterfaceInfo;
+  use crate::model::{InterfaceInfo, VpnConnection, WifiNetwork};
   use argvus_control_center_core::capabilities::Capabilities;
   use argvus_i18n::Lang;
+  use argvus_tui::menu::RowKind;
 
   /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app() -> NetworkApp {
@@ -1500,6 +1438,35 @@ mod tests {
       argvus_theme::Theme::load(),
       Capabilities::default(),
     )
+  }
+
+  /// A connected Ethernet interface and two Wi-Fi networks, one saved.
+  fn with_network(app: &mut NetworkApp) {
+    app.snapshot.interfaces = vec![InterfaceInfo {
+      name: "eno1".into(),
+      kind: "ethernet".into(),
+      state: "connected".into(),
+      connection: Some("Wired connection 1".into()),
+      ipv4: vec!["192.168.1.100".into()],
+      ..Default::default()
+    }];
+    app.snapshot.wifi = vec![
+      WifiNetwork {
+        ssid: "cafe".into(),
+        signal: Some(40),
+        security: "WPA2".into(),
+        ..Default::default()
+      },
+      WifiNetwork {
+        ssid: "home".into(),
+        signal: Some(80),
+        security: "WPA2".into(),
+        connected: true,
+        known: true,
+        ..Default::default()
+      },
+    ];
+    app.snapshot.wifi_enabled = Some(true);
   }
 
   #[test]
@@ -1538,7 +1505,7 @@ mod tests {
   fn vpn_is_only_listed_when_vpn_is_detected() {
     let mut app = app();
     assert!(!app.home_pages().contains(&NetworkPage::Vpn));
-    app.snapshot.vpn.push(crate::model::VpnConnection {
+    app.snapshot.vpn.push(VpnConnection {
       name: "company".into(),
       kind: "vpn".into(),
       active: false,
@@ -1582,160 +1549,165 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `network_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn network_home_rows_act_as_a_status_dashboard() {
+  /// The Home is one submenu per available page, and the status is its detail.
+  fn home_lists_each_page_as_a_submenu_with_its_state() {
     let mut app = app();
+    with_network(&mut app);
     app.snapshot.connectivity = "full".into();
-    app.snapshot.interfaces = vec![InterfaceInfo {
-      name: "eno1".into(),
-      kind: "ethernet".into(),
-      state: "connected".into(),
-      ipv4: vec!["190.168.1.100".into()],
-      ..Default::default()
-    }];
-    app.snapshot.wifi_enabled = Some(true);
     let rows = app.rows();
-    assert_eq!(rows.len(), 6);
-    assert!(rows[0].contains("Status") && rows[0].contains("full") && rows[0].contains("eno1"));
-    assert!(rows[1].contains("Interfaces") && rows[1].contains("190.168.1.100"));
-    assert!(rows[2].contains("Ethernet"));
-    assert!(rows[3].contains("DNS"));
+    // Status, Interfaces, Ethernet, Wi-Fi (a card exists), DNS, Proxy, Firewall.
+    assert_eq!(rows.len(), 7);
+    assert!(rows.iter().all(|row| row.kind() == RowKind::Submenu));
+    assert_eq!(rows[0].id(), Some(&Item::Open(NetworkPage::Status)));
+    assert_eq!(rows[4].id(), Some(&Item::Open(NetworkPage::Dns)));
+    assert!(rows[0].detail_text().unwrap().contains("full"));
+    assert!(rows[0].detail_text().unwrap().contains("eno1"));
   }
 
   #[test]
-  /// Executes the `interface_detail_has_only_refresh_button_and_stays_informational` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn interface_detail_has_only_refresh_button_and_stays_informational() {
+  /// Interface details offer Connect, Disconnect and Refresh; the properties
+  /// are information and never take the cursor.
+  fn interface_detail_has_connect_disconnect_and_unselectable_info() {
     let mut app = app();
-    app.snapshot.interfaces.push(InterfaceInfo {
-      name: "eno1".into(),
-      kind: "ethernet".into(),
-      state: "connected".into(),
-      connection: Some("Wired connection 1".into()),
-      ..Default::default()
-    });
+    with_network(&mut app);
     app.page = NetworkPage::Detail(0);
-    let actions: Vec<ActionButton> = app.buttons().into_iter().map(|(a, _)| a).collect();
-    assert_eq!(actions, vec![ActionButton::Refresh]);
-    assert!(!app.footer_hints().contains("Conectar"));
-    assert!(!app.footer_hints().contains("Connect"));
+    let rows = app.rows();
+    assert_eq!(rows[1].id(), Some(&Item::Connect));
+    assert_eq!(rows[2].id(), Some(&Item::Disconnect));
+    assert_eq!(rows[3].id(), Some(&Item::Refresh));
     assert!(
-      app.rows()[0].contains("NETWORK INTERFACE") || app.rows()[0].contains("INTERFACE DE REDE")
+      rows
+        .iter()
+        .any(|row| row.label() == "eno1" || row.detail_text() == Some("eno1"))
     );
-    assert!(app.rows().iter().any(|r| r.contains("eno1")));
+    assert!(
+      rows
+        .iter()
+        .filter(|row| row.kind() == RowKind::Info)
+        .all(|row| !row.is_selectable())
+    );
   }
 
   #[test]
-  /// Executes the `list_pages_expose_action_buttons_with_refresh_last` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn list_pages_expose_action_buttons_with_refresh_last() {
+  /// Enter on a Wi-Fi row connects (it is an action), and `i` opens the
+  /// network's details, where Connect, Disconnect and Forget live.
+  fn wifi_row_is_an_action_and_i_opens_its_details() {
     let mut app = app();
-    app.page = NetworkPage::Interfaces;
-    let actions: Vec<ActionButton> = app.buttons().into_iter().map(|(a, _)| a).collect();
-    assert_eq!(
-      actions,
-      vec![
-        ActionButton::Connect,
-        ActionButton::Disconnect,
-        ActionButton::Refresh
-      ]
-    );
-
+    with_network(&mut app);
     app.page = NetworkPage::Wifi;
-    let actions: Vec<ActionButton> = app.buttons().into_iter().map(|(a, _)| a).collect();
-    assert_eq!(
-      actions,
-      vec![
-        ActionButton::Connect,
-        ActionButton::Disconnect,
-        ActionButton::Forget,
-        ActionButton::Refresh
-      ]
-    );
+    let rows = app.rows();
+    assert_eq!(rows[0].kind(), RowKind::Action);
+    let first = app.visible_wifi()[0];
+    assert_eq!(rows[0].id(), Some(&Item::WifiNetwork(first)));
+    assert!(app.footer_hints(&rows).contains("i Details"));
 
+    app.handle(KeyCode::Char('i'));
+    assert_eq!(app.page, NetworkPage::WifiDetail(first));
+    assert_eq!(app.detail_parent, NetworkPage::Wifi);
+  }
+
+  #[test]
+  /// `i Details` is not offered on Interfaces, where Enter already opens it.
+  fn details_hint_is_only_offered_on_wifi_and_vpn_rows() {
+    let mut app = app();
+    with_network(&mut app);
+    app.page = NetworkPage::Interfaces;
+    let rows = app.rows();
+    assert!(!app.footer_hints(&rows).contains("i Details"));
+  }
+
+  #[test]
+  /// Wi-Fi details: actions first, properties next, and Forget last in the
+  /// Danger zone.
+  fn wifi_detail_has_actions_and_forget_last() {
+    let mut app = app();
+    with_network(&mut app);
+    app.page = NetworkPage::WifiDetail(1);
+    let rows = app.rows();
+    assert_eq!(rows[1].id(), Some(&Item::Connect));
+    assert_eq!(rows[2].id(), Some(&Item::Disconnect));
+    assert_eq!(rows[3].id(), Some(&Item::Refresh));
+    assert_eq!(rows.last().unwrap().id(), Some(&Item::Forget));
+    assert_eq!(rows.last().unwrap().kind(), RowKind::Destructive);
+  }
+
+  #[test]
+  /// Esc returns to the Wi-Fi list with the cursor on the network it opened.
+  fn escape_from_wifi_details_returns_to_the_network_under_the_cursor() {
+    let mut app = app();
+    with_network(&mut app);
+    app.page = NetworkPage::WifiDetail(0);
+    app.detail_parent = NetworkPage::Wifi;
+    assert!(!app.handle(KeyCode::Esc));
+    assert_eq!(app.page, NetworkPage::Wifi);
+    assert_eq!(
+      app.menu.selected_id(&app.rows()),
+      Some(Item::WifiNetwork(0))
+    );
+  }
+
+  #[test]
+  /// The Wi-Fi switch is a toggle that reflects the radio. Without a Wi-Fi
+  /// card it stays disabled and says why.
+  fn wifi_switch_reflects_the_radio_and_is_disabled_without_a_card() {
+    let mut app = app();
+    with_network(&mut app);
+    app.page = NetworkPage::Status;
+    let on = app
+      .rows()
+      .into_iter()
+      .find(|row| row.id() == Some(&Item::WifiToggle))
+      .unwrap();
+    assert_eq!(on.kind(), RowKind::Toggle { on: true });
+    assert!(on.is_selectable());
+
+    app.snapshot.wifi_enabled = None;
+    let off = app
+      .rows()
+      .into_iter()
+      .find(|row| row.id() == Some(&Item::WifiToggle))
+      .unwrap();
+    assert!(!off.is_enabled());
+    assert!(!off.is_selectable());
+    assert!(off.detail_text().is_some());
+  }
+
+  #[test]
+  /// DNS keeps the manual server list as an editable value and automatic DNS
+  /// as an action.
+  fn dns_page_has_a_manual_value_and_an_automatic_action() {
+    let mut app = app();
     app.page = NetworkPage::Dns;
-    let actions: Vec<ActionButton> = app.buttons().into_iter().map(|(a, _)| a).collect();
-    assert_eq!(
-      actions,
-      vec![
-        ActionButton::DnsManual,
-        ActionButton::DnsAutomatic,
-        ActionButton::Refresh
-      ]
-    );
-
-    app.page = NetworkPage::Status;
-    let actions: Vec<ActionButton> = app.buttons().into_iter().map(|(a, _)| a).collect();
-    assert_eq!(
-      actions,
-      vec![ActionButton::WifiToggle, ActionButton::Refresh]
-    );
+    let rows = app.rows();
+    let manual = rows
+      .iter()
+      .find(|row| row.id() == Some(&Item::DnsManual))
+      .unwrap();
+    assert_eq!(manual.kind(), RowKind::Value { step: None });
+    let automatic = rows
+      .iter()
+      .find(|row| row.id() == Some(&Item::DnsAutomatic))
+      .unwrap();
+    assert_eq!(automatic.kind(), RowKind::Action);
   }
 
   #[test]
-  /// Executes the `tab_cycles_focus_between_list_and_buttons_and_restores_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn tab_cycles_focus_between_list_and_buttons_and_restores_selection() {
+  /// Tab no longer moves focus anywhere on the list pages.
+  fn tab_does_not_change_the_page() {
     let mut app = app();
+    with_network(&mut app);
     app.page = NetworkPage::Interfaces;
-    app.snapshot.interfaces = vec![
-      InterfaceInfo {
-        name: "eno1".into(),
-        ..Default::default()
-      },
-      InterfaceInfo {
-        name: "wlan0".into(),
-        ..Default::default()
-      },
-    ];
-    app.handle(KeyCode::Down);
-    assert_eq!(app.selected.index, 1);
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    assert_eq!(app.button_selected, 0);
-    app.handle(KeyCode::Right);
-    assert_eq!(app.button_selected, 1);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    assert_eq!(app.selected.index, 1);
+    assert!(!app.handle(KeyCode::Tab));
+    assert_eq!(app.page, NetworkPage::Interfaces);
+    assert!(!app.handle(KeyCode::BackTab));
+    assert_eq!(app.page, NetworkPage::Interfaces);
   }
 
   #[test]
-  /// Executes the `backtab_lands_on_last_button_and_escape_returns_to_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn backtab_lands_on_last_button_and_escape_returns_to_list() {
+  /// The interfaces page draws a single menu list, without button brackets.
+  fn interfaces_page_draws_one_menu_list() {
     let mut app = app();
-    app.page = NetworkPage::Wifi;
-    app.handle(KeyCode::BackTab);
-    assert!(app.on_buttons);
-    assert_eq!(app.button_selected, 3);
-    app.handle(KeyCode::Esc);
-    assert!(!app.on_buttons);
-  }
-
-  #[test]
-  /// Executes the `entering_button_bar_on_readonly_status_keeps_focus_there` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn entering_button_bar_on_readonly_status_keeps_focus_there() {
-    let mut app = app();
-    app.page = NetworkPage::Status;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-  }
-
-  #[test]
-  /// Executes the `detail_page_and_proxy_expose_only_a_refresh_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn detail_page_and_proxy_expose_only_a_refresh_button() {
-    let mut app = app();
-    app.page = NetworkPage::Detail(0);
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    app.page = NetworkPage::Proxy;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-  }
-
-  #[test]
-  /// Executes the `interfaces_page_renders_button_bar_instead_of_footer_actions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn interfaces_page_renders_button_bar_instead_of_footer_actions() {
-    let mut app = app();
+    with_network(&mut app);
     app.page = NetworkPage::Interfaces;
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 25)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
@@ -1746,10 +1718,7 @@ mod tests {
       .iter()
       .map(|cell| cell.symbol())
       .collect::<String>();
-    assert!(text.contains("[ Connect ]"));
-    assert!(text.contains("[ Disconnect ]"));
-    assert!(text.contains("Tab Actions"));
-    assert!(!text.contains("c Connect"));
-    assert!(!text.contains("x Disconnect"));
+    assert!(text.contains("eno1"));
+    assert!(!text.contains("[ "));
   }
 }
