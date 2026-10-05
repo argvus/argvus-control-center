@@ -103,9 +103,6 @@ pub(super) enum Item {
   SectionEnabled,
   /// The percentage row of a transparency/blur section.
   SectionValue,
-  // Theme confirmation pages (`ThemeDeleteConfirm`, `ThemeImportConfirm`).
-  ConfirmAccept,
-  ConfirmCancel,
   /// `Apply` at the end of every draft page.
   Apply,
 }
@@ -172,9 +169,7 @@ impl Item {
       | Self::TimeFormat(_)
       | Self::UtilityGroup(_)
       | Self::TelemetryBlock(_)
-      | Self::PanelCard(_)
-      | Self::ConfirmAccept
-      | Self::ConfirmCancel => return None,
+      | Self::PanelCard(_) => return None,
       // `draft_actions` sets the shared confirmation glyph.
       Self::Apply => icons::APPLY,
       // These depend on the page; see `AppearanceApp::page_icon`.
@@ -335,20 +330,6 @@ impl AppearanceApp {
           Row::action(Item::ImportArchive(index), name)
         })
         .collect(),
-      AppearancePage::ThemeDeleteConfirm => vec![
-        Row::destructive(
-          Item::ConfirmAccept,
-          self.label("control_center.theme_profile_delete"),
-        ),
-        Row::action(Item::ConfirmCancel, self.label("control_center.cancel")),
-      ],
-      AppearancePage::ThemeImportConfirm => vec![
-        Row::action(
-          Item::ConfirmAccept,
-          self.label("control_center.theme_profile_duplicate_replace"),
-        ),
-        Row::action(Item::ConfirmCancel, self.label("control_center.cancel")),
-      ],
       AppearancePage::Mode => {
         let float = self.state.is_float_theme();
         vec![

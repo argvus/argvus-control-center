@@ -40,7 +40,6 @@ use ratatui::{
   style::{Modifier, Style},
   text::{Line, Span},
   widgets::Paragraph,
-  widgets::{Block, Borders},
 };
 
 #[derive(Debug, Clone)]
@@ -81,6 +80,10 @@ struct SurfaceDraft {
 enum Confirmation {
   /// Esc on a page whose unapplied draft would be dropped by going back.
   DiscardDraft,
+  /// `d` on a custom theme (`delete_theme`).
+  DeleteTheme,
+  /// Importing an archive whose theme already exists (`pending_import`).
+  ReplaceImport,
 }
 
 fn theme_category_label_key(category: ThemeCategory) -> &'static str {
@@ -297,7 +300,7 @@ impl AppearanceApp {
           self.pending_import_name = Some(name);
           if duplicate {
             self.status = None;
-            self.go(AppearancePage::ThemeImportConfirm);
+            self.confirm = Some((Confirmation::ReplaceImport, ConfirmState::new()));
           } else {
             self.start_pending_import();
             self.go(AppearancePage::Themes);
@@ -643,8 +646,6 @@ impl AppearanceApp {
       }
       Item::CustomTheme(index) => self.apply_custom_theme(index),
       Item::ImportArchive(index) => self.inspect_import(index),
-      Item::ConfirmAccept => self.resolve_theme_confirmation(true),
-      Item::ConfirmCancel => self.resolve_theme_confirmation(false),
       Item::ModeSticky => self.apply_layout_mode("sticky"),
       Item::ModeFloat => self.apply_layout_mode("float"),
       Item::ChooseWallpaper => self.apply(
@@ -842,28 +843,6 @@ impl AppearanceApp {
     }));
   }
 
-  /// Resolves the theme delete or import-replace confirmation; both end on
-  /// the Themes page, as before.
-  fn resolve_theme_confirmation(&mut self, accepted: bool) {
-    match self.page {
-      AppearancePage::ThemeDeleteConfirm if accepted => {
-        if let Some(theme) = self.delete_theme.clone() {
-          self.apply(
-            tr(self.lang, "control_center.theme_profile_deleted").into(),
-            move || backend::delete_custom_theme(&theme),
-          );
-        }
-      }
-      AppearancePage::ThemeImportConfirm if accepted => self.start_pending_import(),
-      AppearancePage::ThemeImportConfirm => {
-        self.pending_import = None;
-        self.pending_import_name = None;
-      }
-      _ => {}
-    }
-    self.go(AppearancePage::Themes);
-  }
-
   fn apply_layout_mode(&mut self, variant: &'static str) {
     self.apply(
       tr(self.lang, "control_center.layout_mode_applied").into(),
@@ -1048,7 +1027,10 @@ impl AppearanceApp {
       let confirmation = *confirmation;
       match state.handle(key) {
         ConfirmOutcome::Pending => {}
-        ConfirmOutcome::Cancelled => self.confirm = None,
+        ConfirmOutcome::Cancelled => {
+          self.confirm = None;
+          self.cancel_confirmation(confirmation);
+        }
         ConfirmOutcome::Confirmed => {
           self.confirm = None;
           return self.resolve_confirmation(confirmation);
@@ -1123,7 +1105,7 @@ impl AppearanceApp {
           && let Some(theme) = self.state.custom_themes.get(index).cloned()
         {
           self.delete_theme = Some(theme);
-          self.go(AppearancePage::ThemeDeleteConfirm);
+          self.confirm = Some((Confirmation::DeleteTheme, ConfirmState::new()));
         }
       }
       _ => {}
@@ -1160,6 +1142,38 @@ impl AppearanceApp {
   fn resolve_confirmation(&mut self, confirmation: Confirmation) -> bool {
     match confirmation {
       Confirmation::DiscardDraft => self.navigate_back(),
+      Confirmation::DeleteTheme => {
+        if let Some(theme) = self.delete_theme.take() {
+          self.apply(
+            tr(self.lang, "control_center.theme_profile_deleted").into(),
+            move || backend::delete_custom_theme(&theme),
+          );
+        }
+        self.go(AppearancePage::Themes);
+        false
+      }
+      Confirmation::ReplaceImport => {
+        self.start_pending_import();
+        self.go(AppearancePage::Themes);
+        false
+      }
+    }
+  }
+
+  /// Cancelling a theme confirmation returns to the Themes page, as the old
+  /// confirmation pages did; cancelling a discard keeps the page and draft.
+  fn cancel_confirmation(&mut self, confirmation: Confirmation) {
+    match confirmation {
+      Confirmation::DiscardDraft => {}
+      Confirmation::DeleteTheme => {
+        self.delete_theme = None;
+        self.go(AppearancePage::Themes);
+      }
+      Confirmation::ReplaceImport => {
+        self.pending_import = None;
+        self.pending_import_name = None;
+        self.go(AppearancePage::Themes);
+      }
     }
   }
 
@@ -1191,11 +1205,7 @@ impl AppearanceApp {
       AppearancePage::WallpaperItems { collection, .. } => {
         self.go(AppearancePage::WallpaperModes { collection });
       }
-      AppearancePage::ThemeImport
-      | AppearancePage::ThemeImportConfirm
-      | AppearancePage::ThemeDeleteConfirm => {
-        self.go(AppearancePage::Themes);
-      }
+      AppearancePage::ThemeImport => self.go(AppearancePage::Themes),
       AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces
@@ -1377,12 +1387,6 @@ impl AppearanceApp {
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_import")
       ),
-      AppearancePage::ThemeImportConfirm => {
-        tr(self.lang, "control_center.theme_profile_duplicate_title").into()
-      }
-      AppearancePage::ThemeDeleteConfirm => {
-        tr(self.lang, "control_center.theme_profile_delete_title").into()
-      }
       AppearancePage::ThemeFamilies { category } => format!(
         "{root} › {} › {} › {}",
         tr(self.lang, "control_center.themes"),
@@ -1635,9 +1639,6 @@ impl AppearanceApp {
     match self.page {
       AppearancePage::AccentEdit => self.draw_accent_editor(frame, area),
       AppearancePage::Prompt { goal } => self.draw_prompt(frame, area, goal),
-      AppearancePage::ThemeDeleteConfirm | AppearancePage::ThemeImportConfirm => {
-        self.draw_theme_confirmation(frame, area)
-      }
       _ => {
         self.list_height = area.height;
         draw_menu(
@@ -1679,69 +1680,49 @@ impl AppearanceApp {
     state: &ConfirmState,
   ) {
     let label = |key: &str| tr(self.lang, key);
-    let dialog = match confirmation {
-      Confirmation::DiscardDraft => ConfirmDialog {
-        title: label("control_center.discard_changes_title"),
-        message: label("control_center.discard_changes_description"),
-        confirm: label("control_center.discard"),
-        cancel: label("control_center.cancel"),
-        danger: false,
-        deadline: None,
-      },
+    // The theme dialogs name the theme above the description.
+    let named = |name: &str, description: &str| format!("{name}\n{}", label(description));
+    let (title, message, confirm, danger) = match confirmation {
+      Confirmation::DiscardDraft => (
+        "control_center.discard_changes_title",
+        label("control_center.discard_changes_description").to_string(),
+        "control_center.discard",
+        false,
+      ),
+      Confirmation::DeleteTheme => (
+        "control_center.theme_profile_delete_title",
+        named(
+          self
+            .delete_theme
+            .as_ref()
+            .map(|theme| theme.name.as_str())
+            .unwrap_or_default(),
+          "control_center.theme_profile_delete_description",
+        ),
+        "control_center.theme_profile_delete",
+        true,
+      ),
+      Confirmation::ReplaceImport => (
+        "control_center.theme_profile_duplicate_title",
+        named(
+          self.pending_import_name.as_deref().unwrap_or_default(),
+          "control_center.theme_profile_duplicate_description",
+        ),
+        "control_center.theme_profile_duplicate_replace",
+        true,
+      ),
+    };
+    let dialog = ConfirmDialog {
+      title: label(title),
+      message: &message,
+      confirm: label(confirm),
+      cancel: label("control_center.cancel"),
+      danger,
+      deadline: None,
     };
     draw_confirm(frame, area, &self.theme, dialog, state);
   }
 
-  fn draw_theme_confirmation(&self, frame: &mut Frame, area: Rect) {
-    let (title, name, description, accept) = if self.page == AppearancePage::ThemeDeleteConfirm {
-      (
-        "control_center.theme_profile_delete_title",
-        self
-          .delete_theme
-          .as_ref()
-          .map(|theme| theme.name.as_str())
-          .unwrap_or_default(),
-        "control_center.theme_profile_delete_description",
-        "control_center.theme_profile_delete",
-      )
-    } else {
-      (
-        "control_center.theme_profile_duplicate_title",
-        self.pending_import_name.as_deref().unwrap_or_default(),
-        "control_center.theme_profile_duplicate_description",
-        "control_center.theme_profile_duplicate_replace",
-      )
-    };
-    let selected = self.menu.selected_index();
-    let option = |index: usize, key: &str| {
-      let is_selected = selected == Some(index);
-      Line::from(Span::styled(
-        format!(
-          "{}  {}",
-          if is_selected { ">" } else { " " },
-          tr(self.lang, key)
-        ),
-        if is_selected {
-          Style::new()
-            .fg(self.theme.selected_foreground)
-            .bg(self.theme.selected_background)
-        } else {
-          Style::new().fg(self.theme.foreground)
-        },
-      ))
-    };
-    frame.render_widget(
-      Paragraph::new(vec![
-        Line::from(tr(self.lang, title)),
-        Line::from(name),
-        Line::from(tr(self.lang, description)),
-        option(0, accept),
-        option(1, "control_center.cancel"),
-      ])
-      .block(Block::default().borders(Borders::ALL)),
-      area,
-    );
-  }
   /// Renders `draw_prompt` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn draw_prompt(&mut self, frame: &mut Frame, area: Rect, goal: PromptGoal) {
     let label = tr(self.lang, self.prompt_label(goal));

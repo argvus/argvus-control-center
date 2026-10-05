@@ -154,8 +154,6 @@ pub enum AppearancePage {
   },
   CustomThemes,
   ThemeImport,
-  ThemeImportConfirm,
-  ThemeDeleteConfirm,
   /// Sticky/Float, independent of theme selection (Appearance > Mode).
   Mode,
   Wallpapers,

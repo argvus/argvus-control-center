@@ -568,7 +568,11 @@ fn theme_shortcuts_are_kept_and_shown_in_the_footer() {
     assert!(footer.contains(key), "{key} missing: {footer}");
   }
   custom.handle(KeyCode::Char('d'));
-  assert_eq!(custom.page, AppearancePage::ThemeDeleteConfirm);
+  assert_eq!(custom.page, AppearancePage::CustomThemes);
+  assert_eq!(
+    custom.confirm.map(|(c, _)| c),
+    Some(Confirmation::DeleteTheme)
+  );
   assert_eq!(custom.delete_theme.as_ref().unwrap().id, "mine");
 
   let mut themes = app(AppearancePage::Themes);
@@ -924,4 +928,73 @@ fn apply_keeps_rendering_the_just_applied_draft_until_refresh_replaces_it() {
   assert!(!draft.audio_player_enabled);
   assert!(!draft.launcher_enabled);
   assert!(application.action.is_some());
+}
+
+fn custom_theme_app() -> AppearanceApp {
+  let mut custom = app(AppearancePage::CustomThemes);
+  custom.state.custom_themes = vec![CustomTheme {
+    id: "mine".into(),
+    name: "Mine".into(),
+    base_theme: "argvus-dark".into(),
+    profile_path: "/tmp/mine".into(),
+    wallpaper_path: None,
+  }];
+  custom
+}
+
+#[test]
+fn theme_delete_uses_the_single_confirmation_starting_on_cancel() {
+  // Enter right after opening runs the focused row: Cancel. Cancelling
+  // returns to Themes, as the old confirmation page did.
+  let mut custom = custom_theme_app();
+  custom.handle(KeyCode::Char('d'));
+  let screen = render(&mut custom, 80, 24);
+  assert!(line_with(&screen, "Mine").contains("Mine"));
+  assert!(
+    line_with(&screen, "Cancel").contains("> Cancel"),
+    "{screen:#?}"
+  );
+  custom.handle(KeyCode::Enter);
+  assert!(custom.confirm.is_none());
+  assert!(custom.action.is_none(), "nothing deleted");
+  assert!(custom.delete_theme.is_none());
+  assert_eq!(custom.page, AppearancePage::Themes);
+
+  // `y` confirms from any focus and deletes, then shows Themes.
+  let mut custom = custom_theme_app();
+  custom.handle(KeyCode::Char('d'));
+  custom.handle(KeyCode::Char('y'));
+  assert!(custom.action.is_some(), "delete started");
+  assert_eq!(custom.page, AppearancePage::Themes);
+
+  // Keys other than the dialog's do not reach the page underneath.
+  let mut custom = custom_theme_app();
+  custom.handle(KeyCode::Char('d'));
+  custom.handle(KeyCode::Char('e'));
+  assert_eq!(custom.page, AppearancePage::CustomThemes);
+  assert!(custom.confirm.is_some());
+}
+
+#[test]
+fn duplicate_import_uses_the_single_confirmation() {
+  let pending = |application: &mut AppearanceApp| {
+    application.pending_import = Some("/tmp/argvus/mine.zip".into());
+    application.pending_import_name = Some("Mine".into());
+    application.confirm = Some((Confirmation::ReplaceImport, ConfirmState::new()));
+  };
+
+  let mut import = app(AppearancePage::ThemeImport);
+  pending(&mut import);
+  import.handle(KeyCode::Char('n'));
+  assert!(import.pending_import.is_none());
+  assert!(import.action.is_none());
+  assert_eq!(import.page, AppearancePage::Themes);
+
+  let mut import = app(AppearancePage::ThemeImport);
+  pending(&mut import);
+  import.handle(KeyCode::Up);
+  import.handle(KeyCode::Enter);
+  assert!(import.action.is_some(), "replace started");
+  assert!(import.pending_import.is_none(), "taken by the import");
+  assert_eq!(import.page, AppearancePage::Themes);
 }
