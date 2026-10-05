@@ -284,25 +284,40 @@ mais `Button`, `ActionButton`, `on_buttons` nem linhas `[ ... ]`.
 | Picker | Opção | Aplica e volta ao detalhe / cancela | Choice (ou Toggle/Value, ver acima); continua voltando ao detalhe | `Enter`; `r`/`q` cancelam (`q` é capturado pelo sair global) | migrado |
 | Reversão | "Manter configuração?" (faixa no topo) | Mantém / reverte; sem resposta em 15 s reverte para a config anterior (`apply_all`, "Revertido <nome>") | Componente de confirmação com prazo (`Manter`/`Reverter`, segundos restantes); prazo, destino e mensagem idênticos; foco em Reverter (D24) | `y` mantém; `n`/`Esc`/Enter (em Reverter) revertem | migrado |
 
-### 0.5 `argvus-control-center-boot` (todas as ações passam por `ConfirmationState`)
+### 0.5 `argvus-control-center-boot` (todas as ações passam pela confirmação)
+
+Conferido no código antigo (Fase 3): toda ação do boot pede confirmação e
+só então roda `<exe> system-settings boot <ação>`, elevado por `pkexec`
+(`ensure_root` em `settings/src/system/command.rs`), com o painel de saída
+ao vivo aberto na hora. Não há rascunho: o efeito é imediato após
+confirmar. O timeout e a linha do kernel abrem um campo antes da
+confirmação.
+
+**Fase 3 (2026-10-05): todas as linhas abaixo migradas.** Commits
+`93bc44f` (campo da linha do kernel), `1d04196` (lista única) e `a82ada7`
+(`ConfirmDialog`); `argvus-i18n` `2e6be4e`. O crate não tem mais
+`Button`, `ActionButton`, `on_buttons` nem linhas `[ ... ]`.
 
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
-| Home | Resumo, Kernels, Bootloader, Initramfs, Plymouth | Abre páginas | Submenu ×5 (com valor à direita) | `Enter` | pendente |
-| Global | Recarregar | `reload` | Atalho mantido | `r` | pendente |
-| Kernels | Kernel | Abre detalhe | Submenu | `Enter` | pendente |
-| Kernels / detalhe | **`[ Default ]`** | `SystemdDefault` (confirmado) | Action `Definir como padrão` na página do item | `Enter` | pendente |
-| Bootloader | Entrada | Abre detalhe | Submenu | `Enter` | pendente |
-| Bootloader / detalhe | **`[ Default ]`** | `SystemdDefault` (confirmado) | Action | `Enter` | pendente |
-| Bootloader / detalhe | **`[ Timeout ]`** | Input 0–60 → confirmado | Value | `Enter` | pendente |
-| Bootloader (GRUB) | **`[ Kernel command line ]`** | Input → `GrubCmdline` (confirmado) | Value | `Enter` | pendente |
-| Bootloader (GRUB) | **`[ Regenerate ]`** | `GrubRegenerate` (confirmado) | Destructive `Regenerar GRUB` | `Enter` | pendente |
-| Initramfs | Preset | Abre detalhe | Submenu | `Enter` | pendente |
-| Initramfs | Última linha "Regenerar todas as imagens" | `Initramfs` (confirmado) | Destructive (já é linha) | `Enter` | pendente |
-| Initramfs / detalhe | **`[ Regenerate ]`** | `Initramfs` (confirmado) | Sem linha própria. **Equivalente: Enter na linha do item** `Regenerar todas as imagens` (Destructive, mesma ação `Initramfs`) (D5) | `Enter` | pendente |
-| Plymouth | Tema | Aplica (confirmado) | Choice confirmada | `Enter` | pendente |
-| Plymouth | **`[ Apply theme ]`** | Igual ao Enter no tema | Sem linha própria. **Equivalente: Enter na linha do item** (Choice do tema) (D5) | `Enter` | pendente |
-| Log da transação | Visualizador | Rolagem | Mantido | `PgUp/PgDn/Home/End` | pendente |
+| Home | Resumo, Kernels, Bootloader, Initramfs, Plymouth | Abre páginas (e recarrega) | Submenu ×5 com o estado à direita | `Enter` | migrado |
+| Global | Recarregar | `reload` | Atalho mantido | `r` | migrado |
+| Resumo | Bloco readonly | — | Info em seções (Sistema base, Bootloader, Componentes); página só rola | `↑↓` | migrado |
+| Kernels | Kernel | Abre detalhe | Submenu (valor "Atual · Padrão") | `Enter` | migrado |
+| Kernels / detalhe | **`[ Default ]`** | `SystemdDefault` (confirmado) | Action `Definir padrão` na seção Ações da página do kernel; desabilitada com o motivo à direita quando não há entrada systemd-boot mapeável ou o bootloader é desconhecido (D28) | `Enter` | migrado |
+| Bootloader | Entrada | Abre detalhe | Submenu na seção Entradas (valor "Padrão") | `Enter` | migrado |
+| Bootloader / detalhe | **`[ Default ]`** (systemd-boot) | `SystemdDefault` (confirmado) | Action `Definir padrão` na seção Ações da página da entrada | `Enter` | migrado |
+| Bootloader (GRUB) | **`[ Default ]`** | Sempre dava erro "não foi possível mapear" (com GRUB a lista de entradas vem vazia) | **Sem efeito no código antigo**; sem linha equivalente (D27) | — | migrado |
+| Bootloader / detalhe | **`[ Timeout ]`** | Campo 0–60 → confirmado | Value `Timeout` (valor atual) na seção Configuração da página Bootloader; desabilitada com o motivo quando o bootloader é desconhecido (D28) | `Enter` | migrado |
+| Bootloader (GRUB) | **`[ Kernel command line ]`** | Campo → `GrubCmdline` (confirmado) | Value `Linha do kernel` (valor atual) na seção Configuração; o campo aceita texto (D30) | `Enter` | migrado |
+| Bootloader (GRUB) | **`[ Regenerate ]`** | `GrubRegenerate` (confirmado) | Destructive `Regenerar GRUB` na Zona de perigo, confirmação em estilo de perigo | `Enter` | migrado |
+| Initramfs | Preset | Abre detalhe | Submenu na seção Presets; o detalhe só tem Info | `Enter` | migrado |
+| Initramfs | Última linha "Regenerar todas as imagens" | `Initramfs` (confirmado) | Destructive na Zona de perigo, confirmação em estilo de perigo | `Enter` | migrado |
+| Initramfs / detalhe | **`[ Regenerate ]`** | `Initramfs` (confirmado) | Sem linha própria. **Equivalente: Enter na linha do item** `Regenerar todas as imagens` (Destructive, mesma ação `Initramfs`) (D5) | `Enter` | migrado |
+| Plymouth | Tema | Aplica (confirmado) | Choice confirmada (`●` no atual) | `Enter` | migrado |
+| Plymouth | **`[ Apply theme ]`** | Igual ao Enter no tema | Sem linha própria. **Equivalente: Enter na linha do item** (Choice do tema) (D5) | `Enter` | migrado |
+| Detalhes de kernel/entrada/preset | Linhas "d Definir padrão", "t Timeout", "g Regenerar" | Nenhuma: as teclas `d`/`t`/`g` nunca foram tratadas | Removidas (as ações viraram linhas) | — | migrado |
+| Log da transação | Visualizador ao vivo | Rolagem e follow | Mantido sem mudança | `↑↓ jk PgUp/PgDn Home/End`, `Esc` | migrado |
 
 ### 0.6 `argvus-control-center-packages`
 
@@ -599,8 +614,10 @@ Sessões › = `LAYOUT`; editores de valor = `BLUR` / `OPACITY`; `Apply` =
 | --- | --- | --- | --- |
 | audio > Home | Resumo / Saídas / Entradas / Dispositivos | `MONITOR` / `AUDIO` / `MICROPHONE` / `SPEAKER` | `INFO` / `SPEAKER` / `MICROPHONE` / `DEVICES` |
 | audio > Resumo | cabeçalhos de seção | `MONITOR`, `AUDIO`, `SPEAKER` | sem ícone (Info) |
-| boot > Home | Resumo / Kernels / Bootloader / Initramfs / Plymouth | `MONITOR` / `MEMORY` / `STORAGE` / `PACKAGES` / `PALETTE` | `INFO` / `CPU` / `BOOT` / `PACKAGES` / `IMAGE` |
-| boot > detalhes | cabeçalhos | `MEMORY`, `STORAGE`, `PACKAGES` | sem ícone (Info) |
+| boot > Home | Resumo / Kernels / Bootloader / Initramfs / Plymouth | `MONITOR` / `MEMORY` / `STORAGE` / `PACKAGES` / `PALETTE` | `INFO` / `CPU` / `BOOT` / `PACKAGES` / `IMAGE` (Fase 3) |
+| boot > detalhes | cabeçalhos | `MEMORY`, `STORAGE`, `PACKAGES` | sem ícone (títulos de seção) (Fase 3) |
+| boot > ações | Definir padrão / Timeout / Linha do kernel / Regenerar GRUB / Regenerar initramfs | — | `STAR` / `TIMER` / `TERMINAL` / `SYNC` / `SYNC` (mesmo sentido) (Fase 3, D29) |
+| boot > listas | kernels, entradas, presets, temas Plymouth | — | sem ícone (listas homogêneas, D9) (Fase 3) |
 | diagnostics > Home | Resumo, Serviços, Kernel e boot, Gráficos, Rede, Áudio, Bluetooth, Armazenamento, Pacotes, ARGVUS | `MONITOR`, `SETTINGS`, `MEMORY`, `GPU`, `NETWORK`, `AUDIO`, `LINK`, `STORAGE`, `PACKAGES`, `SUCCESS` | `INFO`, `SERVICES`, `BOOT`, `GPU`, `NETWORK`, `AUDIO`, `BLUETOOTH`, `STORAGE`, `PACKAGES`, `PALETTE`/logo (D9) |
 | diagnostics | `category_icon` (mapa duplicado do anterior) | idem | unificar com o item |
 | displays > Home | Monitor / desconectado / Perfis / Atualizar | `MONITOR` / `ETHERNET` / `APPS` / — | `MONITOR` / `LINK_OFF` / `PROFILE` / `REFRESH` (Fase 3) |
@@ -823,7 +840,7 @@ Notas de projeto:
 | 2 | `appearance` | concluída (`2f57d07`, `75d3dc1`, `4737a4c`; `argvus-i18n` `a62346d`) |
 | 3 | `settings` | concluída (`2f694e3`, `c423f33`, `14e51c1`; `argvus-tui` `0ee7a52`, `908e747`; `argvus-i18n` `c49a792`) |
 | 3 | `displays` | concluída (`545bcfe`, `c394639`; `argvus-tui` `106013b`; `argvus-i18n` `bb784d3`) |
-| 3 | `boot` | pendente |
+| 3 | `boot` | concluída (`93bc44f`, `1d04196`, `a82ada7`; `argvus-i18n` `2e6be4e`) |
 | 3 | `packages` | pendente |
 | 3 | `network` | pendente |
 | 3 | `services` | pendente |
@@ -888,7 +905,7 @@ Achados fora do escopo, sem alteração:
 - `boot`: a edição de "Kernel command line" (GRUB) reutiliza `timeout_input`,
   cujo tratamento de teclas só aceita dígitos até 2 caracteres; com o valor
   atual carregado, só é possível apagar, não digitar. Tratar na migração do
-  `boot` (Fase 3).
+  `boot` (Fase 3). **Corrigido em `93bc44f` (D30).**
 - O cspell não está instalado nesta máquina; `docs/ux-audit.md` já está no
   `ignorePaths`.
 
@@ -1065,6 +1082,69 @@ usar, sem uso em outro crate: `navigate_enter_apply_r_cancel_help`,
 `reverting_automatically_if_no_key_is_pressed`, `current_4cdf18`,
 `primary`, `new`.
 
+### 5.5 Notas da Fase 3: `boot` (2026-10-05)
+
+Dependências: como nas fases anteriores, `argvus-tui` e `argvus-i18n` na
+branch `ux_ui`. Em execução, os títulos de seção (`section_base_system`,
+`section_components`, `section_entries`, `section_entry`,
+`section_files`, `section_presets`), os rótulos do Resumo e do initramfs
+(`firmware`, `boot_manager`, `default_entry`, `esp_path`,
+`initramfs_modules`/`_binaries`/`_files`/`_hooks`), `regenerate_grub` e
+os motivos `unavailable_no_systemd_boot_entry`/
+`unavailable_unknown_bootloader` exigem o `argvus-i18n` instalado a
+partir de `ux_ui`; sem elas a tela mostra a chave (visto na verificação
+em tmux). Os rótulos que já existiam com dois-pontos (`package`,
+`version_20bc85`, `status`, `image`...) são reaproveitados sem o `:`.
+
+Conferido no código antigo e preservado: as sete ações (padrão systemd-boot,
+timeout systemd-boot/GRUB, linha do kernel, regenerar GRUB, regenerar
+initramfs, tema Plymouth) continuam passando pela confirmação, com
+efeito imediato depois dela, elevadas por `pkexec` e com o painel de
+saída ao vivo (rolagem, follow, `Esc` fecha) sem mudança. As mensagens
+de confirmação (`action_message`) são as mesmas.
+
+Mudanças de comportamento, além da apresentação:
+
+- Sem barra de botões; `Tab`/`BackTab` não fazem nada no `boot` e `←/→`
+  não movem mais foco entre botões.
+- `Definir padrão` saiu da lista de Kernels e do Bootloader: está na
+  página do kernel e na página da entrada.
+- Timeout, Linha do kernel e Regenerar GRUB ficam só na página
+  Bootloader (antes também apareciam nos botões do detalhe da entrada,
+  onde o timeout é o mesmo e a linha do kernel e o GRUB nunca existiam
+  juntos com entradas) (D28).
+- Linhas inválidas no momento ficam desabilitadas, com o motivo à
+  direita, em vez de falhar depois de ativadas (D28).
+- `Esc`/`←` voltam com o cursor no item que abriu a página (antes, na
+  primeira linha).
+- Enquanto um recarregamento ou uma ação roda, as páginas continuam
+  abrindo, mas nenhuma mudança de boot começa. Antes, `Enter` na lista do
+  initramfs ou do Plymouth podia abrir uma segunda confirmação e trocar
+  o job em andamento.
+- Confirmação pelo componente único: foco em Cancelar (como antes),
+  `y`/`n`; as duas regenerações em estilo de perigo.
+- O Resumo é só Info, sem cursor (antes a página era `readonly`); o
+  `★` dos kernels e do Plymouth virou valor "Atual" e `●`.
+
+Correção feita: o campo "Linha do kernel" aceitava só 2 dígitos (D30).
+
+Achados, **sem alteração**:
+
+- A lista de Kernels mostra o pacote duas vezes ("6.18.49-2-lts
+  6.18.49-2-lts"): `detect_kernels` preenche `version` com o mesmo nome
+  do diretório de módulos. Formato anterior à Fase 3.
+- O backend recusa a linha do kernel vazia ("invalid GRUB kernel command
+  line"); a UI deixa enviar e mostra esse erro, como antes.
+
+Achados para a Fase 4 (sem alteração): chaves que o `boot` deixou de
+usar, sem uso em outro crate: `d_set_as_default_for_the_next_boot`,
+`d_set_default_t_change_timeout`, `g_regenerate_all_initramfs_images`,
+`kernel_620593`, `bootloader_entry`, `initramfs_fc455d`, `base_system`,
+`bootloader`, `regenerate`, `apply_theme`, `modules`, `binaries`,
+`files`, `hooks`. `navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help`,
+`r_refresh_esc_back_help` e `navigate_enter_open_esc_back_r_refresh_help`
+ainda são usadas por outros crates.
+
 ---
 
 ## 6. Pontos de decisão
@@ -1099,6 +1179,10 @@ usar, sem uso em outro crate: `navigate_enter_apply_r_cancel_help`,
 | D24 | Reversão de monitor pelo componente único com prazo: foco em Reverter, `Enter` imediato reverte, `Space` sem efeito, `y` mantém, `n`/`Esc` revertem; o rodapé destaca `y Manter`. Motivo: `Enter` por reflexo com a tela ruim não pode manter a configuração. Prazo (15 s), destino (`previous_config` com `apply_all`) e mensagem idênticos. | decidido (Fase 3) |
 | D25 | `displays` não tem rascunho: `Aplicar` é Action comum que reaplica a configuração salva com a contagem, sem `draft_actions`; o inventário 0.4 foi corrigido. | decidido (Fase 3) |
 | D26 | `Restaurar padrão` mantém o comportamento atual: imediato e sem contagem de reversão (`reset_button` não arma `RevertState`). | decidido (Fase 3) |
+| D27 | (B1 do `boot`) `[ Default ]` do Bootloader com GRUB não ganha linha equivalente: com GRUB a lista de entradas vem vazia (`parse_grub_defaults` não preenche `entries`) e o botão só mostrava o erro "não foi possível mapear". Registrado no inventário 0.5 como "sem efeito no código antigo". | decidido (Fase 3) |
+| D28 | (B2 do `boot`) Timeout, Linha do kernel e Regenerar GRUB ficam só na página Bootloader. Linhas inválidas no momento ficam desabilitadas e mostram o motivo à direita, traduzido: `Indisponível · sem entrada systemd-boot` (Definir padrão sem entrada mapeável) e `Indisponível · bootloader desconhecido` (Definir padrão e Timeout com bootloader desconhecido). | decidido (Fase 3) |
+| D29 | (B3 do `boot`) Ícones: `STAR` (Definir padrão), `TIMER` (Timeout), `TERMINAL` (Linha do kernel), `SYNC` (Regenerar GRUB e Regenerar initramfs, mesmo sentido); Home do boot conforme 1.5. | decidido (Fase 3) |
+| D30 | O campo "Linha do kernel" aceita qualquer texto até 2048 bytes (limite do backend); aspas, `\` e caracteres de controle continuam recusados ao aplicar. O popup alarga até 100 colunas e mostra o fim do texto. Commit separado (`93bc44f`). | decidido (Fase 3) |
 
 Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
 `[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram
