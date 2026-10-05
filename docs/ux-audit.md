@@ -368,19 +368,34 @@ não tem mais `Button`, `ActionButton`, `on_buttons` nem linhas `[ ... ]`.
 
 ### 0.7 `argvus-control-center-network`
 
+**Fase 3 (2026-10-05): todas as linhas abaixo migradas.** Commits `83a0461`
+(lista única) e `d5df88d` (`ConfirmDialog`); `argvus-tui` `541d788` (glyphs
+`PROXY` e `AUTORENEW`); `argvus-i18n` `b46d99b`. O crate não tem mais
+`Button`, `ActionButton`, `on_buttons` nem linhas `[ ... ]`. Acréscimo: atalho
+`i` (Detalhes) em Wi-Fi e VPN (D36).
+
+Conferido no código antigo: Enter em Wi-Fi e VPN conecta; Enter em interface
+abre o detalhe; DNS manual abre o prompt e DNS automático aplica sem
+confirmação; Esquecer é o único fluxo com confirmação; a senha é mascarada; o
+helper elevado do DNS (`SystemSettingsOperation`) não muda.
+
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
-| Home | Status, Interfaces, Ethernet, Wi-Fi, VPN, DNS, Proxy, Firewall | Abre páginas | Submenu ×8 | `Enter` | pendente |
-| Status | **`[ Enable Wi-Fi ]` / `[ Disable Wi-Fi ]`** | `toggle_wifi` (imediato) | Toggle `Wi-Fi` | `Enter`/`Space` | pendente |
-| Status, Interfaces, Ethernet, VPN, Wi-Fi, DNS, Proxy, Detalhe | **`[ Refresh ]`** | `start_refresh` (Wi-Fi com rescan) | Action `Atualizar` | `r` | pendente |
-| Interfaces / Ethernet | Interface | Abre detalhe | Submenu | `Enter`, `/` filtro | pendente |
-| Interfaces / Ethernet / VPN / Wi-Fi | **`[ Connect ]`** | `connect_selected` (imediato) | Action na página do item | `Enter` | pendente |
-| Interfaces / Ethernet / VPN / Wi-Fi | **`[ Disconnect ]`** | `disconnect_selected` (imediato) | Action | `Enter` | pendente |
-| Wi-Fi | Rede | `connect_wifi` (senha se preciso) | Action (Enter mantém `connect_wifi`); ações secundárias (Disconnect, Forget) na página de detalhe da rede (D4) | `Enter` | pendente |
-| Wi-Fi | **`[ Forget ]`** | `confirm_forget` → esquece | Destructive | `Enter` | pendente |
-| DNS | **`[ Manual DNS ]`** | Input → aplica | Value | `Enter` | pendente |
-| DNS | **`[ Automatic DNS ]`** | `apply_dns("")` (imediato) | Action | `Enter` | pendente |
-| Firewall | Página do settings embutida | Igual a 0.3 Firewall | Igual a 0.3 | — | pendente |
+| Home | Status, Interfaces, Ethernet, Wi-Fi, VPN, DNS, Proxy, Firewall | Abre páginas | Submenu ×páginas disponíveis, com o estado à direita | `Enter` | migrado |
+| Status | **`[ Enable Wi-Fi ]` / `[ Disable Wi-Fi ]`** | `toggle_wifi` (imediato) | Toggle `Wi-Fi` (`[x]`/`[ ]`); desabilitada sem estado de rádio (D37) | `Enter`/`Space` | migrado |
+| Status, Interfaces, Ethernet, VPN, Wi-Fi, DNS, Proxy, Detalhe | **`[ Refresh ]`** | `start_refresh` (Wi-Fi com varredura) | Action `Atualizar`: no topo em Status, DNS, Proxy e detalhes; no fim das listas (D42) | `r` | migrado |
+| Interfaces / Ethernet | Interface | Abre detalhe | Submenu | `Enter`, `/` filtro | migrado |
+| Interfaces / Ethernet | **`[ Connect ]`** | `connect_selected` (imediato) | Action `Conectar` no detalhe da interface (D39) | `Enter` | migrado |
+| Interfaces / Ethernet | **`[ Disconnect ]`** | `disconnect_selected` (imediato) | Action `Desconectar` no detalhe (D39, D40) | `Enter` | migrado |
+| Wi-Fi | Rede | `connect_wifi` (senha se preciso) | Action; Enter mantém a conexão | `Enter` | migrado |
+| Wi-Fi | **`[ Connect ]` / `[ Disconnect ]`** | imediato | Actions no detalhe da rede, aberto com `i` (D36) | `i`, `Enter` | migrado |
+| Wi-Fi | **`[ Forget ]`** | `confirm_forget` → esquece | Destructive `Esquecer` no fim do detalhe (Zona de perigo), `ConfirmDialog` (D38) | `i`, `Enter`, `y` | migrado |
+| VPN | Conexão | `connect_selected` (imediato) | Action; Enter conecta | `Enter` | migrado |
+| VPN | **`[ Connect ]` / `[ Disconnect ]`** | imediato | Actions no detalhe da VPN, aberto com `i` (D36, D39) | `i`, `Enter` | migrado |
+| DNS | **`[ Manual DNS ]`** | Input → aplica | Value `DNS manual` (abre o prompt) | `Enter` | migrado |
+| DNS | **`[ Automatic DNS ]`** | `apply_dns("")` (imediato) | Action `DNS automático` (ícone `AUTORENEW`) | `Enter` | migrado |
+| Proxy | Refresh | `start_refresh` | Action `Atualizar` | `r`, `Enter` | migrado |
+| Firewall | Página do settings embutida | Igual a 0.3 | Igual a 0.3, sem mudança | — | migrado |
 
 ### 0.8 `argvus-control-center-audio`
 
@@ -867,7 +882,7 @@ Notas de projeto:
 | 3 | `displays` | concluída (`545bcfe`, `c394639`; `argvus-tui` `106013b`; `argvus-i18n` `bb784d3`) |
 | 3 | `boot` | concluída (`93bc44f`, `1d04196`, `a82ada7`; `argvus-i18n` `2e6be4e`) |
 | 3 | `packages` | concluída (`33a033f`, `63689aa`; `argvus-tui` `6beda24`; `argvus-i18n` `ef69e70`) |
-| 3 | `network` | pendente |
+| 3 | `network` | concluída (`83a0461`, `d5df88d`; `argvus-tui` `541d788`; `argvus-i18n` `b46d99b`) |
 | 3 | `services` | pendente |
 | 3 | `audio` | pendente |
 | 3 | `bluetooth` | pendente |
@@ -1251,6 +1266,48 @@ uso em outro crate: `dependencies`, `downgrade_c6e26f`, `download_bytes`,
 
 ---
 
+### 5.7 Notas da Fase 3: `network` (2026-10-05)
+
+Conferido no código antigo e preservado: Wi-Fi ligado/desligado (imediato, sem
+confirmação, via `set_wifi_enabled`); conexão com senha (campo mascarado com
+`•`, captura de texto, D10); DNS manual e automático (imediato, pelo helper
+elevado); busca `/` nas listas; varredura e `r` (Wi-Fi com varredura, demais
+páginas sem); Esquecer com confirmação; a rota Firewall (sem mudança).
+
+Mudanças de comportamento, além da apresentação:
+
+- Sem barra de botões: `Tab`/`BackTab` não movem mais o foco.
+- Conectar e Desconectar saem das listas de interfaces, Wi-Fi e VPN e vão
+  para o detalhe do item (D39). Enter na interface continua abrindo o detalhe;
+  Enter na rede Wi-Fi e na VPN continua conectando.
+- Atalho novo `i` (Detalhes) em Wi-Fi e VPN, com `i Details` no rodapé nessas
+  linhas (D36). Não substitui nenhuma tecla existente.
+- Conectar e Desconectar do detalhe de interface passam a ser alcançáveis; antes
+  só existiam como botões da lista, e o detalhe tinha só Refresh.
+- Toggle Wi-Fi desabilitado quando não há estado de rádio, com o motivo à
+  direita (D37). O botão antigo aparecia e agia mesmo assim.
+- Desconectar da lista de interfaces tinha estilo de perigo e agora é Action
+  comum (D40).
+- Esquecer passa pelo `ConfirmDialog`, com estilo de perigo e foco em Cancelar.
+  Texto e efeito iguais.
+- `Esc`/`←` voltam com o cursor na linha que abriu a página.
+
+Achados, **sem alteração**:
+
+- `wifi_enabled = None` cobre "sem placa" e também "consulta falhou". O texto
+  `Indisponível · sem placa Wi-Fi` é uma aproximação para os dois casos.
+- `run_wifi` ainda grava o texto `Conectado` sem traduzir (`ui.rs`, sucesso da
+  conexão com senha). Fora do escopo da migração.
+
+Testes: 26 testes do crate passam. Nenhum executa `nmcli`, `pkexec` ou
+`systemctl` de fato: a dev-dependency `testing` do `core` faz o processo falhar
+sem executar. Os testes de navegação não disparam job quando dá para evitar.
+
+Não verificado nesta fase: execução real com NetworkManager e tela em 80x24.
+As chaves novas (`unavailable_no_wifi_card`, `signal`, `security`,
+`frequency`) só aparecem traduzidas com `argvus-i18n` instalado a partir de
+`b46d99b`.
+
 ## 6. Pontos de decisão
 
 ### 6.1 Decisões registradas (2026-10-04)
@@ -1292,6 +1349,13 @@ uso em outro crate: `dependencies`, `downgrade_c6e26f`, `download_bytes`,
 | D33 | (`packages`) Histórico: Enter nunca abria uma entrada (`HistoryDetails` inalcançável); registrado no inventário 0.6 como "sem efeito no código antigo", sem página de detalhes. | decidido (Fase 3) |
 | D34 | (`packages`) O editor de mirrors vira página com Value por opção e `Gerar preview` no fim, sem `draft_actions` (nada é salvo antes da confirmação). Glyphs novos `SORT` e `COUNTER` no `argvus-tui`. | decidido (Fase 3) |
 | D35 | (`packages`) A confirmação mantém as contagens do plano (sem página de plano), com o download em MiB/GiB; a instalação pelo AUR não mostra 0/0/0, só o aviso do PKGBUILD. | decidido (Fase 3) |
+| D36 | (`network`) Enter em Wi-Fi e VPN continua conectando (D4). `i` (Detalhes) é atalho novo: abre a página de detalhes da rede com Conectar, Desconectar e Esquecer. O rodapé mostra `i Detalhes` nas linhas de rede Wi-Fi e VPN, também fora da página de detalhes. Em Interfaces, Enter já abre o detalhe e não muda. | decidido (Fase 3) |
+| D37 | (`network`) Toggle Wi-Fi desabilitado quando `wifi_enabled` é `None`, com o motivo à direita (`Indisponível · sem placa Wi-Fi`). Mudança intencional: o botão antigo agia mesmo sem placa. | decidido (Fase 3) |
+| D38 | (`network`) Esquecer usa `ConfirmDialog` em estilo de perigo, com foco em Cancelar. Texto e efeito iguais. | decidido (Fase 3) |
+| D39 | (`network`) Conectar e Desconectar de interfaces, Wi-Fi e VPN saem das listas e vão para a página de detalhes do item. Enter na interface continua abrindo o detalhe. | decidido (Fase 3) |
+| D40 | (`network`) Desconectar é Action comum, sem confirmação (não havia), e não estilo de perigo. | decidido (Fase 3) |
+| D41 | (`network`) Glyphs novos no `argvus-tui`: `PROXY` (`nf-md-routes`, `f046a`) e `AUTORENEW` (`nf-md-autorenew`, `f006a`), conferidos na Symbols Nerd Font Mono. | decidido (Fase 3) |
+| D42 | (`network`) As listas terminam com a seção Ações (Atualizar), e `r` continua igual. Em Status, DNS, Proxy e detalhes, as Ações ficam antes do resumo. | decidido (Fase 3) |
 
 Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
 `[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram
