@@ -321,28 +321,50 @@ confirmação.
 
 ### 0.6 `argvus-control-center-packages`
 
+Conferido no código antigo (Fase 3): Install, Remove, Reinstall e Atualizar
+tudo calculam o plano (`pacman --print`) antes da confirmação, que mostra só
+contagens (instalar, remover, download); não existia página de plano.
+Atualizar um pacote, Atualizar banco, as três limpezas, Downgrade e Aplicar
+mirrors vão direto para a confirmação. Tudo roda elevado por `pkexec`
+(`SystemSettingsOperation`), exceto a instalação pelo AUR, que roda
+`paru`/`yay` como usuário normal com o aviso do PKGBUILD; o painel de saída
+ao vivo abre na hora. A seleção múltipla só existia em Órfãos, pelo botão
+`[ Select ]`; na lista, Space era texto do filtro e as marcas não eram
+desenhadas.
+
+**Fase 3 (2026-10-05): todas as linhas abaixo migradas.** Commits
+`33a033f` (lista única) e `63689aa` (`ConfirmDialog`); `argvus-tui`
+`6beda24` (glyphs `SORT` e `COUNTER`); `argvus-i18n` `ef69e70`. O crate
+não tem mais `Button`, `ActionButton`, `on_buttons` nem linhas `[ ... ]`.
+
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
-| Home | Instalar/Oficial, Instalar/AUR, Instalados, Órfãos, Atualizações, Cache, Histórico, Downgrade, Mirrors | Abre páginas | Submenu ×9 | `Enter` | pendente |
-| Listas (busca, instalados, órfãos, atualizações, AUR) | Digitar | Filtra (`query`) | Mantido; ver D8 (letras como `r`,`j`,`k` viram texto) | letras, `/` | pendente |
-| Listas | Pacote | Abre detalhes | Submenu | `Enter` | pendente |
-| Instalados | **`[ Reinstall ]`** | `install_selected` (confirmado) | Action na página do pacote | `Enter` | pendente |
-| Instalados / busca / AUR / detalhes | **`[ Remove ]`** | `remove_selected` (confirmado) | Destructive | `Enter` | pendente |
-| Busca / AUR / detalhes | **`[ Install ]`** | `install_selected` (confirmado) | Action | `Enter` | pendente |
-| Atualizações | Pacote | `UpgradePackage` (confirmado) | Action por item (como hoje) | `Enter` | pendente |
-| Atualizações | **`[ Update ]`** | `UpgradePackage` do selecionado | Sem linha própria. **Equivalente: Enter na linha do item** (pacote) (D5) | `Enter` | pendente |
-| Atualizações | **`[ Upgrade all ]`** | `begin_plan(Upgrade)` → confirmação | Action `Atualizar tudo` | `Enter` | pendente |
-| Atualizações | **`[ Refresh database ]`** | `RefreshDatabase` (confirmado) | Action `Atualizar banco` | `Enter` | pendente |
-| Órfãos | **`[ Select ]`** | `toggle_multi` (marca múltiplos) | Toggle por item | `Space` | pendente |
-| Órfãos | **`[ Remove ]`** | Remove marcados (confirmado) | Destructive | `Enter` | pendente |
-| Cache | **`[ Clean cache ]`** | `CleanCache keep-three` (confirmado) | Destructive | `Enter` | pendente |
-| Cache | **`[ Keep one ]`** | `CleanCache keep-one` (confirmado) | Destructive | `Enter` | pendente |
-| Cache | **`[ Uninstalled ]`** | `CleanCache uninstalled` (confirmado) | Destructive | `Enter` | pendente |
-| Downgrade | **`[ Downgrade ]`** | `Downgrade(path)` (confirmado) | Destructive por item | `Enter` | pendente |
-| Mirrors | Lista (readonly) | Enter abre editor reflector | Action `Configurar mirrors` | `Enter` | pendente |
-| Editor de mirrors | País, opções | Ciclo de valores | Choice/Value | `←→`, `Space` | pendente |
-| Histórico | Entrada | Abre detalhes | Submenu | `Enter` | pendente |
-| Global | Recarregar | `reload_force` | Atalho mantido | `r` (fora das listas com digitação) | pendente |
+| Home | Instalar/Oficial, Instalar/AUR, Instalados, Órfãos, Atualizações, Cache, Histórico, Downgrade, Mirrors | Abre páginas | Submenu ×9 com o contador à direita (AUR só com paru/yay) | `Enter` | migrado |
+| Listas (busca, instalados, órfãos, atualizações, AUR) | Digitar | Filtra (`query`) | Mantido (D8): letras, inclusive `j`/`k`/`r`/`q`/`?`, viram texto; setas, PgUp/PgDn, Home/End, Enter e Esc navegam; a linha Info "Buscar" mostra o filtro | letras, `/` | migrado |
+| Busca / AUR | Enter sem resultado | Busca remota (mínimo 1/2 caracteres) | Mantido | `Enter` | migrado |
+| Listas | Pacote | Abre detalhes | Submenu (Busca, Instalados, AUR); em Órfãos, Toggle cuja Enter abre os detalhes | `Enter` | migrado |
+| Instalados | **`[ Reinstall ]`** | `install_selected` (plano → confirmado) | Action `Reinstalar` na página do pacote (D4) | `Enter` | migrado |
+| Instalados / busca / AUR / detalhes | **`[ Remove ]`** | `remove_selected` (plano → confirmado) | Destructive `Remover` na Zona de perigo da página do pacote (D4); desabilitada se o pacote não está instalado (antes não fazia nada) | `Enter` | migrado |
+| Busca / AUR / detalhes | **`[ Install ]`** | `install_selected` (plano → confirmado; AUR só confirmado) | Action `Instalar` (`Reinstalar` quando instalado) na seção Ações da página do pacote (D4) | `Enter` | migrado |
+| Atualizações | Pacote | `UpgradePackage` (confirmado) | Action por item (como hoje) | `Enter` | migrado |
+| Atualizações | **`[ Update ]`** | `UpgradePackage` do selecionado | Sem linha própria. **Equivalente: Enter na linha do item** (pacote) (D5) | `Enter` | migrado |
+| Atualizações | **`[ Upgrade all ]`** | `begin_plan(Upgrade)` → confirmação | Action `Atualizar tudo` na seção Ações; desabilitada sem atualizações (o botão só aparecia com elas) | `Enter` | migrado |
+| Atualizações | **`[ Refresh database ]`** | `RefreshDatabase` (confirmado) | Action `Atualizar banco` na seção Ações | `Enter` | migrado |
+| Órfãos | **`[ Select ]`** | `toggle_multi` (marca múltiplos) | Toggle por item, coluna `[x]` (D31) | `Space` | migrado |
+| Órfãos | **`[ Remove ]`** | Remove marcados, ou o selecionado sem marcas (plano → confirmado) | Destructive `Remover marcados (N)` na Zona de perigo, desabilitada sem marcas; o pacote sozinho sai pela página dele | `Enter` | migrado |
+| Cache | Lista de arquivos | Navegável, Enter sem efeito | Resumo (Info) + Submenu `Arquivos em cache`, página só de rolagem (D32) | `Enter` | migrado |
+| Cache | **`[ Clean cache ]`** | `CleanCache keep-three` (confirmado) | Destructive `Limpar cache (manter 3 versões)` na Zona de perigo | `Enter` | migrado |
+| Cache | **`[ Keep one ]`** | `CleanCache keep-one` (confirmado) | Destructive `Limpar cache (manter 1 versão)` na Zona de perigo | `Enter` | migrado |
+| Cache | **`[ Uninstalled ]`** | `CleanCache uninstalled` (confirmado) | Destructive `Remover do cache pacotes não instalados` na Zona de perigo | `Enter` | migrado |
+| Downgrade | **`[ Downgrade ]`** | `Downgrade(path)` (confirmado) | Destructive por item (o arquivo em cache), confirmação em estilo de perigo | `Enter` | migrado |
+| Mirrors | Lista (readonly) | Enter abre editor reflector | Submenu `Configurar mirrors` (desabilitado com o motivo sem reflector) + seção Servidores (Info) | `Enter` | migrado |
+| Editor de mirrors | País, Protocolo, Idade, Quantidade, Ordenação | Ciclo/ajuste com `←→`/Space | Página com Value ×5 (`←/→` ajustam, Space avança, Enter avança ou abre campo numérico) (D34) | `←→`, `Space`, `Enter` | migrado |
+| Editor de mirrors | "Gerar prévia" | Prévia do reflector → confirmação com resumo → `mirror-apply` | Action `Gerar preview` (Primary), última linha; sem rascunho | `Enter` | migrado |
+| Histórico | Entrada | **Sem efeito no código antigo** (Enter não era tratado; `HistoryDetails` inalcançável) | Info; página só de rolagem, sem página de detalhes (D33) | `↑↓` | migrado |
+| Busca | `/` | Campo de busca (em qualquer página) | Mantido só nas 5 listas com filtro | `/` | migrado |
+| Confirmação | Popup Apply/Cancel | — | `ConfirmDialog` (foco em Cancelar, `y`/`n`); perigo em Remove, limpezas e Downgrade; contagens do plano com download legível; AUR só com o aviso do PKGBUILD (D35) | `y`, `n`, `Esc` | migrado |
+| Log da transação | Visualizador ao vivo | Rolagem e follow | Mantido sem mudança | `↑↓ jk PgUp/PgDn Home/End`, `Esc` | migrado |
+| Global | Recarregar | `reload_force` | Atalho mantido (nas listas com filtro `r` é texto, como antes) | `r` | migrado |
 
 ### 0.7 `argvus-control-center-network`
 
@@ -628,8 +650,11 @@ Sessões › = `LAYOUT`; editores de valor = `BLUR` / `OPACITY`; `Apply` =
 | hardware > Home | Resumo / CPU / GPU / Memória / Energia / Dispositivos | `MONITOR` / `MEMORY` / `GPU` / `POWER` / `BATTERY` / `ETHERNET` | `INFO` / `CPU` / `GPU` / `MEMORY` / `BATTERY` / `USB` |
 | network > Home | Status / Interfaces / Ethernet / Wi-Fi / VPN / DNS / Proxy / Firewall | `NETWORK` / `ETHERNET` / `NETWORK` / `WIFI` / `LOCK` / `SEARCH` / `LOCK` / `WARNING` | `INFO` / `NETWORK` / `ETHERNET` / `WIFI` / `VPN` / `DNS` / `LINK` / `SHIELD` |
 | network > páginas | cabeçalhos de seção | `NETWORK`, `WIFI`, `ETHERNET`, `SEARCH`, `LOCK` | sem ícone (Info) |
-| packages > Home | Instalar oficial / AUR / Instalados / Órfãos / Atualizações / Cache / Histórico / Downgrade / Mirrors | `SEARCH` / `SUCCESS` / `PACKAGES` / `ERROR` / `REFRESH` / `STORAGE` / `LOGS` / `UPDATE` / `NETWORK` | `SEARCH` / `ADD` / `INSTALLED` / `CLEAN` / `UPDATE` / `DATABASE` / `HISTORY` / `DOWNGRADE` / `NETWORK` |
-| packages > detalhes | cabeçalhos | `PACKAGES`, `LINK`, `SETTINGS` | sem ícone (Info) |
+| packages > Home | Instalar oficial / AUR / Instalados / Órfãos / Atualizações / Cache / Histórico / Downgrade / Mirrors | `SEARCH` / `SUCCESS` / `PACKAGES` / `ERROR` / `REFRESH` / `STORAGE` / `LOGS` / `UPDATE` / `NETWORK` | `SEARCH` / `ADD` / `INSTALLED` / `CLEAN` / `UPDATE` / `DATABASE` / `HISTORY` / `DOWNGRADE` / `NETWORK` (Fase 3) |
+| packages > detalhes | cabeçalhos | `PACKAGES`, `LINK`, `SETTINGS` | sem ícone (títulos de seção) (Fase 3) |
+| packages > ações | Instalar / Reinstalar / Remover / Remover marcados / Atualizar tudo / Atualizar banco / limpezas ×3 / Arquivos em cache / Configurar mirrors | — | `ADD` / `RESTART` / `DELETE` / `DELETE` / `UPDATE` / `SYNC` / `CLEAN` (mesmo sentido) / `FOLDER` / `EDIT` (Fase 3) |
+| packages > editor de mirrors | País / Protocolo / Idade máxima / Quantidade / Ordenação / Gerar preview | — | `EARTH` / `LINK` / `CLOCK` / `COUNTER` / `SORT` / `VISIBLE` (Fase 3; `COUNTER` e `SORT` novos) |
+| packages > listas | pacotes, atualizações, órfãos, arquivos de cache, histórico, mirrors | — | sem ícone (listas homogêneas, D9) (Fase 3) |
 | power | Tampa (bateria) / Tampa (AC) / Botão / Tela desligada ×2 / Bloquear ×2 / Manter acordado | `MONITOR` / `ETHERNET` / `POWER` / `MONITOR` ×2 / `LOCK` ×2 / `MONITOR` | `BATTERY` / `power_plug` `f06a5` (novo) / `POWER` / `MONITOR` / `LOCK` / `SLEEP` (mesmo ícone em bateria e AC: mesmo sentido) |
 | services > Home | Sistema / Usuário / Falhos / Logs | `SETTINGS` / `USER` / `WARNING` / `LOGS` | `SERVICES` / `USER` / `WARNING` / `LOGS` |
 | session > Home | Componentes / Autostart / Diagnóstico / Logs | `APPS` / `BOOT` / `DIAGNOSTICS` / `LOGS` | `APPS` / `AUTOSTART` / `DIAGNOSTICS` / `LOGS` |
@@ -841,7 +866,7 @@ Notas de projeto:
 | 3 | `settings` | concluída (`2f694e3`, `c423f33`, `14e51c1`; `argvus-tui` `0ee7a52`, `908e747`; `argvus-i18n` `c49a792`) |
 | 3 | `displays` | concluída (`545bcfe`, `c394639`; `argvus-tui` `106013b`; `argvus-i18n` `bb784d3`) |
 | 3 | `boot` | concluída (`93bc44f`, `1d04196`, `a82ada7`; `argvus-i18n` `2e6be4e`) |
-| 3 | `packages` | pendente |
+| 3 | `packages` | concluída (`33a033f`, `63689aa`; `argvus-tui` `6beda24`; `argvus-i18n` `ef69e70`) |
 | 3 | `network` | pendente |
 | 3 | `services` | pendente |
 | 3 | `audio` | pendente |
@@ -1145,6 +1170,85 @@ usar, sem uso em outro crate: `d_set_as_default_for_the_next_boot`,
 `r_refresh_esc_back_help` e `navigate_enter_open_esc_back_r_refresh_help`
 ainda são usadas por outros crates.
 
+### 5.6 Notas da Fase 3: `packages` (2026-10-05)
+
+Dependências: como nas fases anteriores, `argvus-tui` e `argvus-i18n` na
+branch `ux_ui`. Em execução, os títulos de seção (`section_package`,
+`section_source`, `section_dependencies`, `section_packages`,
+`section_summary`, `section_servers`), `remove_marked`, `mark`,
+`cache_files`, `cache_file_count`, `configure_mirrors`,
+`mirror_enabled`/`mirror_disabled`, `unavailable_no_reflector`, as três
+limpezas (`clean_cache_keep_three`/`_keep_one`/`_uninstalled`) e
+`value_must_be_between` exigem o `argvus-i18n` instalado a partir de
+`ux_ui`; sem elas a tela mostra a chave. Os testes comparam com `tr(...)`
+para não depender do catálogo instalado. A página do pacote reaproveita os
+rótulos com dois-pontos (`name`, `version_20bc85`, `repository`...) sem
+o `:`.
+
+Conferido no código antigo e preservado: o efeito, o privilégio (`pkexec`,
+ou o helper do AUR como usuário normal), o cálculo do plano e a
+confirmação de cada operação (Install, Reinstall, Remove, Update,
+Upgrade all, Refresh database, Downgrade, as três limpezas e Aplicar
+mirrors); as contagens do plano na confirmação; o painel de saída ao vivo
+(rolagem, follow, `Esc` fecha); as listas que filtram ao digitar (D8) e o
+D10 (`q`/`?` são texto); a busca remota com Enter sem resultado e pelo
+`/`; as opções e limites do reflector (idade 1–8760 h, quantidade 1–100),
+o país padrão e a prévia confirmada.
+
+Mudanças de comportamento, além da apresentação:
+
+- Sem barra de botões; `Tab`/`BackTab` não fazem nada no `packages` e
+  `h`/`l` não movem mais foco entre botões.
+- Install, Reinstall e Remove saíram das listas e ficam na página do
+  pacote (D4). Remover um órfão sem marcá-lo passa pela página dele.
+- Órfãos: Space marca em vez de digitar espaço no filtro; as marcas
+  aparecem na coluna `[x]` (D31).
+- Cache: os arquivos ficam numa subpágina só de rolagem (D32).
+- `/` só abre a busca nas cinco listas com filtro (antes abria em qualquer
+  página, sem efeito visível fora delas).
+- Editor de mirrors é uma página: `←` volta uma opção em País, Protocolo e
+  Ordenação (antes avançava); Enter avança nessas três e abre campo
+  numérico em Idade e Quantidade (D34).
+- `Configurar mirrors` fica desabilitado com o motivo sem reflector (antes
+  Enter mostrava o erro).
+- Confirmação pelo componente único (`y`/`n`); estilo de perigo em Remove,
+  limpezas e Downgrade; download em MiB/GiB; AUR sem plano vazio (D35).
+- `Esc`/`←` voltam com o cursor no item que abriu a página (antes, na
+  primeira linha). O rodapé deixou de anunciar `r` nas listas com filtro,
+  onde `r` sempre foi texto.
+- A página do pacote decide Instalar/Reinstalar e habilita Remover pelo
+  estado da entrada da lista enquanto os metadados não chegam (antes,
+  nesse intervalo, tratava todo pacote como não instalado).
+
+Correções feitas na migração:
+
+- Órfãos: as marcas guardavam o índice da lista **filtrada** e eram lidas
+  da lista **sem filtro** (`selected_names`); com filtro ativo, removia o
+  pacote errado. Agora as marcas seguem o nome, e um recarregamento
+  descarta as que não estão mais na lista (antes nunca eram limpas).
+- AUR: a lista era filtrada na tela, mas o cursor indexava os resultados
+  sem filtro; Enter abria outro pacote.
+
+Achados, **sem alteração**:
+
+- Reinstalar um pacote do AUR já instalado roda `pacman -S <nome>`
+  (`Action::Reinstall`), que falha para pacotes estrangeiros. Formato
+  anterior à Fase 3.
+- A mensagem de status é desenhada sobre o rodapé (`f.area()`) e, a
+  80 colunas, cobre o começo das dicas até sumir; o `boot` desenha em
+  `body`. Comportamento anterior à Fase 3.
+- O `query` persiste entre Órfãos, Atualizações e AUR ao voltar à Home
+  (só Busca e Instalados o limpam ao abrir), como antes.
+
+Achados para a Fase 4 (sem alteração): `PackagesPage::HistoryDetails`
+continua sem caminho até ela. Chaves que o `packages` deixou de usar, sem
+uso em outro crate: `dependencies`, `downgrade_c6e26f`, `download_bytes`,
+`generate_mirrors_with_reflector`, `keep_one`, `package_b3ef4b`, `select`,
+`source_70835f`, `tab_actions_r_refresh`, `uninstalled`, `update`.
+`navigate_enter_open_esc_back_r_refresh_help`,
+`navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help` e
+`r_refresh_esc_back_help` ainda são usadas por outros crates.
+
 ---
 
 ## 6. Pontos de decisão
@@ -1183,6 +1287,11 @@ ainda são usadas por outros crates.
 | D28 | (B2 do `boot`) Timeout, Linha do kernel e Regenerar GRUB ficam só na página Bootloader. Linhas inválidas no momento ficam desabilitadas e mostram o motivo à direita, traduzido: `Indisponível · sem entrada systemd-boot` (Definir padrão sem entrada mapeável) e `Indisponível · bootloader desconhecido` (Definir padrão e Timeout com bootloader desconhecido). | decidido (Fase 3) |
 | D29 | (B3 do `boot`) Ícones: `STAR` (Definir padrão), `TIMER` (Timeout), `TERMINAL` (Linha do kernel), `SYNC` (Regenerar GRUB e Regenerar initramfs, mesmo sentido); Home do boot conforme 1.5. | decidido (Fase 3) |
 | D30 | O campo "Linha do kernel" aceita qualquer texto até 2048 bytes (limite do backend); aspas, `\` e caracteres de controle continuam recusados ao aplicar. O popup alarga até 100 colunas e mostra o fim do texto. Commit separado (`93bc44f`). | decidido (Fase 3) |
+| D31 | (`packages`) Órfãos: Space marca/desmarca o pacote, com a marca visível na coluna `[x]`; Enter continua abrindo os detalhes; `Remover marcados (N)` na Zona de perigo age sobre o conjunto marcado. | decidido (Fase 3) |
+| D32 | (`packages`) Os arquivos do cache ficam numa subpágina só de rolagem (`Arquivos em cache`), para a lista longa não ficar inalcançável entre o Resumo e a Zona de perigo. | decidido (Fase 3) |
+| D33 | (`packages`) Histórico: Enter nunca abria uma entrada (`HistoryDetails` inalcançável); registrado no inventário 0.6 como "sem efeito no código antigo", sem página de detalhes. | decidido (Fase 3) |
+| D34 | (`packages`) O editor de mirrors vira página com Value por opção e `Gerar preview` no fim, sem `draft_actions` (nada é salvo antes da confirmação). Glyphs novos `SORT` e `COUNTER` no `argvus-tui`. | decidido (Fase 3) |
+| D35 | (`packages`) A confirmação mantém as contagens do plano (sem página de plano), com o download em MiB/GiB; a instalação pelo AUR não mostra 0/0/0, só o aviso do PKGBUILD. | decidido (Fase 3) |
 
 Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
 `[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram
