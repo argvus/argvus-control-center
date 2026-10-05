@@ -20,11 +20,9 @@ use argvus_control_center_settings::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  components::{
-    ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-    draw_confirmation,
-  },
-  hints::{HintContext, hints},
+  components::{StatusKind, StatusMessage},
+  confirm::{ConfirmDialog, ConfirmOutcome, ConfirmState, draw_confirm},
+  hints::{HintContext, confirm_hints, hints},
   icons,
   menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu},
   page::{shell, status},
@@ -59,7 +57,7 @@ pub struct NetworkApp {
   status: Option<StatusMessage>,
   scan: bool,
   confirm_forget: bool,
-  confirmation: ConfirmationState,
+  confirmation: ConfirmState,
   firewall: Option<SettingsApp>,
 }
 
@@ -114,7 +112,7 @@ impl NetworkApp {
       status: None,
       scan: false,
       confirm_forget: false,
-      confirmation: ConfirmationState::default(),
+      confirmation: ConfirmState::new(),
       firewall: None,
     }
   }
@@ -514,16 +512,16 @@ impl NetworkApp {
     }
     if self.confirm_forget {
       match self.confirmation.handle(key) {
-        ConfirmationOutcome::Confirmed => {
+        ConfirmOutcome::Confirmed => {
           self.confirm_forget = false;
-          self.confirmation = ConfirmationState::default();
+          self.confirmation = ConfirmState::new();
           self.perform_forget();
         }
-        ConfirmationOutcome::Cancelled => {
+        ConfirmOutcome::Cancelled => {
           self.confirm_forget = false;
-          self.confirmation = ConfirmationState::default();
+          self.confirmation = ConfirmState::new();
         }
-        ConfirmationOutcome::Pending => {}
+        ConfirmOutcome::Pending => {}
       }
       return false;
     }
@@ -725,6 +723,9 @@ impl NetworkApp {
   /// Footer hints for the current row. `i Details` appears only on a Wi-Fi
   /// network or a VPN row, where it opens the details page.
   fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    if self.confirm_forget {
+      return confirm_hints(self.lang);
+    }
     let mut menu = self.menu;
     menu.normalize(rows);
     let details = [("i", tr(self.lang, "control_center.details"))];
@@ -771,7 +772,7 @@ impl NetworkApp {
     if let Some(i) = self.current_index()
       && self.snapshot.wifi.get(i).is_some()
     {
-      self.confirmation = ConfirmationState::default();
+      self.confirmation = ConfirmState::new();
       self.confirm_forget = true;
     }
   }
@@ -910,21 +911,23 @@ impl NetworkApp {
         .and_then(|i| self.snapshot.wifi.get(i))
         .map(|w| terminal_text(&w.ssid))
         .unwrap_or_default();
-      draw_confirmation(
+      draw_confirm(
         f,
         area,
         &self.theme,
-        ConfirmationDialog {
+        ConfirmDialog {
           title: tr(self.lang, "control_center.forget_network"),
           message: &format!(
             "{} {}?",
             tr(self.lang, "control_center.forget_network_58478a"),
             name
           ),
-          confirm_label: tr(self.lang, "control_center.forget"),
-          cancel_label: tr(self.lang, "control_center.cancel"),
-          confirm_selected: self.confirmation.confirm_selected,
+          confirm: tr(self.lang, "control_center.forget"),
+          cancel: tr(self.lang, "control_center.cancel"),
+          danger: true,
+          deadline: None,
         },
+        &self.confirmation,
       );
     }
     if let Some(status_message) = &self.status {
@@ -1689,6 +1692,22 @@ mod tests {
       .find(|row| row.id() == Some(&Item::DnsAutomatic))
       .unwrap();
     assert_eq!(automatic.kind(), RowKind::Action);
+  }
+
+  #[test]
+  /// Forget waits for a confirmation that starts on Cancel, and Esc keeps the
+  /// network.
+  fn forget_asks_first_and_starts_on_cancel() {
+    let mut app = app();
+    with_network(&mut app);
+    app.page = NetworkPage::WifiDetail(1);
+    app.activate(Item::Forget);
+    assert!(app.confirm_forget);
+    assert!(!app.confirmation.is_confirm_focused());
+    assert_eq!(app.footer_hints(&app.rows()), confirm_hints(app.lang));
+    assert!(!app.handle(KeyCode::Esc));
+    assert!(!app.confirm_forget);
+    assert_eq!(app.snapshot.wifi.len(), 2);
   }
 
   #[test]
