@@ -17,19 +17,20 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  buttons::{Button, ButtonKind},
   chrome,
   components::{
     ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
     draw_confirmation,
   },
-  page::{Selection, list, readonly, shell, status},
+  hints::{HintContext, hints},
+  icons,
+  menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu},
+  page::{shell, status},
   text,
 };
 use crossterm::event::KeyCode;
 use ratatui::{
   Frame,
-  layout::{Constraint, Layout},
   style::Style,
   text::Line,
   widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -120,23 +121,56 @@ fn input_tail(input: &str, width: usize) -> String {
   format!("{}_", &input[start..])
 }
 
+/// Stable identity of a Boot menu row. Kernels, entries, presets and
+/// Plymouth themes keep their index in the snapshot list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum ActionButton {
+enum Item {
+  Summary,
+  Kernels,
+  Bootloader,
+  Initramfs,
+  Plymouth,
+  /// Index into the installed kernels.
+  Kernel(usize),
+  /// Index into the bootloader entries.
+  Entry(usize),
+  /// Index into the mkinitcpio presets.
+  Preset(usize),
+  /// Makes the open kernel or entry the systemd-boot default (confirmed).
   SetDefault,
+  /// Opens the timeout field (confirmed when applied).
   Timeout,
-  GrubCmdline,
-  Regenerate,
-  ApplyTheme,
+  /// Opens the GRUB kernel command line field (confirmed when applied).
+  KernelCmdline,
+  RegenerateGrub,
+  RegenerateInitramfs,
+  /// Index into the installed Plymouth themes.
+  Theme(usize),
+}
+
+impl Item {
+  /// Whether the row only opens another page (and starts no boot change).
+  fn opens_page(self) -> bool {
+    matches!(
+      self,
+      Self::Summary
+        | Self::Kernels
+        | Self::Bootloader
+        | Self::Initramfs
+        | Self::Plymouth
+        | Self::Kernel(_)
+        | Self::Entry(_)
+        | Self::Preset(_)
+    )
+  }
 }
 
 /// Represents `BootApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct BootApp {
   pub page: BootPage,
-  selected: Selection,
-  on_buttons: bool,
-  button_selected: usize,
-  button_from: Option<usize>,
+  menu: MenuState,
+  /// Body height during the last draw, used as the PgUp/PgDn distance.
+  list_height: u16,
   snapshot: BootSnapshot,
   job: Option<JobHandle<Result<BootSnapshot, String>>>,
   action: Option<JobHandle<(ActionResult, String)>>,
@@ -165,10 +199,8 @@ impl BootApp {
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: BootPage::Home,
-      selected: Selection::default(),
-      on_buttons: false,
-      button_selected: 0,
-      button_from: None,
+      menu: MenuState::default(),
+      list_height: 0,
       snapshot: Default::default(),
       job: None,
       action: None,
@@ -269,18 +301,8 @@ impl BootApp {
   }
   /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
-    self.selected.normalize(self.selection_len());
-  }
-  /// Executes the `selection_len` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn selection_len(&self) -> usize {
-    match self.page {
-      BootPage::Home => 5,
-      BootPage::Kernel => self.snapshot.kernels.len(),
-      BootPage::Bootloader => self.snapshot.bootloader_info.entries.len(),
-      BootPage::Initramfs => self.snapshot.initramfs.presets.len() + 1,
-      BootPage::Plymouth => self.snapshot.plymouth.themes.len(),
-      _ => 1,
-    }
+    let rows = self.rows();
+    self.menu.normalize(&rows);
   }
   /// Whether typed characters currently go to the timeout/kernel command
   /// line field, so `q`/`?` must not act as the global quit/help keys. The
@@ -358,141 +380,140 @@ impl BootApp {
       }
       return false;
     }
-    if self.on_buttons && !self.buttons().is_empty() {
-      match key {
-        KeyCode::Tab => {
-          self.toggle_buttons(false);
-          return false;
-        }
-        KeyCode::BackTab => {
-          self.toggle_buttons(true);
-          return false;
-        }
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.move_button(-1);
-          return false;
-        }
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.move_button(1);
-          return false;
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => {
-          self.activate_button();
-          return false;
-        }
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => return false,
-        _ => {}
-      }
-    }
-    if matches!(key, KeyCode::Esc | KeyCode::Left) {
-      if self.page == BootPage::Home {
-        return true;
-      }
-      self.page = match self.page {
-        BootPage::KernelDetail(_) => BootPage::Kernel,
-        BootPage::BootloaderDetail(_) => BootPage::Bootloader,
-        BootPage::InitramfsDetail(_) => BootPage::Initramfs,
-        _ => BootPage::Home,
-      };
-      self.selected.index = 0;
-      self.on_buttons = false;
-      self.button_from = None;
-      return false;
-    }
+    let rows = self.rows();
     match key {
-      KeyCode::Char('r') => self.reload(),
-      KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
-      KeyCode::Up
-      | KeyCode::Char('k')
-      | KeyCode::Down
-      | KeyCode::Char('j')
-      | KeyCode::Home
-      | KeyCode::End
-      | KeyCode::PageUp
-      | KeyCode::PageDown => {
-        self.selected.handle(key, self.selection_len(), 8);
+      // Tab only switches tabs or panes; Boot has none.
+      KeyCode::Tab | KeyCode::BackTab => return false,
+      KeyCode::Char('r') => {
+        self.reload();
+        return false;
       }
-      KeyCode::Enter | KeyCode::Right => self.open_selected(),
       _ => {}
+    }
+    let page_size = usize::from(self.list_height.max(1));
+    match self.menu.handle(key, &rows, page_size) {
+      MenuEvent::Back => return self.back(),
+      // While a snapshot or a boot change runs, pages still open but no
+      // boot change starts.
+      MenuEvent::Activate(item) | MenuEvent::Toggle(item) | MenuEvent::Confirm(item)
+        if item.opens_page() || !self.busy() =>
+      {
+        self.activate(item)
+      }
+      MenuEvent::Activate(_) | MenuEvent::Toggle(_) | MenuEvent::Confirm(_) => {}
+      MenuEvent::Adjust(..) | MenuEvent::Moved | MenuEvent::None => {}
     }
     false
   }
-  /// Executes the `open_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn open_selected(&mut self) {
-    match self.page {
-      BootPage::Home => {
-        self.page = match self.selected.index {
-          0 => BootPage::Summary,
-          1 => BootPage::Kernel,
-          2 => BootPage::Bootloader,
-          3 => BootPage::Initramfs,
-          _ => BootPage::Plymouth,
-        };
-        self.selected.index = 0;
-        self.reload();
+
+  /// Opens `page` with the cursor on its first selectable row.
+  fn go(&mut self, page: BootPage) {
+    self.page = page;
+    self.menu = MenuState::default();
+  }
+
+  /// Esc/`←`: one level up, with the cursor back on the row that opened the
+  /// page; `true` leaves the Boot home.
+  fn back(&mut self) -> bool {
+    let (parent, origin) = match self.page {
+      BootPage::Home => return true,
+      BootPage::Summary => (BootPage::Home, Item::Summary),
+      BootPage::Kernel => (BootPage::Home, Item::Kernels),
+      BootPage::Bootloader => (BootPage::Home, Item::Bootloader),
+      BootPage::Initramfs => (BootPage::Home, Item::Initramfs),
+      BootPage::Plymouth => (BootPage::Home, Item::Plymouth),
+      BootPage::KernelDetail(index) => (BootPage::Kernel, Item::Kernel(index)),
+      BootPage::BootloaderDetail(index) => (BootPage::Bootloader, Item::Entry(index)),
+      BootPage::InitramfsDetail(index) => (BootPage::Initramfs, Item::Preset(index)),
+    };
+    self.go(parent);
+    let rows = self.rows();
+    self.menu.select(&rows, &origin);
+    false
+  }
+
+  /// Runs the row `item`.
+  fn activate(&mut self, item: Item) {
+    match item {
+      Item::Summary => self.open_section(BootPage::Summary),
+      Item::Kernels => self.open_section(BootPage::Kernel),
+      Item::Bootloader => self.open_section(BootPage::Bootloader),
+      Item::Initramfs => self.open_section(BootPage::Initramfs),
+      Item::Plymouth => self.open_section(BootPage::Plymouth),
+      Item::Kernel(index) => self.go(BootPage::KernelDetail(index)),
+      Item::Entry(index) => self.go(BootPage::BootloaderDetail(index)),
+      Item::Preset(index) => self.go(BootPage::InitramfsDetail(index)),
+      Item::SetDefault => self.request_default(),
+      Item::Timeout => {
+        self.timeout_input = Some(String::new());
+        self.input_mode = Some(InputMode::Timeout);
       }
-      BootPage::Kernel if self.snapshot.kernels.get(self.selected.index).is_some() => {
-        self.page = BootPage::KernelDetail(self.selected.index);
+      Item::KernelCmdline => {
+        self.timeout_input = Some(self.grub_value("GRUB_CMDLINE_LINUX_DEFAULT"));
+        self.input_mode = Some(InputMode::GrubCmdline);
       }
-      BootPage::Bootloader
-        if self
-          .snapshot
-          .bootloader_info
-          .entries
-          .get(self.selected.index)
-          .is_some() =>
-      {
-        self.page = BootPage::BootloaderDetail(self.selected.index);
+      Item::RegenerateGrub => self.request(BootAction::GrubRegenerate),
+      Item::RegenerateInitramfs => self.request(BootAction::Initramfs),
+      Item::Theme(index) => {
+        if let Some(theme) = self.snapshot.plymouth.themes.get(index) {
+          self.request(BootAction::Plymouth(theme.clone()));
+        }
       }
-      BootPage::Initramfs
-        if self
-          .snapshot
-          .initramfs
-          .presets
-          .get(self.selected.index)
-          .is_some() =>
-      {
-        self.page = BootPage::InitramfsDetail(self.selected.index);
-      }
-      BootPage::Initramfs => {
-        self.confirmation = ConfirmationState::default();
-        self.pending = Some(Pending::Action(BootAction::Initramfs));
-      }
-      BootPage::Plymouth => self.request_plymouth(),
-      _ => {}
     }
   }
-  /// Executes the `request_default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn request_default(&mut self) {
-    let action = match self.page {
-      BootPage::Kernel => self
-        .snapshot
-        .kernels
-        .get(self.selected.index)
-        .and_then(|kernel| self.entry_for_kernel(kernel))
-        .map(|entry| BootAction::SystemdDefault(entry.id.clone())),
+
+  /// Opens a page from the Boot home and reloads the snapshot, as before.
+  fn open_section(&mut self, page: BootPage) {
+    self.go(page);
+    self.reload();
+  }
+
+  /// Asks for confirmation before running `action`.
+  fn request(&mut self, action: BootAction) {
+    self.confirmation = ConfirmationState::default();
+    self.pending = Some(Pending::Action(action));
+  }
+
+  /// The systemd-boot entry that `Set default` uses on the open page.
+  fn default_target(&self) -> Option<&crate::model::BootEntry> {
+    match self.page {
       BootPage::KernelDetail(index) => self
         .snapshot
         .kernels
         .get(index)
-        .and_then(|kernel| self.entry_for_kernel(kernel))
-        .map(|entry| BootAction::SystemdDefault(entry.id.clone())),
-      BootPage::Bootloader => self
-        .snapshot
-        .bootloader_info
-        .entries
-        .get(self.selected.index)
-        .filter(|_| self.snapshot.bootloader == BootloaderKind::SystemdBoot)
-        .map(|entry| BootAction::SystemdDefault(entry.id.clone())),
+        .and_then(|kernel| self.entry_for_kernel(kernel)),
       BootPage::BootloaderDetail(index) => self
         .snapshot
         .bootloader_info
         .entries
         .get(index)
-        .filter(|_| self.snapshot.bootloader == BootloaderKind::SystemdBoot)
-        .map(|entry| BootAction::SystemdDefault(entry.id.clone())),
+        .filter(|_| self.snapshot.bootloader == BootloaderKind::SystemdBoot),
       _ => None,
-    };
+    }
+  }
+
+  /// Why `Set default` is unavailable on the open page, if it is.
+  fn default_unavailable_reason(&self) -> Option<&'static str> {
+    if self.default_target().is_some() {
+      None
+    } else if self.snapshot.bootloader == BootloaderKind::Unknown {
+      Some(tr(
+        self.lang,
+        "control_center.unavailable_unknown_bootloader",
+      ))
+    } else {
+      Some(tr(
+        self.lang,
+        "control_center.unavailable_no_systemd_boot_entry",
+      ))
+    }
+  }
+
+  /// Executes the `request_default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn request_default(&mut self) {
+    let action = self
+      .default_target()
+      .map(|entry| BootAction::SystemdDefault(entry.id.clone()));
     if let Some(action) = action {
       self.pending = Some(Pending::Action(action));
     } else {
@@ -574,12 +595,6 @@ impl BootApp {
       .find_map(|(name, value)| (name == key).then(|| value.clone()))
       .unwrap_or_default()
   }
-  /// Executes the `request_plymouth` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn request_plymouth(&mut self) {
-    if let Some(theme) = self.snapshot.plymouth.themes.get(self.selected.index) {
-      self.pending = Some(Pending::Action(BootAction::Plymouth(theme.clone())));
-    }
-  }
   /// Executes the `start_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending(&mut self) {
     let Some(Pending::Action(action)) = self.pending.take() else {
@@ -596,188 +611,48 @@ impl BootApp {
     self.transaction_follow = true;
     self.action = Some(self.jobs.spawn(move |_| run_action(action, live)));
   }
-  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn toggle_buttons(&mut self, backwards: bool) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    if self.on_buttons {
-      self.on_buttons = false;
-      if let Some(index) = self.button_from.take() {
-        self.selected.index = index;
-      }
-    } else {
-      self.button_from = Some(self.selected.index);
-      self.button_selected = if backwards { count - 1 } else { 0 };
-      self.on_buttons = true;
-    }
-  }
-  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn move_button(&mut self, delta: isize) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    self.button_selected =
-      (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
-  }
-  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn activate_button(&mut self) {
-    if self.busy() {
-      return;
-    }
-    let actions = self.buttons();
-    let Some((action, _)) = actions.get(self.button_selected) else {
-      return;
-    };
-    match *action {
-      ActionButton::SetDefault => self.request_default(),
-      ActionButton::Timeout => {
-        self.timeout_input = Some(String::new());
-        self.input_mode = Some(InputMode::Timeout);
-      }
-      ActionButton::GrubCmdline => {
-        self.timeout_input = Some(self.grub_value("GRUB_CMDLINE_LINUX_DEFAULT"));
-        self.input_mode = Some(InputMode::GrubCmdline);
-      }
-      ActionButton::Regenerate => {
-        self.pending = Some(
-          if self.page == BootPage::Bootloader || matches!(self.page, BootPage::BootloaderDetail(_))
-          {
-            Pending::Action(BootAction::GrubRegenerate)
-          } else {
-            Pending::Action(BootAction::Initramfs)
-          },
-        );
-      }
-      ActionButton::ApplyTheme => self.request_plymouth(),
-    }
-  }
-  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn buttons(&self) -> Vec<(ActionButton, Button)> {
-    match self.page {
-      BootPage::Kernel if !self.snapshot.kernels.is_empty() => vec![(
-        ActionButton::SetDefault,
-        Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
-      )],
-      BootPage::KernelDetail(_) => vec![(
-        ActionButton::SetDefault,
-        Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
-      )],
-      BootPage::Bootloader | BootPage::BootloaderDetail(_) => {
-        let mut buttons = vec![
-          (
-            ActionButton::SetDefault,
-            Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
-          ),
-          (
-            ActionButton::Timeout,
-            Button::new(
-              tr(self.lang, "control_center.timeout"),
-              ButtonKind::Secondary,
-            ),
-          ),
-        ];
-        if self.snapshot.bootloader == BootloaderKind::Grub {
-          buttons.push((
-            ActionButton::GrubCmdline,
-            Button::new(
-              tr(self.lang, "control_center.kernel_command_line"),
-              ButtonKind::Secondary,
-            ),
-          ));
-          buttons.push((
-            ActionButton::Regenerate,
-            Button::new(
-              tr(self.lang, "control_center.regenerate"),
-              ButtonKind::Secondary,
-            ),
-          ));
-        }
-        buttons
-      }
-      BootPage::Initramfs | BootPage::InitramfsDetail(_) => vec![(
-        ActionButton::Regenerate,
-        Button::new(
-          tr(self.lang, "control_center.regenerate"),
-          ButtonKind::Primary,
-        ),
-      )],
-      BootPage::Plymouth if !self.snapshot.plymouth.themes.is_empty() => vec![(
-        ActionButton::ApplyTheme,
-        Button::new(
-          tr(self.lang, "control_center.apply_theme"),
-          ButtonKind::Primary,
-        ),
-      )],
-      _ => Vec::new(),
-    }
-  }
-  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn footer_hints(&self) -> &'static str {
-    let action = tr(
+  /// The footer derived from the selected row.
+  fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    let mut menu = self.menu;
+    menu.normalize(rows);
+    hints(
       self.lang,
-      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
-    );
-    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
-    let home = tr(
-      self.lang,
-      "control_center.navigate_enter_open_esc_back_r_refresh_help",
-    );
-    if self.page == BootPage::Home {
-      home
-    } else if !self.buttons().is_empty() {
-      action
-    } else {
-      readonly
-    }
+      &HintContext {
+        row: menu.selected_kind(rows),
+        can_go_back: true,
+        refresh: true,
+        ..HintContext::default()
+      },
+    )
   }
   /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn draw(&self, frame: &mut Frame) {
+  pub fn draw(&mut self, frame: &mut Frame) {
     let area = frame.area();
+    let rows = self.rows();
+    self.menu.normalize(&rows);
     let body = shell(
       frame,
       area,
       &self.theme,
       &self.breadcrumb(),
-      self.footer_hints(),
+      &self.footer_hints(&rows),
     );
-    let buttons = self.buttons();
-    let raw_buttons: Vec<Button> = buttons.iter().map(|(_, button)| button.clone()).collect();
-    let (body, button_area) = if raw_buttons.is_empty() {
-      (body, None)
-    } else {
-      let button_height = argvus_tui::buttons::height(&raw_buttons, body.width).min(body.height);
-      let split =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(body);
-      (split[0], Some(split[1]))
-    };
-    let rows = self.rows();
-    if self.page == BootPage::Summary {
-      readonly(
-        frame,
-        body,
-        &self.theme,
-        &rows.into_iter().map(Line::from).collect::<Vec<_>>(),
-      );
-    } else {
-      list(
-        frame,
-        body,
-        &self.theme,
-        &rows,
-        self.selected.index.min(rows.len().saturating_sub(1)),
-      );
-    }
-    if let Some(button_area) = button_area {
-      let focus = if self.on_buttons {
-        self.button_selected
-      } else {
-        usize::MAX
-      };
-      argvus_tui::buttons::draw(frame, button_area, &raw_buttons, focus, &self.theme);
-    }
+    self.list_height = body.height;
+    draw_menu(
+      frame,
+      body,
+      &self.theme,
+      &rows,
+      &mut self.menu,
+      MenuStyle {
+        icons: AppConfig::icons_enabled(),
+      },
+    );
+    self.overlays(frame, area, body);
+  }
+  /// Draws the input field, the confirmation, the status and the live
+  /// transaction output over the page.
+  fn overlays(&self, frame: &mut Frame, area: ratatui::layout::Rect, body: ratatui::layout::Rect) {
     if let Some(input) = &self.timeout_input {
       let width = if self.input_mode == Some(InputMode::GrubCmdline) {
         area
@@ -871,144 +746,27 @@ impl BootApp {
       );
     }
   }
-  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn rows(&self) -> Vec<String> {
+  /// Rows of the current page.
+  fn rows(&self) -> Vec<Row<Item>> {
     match self.page {
       BootPage::Home => self.home_rows(),
-      BootPage::Summary => {
-        let timeout_str = self
-          .snapshot
-          .bootloader_info
-          .timeout
-          .map(|t| format!("{} s", t))
-          .unwrap_or_else(|| tr(self.lang, "control_center.default").into());
-        let secure_boot = self
-          .snapshot
-          .secure_boot
-          .map(|v| yes_no(self.lang, v))
-          .unwrap_or_else(|| tr(self.lang, "control_center.unavailable").into());
-        let default_entry = self
-          .snapshot
-          .bootloader_info
-          .entries
-          .iter()
-          .find(|entry| entry.is_default)
-          .map(|entry| entry.title.clone())
-          .or_else(|| self.snapshot.bootloader_info.default_entry.clone())
-          .unwrap_or_else(|| "—".into());
-        let plymouth_theme = self
-          .snapshot
-          .plymouth
-          .current_theme
-          .clone()
-          .unwrap_or_else(|| "—".into());
-
-        vec![
-          format!(
-            " {} {}",
-            AppConfig::icon(argvus_tui::icons::MONITOR),
-            tr(self.lang, "control_center.base_system")
-          ),
-          format!("   Firmware:    {}", self.snapshot.firmware),
-          format!("   Secure Boot: {}", secure_boot),
-          format!("   Kernel:      ★ {}", self.snapshot.current_kernel),
-          "".into(),
-          format!(
-            " {} {}",
-            AppConfig::icon(argvus_tui::icons::STORAGE),
-            tr(self.lang, "control_center.bootloader")
-          ),
-          format!("   Gerenciador: {}", self.loader_label()),
-          format!("   Padrão:      {}", default_entry),
-          format!(
-            "   Entradas:    {}",
-            self.snapshot.bootloader_info.entries.len()
-          ),
-          format!(
-            "   ESP Path:    {}",
-            self.snapshot.esp.as_deref().unwrap_or("—")
-          ),
-          format!("   Timeout:     {}", timeout_str),
-          "".into(),
-          format!(
-            " {} {}",
-            AppConfig::icon(argvus_tui::icons::PACKAGES),
-            tr(self.lang, "control_center.components")
-          ),
-          format!("   Kernels:     {}", self.snapshot.kernels.len()),
-          format!(
-            "   mkinitcpio:  {}",
-            yes_no(self.lang, self.snapshot.initramfs.available)
-          ),
-          format!(
-            "   Plymouth:    {} (Tema: {})",
-            yes_no(self.lang, self.snapshot.plymouth.installed),
-            plymouth_theme
-          ),
-        ]
-      }
-      BootPage::Kernel => self
-        .snapshot
-        .kernels
-        .iter()
-        .map(|k| {
-          let badges = match (k.current, k.default) {
-            (true, true) => format!(
-              "   ★ {} · ● {}",
-              tr(self.lang, "control_center.current"),
-              tr(self.lang, "control_center.default")
-            ),
-            (true, false) => format!("   ★ {}", tr(self.lang, "control_center.current")),
-            (false, true) => format!("   ● {}", tr(self.lang, "control_center.default")),
-            (false, false) => String::new(),
-          };
-          if badges.is_empty() {
-            format!("{} {}", k.package, k.version.trim())
-          } else {
-            format!("{} {}{}", k.package, k.version.trim(), badges)
-          }
-        })
-        .collect(),
+      BootPage::Summary => self.summary_rows(),
+      BootPage::Kernel => self.kernel_rows(),
       BootPage::KernelDetail(index) => self.kernel_detail(index),
-      BootPage::Bootloader => self
-        .snapshot
-        .bootloader_info
-        .entries
-        .iter()
-        .map(|e| {
-          let badge = if e.is_default {
-            format!("   ● {}", tr(self.lang, "control_center.default"))
-          } else {
-            String::new()
-          };
-          format!("{}{}", e.title, badge)
-        })
-        .collect(),
+      BootPage::Bootloader => self.bootloader_rows(),
       BootPage::BootloaderDetail(index) => self.bootloader_detail(index),
-      BootPage::Initramfs => {
-        let mut rows = self.snapshot.initramfs.presets.clone();
-        rows.push(tr(self.lang, "control_center.regenerate_all_initramfs_images").into());
-        rows
-      }
+      BootPage::Initramfs => self.initramfs_rows(),
       BootPage::InitramfsDetail(index) => self.initramfs_detail(index),
-      BootPage::Plymouth => self
-        .snapshot
-        .plymouth
-        .themes
-        .iter()
-        .map(|theme| {
-          let current = if self.snapshot.plymouth.current_theme.as_deref() == Some(theme) {
-            format!("   ★ {}", tr(self.lang, "control_center.current"))
-          } else {
-            String::new()
-          };
-          format!("{theme}{current}")
-        })
-        .collect(),
+      BootPage::Plymouth => self.plymouth_rows(),
     }
   }
+  /// A translated field label without the trailing colon some catalog
+  /// entries carry, since Info rows draw label and value in columns.
+  fn field(&self, key: &str) -> &'static str {
+    tr(self.lang, key).trim_end_matches(':')
+  }
   /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_rows(&self) -> Vec<String> {
+  fn home_rows(&self) -> Vec<Row<Item>> {
     let secure = match self.snapshot.secure_boot {
       Some(value) => format!(
         "{}: {}",
@@ -1023,11 +781,6 @@ impl BootApp {
       .timeout
       .map(|t| format!("{}: {} s", tr(self.lang, "control_center.timeout"), t))
       .unwrap_or_else(|| tr(self.lang, "control_center.timeout_default").into());
-    let loader = match self.snapshot.bootloader {
-      BootloaderKind::SystemdBoot => "systemd-boot",
-      BootloaderKind::Grub => "GRUB",
-      BootloaderKind::Unknown => tr(self.lang, "control_center.unknown"),
-    };
     let initramfs = if self.snapshot.initramfs.available {
       format!(
         "{}: {}",
@@ -1042,226 +795,364 @@ impl BootApp {
       None if self.snapshot.plymouth.installed => tr(self.lang, "control_center.installed").into(),
       None => tr(self.lang, "control_center.not_installed").into(),
     };
-    let summary = tr(self.lang, "control_center.summary");
-    let kernel_label = tr(self.lang, "control_center.kernels");
-    let bootloader_label = tr(self.lang, "control_center.bootloader_f1a3c5");
-    let initramfs_label = tr(self.lang, "control_center.initramfs");
-    let plymouth_label = tr(self.lang, "control_center.plymouth");
     vec![
-      format!(
-        "{} {}  ·  {} · {}",
-        AppConfig::icon(argvus_tui::icons::MONITOR),
-        summary,
-        self.snapshot.firmware,
-        secure
-      ),
-      format!(
-        "{} {}  ·  {} · {}",
-        AppConfig::icon(argvus_tui::icons::MEMORY),
-        kernel_label,
-        self.snapshot.kernels.len(),
-        self.snapshot.current_kernel
-      ),
-      format!(
-        "{} {}  ·  {} · {}",
-        AppConfig::icon(argvus_tui::icons::STORAGE),
-        bootloader_label,
-        loader,
-        timeout
-      ),
-      format!(
-        "{} {}  ·  {}",
-        AppConfig::icon(argvus_tui::icons::PACKAGES),
-        initramfs_label,
-        initramfs
-      ),
-      format!(
-        "{} {}  ·  {}",
-        AppConfig::icon(argvus_tui::icons::PALETTE),
-        plymouth_label,
-        plymouth
-      ),
+      Row::submenu(Item::Summary, tr(self.lang, "control_center.summary"))
+        .icon(icons::INFO)
+        .detail(format!("{} · {}", self.snapshot.firmware, secure)),
+      Row::submenu(Item::Kernels, tr(self.lang, "control_center.kernels"))
+        .icon(icons::CPU)
+        .detail(format!(
+          "{} · {}",
+          self.snapshot.kernels.len(),
+          self.snapshot.current_kernel
+        )),
+      Row::submenu(
+        Item::Bootloader,
+        tr(self.lang, "control_center.bootloader_f1a3c5"),
+      )
+      .icon(icons::BOOT)
+      .detail(format!("{} · {}", self.loader_label(), timeout)),
+      Row::submenu(Item::Initramfs, tr(self.lang, "control_center.initramfs"))
+        .icon(icons::PACKAGES)
+        .detail(initramfs),
+      Row::submenu(Item::Plymouth, tr(self.lang, "control_center.plymouth"))
+        .icon(icons::IMAGE)
+        .detail(plymouth),
     ]
+  }
+  /// Read-only overview of the boot chain.
+  fn summary_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let timeout = self
+      .snapshot
+      .bootloader_info
+      .timeout
+      .map(|t| format!("{t} s"))
+      .unwrap_or_else(|| tr(lang, "control_center.default").into());
+    let secure_boot = self
+      .snapshot
+      .secure_boot
+      .map(|v| yes_no(lang, v))
+      .unwrap_or_else(|| tr(lang, "control_center.unavailable").into());
+    let default_entry = self
+      .snapshot
+      .bootloader_info
+      .entries
+      .iter()
+      .find(|entry| entry.is_default)
+      .map(|entry| entry.title.clone())
+      .or_else(|| self.snapshot.bootloader_info.default_entry.clone())
+      .unwrap_or_else(|| MISSING.into());
+    let plymouth_theme = self
+      .snapshot
+      .plymouth
+      .current_theme
+      .clone()
+      .unwrap_or_else(|| MISSING.into());
+    vec![
+      Row::section(tr(lang, "control_center.section_base_system")),
+      Row::info(
+        tr(lang, "control_center.firmware"),
+        self.snapshot.firmware.clone(),
+      ),
+      Row::info(tr(lang, "control_center.secure_boot"), secure_boot),
+      Row::info(
+        tr(lang, "control_center.kernel"),
+        self.snapshot.current_kernel.clone(),
+      ),
+      Row::section(tr(lang, "control_center.bootloader_f1a3c5")),
+      Row::info(tr(lang, "control_center.boot_manager"), self.loader_label()),
+      Row::info(tr(lang, "control_center.default_entry"), default_entry),
+      Row::info(
+        tr(lang, "control_center.section_entries"),
+        self.snapshot.bootloader_info.entries.len().to_string(),
+      ),
+      Row::info(
+        tr(lang, "control_center.esp_path"),
+        self.snapshot.esp.as_deref().unwrap_or(MISSING),
+      ),
+      Row::info(tr(lang, "control_center.timeout"), timeout),
+      Row::section(tr(lang, "control_center.section_components")),
+      Row::info(
+        tr(lang, "control_center.kernels"),
+        self.snapshot.kernels.len().to_string(),
+      ),
+      Row::info(
+        "mkinitcpio",
+        yes_no(lang, self.snapshot.initramfs.available),
+      ),
+      Row::info(
+        tr(lang, "control_center.plymouth"),
+        yes_no(lang, self.snapshot.plymouth.installed),
+      ),
+      Row::info(tr(lang, "control_center.theme"), plymouth_theme),
+    ]
+  }
+  /// `Current · Default` badges of a kernel, or an empty string.
+  fn kernel_badges(&self, kernel: &crate::model::KernelInfo) -> String {
+    let mut badges = Vec::new();
+    if kernel.current {
+      badges.push(tr(self.lang, "control_center.current"));
+    }
+    if kernel.default {
+      badges.push(tr(self.lang, "control_center.default"));
+    }
+    badges.join(" · ")
+  }
+  /// One submenu per installed kernel, with its badges on the right.
+  fn kernel_rows(&self) -> Vec<Row<Item>> {
+    self
+      .snapshot
+      .kernels
+      .iter()
+      .enumerate()
+      .map(|(index, kernel)| {
+        let row = Row::submenu(
+          Item::Kernel(index),
+          format!("{} {}", kernel.package, kernel.version.trim()),
+        );
+        let badges = self.kernel_badges(kernel);
+        if badges.is_empty() {
+          row
+        } else {
+          row.detail(badges)
+        }
+      })
+      .collect()
+  }
+  /// `Set default` for the open kernel or entry, disabled with the reason
+  /// on the right when no systemd-boot entry can be mapped.
+  fn set_default_row(&self) -> Row<Item> {
+    let row = Row::action(
+      Item::SetDefault,
+      tr(self.lang, "control_center.set_default"),
+    )
+    .icon(icons::STAR);
+    match self.default_unavailable_reason() {
+      Some(reason) => row.enabled(false).detail(reason),
+      None => row,
+    }
   }
   /// Executes the `kernel_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn kernel_detail(&self, index: usize) -> Vec<String> {
+  fn kernel_detail(&self, index: usize) -> Vec<Row<Item>> {
     let Some(k) = self.snapshot.kernels.get(index) else {
-      return vec![tr(self.lang, "control_center.kernel_not_found").into()];
+      return vec![Row::info(
+        tr(self.lang, "control_center.kernel_not_found"),
+        "",
+      )];
     };
-    let status = match (k.current, k.default) {
-      (true, true) => format!(
-        "★ {}  ·  ● {}",
-        tr(self.lang, "control_center.current"),
-        tr(self.lang, "control_center.default")
-      ),
-      (true, false) => format!("★ {}", tr(self.lang, "control_center.current")),
-      (false, true) => format!("● {}", tr(self.lang, "control_center.default")),
-      (false, false) => "—".into(),
-    };
+    let badges = self.kernel_badges(k);
     vec![
-      format!(
-        " {} {}",
-        AppConfig::icon(argvus_tui::icons::MEMORY),
-        tr(self.lang, "control_center.kernel_620593")
+      Row::section(tr(self.lang, "control_center.kernel")),
+      Row::info(self.field("control_center.package"), k.package.clone()),
+      Row::info(
+        self.field("control_center.version_20bc85"),
+        k.version.clone(),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.package"),
-        k.package
+      Row::info(
+        self.field("control_center.status"),
+        if badges.is_empty() {
+          MISSING.into()
+        } else {
+          badges
+        },
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.version_20bc85"),
-        k.version
+      Row::section(tr(self.lang, "control_center.section_files")),
+      Row::info(
+        self.field("control_center.image"),
+        k.image.as_deref().unwrap_or(MISSING),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.status"),
-        status
+      Row::info(
+        self.field("control_center.initramfs_6d7381"),
+        k.initramfs.as_deref().unwrap_or(MISSING),
       ),
-      "".into(),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.image"),
-        k.image.as_deref().unwrap_or("—")
+      Row::info(
+        self.field("control_center.fallback"),
+        k.fallback.as_deref().unwrap_or(MISSING),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.initramfs_6d7381"),
-        k.initramfs.as_deref().unwrap_or("—")
+      Row::info(
+        self.field("control_center.headers"),
+        yes_no(self.lang, k.headers),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.fallback"),
-        k.fallback.as_deref().unwrap_or("—")
+      Row::info(
+        self.field("control_center.preset"),
+        k.preset.as_deref().unwrap_or(MISSING),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.headers"),
-        yes_no(self.lang, k.headers)
+      Row::info(
+        self.field("control_center.uki"),
+        k.uki.as_deref().unwrap_or(MISSING),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.preset"),
-        k.preset.as_deref().unwrap_or("—")
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.uki"),
-        k.uki.as_deref().unwrap_or("—")
-      ),
-      "".into(),
-      tr(
-        self.lang,
-        "control_center.d_set_as_default_for_the_next_boot",
-      )
-      .into(),
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      self.set_default_row(),
     ]
+  }
+  /// Entries, the timeout and, with GRUB, the kernel command line and the
+  /// regeneration in the Danger zone.
+  fn bootloader_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let mut rows = Vec::new();
+    let entries = &self.snapshot.bootloader_info.entries;
+    if !entries.is_empty() {
+      rows.push(Row::section(tr(lang, "control_center.section_entries")));
+      rows.extend(entries.iter().enumerate().map(|(index, entry)| {
+        let row = Row::submenu(Item::Entry(index), entry.title.clone());
+        if entry.is_default {
+          row.detail(tr(lang, "control_center.default"))
+        } else {
+          row
+        }
+      }));
+    }
+    rows.push(Row::section(tr(lang, "control_center.configuration")));
+    let timeout = Row::value(
+      Item::Timeout,
+      tr(lang, "control_center.timeout"),
+      self
+        .snapshot
+        .bootloader_info
+        .timeout
+        .map(|t| format!("{t} s"))
+        .unwrap_or_else(|| tr(lang, "control_center.default").into()),
+      None,
+    )
+    .icon(icons::TIMER);
+    rows.push(if self.snapshot.bootloader == BootloaderKind::Unknown {
+      timeout
+        .enabled(false)
+        .detail(tr(lang, "control_center.unavailable_unknown_bootloader"))
+    } else {
+      timeout
+    });
+    if self.snapshot.bootloader == BootloaderKind::Grub {
+      let cmdline = self.grub_value("GRUB_CMDLINE_LINUX_DEFAULT");
+      rows.push(
+        Row::value(
+          Item::KernelCmdline,
+          tr(lang, "control_center.kernel_command_line"),
+          if cmdline.is_empty() {
+            MISSING.into()
+          } else {
+            cmdline
+          },
+          None,
+        )
+        .icon(icons::TERMINAL),
+      );
+      rows.push(Row::section(tr(lang, "control_center.danger_zone")));
+      rows.push(
+        Row::destructive(
+          Item::RegenerateGrub,
+          tr(lang, "control_center.regenerate_grub"),
+        )
+        .icon(icons::SYNC),
+      );
+    }
+    rows
   }
   /// Executes the `bootloader_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn bootloader_detail(&self, index: usize) -> Vec<String> {
+  fn bootloader_detail(&self, index: usize) -> Vec<Row<Item>> {
     let Some(e) = self.snapshot.bootloader_info.entries.get(index) else {
-      return vec![tr(self.lang, "control_center.entry_not_found").into()];
+      return vec![Row::info(
+        tr(self.lang, "control_center.entry_not_found"),
+        "",
+      )];
     };
     vec![
-      argvus_tui::icons::icon_label(
-        AppConfig::icon(argvus_tui::icons::STORAGE),
-        tr(self.lang, "control_center.bootloader_entry"),
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.title"),
-        e.title
-      ),
-      format!("   {:<12} {}", tr(self.lang, "control_center.id"), e.id),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.status"),
+      Row::section(tr(self.lang, "control_center.section_entry")),
+      Row::info(self.field("control_center.title"), e.title.clone()),
+      Row::info(self.field("control_center.id"), e.id.clone()),
+      Row::info(
+        self.field("control_center.status"),
         if e.is_default {
-          format!("● {}", tr(self.lang, "control_center.default"))
+          tr(self.lang, "control_center.default")
         } else {
-          "—".into()
-        }
+          MISSING
+        },
       ),
-      "".into(),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.linux_efi"),
-        e.linux.as_deref().unwrap_or("—")
+      Row::info(
+        self.field("control_center.linux_efi"),
+        e.linux.as_deref().unwrap_or(MISSING),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.initrd"),
-        e.initrd.join(" ")
+      Row::info(self.field("control_center.initrd"), joined(&e.initrd)),
+      Row::info(
+        self.field("control_center.options"),
+        e.options.as_deref().unwrap_or(MISSING),
       ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.options"),
-        e.options.as_deref().unwrap_or("—")
-      ),
-      "".into(),
-      tr(self.lang, "control_center.d_set_default_t_change_timeout").into(),
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      self.set_default_row(),
     ]
   }
-  /// Executes the `initramfs_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn initramfs_detail(&self, index: usize) -> Vec<String> {
-    let preset = self
-      .snapshot
-      .initramfs
-      .presets
-      .get(index)
-      .cloned()
-      .unwrap_or_else(|| "—".into());
-    let config = self
-      .snapshot
-      .initramfs
-      .config_path
-      .clone()
-      .unwrap_or_else(|| "—".into());
-    vec![
-      format!(
-        " {} {}",
-        AppConfig::icon(argvus_tui::icons::PACKAGES),
-        tr(self.lang, "control_center.initramfs_fc455d")
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.preset"),
-        preset
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.config"),
-        config
-      ),
-      "".into(),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.modules"),
-        self.snapshot.initramfs.modules.join(" ")
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.binaries"),
-        self.snapshot.initramfs.binaries.join(" ")
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.files"),
-        self.snapshot.initramfs.files.join(" ")
-      ),
-      format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.hooks"),
-        self.snapshot.initramfs.hooks.join(" ")
-      ),
-      "".into(),
-      tr(
-        self.lang,
-        "control_center.g_regenerate_all_initramfs_images",
+  /// Presets and, in the Danger zone, the regeneration of every image.
+  fn initramfs_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let mut rows = Vec::new();
+    let presets = &self.snapshot.initramfs.presets;
+    if !presets.is_empty() {
+      rows.push(Row::section(tr(lang, "control_center.section_presets")));
+      rows.extend(
+        presets
+          .iter()
+          .enumerate()
+          .map(|(index, preset)| Row::submenu(Item::Preset(index), preset.clone())),
+      );
+    }
+    rows.push(Row::section(tr(lang, "control_center.danger_zone")));
+    rows.push(
+      Row::destructive(
+        Item::RegenerateInitramfs,
+        tr(lang, "control_center.regenerate_all_initramfs_images"),
       )
-      .into(),
+      .icon(icons::SYNC),
+    );
+    rows
+  }
+  /// Executes the `initramfs_detail` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn initramfs_detail(&self, index: usize) -> Vec<Row<Item>> {
+    let initramfs = &self.snapshot.initramfs;
+    vec![
+      Row::section(tr(self.lang, "control_center.initramfs")),
+      Row::info(
+        self.field("control_center.preset"),
+        initramfs
+          .presets
+          .get(index)
+          .map(String::as_str)
+          .unwrap_or(MISSING),
+      ),
+      Row::info(
+        self.field("control_center.config"),
+        initramfs.config_path.as_deref().unwrap_or(MISSING),
+      ),
+      Row::section(tr(self.lang, "control_center.configuration")),
+      Row::info(
+        tr(self.lang, "control_center.initramfs_modules"),
+        joined(&initramfs.modules),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.initramfs_binaries"),
+        joined(&initramfs.binaries),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.initramfs_files"),
+        joined(&initramfs.files),
+      ),
+      Row::info(
+        tr(self.lang, "control_center.initramfs_hooks"),
+        joined(&initramfs.hooks),
+      ),
     ]
+  }
+  /// One choice per installed theme; `●` marks the current one.
+  fn plymouth_rows(&self) -> Vec<Row<Item>> {
+    let current = self.snapshot.plymouth.current_theme.as_deref();
+    self
+      .snapshot
+      .plymouth
+      .themes
+      .iter()
+      .enumerate()
+      .map(|(index, theme)| Row::choice(Item::Theme(index), theme.clone(), current == Some(theme)))
+      .collect()
   }
   /// Retrieves data for `loader_label` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn loader_label(&self) -> &'static str {
@@ -1294,6 +1185,18 @@ impl BootApp {
       BootPage::Plymouth => tr(self.lang, "control_center.plymouth"),
       BootPage::Home => tr(self.lang, "control_center.boot"),
     }
+  }
+}
+
+/// Shown for a missing value.
+const MISSING: &str = "—";
+
+/// Space-separated values, or [`MISSING`] when there are none.
+fn joined(values: &[String]) -> String {
+  if values.is_empty() {
+    MISSING.into()
+  } else {
+    values.join(" ")
   }
 }
 
@@ -1404,16 +1307,79 @@ fn run_action(action: BootAction, live: LiveProcess) -> Result<(ActionResult, St
 mod tests {
   use super::*;
   use crate::model::{BootEntry, KernelInfo};
+  use argvus_tui::menu::RowKind;
   use ratatui::{Terminal, backend::TestBackend};
+  use std::time::Duration;
 
-  #[test]
-  /// Executes the `boot_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_home_rows_act_as_a_status_dashboard() {
-    let mut app = BootApp::new(
+  fn app() -> BootApp {
+    BootApp::new(
       Lang::for_locale("en-US"),
       Theme::load(),
       Capabilities::default(),
-    );
+    )
+  }
+
+  fn screen(app: &mut BootApp, width: u16, height: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .map(|cell| cell.symbol())
+      .collect()
+  }
+
+  /// Moves the cursor to `item` and presses Enter.
+  fn press(app: &mut BootApp, item: Item) {
+    let rows = app.rows();
+    assert!(app.menu.select(&rows, &item), "{item:?} is not selectable");
+    app.handle(KeyCode::Enter);
+  }
+
+  fn row(rows: &[Row<Item>], item: Item) -> &Row<Item> {
+    rows
+      .iter()
+      .find(|row| row.id() == Some(&item))
+      .unwrap_or_else(|| panic!("{item:?} is missing"))
+  }
+
+  fn ids(rows: &[Row<Item>]) -> Vec<Item> {
+    rows.iter().filter_map(|row| row.id().copied()).collect()
+  }
+
+  fn systemd_app() -> BootApp {
+    let mut app = app();
+    app.snapshot.bootloader = BootloaderKind::SystemdBoot;
+    app.snapshot.bootloader_info.entries = vec![BootEntry {
+      id: "arch.conf".into(),
+      title: "Arch".into(),
+      linux: Some("/vmlinuz-linux".into()),
+      is_default: true,
+      ..Default::default()
+    }];
+    app.snapshot.kernels = vec![KernelInfo {
+      package: "linux".into(),
+      version: "6.1".into(),
+      current: true,
+      uki: Some("/boot/EFI/Linux/linux.efi".into()),
+      ..Default::default()
+    }];
+    app
+  }
+
+  /// A snapshot job that stays running long enough for the test.
+  fn running_job(app: &mut BootApp) {
+    app.job = Some(app.jobs.spawn(|_| {
+      std::thread::sleep(Duration::from_secs(2));
+      Ok(Ok(BootSnapshot::default()))
+    }));
+  }
+
+  #[test]
+  fn boot_home_rows_are_submenus_with_their_state() {
+    let mut app = app();
     app.snapshot.firmware = "UEFI".into();
     app.snapshot.current_kernel = "linux-lts 6.18".into();
     app.snapshot.secure_boot = Some(false);
@@ -1422,24 +1388,51 @@ mod tests {
     app.snapshot.initramfs.available = true;
     app.snapshot.initramfs.presets = vec!["linux-lts.preset".into()];
     let rows = app.rows();
-    assert_eq!(rows.len(), 5);
-    assert!(
-      rows[0].contains("UEFI") && (rows[0].contains("Resumo") || rows[0].contains("Summary"))
+    assert_eq!(
+      ids(&rows),
+      [
+        Item::Summary,
+        Item::Kernels,
+        Item::Bootloader,
+        Item::Initramfs,
+        Item::Plymouth
+      ]
     );
-    assert!(rows[1].contains("linux-lts 6.18") && rows[1].contains("Kernels"));
-    assert!(rows[2].contains("systemd-boot") && rows[2].contains("3 s"));
-    assert!(rows[3].contains("1"));
-    assert!(rows[4].contains("Not installed") || rows[4].contains("Não instalado"));
+    assert!(rows.iter().all(|row| row.kind() == RowKind::Submenu));
+    let detail = |item| {
+      row(&rows, item)
+        .detail_text()
+        .unwrap_or_default()
+        .to_owned()
+    };
+    assert!(detail(Item::Summary).contains("UEFI"));
+    assert!(detail(Item::Kernels).contains("linux-lts 6.18"));
+    assert!(
+      detail(Item::Bootloader).contains("systemd-boot") && detail(Item::Bootloader).contains("3 s")
+    );
+    assert!(detail(Item::Initramfs).contains('1'));
+    assert!(
+      detail(Item::Plymouth).contains("Not installed")
+        || detail(Item::Plymouth).contains("Não instalado")
+    );
+    assert_eq!(row(&rows, Item::Bootloader).icon_glyph(), Some(icons::BOOT));
   }
 
   #[test]
-  /// Executes the `boot_kernel_rows_render_clean_current_and_default_badges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_kernel_rows_render_clean_current_and_default_badges() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+  fn boot_home_dashboard_uses_theme_and_falls_back_to_installed_flag() {
+    let mut app = app();
+    app.snapshot.plymouth.installed = true;
+    let rows = app.rows();
+    let plymouth = row(&rows, Item::Plymouth).detail_text().unwrap_or_default();
+    assert!(plymouth.contains("Installed") || plymouth.contains("Instalado"));
+    app.snapshot.plymouth.current_theme = Some("argvus".into());
+    let rows = app.rows();
+    assert_eq!(row(&rows, Item::Plymouth).detail_text(), Some("argvus"));
+  }
+
+  #[test]
+  fn boot_kernel_rows_carry_current_and_default_badges() {
+    let mut app = app();
     app.snapshot.kernels = vec![
       KernelInfo {
         package: "linux".into(),
@@ -1461,82 +1454,106 @@ mod tests {
     ];
     app.page = BootPage::Kernel;
     let rows = app.rows();
-    assert_eq!(rows.len(), 3);
-    assert!(rows[0].starts_with("linux 6.1"));
-    assert!(rows[0].contains("Current"));
-    assert!(rows[1].contains("Default"));
-    assert!(!rows[2].contains("Current") && !rows[2].contains("Default"));
-    assert!(rows[2].starts_with("linux-zen 6.19"));
+    assert_eq!(
+      ids(&rows),
+      [Item::Kernel(0), Item::Kernel(1), Item::Kernel(2)]
+    );
+    assert_eq!(rows[0].label(), "linux 6.1");
+    assert_eq!(
+      rows[0].detail_text(),
+      Some(tr(app.lang, "control_center.current"))
+    );
+    assert_eq!(
+      rows[1].detail_text(),
+      Some(tr(app.lang, "control_center.default"))
+    );
+    assert_eq!(rows[2].detail_text(), None);
+    assert!(rows.iter().all(|row| row.icon_glyph().is_none()));
   }
 
   #[test]
-  /// Executes the `boot_detail_pages_render_section_headers_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_detail_pages_render_section_headers_and_aligned_rows() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.snapshot.kernels = vec![KernelInfo {
-      package: "linux".into(),
-      version: "6.1".into(),
-      current: true,
-      uki: Some("/boot/EFI/Linux/linux.efi".into()),
-      ..Default::default()
-    }];
+  fn kernel_detail_shows_info_and_sets_the_mapped_entry_as_default() {
+    let mut app = systemd_app();
     app.page = BootPage::KernelDetail(0);
     let rows = app.rows();
-    assert!(rows[0].contains("KERNEL"));
-    assert!(rows.iter().any(|r| r.contains("/boot/EFI/Linux/linux.efi")));
-    assert!(rows.iter().any(|r| r.contains("Set as default")));
-    assert!(rows.len() > 3);
+    assert!(
+      rows
+        .iter()
+        .any(|row| row.detail_text() == Some("/boot/EFI/Linux/linux.efi"))
+    );
+    assert!(
+      rows
+        .iter()
+        .filter(|row| row.id().is_none())
+        .all(|row| !row.is_selectable())
+    );
+    let last = rows.last().unwrap();
+    assert_eq!(last.id(), Some(&Item::SetDefault));
+    assert_eq!(last.kind(), RowKind::Action);
+    assert_eq!(last.icon_glyph(), Some(icons::STAR));
+    assert!(last.is_enabled());
+    press(&mut app, Item::SetDefault);
+    assert!(matches!(
+      &app.pending,
+      Some(Pending::Action(BootAction::SystemdDefault(id))) if id == "arch.conf"
+    ));
   }
 
   #[test]
-  /// Executes the `boot_home_and_details_are_keyboard_navigable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_home_and_details_are_keyboard_navigable() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
+  fn set_default_is_disabled_with_the_reason_when_no_entry_maps() {
+    let mut app = systemd_app();
+    app.snapshot.bootloader_info.entries[0].linux = Some("/vmlinuz-linux-zen".into());
+    app.page = BootPage::KernelDetail(0);
+    let rows = app.rows();
+    let set_default = row(&rows, Item::SetDefault);
+    assert!(!set_default.is_enabled());
+    assert_eq!(
+      set_default.detail_text(),
+      Some(tr(
+        app.lang,
+        "control_center.unavailable_no_systemd_boot_entry"
+      ))
     );
-    app.snapshot.kernels = vec![KernelInfo {
-      package: "linux".into(),
-      version: "6.1".into(),
-      ..Default::default()
-    }];
+
+    app.snapshot.bootloader = BootloaderKind::Unknown;
+    let rows = app.rows();
+    assert_eq!(
+      row(&rows, Item::SetDefault).detail_text(),
+      Some(tr(
+        app.lang,
+        "control_center.unavailable_unknown_bootloader"
+      ))
+    );
+    // Disabled rows are skipped: the page has no cursor.
+    app.handle(KeyCode::Enter);
+    assert!(app.pending.is_none());
+  }
+
+  #[test]
+  fn boot_pages_are_keyboard_navigable_and_back_returns_to_the_origin() {
+    let mut app = systemd_app();
     app.handle(KeyCode::Down);
     app.handle(KeyCode::Enter);
     assert_eq!(app.page, BootPage::Kernel);
     app.job = None;
-    app.handle(KeyCode::Enter);
+    app.handle(KeyCode::Right);
     assert_eq!(app.page, BootPage::KernelDetail(0));
     app.handle(KeyCode::Esc);
     assert_eq!(app.page, BootPage::Kernel);
-    app.handle(KeyCode::Esc);
+    assert_eq!(app.menu.selected_id(&app.rows()), Some(Item::Kernel(0)));
+    app.handle(KeyCode::Left);
     assert_eq!(app.page, BootPage::Home);
+    assert_eq!(app.menu.selected_id(&app.rows()), Some(Item::Kernels));
+    assert!(app.handle(KeyCode::Esc));
   }
 
   #[test]
-  /// Executes the `systemd_entry_default_requires_a_real_entry` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn systemd_entry_default_requires_a_real_entry() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.snapshot.bootloader = BootloaderKind::SystemdBoot;
-    app.snapshot.bootloader_info.entries = vec![BootEntry {
-      id: "arch.conf".into(),
-      title: "Arch".into(),
-      ..Default::default()
-    }];
+  fn systemd_entry_default_goes_through_the_confirmation() {
+    let mut app = systemd_app();
     app.page = BootPage::Bootloader;
-    app.handle(KeyCode::Enter);
+    press(&mut app, Item::Entry(0));
     assert_eq!(app.page, BootPage::BootloaderDetail(0));
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Enter);
+    press(&mut app, Item::SetDefault);
     assert!(app.pending.is_some());
     app.handle(KeyCode::Tab);
     assert!(app.confirmation.confirm_selected);
@@ -1552,20 +1569,12 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `timeout_input_is_bounded_and_cancelable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn timeout_input_is_bounded_and_cancelable() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+    let mut app = app();
     app.snapshot.bootloader = BootloaderKind::SystemdBoot;
     app.page = BootPage::Bootloader;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Right);
-    app.handle(KeyCode::Enter);
-    assert!(app.timeout_input.is_some());
+    press(&mut app, Item::Timeout);
+    assert_eq!(app.timeout_input.as_deref(), Some(""));
     app.handle(KeyCode::Char('6'));
     app.handle(KeyCode::Char('1'));
     app.handle(KeyCode::Enter);
@@ -1576,6 +1585,184 @@ mod tests {
         .as_ref()
         .is_some_and(|status| status.kind == StatusKind::Error)
     );
+    press(&mut app, Item::Timeout);
+    app.handle(KeyCode::Char('5'));
+    app.handle(KeyCode::Enter);
+    assert!(matches!(
+      app.pending,
+      Some(Pending::Action(BootAction::SystemdTimeout(5)))
+    ));
+    app.handle(KeyCode::Esc);
+    press(&mut app, Item::Timeout);
+    app.handle(KeyCode::Esc);
+    assert!(app.timeout_input.is_none());
+    assert_eq!(app.page, BootPage::Bootloader);
+  }
+
+  #[test]
+  fn bootloader_rows_follow_the_detected_bootloader() {
+    let mut app = systemd_app();
+    app.snapshot.bootloader_info.timeout = Some(4);
+    app.page = BootPage::Bootloader;
+    let rows = app.rows();
+    assert_eq!(ids(&rows), [Item::Entry(0), Item::Timeout]);
+    let timeout = row(&rows, Item::Timeout);
+    assert_eq!(timeout.kind(), RowKind::Value { step: None });
+    assert_eq!(timeout.detail_text(), Some("4 s"));
+    assert_eq!(timeout.icon_glyph(), Some(icons::TIMER));
+
+    let mut grub = super::tests::app();
+    grub.snapshot.bootloader = BootloaderKind::Grub;
+    grub.snapshot.bootloader_info.grub_values =
+      vec![("GRUB_CMDLINE_LINUX_DEFAULT".into(), "quiet".into())];
+    grub.page = BootPage::Bootloader;
+    let rows = grub.rows();
+    assert_eq!(
+      ids(&rows),
+      [Item::Timeout, Item::KernelCmdline, Item::RegenerateGrub]
+    );
+    assert_eq!(row(&rows, Item::KernelCmdline).detail_text(), Some("quiet"));
+    assert_eq!(
+      row(&rows, Item::KernelCmdline).icon_glyph(),
+      Some(icons::TERMINAL)
+    );
+    // The Danger zone closes the page.
+    let danger = &rows[rows.len() - 2];
+    assert!(danger.is_section());
+    assert_eq!(danger.label(), tr(grub.lang, "control_center.danger_zone"));
+    let regenerate = rows.last().unwrap();
+    assert_eq!(regenerate.kind(), RowKind::Destructive);
+    assert_eq!(regenerate.icon_glyph(), Some(icons::SYNC));
+    press(&mut grub, Item::RegenerateGrub);
+    assert!(matches!(
+      grub.pending,
+      Some(Pending::Action(BootAction::GrubRegenerate))
+    ));
+    grub.handle(KeyCode::Esc);
+    press(&mut grub, Item::KernelCmdline);
+    assert_eq!(grub.timeout_input.as_deref(), Some("quiet"));
+    assert_eq!(grub.input_mode, Some(InputMode::GrubCmdline));
+  }
+
+  #[test]
+  fn timeout_is_disabled_with_the_reason_for_an_unknown_bootloader() {
+    let mut app = app();
+    app.page = BootPage::Bootloader;
+    let rows = app.rows();
+    let timeout = row(&rows, Item::Timeout);
+    assert!(!timeout.is_enabled());
+    assert_eq!(
+      timeout.detail_text(),
+      Some(tr(
+        app.lang,
+        "control_center.unavailable_unknown_bootloader"
+      ))
+    );
+    app.handle(KeyCode::Enter);
+    assert!(app.timeout_input.is_none());
+  }
+
+  #[test]
+  fn initramfs_regenerates_from_the_danger_zone() {
+    let mut app = app();
+    app.snapshot.initramfs.presets = vec!["linux.preset".into()];
+    app.page = BootPage::Initramfs;
+    let rows = app.rows();
+    assert_eq!(ids(&rows), [Item::Preset(0), Item::RegenerateInitramfs]);
+    assert!(rows[rows.len() - 2].is_section());
+    assert_eq!(rows.last().unwrap().kind(), RowKind::Destructive);
+    press(&mut app, Item::RegenerateInitramfs);
+    assert!(matches!(
+      app.pending,
+      Some(Pending::Action(BootAction::Initramfs))
+    ));
+    app.handle(KeyCode::Esc);
+    press(&mut app, Item::Preset(0));
+    assert_eq!(app.page, BootPage::InitramfsDetail(0));
+    assert!(app.rows().iter().all(|row| !row.is_selectable()));
+    app.handle(KeyCode::Esc);
+    assert_eq!(app.menu.selected_id(&app.rows()), Some(Item::Preset(0)));
+  }
+
+  #[test]
+  fn plymouth_themes_are_confirmed_choices() {
+    let mut app = app();
+    app.snapshot.plymouth.themes = vec!["argvus".into(), "spinner".into()];
+    app.snapshot.plymouth.current_theme = Some("argvus".into());
+    app.page = BootPage::Plymouth;
+    let rows = app.rows();
+    assert_eq!(rows[0].kind(), RowKind::Choice { current: true });
+    assert_eq!(rows[1].kind(), RowKind::Choice { current: false });
+    press(&mut app, Item::Theme(1));
+    assert!(matches!(
+      &app.pending,
+      Some(Pending::Action(BootAction::Plymouth(theme))) if theme == "spinner"
+    ));
+  }
+
+  #[test]
+  fn summary_is_read_only_and_has_no_cursor() {
+    let mut app = systemd_app();
+    app.page = BootPage::Summary;
+    let rows = app.rows();
+    assert!(rows.iter().all(|row| !row.is_selectable()));
+    assert!(
+      rows
+        .iter()
+        .any(|row| row.detail_text() == Some("systemd-boot"))
+    );
+    app.normalize();
+    assert!(app.menu.is_scroll_only());
+  }
+
+  #[test]
+  fn boot_changes_wait_for_a_running_snapshot_but_pages_open() {
+    let mut app = app();
+    app.snapshot.initramfs.presets = vec!["linux.preset".into()];
+    app.page = BootPage::Initramfs;
+    running_job(&mut app);
+    press(&mut app, Item::RegenerateInitramfs);
+    assert!(app.pending.is_none());
+    press(&mut app, Item::Preset(0));
+    assert_eq!(app.page, BootPage::InitramfsDetail(0));
+    assert!(!app.handle(KeyCode::Esc));
+    assert!(!app.handle(KeyCode::Esc));
+    assert_eq!(app.page, BootPage::Home);
+    press(&mut app, Item::Kernels);
+    assert_eq!(app.page, BootPage::Kernel);
+  }
+
+  #[test]
+  fn tab_does_nothing_without_tabs() {
+    let mut app = systemd_app();
+    app.page = BootPage::Bootloader;
+    app.handle(KeyCode::Down);
+    let before = app.menu;
+    app.handle(KeyCode::Tab);
+    app.handle(KeyCode::BackTab);
+    assert_eq!(app.menu, before);
+    assert_eq!(app.page, BootPage::Bootloader);
+  }
+
+  #[test]
+  fn boot_uses_shared_chrome_and_contextual_footer() {
+    let mut app = app();
+    let text = screen(&mut app, 90, 25);
+    assert!(text.contains("ARGVUS"));
+    assert!(text.contains("Boot"));
+    assert!(text.contains(tr(app.lang, "control_center.hint.open")));
+    assert!(text.contains(tr(app.lang, "control_center.hint.refresh")));
+    assert!(text.contains("Summary") || text.contains("Resumo"));
+  }
+
+  #[test]
+  fn boot_pages_have_no_button_bar() {
+    let mut app = app();
+    app.snapshot.bootloader = BootloaderKind::Grub;
+    app.page = BootPage::Bootloader;
+    let text = screen(&mut app, 90, 25);
+    assert!(!text.contains("[ "), "{text}");
+    assert!(text.contains(tr(app.lang, "control_center.kernel_command_line")));
   }
 
   #[test]
@@ -1647,139 +1834,6 @@ mod tests {
   fn input_tail_keeps_the_cursor_visible() {
     assert_eq!(input_tail("quiet", 10), "quiet_");
     assert_eq!(input_tail("loglevel=3 quiet splash", 7), "splash_");
-  }
-
-  #[test]
-  /// Executes the `boot_uses_shared_chrome_and_contextual_footer` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_uses_shared_chrome_and_contextual_footer() {
-    let app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
-    terminal.draw(|frame| app.draw(frame)).unwrap();
-    let text = terminal
-      .backend()
-      .buffer()
-      .content
-      .iter()
-      .map(|cell| cell.symbol())
-      .collect::<String>();
-    assert!(text.contains("ARGVUS"));
-    assert!(text.contains("Boot"));
-    assert!(text.contains("Enter") && text.contains("Back"));
-    assert!(text.contains("Summary") || text.contains("Resumo"));
-  }
-
-  #[test]
-  /// Executes the `boot_detail_and_info_pages_expose_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_detail_and_info_pages_expose_buttons() {
-    let app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    let mut detail = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    detail.snapshot.bootloader = BootloaderKind::Grub;
-    detail.page = BootPage::BootloaderDetail(0);
-    assert_eq!(app.buttons().len(), 0);
-    assert_eq!(detail.buttons().len(), 4);
-  }
-
-  #[test]
-  /// Executes the `boot_tab_cycles_between_list_and_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_tab_cycles_between_list_and_buttons() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.snapshot.bootloader = BootloaderKind::Grub;
-    app.page = BootPage::Bootloader;
-    app.selected.index = 2;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    assert_eq!(app.selected.index, 2);
-    app.handle(KeyCode::BackTab);
-    assert!(app.on_buttons);
-    assert_eq!(app.button_selected, 3);
-    app.handle(KeyCode::Esc);
-    assert!(!app.on_buttons);
-    assert_eq!(app.page, BootPage::Home);
-  }
-
-  #[test]
-  /// Executes the `boot_left_right_move_buttons_while_focused_and_no_back_out` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_left_right_move_buttons_while_focused_and_no_back_out() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.snapshot.bootloader = BootloaderKind::Grub;
-    app.page = BootPage::Bootloader;
-    app.selected.index = 2;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    assert_eq!(app.button_selected, 0);
-    assert_eq!(app.page, BootPage::Bootloader);
-    app.handle(KeyCode::Left);
-    assert_eq!(app.button_selected, 3);
-    assert_eq!(app.page, BootPage::Bootloader);
-    app.handle(KeyCode::Right);
-    assert_eq!(app.button_selected, 0);
-    app.handle(KeyCode::Down);
-    app.handle(KeyCode::Up);
-    assert_eq!(app.selected.index, 2);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    assert_eq!(app.selected.index, 2);
-  }
-
-  #[test]
-  /// Executes the `boot_renders_button_bar_only_on_action_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_renders_button_bar_only_on_action_pages() {
-    let mut list = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    list.snapshot.bootloader = BootloaderKind::Grub;
-    list.page = BootPage::Bootloader;
-    let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
-    terminal.draw(|frame| list.draw(frame)).unwrap();
-    let text = terminal
-      .backend()
-      .buffer()
-      .content
-      .iter()
-      .map(|cell| cell.symbol())
-      .collect::<String>();
-    assert!(text.contains("[ Default ]") || text.contains("[ Padrão ]"));
-    assert!(text.contains("Actions") || text.contains("Ações"));
-
-    let mut summary = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    summary.page = BootPage::Summary;
-    terminal.draw(|frame| summary.draw(frame)).unwrap();
-    let info_text = terminal
-      .backend()
-      .buffer()
-      .content
-      .iter()
-      .map(|cell| cell.symbol())
-      .collect::<String>();
-    assert!(!info_text.contains("[ Default ]") && !info_text.contains("[ Padrão ]"));
   }
 
   #[test]
@@ -1861,22 +1915,5 @@ mod tests {
     assert!(text.contains("Process") || text.contains("Processo"));
     assert!(text.contains("$ plymouth-set-default-theme -R argvus"));
     assert!(text.contains("scr") || text.contains("rol"));
-  }
-
-  #[test]
-  /// Executes the `boot_home_dashboard_uses_theme_and_falls_back_to_installed_flag` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn boot_home_dashboard_uses_theme_and_falls_back_to_installed_flag() {
-    let mut app = BootApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.snapshot.plymouth.installed = true;
-    app.snapshot.plymouth.current_theme = None;
-    let rows = app.rows();
-    assert!(rows[4].contains("Installed") || rows[4].contains("Instalado"));
-    app.snapshot.plymouth.current_theme = Some("argvus".into());
-    let rows = app.rows();
-    assert!(rows[4].contains("argvus"));
   }
 }
