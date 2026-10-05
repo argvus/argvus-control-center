@@ -9,8 +9,8 @@ pub mod popup;
 pub mod search;
 
 use argvus_control_center_core::config::AppConfig;
-use argvus_tui::menu::{MenuStyle, draw_menu};
 use argvus_tui::action_buttons::{ActionButton, draw_aligned as draw_action_buttons};
+use argvus_tui::menu::{MenuStyle, draw_menu};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -96,9 +96,17 @@ fn draw_user_page(app: &mut App, frame: &mut Frame, area: Rect) {
   // Title
   let title_text = "ARGVUS Control Center > System > Users";
   let title = Paragraph::new(title_text)
-    .style(Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD))
-    .block(Block::default().borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Plain)
-      .border_style(Style::new().fg(app.theme.border_active)));
+    .style(
+      Style::default()
+        .fg(app.theme.accent)
+        .add_modifier(Modifier::BOLD),
+    )
+    .block(
+      Block::default()
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Plain)
+        .border_style(Style::new().fg(app.theme.border_active)),
+    );
   frame.render_widget(title, chunks[0]);
 
   // The rows before the "Actions" section are the info block; the rows
@@ -192,8 +200,7 @@ fn draw_user_page(app: &mut App, frame: &mut Frame, area: Rect) {
         .add_modifier(Modifier::BOLD),
     )
   } else {
-    Paragraph::new(tr(app.lang, "control_center.ready"))
-      .style(Style::default().fg(app.theme.muted))
+    Paragraph::new(tr(app.lang, "control_center.ready")).style(Style::default().fg(app.theme.muted))
   };
   frame.render_widget(status, chunks[3]);
 

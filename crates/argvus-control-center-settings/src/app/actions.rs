@@ -91,7 +91,10 @@ impl App {
     if crate::administration::is_user_form(self.page()) {
       // The user page's list is the info block only; its buttons are driven
       // by Left/Right, so the cursor never walks into them.
-      let actions_at = rows.iter().position(|row| row.is_section()).unwrap_or(rows.len());
+      let actions_at = rows
+        .iter()
+        .position(|row| row.is_section())
+        .unwrap_or(rows.len());
       rows.truncate(actions_at);
     }
     let page_size = self.viewport;

@@ -418,17 +418,15 @@ impl Administration {
         Row::submenu(Item::SystemUsers, label("control_center.system_accounts"))
           .icon(icons::ACCOUNT_COG),
       ],
-      Page::UserList | Page::SystemUsers => {
-        self
-          .users(page == Page::SystemUsers)
-          .iter()
-          .enumerate()
-          .filter(|(_, user)| matches_search(search, &[&text(user, "user"), &text(user, "name")]))
-          .map(|(index, user)| {
-            Row::submenu(Item::UserEntry(index), text(user, "user")).detail(text(user, "name"))
-          })
-          .collect()
-      }
+      Page::UserList | Page::SystemUsers => self
+        .users(page == Page::SystemUsers)
+        .iter()
+        .enumerate()
+        .filter(|(_, user)| matches_search(search, &[&text(user, "user"), &text(user, "name")]))
+        .map(|(index, user)| {
+          Row::submenu(Item::UserEntry(index), text(user, "user")).detail(text(user, "name"))
+        })
+        .collect(),
       Page::CreateUser => self.create_rows(lang),
       Page::UserUsername => self.username_rows(lang),
       Page::User => self.user_rows(lang),
@@ -510,30 +508,26 @@ impl Administration {
       }
       Page::Groups => vec![
         Row::submenu(Item::CreateGroup, label("control_center.create"))
-        .icon(icons::ADD)
-        .enabled(self.is_admin()),
+          .icon(icons::ADD)
+          .enabled(self.is_admin()),
         Row::submenu(Item::GroupList, label("control_center.list")).icon(icons::GROUP),
       ],
-      Page::GroupList | Page::SystemGroups => {
-        self
-          .groups(true)
-          .iter()
-          .enumerate()
-          .map(|(index, group)| {
-            let members = strings(&group["members"]);
-            let detail = if members.is_empty() {
-              format!("GID {}", group["gid"])
-            } else {
-              format!("GID {} | {}", group["gid"], members.join(", "))
-            };
-            (index, text(group, "name"), detail)
-          })
-          .filter(|(_, name, detail)| matches_search(search, &[name, detail]))
-          .map(|(index, name, detail)| {
-            Row::submenu(Item::GroupEntry(index), name).detail(detail)
-          })
-          .collect()
-      }
+      Page::GroupList | Page::SystemGroups => self
+        .groups(true)
+        .iter()
+        .enumerate()
+        .map(|(index, group)| {
+          let members = strings(&group["members"]);
+          let detail = if members.is_empty() {
+            format!("GID {}", group["gid"])
+          } else {
+            format!("GID {} | {}", group["gid"], members.join(", "))
+          };
+          (index, text(group, "name"), detail)
+        })
+        .filter(|(_, name, detail)| matches_search(search, &[name, detail]))
+        .map(|(index, name, detail)| Row::submenu(Item::GroupEntry(index), name).detail(detail))
+        .collect(),
       Page::CreateGroup => {
         let mut rows = vec![
           Row::section(label("control_center.group")),
@@ -632,11 +626,17 @@ impl Administration {
       Row::submenu(Item::PrimaryGroup, label("control_center.primary_group"))
         .icon(icons::ACCOUNT_STAR)
         .detail(text(&self.user, "primary_group")),
-      Row::submenu(Item::SupplementaryGroups, label("control_center.user_groups")).icon(icons::GROUP),
+      Row::submenu(
+        Item::SupplementaryGroups,
+        label("control_center.user_groups"),
+      )
+      .icon(icons::GROUP),
       Row::toggle(
         Item::UserAdmin,
         label("control_center.make_admin"),
-        strings(&self.user["groups"]).iter().any(|group| group == "sudo"),
+        strings(&self.user["groups"])
+          .iter()
+          .any(|group| group == "sudo"),
       )
       .icon(icons::SHIELD)
       .enabled(self.is_admin()),
@@ -695,8 +695,11 @@ impl Administration {
       Row::submenu(Item::ChangePassword, label("control_center.password"))
         .icon(icons::KEY)
         .detail(password),
-      Row::submenu(Item::SupplementaryGroups, label("control_center.user_groups"))
-        .icon(icons::GROUP),
+      Row::submenu(
+        Item::SupplementaryGroups,
+        label("control_center.user_groups"),
+      )
+      .icon(icons::GROUP),
       Row::toggle(
         Item::CreateAdmin,
         label("control_center.make_admin"),
@@ -1057,7 +1060,10 @@ impl App {
 
   /// Index of the focused action button, or `None` while the info list has focus.
   pub(crate) fn user_button_cursor(&self) -> Option<usize> {
-    self.admin.user_buttons_focused.then_some(self.admin.user_button)
+    self
+      .admin
+      .user_buttons_focused
+      .then_some(self.admin.user_button)
   }
 
   /// Left/Right on the user page: moves across the enabled buttons, like
@@ -1080,9 +1086,16 @@ impl App {
     }
     let current = self.admin.user_button;
     let next = if backwards {
-      enabled.iter().rev().find(|&&index| index < current).or(enabled.last())
+      enabled
+        .iter()
+        .rev()
+        .find(|&&index| index < current)
+        .or(enabled.last())
     } else {
-      enabled.iter().find(|&&index| index > current).or(enabled.first())
+      enabled
+        .iter()
+        .find(|&&index| index > current)
+        .or(enabled.first())
     };
     if let Some(&index) = next {
       self.admin.user_button = index;
@@ -1313,7 +1326,8 @@ impl App {
           requests.push(json!({"action":"edit", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"], "primary_group":self.admin.user["primary_group"]}));
         }
         if self.admin.avatar_draft_changed() {
-          requests.push(json!({"action":"avatar", "user":user, "path":text(&self.admin.user, "avatar")}));
+          requests
+            .push(json!({"action":"avatar", "user":user, "path":text(&self.admin.user, "avatar")}));
         }
         if self.admin.passwords_changed() {
           requests.push(json!({"action":"password", "user":user, "old":self.admin.passwords[0], "new":self.admin.passwords[1], "confirm":self.admin.passwords[2]}));
@@ -1352,10 +1366,18 @@ impl App {
       Item::DeleteUserMenu => self.navigation.push(Page::UserDelete),
       // Lock and Unlock are exclusive options: choosing one again clears it.
       Item::LockPassword => {
-        self.admin.lock_draft = if self.admin.lock_draft == Some(true) { None } else { Some(true) };
+        self.admin.lock_draft = if self.admin.lock_draft == Some(true) {
+          None
+        } else {
+          Some(true)
+        };
       }
       Item::UnlockPassword => {
-        self.admin.lock_draft = if self.admin.lock_draft == Some(false) { None } else { Some(false) };
+        self.admin.lock_draft = if self.admin.lock_draft == Some(false) {
+          None
+        } else {
+          Some(false)
+        };
       }
       Item::ExpirePassword => self.admin.expire_draft = !self.admin.expire_draft,
       Item::AvatarImage => self.navigation.push(Page::UserAvatar),
@@ -1847,9 +1869,16 @@ mod tests {
     press(&mut app, KeyCode::Right);
     press(&mut app, KeyCode::Right);
     press(&mut app, KeyCode::Right);
-    assert!(app.confirm.is_none(), "moving the focus does not run anything");
+    assert!(
+      app.confirm.is_none(),
+      "moving the focus does not run anything"
+    );
     press(&mut app, KeyCode::Enter);
-    assert_eq!(app.page(), Page::UserDelete, "Delete asks Keep or Delete home first");
+    assert_eq!(
+      app.page(),
+      Page::UserDelete,
+      "Delete asks Keep or Delete home first"
+    );
     select(&mut app, Item::DeleteUserAndHome);
     press(&mut app, KeyCode::Enter);
     assert!(app.confirm.is_some());
@@ -1924,10 +1953,7 @@ mod tests {
     select(&mut app, Item::UserList);
     press(&mut app, KeyCode::Enter);
     assert_eq!(app.page(), Page::UserList);
-    assert_eq!(
-      items(&app),
-      vec![Some(Item::UserEntry(0))]
-    );
+    assert_eq!(items(&app), vec![Some(Item::UserEntry(0))]);
     assert_eq!(app.rows()[0].label(), "alice");
     assert_eq!(app.selected_item(), Some(Item::UserEntry(0)));
   }
@@ -1943,10 +1969,7 @@ mod tests {
   fn user_search_keeps_the_original_index() {
     let mut app = app(Page::SystemUsers);
     app.search = "ali".into();
-    assert_eq!(
-      items(&app),
-      vec![Some(Item::UserEntry(1))]
-    );
+    assert_eq!(items(&app), vec![Some(Item::UserEntry(1))]);
     app.admin_activate(Item::UserEntry(1));
     assert_eq!(app.page(), Page::User);
     assert_eq!(text(&app.admin.user, "user"), "alice");
@@ -2010,7 +2033,11 @@ mod tests {
     assert_eq!(create_label(&app), tr(pt, "control_center.create"));
     app.admin.passwords[1] = "segredo".into();
     app.admin.passwords[2] = "segredo".into();
-    assert_eq!(create_label(&app), tr(pt, "control_center.create"), "the label does not change");
+    assert_eq!(
+      create_label(&app),
+      tr(pt, "control_center.create"),
+      "the label does not change"
+    );
     app.admin_activate(Item::CreateAccount);
     assert!(
       app.admin.pending.is_some(),
@@ -2104,10 +2131,7 @@ mod tests {
       .position(|row| row.id() == Some(&Item::SaveUser))
       .unwrap();
     assert_eq!(rows[save - 1].kind(), RowKind::Separator);
-    assert!(
-      rows[save - 2].is_section(),
-      "Save starts the Actions block"
-    );
+    assert!(rows[save - 2].is_section(), "Save starts the Actions block");
   }
 
   #[test]
@@ -2292,7 +2316,11 @@ mod tests {
       assert_eq!(app.selected_item(), Some(expected));
     }
     press(&mut app, KeyCode::Down);
-    assert_eq!(app.selected_item(), Some(Item::ChangePassword), "the list ends at the info block");
+    assert_eq!(
+      app.selected_item(),
+      Some(Item::ChangePassword),
+      "the list ends at the info block"
+    );
     assert_eq!(app.user_button_cursor(), None);
 
     // The bar is Save, Cancel, Delete: the first Right focuses Save.
@@ -2303,18 +2331,34 @@ mod tests {
     press(&mut app, KeyCode::Right);
     assert_eq!(app.user_button_cursor(), Some(2), "Delete user");
     press(&mut app, KeyCode::Right);
-    assert_eq!(app.user_button_cursor(), Some(0), "Right wraps to the first button");
+    assert_eq!(
+      app.user_button_cursor(),
+      Some(0),
+      "Right wraps to the first button"
+    );
     press(&mut app, KeyCode::Left);
     assert_eq!(app.user_button_cursor(), Some(2), "Left wraps back");
 
     // Up gives the focus back to the list and moves it one option up.
     press(&mut app, KeyCode::Up);
-    assert_eq!(app.user_button_cursor(), None, "Up gives the focus back to the list");
+    assert_eq!(
+      app.user_button_cursor(),
+      None,
+      "Up gives the focus back to the list"
+    );
     assert_eq!(app.selected_item(), Some(Item::UserAdmin));
     press(&mut app, KeyCode::Tab);
-    assert_eq!(app.user_button_cursor(), Some(0), "Tab moves to the buttons");
+    assert_eq!(
+      app.user_button_cursor(),
+      Some(0),
+      "Tab moves to the buttons"
+    );
     press(&mut app, KeyCode::Tab);
-    assert_eq!(app.user_button_cursor(), None, "Tab again returns to the list");
+    assert_eq!(
+      app.user_button_cursor(),
+      None,
+      "Tab again returns to the list"
+    );
   }
 
   #[test]
@@ -2347,10 +2391,19 @@ mod tests {
     select(&mut app, Item::ExpirePassword);
     press(&mut app, KeyCode::Enter);
     assert!(app.admin.expire_draft);
-    assert!(app.confirm.is_none(), "nothing is confirmed or saved while editing");
-    assert!(app.admin.any_user_draft_changed(), "the footer warns about it");
+    assert!(
+      app.confirm.is_none(),
+      "nothing is confirmed or saved while editing"
+    );
+    assert!(
+      app.admin.any_user_draft_changed(),
+      "the footer warns about it"
+    );
     press(&mut app, KeyCode::Esc);
-    assert!(app.confirm.is_some(), "Esc asks before dropping the options");
+    assert!(
+      app.confirm.is_some(),
+      "Esc asks before dropping the options"
+    );
   }
 
   #[test]
@@ -2364,8 +2417,15 @@ mod tests {
       false,
     ));
     press(&mut app, KeyCode::Enter);
-    assert!(app.confirm.is_none(), "the avatar is not saved while editing");
-    assert_eq!(text(&app.admin.user, "avatar"), "/tmp/face.png", "held in the draft");
+    assert!(
+      app.confirm.is_none(),
+      "the avatar is not saved while editing"
+    );
+    assert_eq!(
+      text(&app.admin.user, "avatar"),
+      "/tmp/face.png",
+      "held in the draft"
+    );
     assert!(!app.admin.busy());
   }
 
@@ -2547,7 +2607,10 @@ mod tests {
         .unwrap()
         .is_selectable()
     };
-    assert!(create_row(&create), "Create is always reachable; an empty name is refused");
+    assert!(
+      create_row(&create),
+      "Create is always reachable; an empty name is refused"
+    );
     press(&mut create, KeyCode::Esc);
     assert_eq!(create.page(), Page::Users);
     create.admin_activate(Item::CreateUser);
@@ -2601,10 +2664,7 @@ mod tests {
   #[test]
   fn deletions_use_the_danger_style_and_other_actions_do_not() {
     let mut user = app(Page::User);
-    for (item, danger) in [
-      (Item::DeleteUser, true),
-      (Item::DeleteUserAndHome, true),
-    ] {
+    for (item, danger) in [(Item::DeleteUser, true), (Item::DeleteUserAndHome, true)] {
       user.admin_activate(item);
       let (_, message, confirm, is_danger) = user.confirm_dialog().unwrap();
       assert_eq!(is_danger, danger, "{item:?}");
