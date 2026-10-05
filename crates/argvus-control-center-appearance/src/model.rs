@@ -725,6 +725,10 @@ pub enum PromptGoal {
   GapsOutBottom,
   Rounding,
   Thickness,
+  /// A percentage typed into the open draft (effect editors and the
+  /// transparency/blur sections). It only edits the draft; `Apply` still
+  /// writes it.
+  DraftValue,
 }
 impl PromptGoal {
   /// Executes the `key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -743,6 +747,7 @@ impl PromptGoal {
       Self::GapsOutBottom => "gaps_out_bottom",
       Self::Rounding => "rounding",
       Self::Thickness => "thickness",
+      Self::DraftValue => "draft_value",
     }
   }
   /// Executes the const function documented in this module. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

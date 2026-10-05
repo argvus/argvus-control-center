@@ -11,7 +11,10 @@ use crate::model::{
 };
 use argvus_i18n::tr;
 use argvus_theme::discovery::ThemeCategory;
-use argvus_tui::{icons, menu::Row};
+use argvus_tui::{
+  icons,
+  menu::{Row, draft_actions},
+};
 
 /// Stable identity of an Appearance menu entry.
 ///
@@ -103,6 +106,8 @@ pub(super) enum Item {
   // Theme confirmation pages (`ThemeDeleteConfirm`, `ThemeImportConfirm`).
   ConfirmAccept,
   ConfirmCancel,
+  /// `Apply` at the end of every draft page.
+  Apply,
 }
 
 impl Item {
@@ -170,6 +175,8 @@ impl Item {
       | Self::PanelCard(_)
       | Self::ConfirmAccept
       | Self::ConfirmCancel => return None,
+      // `draft_actions` sets the shared confirmation glyph.
+      Self::Apply => icons::APPLY,
       // These depend on the page; see `AppearanceApp::page_icon`.
       Self::EffectValue | Self::SurfaceEnabled | Self::SectionEnabled | Self::SectionValue => {
         return None;
@@ -190,7 +197,7 @@ fn spacing_icon(goal: PromptGoal) -> Option<&'static str> {
     PromptGoal::GapsIn => Some(icons::GAP),
     PromptGoal::Rounding => Some(icons::ROUNDED),
     PromptGoal::Thickness => Some(icons::THICKNESS),
-    PromptGoal::ExportProfile | PromptGoal::ImportProfile => None,
+    PromptGoal::ExportProfile | PromptGoal::ImportProfile | PromptGoal::DraftValue => None,
   }
 }
 
@@ -244,8 +251,23 @@ impl AppearanceApp {
     }
   }
 
-  /// Rows of the current page, in display order.
+  /// Rows of the current page, in display order. Draft pages end with the
+  /// `Apply` group, enabled only while the draft has unapplied changes.
   pub(super) fn rows(&self) -> Vec<Row<Item>> {
+    let mut rows = self.page_rows();
+    if Self::is_draft_page(self.page) {
+      let pending = self.has_pending_changes();
+      let mut actions = draft_actions(Item::Apply, self.label("control_center.apply"), pending);
+      if pending && let Some(apply) = actions.pop() {
+        actions.push(apply.detail(self.label("control_center.draft_changed")));
+      }
+      rows.extend(actions);
+    }
+    rows
+  }
+
+  /// Rows of the page without the trailing `Apply` group.
+  pub(super) fn page_rows(&self) -> Vec<Row<Item>> {
     match self.page {
       AppearancePage::Home => self.home_rows(),
       AppearancePage::Themes => vec![

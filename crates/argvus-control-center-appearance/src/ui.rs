@@ -27,9 +27,9 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  buttons::{Button, ButtonKind},
   components::{StatusKind, StatusMessage},
-  hints::{HintContext, hints},
+  confirm::{ConfirmDialog, ConfirmOutcome, ConfirmState, draw_confirm},
+  hints::{HintContext, confirm_hints, hints},
   menu::{MenuEvent, MenuState, MenuStyle, Row, RowKind, draw_menu},
   page::{shell, status},
 };
@@ -56,7 +56,7 @@ enum JobData {
   },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SurfaceDraft {
   surface: EffectSurface,
   utility_group: TaskbarUtilityGroupMode,
@@ -74,6 +74,13 @@ struct SurfaceDraft {
   transparency: i32,
   blur_enabled: bool,
   blur: i32,
+}
+
+/// What the open confirmation dialog decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Confirmation {
+  /// Esc on a page whose unapplied draft would be dropped by going back.
+  DiscardDraft,
 }
 
 fn theme_category_label_key(category: ThemeCategory) -> &'static str {
@@ -137,8 +144,8 @@ pub struct AppearanceApp {
   effect_draft: Option<i32>,
   surface_draft: Option<SurfaceDraft>,
   theme_dirty: bool,
-  on_buttons: bool,
-  button_selected: usize,
+  /// Open confirmation dialog, drawn over the page.
+  confirm: Option<(Confirmation, ConfirmState)>,
   delete_theme: Option<CustomTheme>,
   import_archives: Vec<std::path::PathBuf>,
   pending_import: Option<std::path::PathBuf>,
@@ -211,8 +218,7 @@ impl AppearanceApp {
       effect_draft: None,
       surface_draft: None,
       theme_dirty: false,
-      on_buttons: false,
-      button_selected: 0,
+      confirm: None,
       delete_theme: None,
       import_archives: Vec::new(),
       pending_import: None,
@@ -246,24 +252,7 @@ impl AppearanceApp {
     {
       self.job = None;
       match result {
-        Ok(JobData::Loaded(page, state)) => {
-          self.refreshed.retain(|(old, _)| *old != page);
-          self.refreshed.push((page, std::time::Instant::now()));
-          self.state = *state;
-          self.loaded = true;
-          self.status_loading = false;
-          if page == AppearancePage::ControlPanel && self.page == page {
-            self.control_panel_draft = Some(self.state.control_panel_cards.clone());
-          }
-          if let Some(surface) = Self::surface_for_page(page)
-            && self.page == page
-          {
-            self.surface_draft = Some(self.make_surface_draft(surface));
-          }
-          if self.page != page {
-            self.refresh();
-          }
-        }
+        Ok(JobData::Loaded(page, state)) => self.on_loaded(page, *state),
         Ok(JobData::Archives(paths)) => {
           self.import_archives = paths;
           self.status_loading = false;
@@ -327,6 +316,61 @@ impl AppearanceApp {
     changed
   }
 
+  /// Stores a freshly loaded state. The page's draft is rebuilt from it only
+  /// while the draft has no unapplied changes, so a reload (`r`, or the
+  /// automatic one when a page is entered) never drops the user's edits;
+  /// after `Apply` the draft matches the applied values and is rebuilt.
+  fn on_loaded(&mut self, page: AppearancePage, state: AppearanceState) {
+    self.refreshed.retain(|(old, _)| *old != page);
+    self.refreshed.push((page, std::time::Instant::now()));
+    let keep_draft = self.surface_draft_has_changes();
+    self.state = state;
+    self.loaded = true;
+    self.status_loading = false;
+    if page == AppearancePage::ControlPanel && self.page == page {
+      self.control_panel_draft = Some(self.state.control_panel_cards.clone());
+    }
+    if let Some(surface) = Self::surface_for_page(page)
+      && self.page == page
+      && !keep_draft
+    {
+      self.surface_draft = Some(self.make_surface_draft(surface));
+    }
+    if self.page != page {
+      self.refresh();
+    }
+  }
+
+  /// Whether the surface draft differs from the loaded state.
+  fn surface_draft_has_changes(&self) -> bool {
+    self
+      .surface_draft
+      .as_ref()
+      .is_some_and(|draft| *draft != self.make_surface_draft(draft.surface))
+  }
+
+  /// Whether the effect editor value differs from the stored one.
+  fn effect_draft_has_changes(&self) -> bool {
+    match (Self::effect_spec(self.page), self.effect_draft) {
+      (Some((kind, surface)), Some(value)) => value != self.effect_value(kind, surface),
+      _ => false,
+    }
+  }
+
+  /// Whether the current page has an unapplied draft, which enables `Apply`.
+  fn has_pending_changes(&self) -> bool {
+    if Self::effect_spec(self.page).is_some() {
+      self.effect_draft_has_changes()
+    } else {
+      Self::surface_for_page(self.page).is_some() && self.surface_draft_has_changes()
+    }
+  }
+
+  /// Whether this page edits a draft that is applied with the `Apply` row.
+  fn is_draft_page(page: AppearancePage) -> bool {
+    Self::surface_for_page(page).is_some() || Self::effect_spec(page).is_some()
+  }
+
   fn start_pending_import(&mut self) {
     let Some(path) = self.pending_import.take() else {
       return;
@@ -372,7 +416,6 @@ impl AppearanceApp {
     }
     self.page = page;
     self.menu = MenuState::default();
-    self.on_buttons = false;
     if page == AppearancePage::ControlPanel {
       self.control_panel_draft = Some(self.state.control_panel_cards.clone());
     }
@@ -641,7 +684,9 @@ impl AppearanceApp {
       Item::LauncherTransparencyValue => self.go(AppearancePage::TransparencySurface {
         surface: EffectSurface::Launchers,
       }),
-      Item::EffectValue | Item::SectionValue => {}
+      Item::EffectValue | Item::SectionValue => self.open_prompt(PromptGoal::DraftValue),
+      Item::Apply if Self::effect_spec(self.page).is_some() => self.apply_effect_changes(),
+      Item::Apply => self.apply_surface_changes(),
       Item::TaskbarPosition => self.go(AppearancePage::TaskbarPosition),
       Item::TaskbarSpaces => self.go(AppearancePage::TaskbarSpaces),
       Item::WindowSpaces => self.go(AppearancePage::WindowSpaces),
@@ -725,17 +770,23 @@ impl AppearanceApp {
       (Item::EffectValue, _) => {
         self.effect_draft = Some((self.effect_editor_value() + delta).clamp(0, 100));
       }
-      (Item::SectionValue, AppearancePage::SurfaceSection { section, .. }) => {
-        self.edit_draft(|draft| {
-          let value = if section == SurfaceSection::Blur {
-            &mut draft.blur
-          } else {
-            &mut draft.transparency
-          };
-          *value = (*value + delta).clamp(0, 100);
-        });
+      (Item::SectionValue, _) => {
+        self.adjust_section_value(|value| *value = (*value + delta).clamp(0, 100));
       }
       _ => {}
+    }
+  }
+
+  /// Edits the percentage of the open transparency/blur section draft.
+  fn adjust_section_value(&mut self, edit: impl FnOnce(&mut i32)) {
+    if let AppearancePage::SurfaceSection { section, .. } = self.page {
+      self.edit_draft(|draft| {
+        edit(if section == SurfaceSection::Blur {
+          &mut draft.blur
+        } else {
+          &mut draft.transparency
+        })
+      });
     }
   }
 
@@ -914,6 +965,12 @@ impl AppearanceApp {
           return false;
         }
         let back = self.prompt_back.take().unwrap_or(AppearancePage::Home);
+        if goal == PromptGoal::DraftValue {
+          if let Ok(value) = value.parse::<i32>() {
+            self.set_draft_value(back, value);
+          }
+          return false;
+        }
         let key_name = goal.key();
         let message_key = if matches!(goal, PromptGoal::Rounding) {
           "control_center.border_settings_applied"
@@ -957,6 +1014,22 @@ impl AppearanceApp {
       _ => false,
     }
   }
+  /// Writes a typed percentage into the draft of `page` and returns to it
+  /// with the value row selected. Nothing is applied.
+  fn set_draft_value(&mut self, page: AppearancePage, value: i32) {
+    self.go(page);
+    let item = if Self::effect_spec(page).is_some() {
+      self.effect_draft = Some(value);
+      Item::EffectValue
+    } else {
+      self.adjust_section_value(|current| *current = value);
+      Item::SectionValue
+    };
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    self.menu.select(&rows, &item);
+  }
+
   /// Whether typed characters currently go to a prompt field (theme name,
   /// file path, gaps, borders) or to the accent HEX editor, so `q`/`?` must
   /// not act as the global quit/help keys. Same condition [`Self::handle`]
@@ -971,7 +1044,16 @@ impl AppearanceApp {
     if self.captures_text() {
       return self.prompt_key(key);
     }
-    if self.handle_buttons(key) {
+    if let Some((confirmation, state)) = &mut self.confirm {
+      let confirmation = *confirmation;
+      match state.handle(key) {
+        ConfirmOutcome::Pending => {}
+        ConfirmOutcome::Cancelled => self.confirm = None,
+        ConfirmOutcome::Confirmed => {
+          self.confirm = None;
+          return self.resolve_confirmation(confirmation);
+        }
+      }
       return false;
     }
     let rows = self.rows();
@@ -1048,34 +1130,41 @@ impl AppearanceApp {
     }
   }
 
-  /// Button bar of the draft pages (`Tab` reaches `[ Apply ]`). Returns
-  /// whether the key was consumed.
-  fn handle_buttons(&mut self, key: KeyCode) -> bool {
-    if self.buttons().is_empty() {
-      return false;
-    }
-    if self.on_buttons {
-      match key {
-        KeyCode::Esc | KeyCode::Left => return false,
-        KeyCode::Tab | KeyCode::BackTab => self.on_buttons = false,
-        KeyCode::Char('h') => self.move_button(-1),
-        KeyCode::Right | KeyCode::Char('l') => self.move_button(1),
-        KeyCode::Enter | KeyCode::Char(' ') if self.job.is_none() && self.action.is_none() => {
-          self.activate_button()
-        }
-        _ => {}
-      }
-      return true;
-    }
-    if matches!(key, KeyCode::Tab | KeyCode::BackTab) {
-      self.on_buttons = true;
-      self.button_selected = 0;
-      return true;
-    }
-    false
-  }
   /// Executes the `back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn back(&mut self) -> bool {
+    if self.back_discards_draft() {
+      self.confirm = Some((Confirmation::DiscardDraft, ConfirmState::new()));
+      return false;
+    }
+    self.navigate_back()
+  }
+
+  /// Whether going back from this page would drop an unapplied draft: the
+  /// effect editors always drop theirs, and a surface draft lives until its
+  /// top page (Taskbar, Widget Telemetry, Control Panel) is left. While
+  /// `Apply` runs, the draft is already on its way and nothing is lost.
+  fn back_discards_draft(&self) -> bool {
+    if self.action.is_some() {
+      return false;
+    }
+    if Self::effect_spec(self.page).is_some() {
+      return self.effect_draft_has_changes();
+    }
+    matches!(
+      self.page,
+      AppearancePage::Taskbar | AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel
+    ) && self.surface_draft_has_changes()
+  }
+
+  /// Runs the confirmed decision. Returns `true` when Appearance is left.
+  fn resolve_confirmation(&mut self, confirmation: Confirmation) -> bool {
+    match confirmation {
+      Confirmation::DiscardDraft => self.navigate_back(),
+    }
+  }
+
+  /// Goes to the parent page, dropping the drafts the parent does not keep.
+  fn navigate_back(&mut self) -> bool {
     if self.page == AppearancePage::Home {
       return true;
     }
@@ -1120,7 +1209,12 @@ impl AppearanceApp {
       AppearancePage::TaskbarDateFormat => self.go(AppearancePage::TaskbarDate),
       AppearancePage::TaskbarTimeFormat => self.go(AppearancePage::TaskbarTime),
       AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
-      AppearancePage::Transparency | AppearancePage::Blur => self.go(AppearancePage::Effects),
+      AppearancePage::Transparency => self.go(AppearancePage::Effects),
+      AppearancePage::Blur => {
+        // Like the other effect editors, leaving drops the unapplied value.
+        self.effect_draft = None;
+        self.go(AppearancePage::Effects);
+      }
       AppearancePage::TerminalTransparency => {
         self.effect_draft = None;
         self.go(AppearancePage::Terminal);
@@ -1260,12 +1354,17 @@ impl AppearanceApp {
       PromptGoal::GapsOutBottom => "control_center.outer_gap_bottom",
       PromptGoal::Rounding => "control_center.rounding",
       PromptGoal::Thickness => "control_center.thickness",
+      PromptGoal::DraftValue => "control_center.value",
     }
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
+    self.breadcrumb_of(self.page)
+  }
+
+  fn breadcrumb_of(&self, page: AppearancePage) -> String {
     let root = tr(self.lang, "control_center.appearance");
-    match self.page {
+    match page {
       AppearancePage::Home => root.into(),
       AppearancePage::Themes => format!("{root} › {}", tr(self.lang, "control_center.themes")),
       AppearancePage::OfficialThemes => format!(
@@ -1452,7 +1551,12 @@ impl AppearanceApp {
     }
   }
   /// Executes the `breadcrumb_for_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn breadcrumb_for_prompt(&self, _goal: PromptGoal) -> String {
+  fn breadcrumb_for_prompt(&self, goal: PromptGoal) -> String {
+    if goal == PromptGoal::DraftValue
+      && let Some(page) = self.prompt_back
+    {
+      return self.breadcrumb_of(page);
+    }
     let root = tr(self.lang, "control_center.appearance");
     let section = match self.prompt_back.unwrap_or(AppearancePage::Home) {
       AppearancePage::TaskbarSpaces => tr(self.lang, "control_center.taskbar_spaces"),
@@ -1466,61 +1570,14 @@ impl AppearanceApp {
       tr(self.lang, "control_center.spaces_borders_position")
     )
   }
-  fn buttons(&self) -> Vec<Button> {
-    if !matches!(
-      self.page,
-      AppearancePage::Taskbar
-        | AppearancePage::TaskbarIcons
-        | AppearancePage::TaskbarDate
-        | AppearancePage::TaskbarDateFormat
-        | AppearancePage::TaskbarTime
-        | AppearancePage::TaskbarTimeFormat
-        | AppearancePage::WidgetTelemetry
-        | AppearancePage::ControlPanel
-        | AppearancePage::SurfaceSection { .. }
-    ) && Self::effect_spec(self.page).is_none()
-    {
-      return Vec::new();
-    }
-    vec![Button::new(
-      tr(self.lang, "control_center.apply"),
-      ButtonKind::Primary,
-    )]
-  }
-
-  fn move_button(&mut self, delta: isize) {
-    let count = self.buttons().len();
-    if count > 0 {
-      self.button_selected =
-        (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
-    }
-  }
-
-  fn activate_button(&mut self) {
-    if self.button_selected == 0 {
-      if matches!(
-        self.page,
-        AppearancePage::Taskbar
-          | AppearancePage::TaskbarIcons
-          | AppearancePage::TaskbarDate
-          | AppearancePage::TaskbarDateFormat
-          | AppearancePage::TaskbarTime
-          | AppearancePage::TaskbarTimeFormat
-          | AppearancePage::WidgetTelemetry
-          | AppearancePage::ControlPanel
-          | AppearancePage::SurfaceSection { .. }
-      ) {
-        self.apply_surface_changes();
-      } else {
-        self.apply_effect_changes();
-      }
-    }
-  }
   /// Footer of the current page. List pages derive it from the selected
   /// row's kind (`argvus_tui::hints`); the text editors list their own keys
   /// with the same translated action names.
   fn hints(&self, rows: &[Row<Item>]) -> String {
     let label = |key: &str| tr(self.lang, key);
+    if self.confirm.is_some() {
+      return confirm_hints(self.lang);
+    }
     match self.page {
       AppearancePage::AccentEdit => [
         ("#/0-9/A-F", label("control_center.hex_color")),
@@ -1549,9 +1606,6 @@ impl AppearanceApp {
         ) {
           extra.push(("e", label("control_center.export")));
           extra.push(("i", label("control_center.import")));
-        }
-        if !self.buttons().is_empty() {
-          extra.push(("Tab", label("control_center.apply")));
         }
         hints(
           self.lang,
@@ -1585,19 +1639,10 @@ impl AppearanceApp {
         self.draw_theme_confirmation(frame, area)
       }
       _ => {
-        let buttons = self.buttons();
-        let (list_area, button_area) = if buttons.is_empty() {
-          (area, None)
-        } else {
-          let button_height = argvus_tui::buttons::height(&buttons, area.width).min(area.height);
-          let split =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(area);
-          (split[0], Some(split[1]))
-        };
-        self.list_height = list_area.height;
+        self.list_height = area.height;
         draw_menu(
           frame,
-          list_area,
+          area,
           &self.theme,
           &rows,
           &mut self.menu,
@@ -1605,15 +1650,10 @@ impl AppearanceApp {
             icons: AppConfig::icons_enabled(),
           },
         );
-        if let Some(button_area) = button_area {
-          let focus = if self.on_buttons {
-            self.button_selected
-          } else {
-            usize::MAX
-          };
-          argvus_tui::buttons::draw(frame, button_area, &buttons, focus, &self.theme);
-        }
       }
+    }
+    if let Some((confirmation, state)) = &self.confirm {
+      self.draw_confirmation(frame, area, *confirmation, state);
     }
     if let Some(message) = &self.status {
       status(frame, area, &self.theme, message);
@@ -1629,6 +1669,27 @@ impl AppearanceApp {
         },
       );
     }
+  }
+
+  fn draw_confirmation(
+    &self,
+    frame: &mut Frame,
+    area: Rect,
+    confirmation: Confirmation,
+    state: &ConfirmState,
+  ) {
+    let label = |key: &str| tr(self.lang, key);
+    let dialog = match confirmation {
+      Confirmation::DiscardDraft => ConfirmDialog {
+        title: label("control_center.discard_changes_title"),
+        message: label("control_center.discard_changes_description"),
+        confirm: label("control_center.discard"),
+        cancel: label("control_center.cancel"),
+        danger: false,
+        deadline: None,
+      },
+    };
+    draw_confirm(frame, area, &self.theme, dialog, state);
   }
 
   fn draw_theme_confirmation(&self, frame: &mut Frame, area: Rect) {

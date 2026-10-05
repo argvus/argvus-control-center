@@ -69,22 +69,25 @@ fn line_with<'screen>(screen: &'screen [String], needle: &str) -> &'screen str {
 
 #[test]
 fn home_has_categories_and_spacing_is_nested() {
-  assert_eq!(app(AppearancePage::Home).rows().len(), 11);
-  assert_eq!(app(AppearancePage::SpacesBordersPosition).rows().len(), 5);
-  assert_eq!(app(AppearancePage::Taskbar).rows().len(), 4);
+  assert_eq!(app(AppearancePage::Home).page_rows().len(), 11);
   assert_eq!(
-    app(AppearancePage::TaskbarIcons).rows().len(),
+    app(AppearancePage::SpacesBordersPosition).page_rows().len(),
+    5
+  );
+  assert_eq!(app(AppearancePage::Taskbar).page_rows().len(), 4);
+  assert_eq!(
+    app(AppearancePage::TaskbarIcons).page_rows().len(),
     2 + TaskbarUtilityWidget::ALL.len() + 1
   );
-  assert_eq!(app(AppearancePage::TaskbarDate).rows().len(), 1);
-  assert_eq!(app(AppearancePage::TaskbarDateFormat).rows().len(), 4);
-  assert_eq!(app(AppearancePage::TaskbarTime).rows().len(), 2);
-  assert_eq!(app(AppearancePage::TaskbarTimeFormat).rows().len(), 2);
-  assert_eq!(app(AppearancePage::WidgetTelemetry).rows().len(), 3);
-  assert_eq!(app(AppearancePage::ControlPanel).rows().len(), 3);
-  assert_eq!(app(AppearancePage::Effects).rows().len(), 3);
-  assert_eq!(app(AppearancePage::Blur).rows().len(), 1);
-  assert_eq!(app(AppearancePage::Terminal).rows().len(), 2);
+  assert_eq!(app(AppearancePage::TaskbarDate).page_rows().len(), 1);
+  assert_eq!(app(AppearancePage::TaskbarDateFormat).page_rows().len(), 4);
+  assert_eq!(app(AppearancePage::TaskbarTime).page_rows().len(), 2);
+  assert_eq!(app(AppearancePage::TaskbarTimeFormat).page_rows().len(), 2);
+  assert_eq!(app(AppearancePage::WidgetTelemetry).page_rows().len(), 3);
+  assert_eq!(app(AppearancePage::ControlPanel).page_rows().len(), 3);
+  assert_eq!(app(AppearancePage::Effects).page_rows().len(), 3);
+  assert_eq!(app(AppearancePage::Blur).page_rows().len(), 1);
+  assert_eq!(app(AppearancePage::Terminal).page_rows().len(), 2);
 }
 
 #[test]
@@ -200,14 +203,17 @@ fn surface_pages_keep_settings_nested_and_values_bounded() {
     section: SurfaceSection::Sessions,
   });
   assert_eq!(
-    widget_sessions.rows().len(),
+    widget_sessions.page_rows().len(),
     WidgetTelemetryBlock::ALL.len()
   );
   let control_sessions = draft_app(AppearancePage::SurfaceSection {
     surface: EffectSurface::ControlPanel,
     section: SurfaceSection::Sessions,
   });
-  assert_eq!(control_sessions.rows().len(), ControlPanelCard::ALL.len());
+  assert_eq!(
+    control_sessions.page_rows().len(),
+    ControlPanelCard::ALL.len()
+  );
 
   let mut application = draft_app(AppearancePage::SurfaceSection {
     surface: EffectSurface::Taskbar,
@@ -243,7 +249,7 @@ fn control_panel_sessions_toggle_the_card_on_the_row() {
     .control_panel_cards
     .enabled(ControlPanelCard::Calendar);
 
-  let rows = application.rows();
+  let rows = application.page_rows();
   assert_eq!(rows.len(), ControlPanelCard::ALL.len() - 1);
   assert_eq!(rows[0].id(), Some(&Item::PanelCard(target)));
   application.handle(KeyCode::Enter);
@@ -571,22 +577,234 @@ fn theme_shortcuts_are_kept_and_shown_in_the_footer() {
 }
 
 #[test]
-fn control_panel_apply_is_reached_through_tab_actions() {
-  let mut application = draft_app(AppearancePage::ControlPanel);
-  assert!(!labels(&application).iter().any(|row| row.contains("Apply")));
-  application.handle(KeyCode::Tab);
-  assert!(application.on_buttons);
-  assert_eq!(application.button_selected, 0);
-  application.handle(KeyCode::BackTab);
-  assert!(!application.on_buttons);
+fn draft_pages_end_with_an_apply_row_enabled_only_with_changes() {
+  let pages = [
+    AppearancePage::Taskbar,
+    AppearancePage::TaskbarIcons,
+    AppearancePage::TaskbarDate,
+    AppearancePage::TaskbarDateFormat,
+    AppearancePage::TaskbarTime,
+    AppearancePage::TaskbarTimeFormat,
+    AppearancePage::WidgetTelemetry,
+    AppearancePage::ControlPanel,
+    AppearancePage::SurfaceSection {
+      surface: EffectSurface::Taskbar,
+      section: SurfaceSection::UtilityIcons,
+    },
+    AppearancePage::SurfaceSection {
+      surface: EffectSurface::WidgetTelemetry,
+      section: SurfaceSection::Sessions,
+    },
+    AppearancePage::SurfaceSection {
+      surface: EffectSurface::ControlPanel,
+      section: SurfaceSection::Transparency,
+    },
+  ];
+  for page in pages {
+    let mut application = draft_app(page);
+    let rows = application.rows();
+    let (apply, separator) = (&rows[rows.len() - 1], &rows[rows.len() - 2]);
+    assert_eq!(apply.id(), Some(&Item::Apply), "{page:?}");
+    assert_eq!(separator.kind(), RowKind::Separator, "{page:?}");
+    assert_eq!(apply.icon_glyph(), Some(icons::APPLY));
+    assert!(
+      !apply.is_selectable(),
+      "clean draft: Apply is skipped ({page:?})"
+    );
+
+    application
+      .surface_draft
+      .as_mut()
+      .unwrap()
+      .transparency_enabled ^= true;
+    let rows = application.rows();
+    let apply = rows.last().unwrap();
+    assert!(
+      apply.is_selectable(),
+      "dirty draft: Apply is enabled ({page:?})"
+    );
+    assert!(
+      apply.detail_text().is_some(),
+      "pending indicator ({page:?})"
+    );
+  }
+
+  for page in [
+    AppearancePage::Blur,
+    AppearancePage::TerminalTransparency,
+    AppearancePage::TransparencySurface {
+      surface: EffectSurface::Launchers,
+    },
+  ] {
+    let mut application = app(page);
+    assert!(!application.rows().last().unwrap().is_selectable());
+    application.handle(KeyCode::Right);
+    assert!(
+      application.rows().last().unwrap().is_selectable(),
+      "{page:?}"
+    );
+  }
 }
 
 #[test]
-fn surface_value_navigation_keeps_vertical_focus_and_exposes_apply_actions() {
+fn apply_row_runs_the_same_apply_and_keeps_the_page() {
+  let mut application = draft_app(AppearancePage::TaskbarTime);
+  select(&mut application, Item::Seconds);
+  application.handle(KeyCode::Enter);
+  application.handle(KeyCode::End);
+  assert_eq!(selected(&application), Some(Item::Apply));
+  application.handle(KeyCode::Enter);
+  assert!(
+    application.action.is_some(),
+    "apply_surface_changes started"
+  );
+  assert_eq!(application.page, AppearancePage::TaskbarTime);
+
+  // Effect editors apply and return where they did before.
+  let mut terminal = app(AppearancePage::TerminalTransparency);
+  terminal.handle(KeyCode::Left);
+  select(&mut terminal, Item::Apply);
+  terminal.handle(KeyCode::Enter);
+  assert!(terminal.action.is_some(), "apply_effect_changes started");
+  assert_eq!(terminal.page, AppearancePage::Terminal);
+  assert_eq!(terminal.effect_draft, None);
+}
+
+#[test]
+fn draft_pages_render_apply_as_a_row_without_button_labels() {
+  let mut application = draft_app(AppearancePage::TaskbarTime);
+  application
+    .surface_draft
+    .as_mut()
+    .unwrap()
+    .time_seconds_enabled ^= true;
+  let screen = render(&mut application, 80, 24);
+  let apply = line_with(&screen, "Apply");
+  assert!(apply.contains(icons::APPLY), "{apply:?}");
+  assert!(
+    !screen.iter().any(|line| line.contains("[ Apply ]")),
+    "{screen:#?}"
+  );
+}
+
+#[test]
+fn esc_with_a_pending_draft_asks_before_discarding() {
+  // Clean draft: Esc leaves without asking.
+  let mut clean = draft_app(AppearancePage::Taskbar);
+  clean.handle(KeyCode::Esc);
+  assert_eq!(clean.page, AppearancePage::Home);
+  assert!(clean.confirm.is_none());
+
+  // Pending draft inside the Taskbar pages: going up keeps the draft.
+  let mut nested = draft_app(AppearancePage::TaskbarTime);
+  nested.surface_draft.as_mut().unwrap().time_seconds_enabled ^= true;
+  nested.handle(KeyCode::Esc);
+  assert_eq!(nested.page, AppearancePage::Taskbar);
+  assert!(nested.confirm.is_none());
+  assert!(nested.surface_draft_has_changes(), "draft survives");
+
+  // Leaving the Taskbar would drop it: confirmation, focus on Cancel.
+  nested.handle(KeyCode::Esc);
+  assert_eq!(nested.page, AppearancePage::Taskbar);
+  let (confirmation, state) = nested.confirm.unwrap();
+  assert_eq!(confirmation, Confirmation::DiscardDraft);
+  assert!(!state.is_confirm_focused());
+  let rows = nested.rows();
+  assert_eq!(nested.hints(&rows), confirm_hints(nested.lang));
+  nested.handle(KeyCode::Enter);
+  assert!(nested.confirm.is_none(), "Enter on Cancel closes");
+  assert_eq!(nested.page, AppearancePage::Taskbar);
+  assert!(nested.surface_draft_has_changes());
+
+  nested.handle(KeyCode::Left);
+  nested.handle(KeyCode::Char('n'));
+  assert_eq!(nested.page, AppearancePage::Taskbar);
+  nested.handle(KeyCode::Esc);
+  nested.handle(KeyCode::Char('y'));
+  assert_eq!(nested.page, AppearancePage::Home);
+  assert!(nested.surface_draft.is_none(), "discarded");
+
+  // Effect editors drop their value on every Esc.
+  let mut editor = app(AppearancePage::Blur);
+  editor.handle(KeyCode::Right);
+  editor.handle(KeyCode::Esc);
+  assert!(editor.confirm.is_some());
+  editor.handle(KeyCode::Up);
+  editor.handle(KeyCode::Enter);
+  assert_eq!(editor.page, AppearancePage::Effects);
+  assert_eq!(editor.effect_draft, None);
+}
+
+#[test]
+fn enter_on_a_draft_value_types_it_without_applying() {
+  let mut editor = app(AppearancePage::Blur);
+  editor.handle(KeyCode::Enter);
+  assert_eq!(
+    editor.page,
+    AppearancePage::Prompt {
+      goal: PromptGoal::DraftValue
+    }
+  );
+  assert!(editor.captures_text());
+  for key in ['1', '0', '0'] {
+    editor.handle(KeyCode::Char(key));
+  }
+  editor.handle(KeyCode::Enter);
+  assert_eq!(editor.page, AppearancePage::Blur);
+  assert_eq!(editor.effect_draft, Some(100));
+  assert_eq!(selected(&editor), Some(Item::EffectValue));
+  assert!(editor.action.is_none(), "nothing applied");
+
+  let mut section = draft_app(AppearancePage::SurfaceSection {
+    surface: EffectSurface::Taskbar,
+    section: SurfaceSection::Blur,
+  });
+  select(&mut section, Item::SectionValue);
+  section.handle(KeyCode::Enter);
+  section.handle(KeyCode::Char('0'));
+  section.handle(KeyCode::Enter);
+  assert_eq!(section.surface_draft().unwrap().blur, 0);
+  assert_eq!(selected(&section), Some(Item::SectionValue));
+  assert!(section.action.is_none());
+
+  // Out of range keeps the prompt open with an error.
+  let mut invalid = app(AppearancePage::Blur);
+  invalid.handle(KeyCode::Enter);
+  for key in ['2', '0', '0'] {
+    invalid.handle(KeyCode::Char(key));
+  }
+  invalid.handle(KeyCode::Enter);
+  assert!(invalid.prompt_error.is_some());
+  assert_eq!(invalid.effect_draft, None);
+}
+
+#[test]
+fn reload_keeps_a_changed_draft_and_rebuilds_a_clean_one() {
+  let mut application = draft_app(AppearancePage::TaskbarTime);
+  let mut loaded = application.state.clone();
+  loaded.taskbar_time_seconds_enabled = !loaded.taskbar_time_seconds_enabled;
+
+  // Clean: the draft follows the reloaded state.
+  application.on_loaded(AppearancePage::TaskbarTime, loaded.clone());
+  assert_eq!(
+    application.surface_draft().unwrap().time_seconds_enabled,
+    loaded.taskbar_time_seconds_enabled
+  );
+
+  // Changed: the user's edit survives the reload.
+  application.activate(Item::DateFormat(TaskbarDateFormat::WeekdayDayMonthYear));
+  application.on_loaded(AppearancePage::TaskbarTime, loaded);
+  assert_eq!(
+    application.surface_draft().unwrap().date_format,
+    TaskbarDateFormat::WeekdayDayMonthYear
+  );
+}
+
+#[test]
+fn surface_value_navigation_keeps_vertical_focus_and_ends_with_apply() {
   for surface in EffectSurface::ALL {
     for section in [SurfaceSection::Transparency, SurfaceSection::Blur] {
       let mut application = draft_app(AppearancePage::SurfaceSection { surface, section });
-      assert_eq!(application.buttons().len(), 1);
 
       application.handle(KeyCode::Down);
       assert_eq!(selected(&application), Some(Item::SectionValue));
@@ -607,8 +825,8 @@ fn surface_value_navigation_keeps_vertical_focus_and_exposes_apply_actions() {
       assert_eq!(selected(&application), Some(Item::SectionValue));
       assert_eq!(value(&application), (initial + 5).min(100));
 
-      application.handle(KeyCode::Tab);
-      assert!(application.on_buttons);
+      application.handle(KeyCode::End);
+      assert_eq!(selected(&application), Some(Item::Apply));
       application.handle(KeyCode::Enter);
       assert!(application.action.is_some());
     }
@@ -616,7 +834,7 @@ fn surface_value_navigation_keeps_vertical_focus_and_exposes_apply_actions() {
 }
 
 #[test]
-fn taskbar_icons_date_time_pages_toggle_and_expose_apply_actions() {
+fn taskbar_icons_date_time_pages_toggle_and_end_with_apply() {
   let mut icons_page = draft_app(AppearancePage::TaskbarIcons);
   let draft = |application: &AppearanceApp| application.surface_draft().unwrap().clone();
 
@@ -678,12 +896,13 @@ fn taskbar_icons_date_time_pages_toggle_and_expose_apply_actions() {
     TaskbarTimeFormat::TwelveHour
   );
 
-  let mut apply_check = draft_app(AppearancePage::TaskbarIcons);
-  assert_eq!(apply_check.buttons().len(), 1);
-  apply_check.handle(KeyCode::Tab);
-  assert!(apply_check.on_buttons);
-  apply_check.handle(KeyCode::Enter);
-  assert!(apply_check.action.is_some());
+  // Apply is the last row and runs the Taskbar apply.
+  icons_page.go(AppearancePage::TaskbarIcons);
+  icons_page.job = None;
+  icons_page.handle(KeyCode::End);
+  assert_eq!(selected(&icons_page), Some(Item::Apply));
+  icons_page.handle(KeyCode::Enter);
+  assert!(icons_page.action.is_some());
 }
 
 #[test]
