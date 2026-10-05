@@ -72,6 +72,8 @@ pub enum PendingAction {
   },
   ApplySystemLocales,
   SetNtp(bool),
+  /// Esc would leave a page with unsaved changes.
+  DiscardDraft,
 }
 
 /// Represents `App`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -563,6 +565,7 @@ impl App {
         }
       }
       PendingAction::ApplySystemLocales => self.apply_system_locales(),
+      PendingAction::DiscardDraft => self.discard_and_leave(),
       PendingAction::Administration(_) => self.admin.submit(),
       PendingAction::SetNtp(enabled) => match time::set_ntp(enabled) {
         Ok(()) => {
@@ -1512,6 +1515,10 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
         "control_center.this_will_update_etc_locale_gen_and_run_locale_gen",
       )
       .to_string(),
+    ),
+    PendingAction::DiscardDraft => (
+      tr(lang, "control_center.discard_changes_title").to_string(),
+      tr(lang, "control_center.discard_changes_description").to_string(),
     ),
     PendingAction::SetNtp(enabled) => (
       tr(lang, "control_center.change_automatic_date_time").to_string(),

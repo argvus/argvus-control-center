@@ -460,7 +460,32 @@ impl App {
 
   /// `Apply` of the System Locales selection.
   fn locales_apply_rows(&self) -> Vec<Row<Item>> {
-    draft_actions(Item::ApplyLocales, self.label("control_center.apply"), true)
+    let changed = self.locales_changed();
+    let mut rows = draft_actions(
+      Item::ApplyLocales,
+      self.label("control_center.apply"),
+      changed,
+    );
+    if changed && let Some(apply) = rows.pop() {
+      rows.push(apply.detail(self.label("control_center.draft_changed")));
+    }
+    rows
+  }
+
+  /// Whether the marked locales differ from the ones enabled in
+  /// `/etc/locale.gen`.
+  pub(super) fn locales_changed(&self) -> bool {
+    self.locale_gen_entries.iter().any(|entry| {
+      entry.enabled
+        != self
+          .selected_locales
+          .contains(&format!("{} {}", entry.locale, entry.encoding))
+    }) || self.selected_locales.len()
+      != self
+        .locale_gen_entries
+        .iter()
+        .filter(|entry| entry.enabled)
+        .count()
   }
 
   /// First layout of the Hyprland layout list: the configured default.

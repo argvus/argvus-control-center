@@ -18,6 +18,8 @@ use serde_json::{Value, json};
 use argvus_tui::icons;
 use argvus_tui::menu::{Row, draft_actions};
 
+use std::collections::BTreeSet;
+
 use crate::{
   Page,
   app::{App, PendingAction},
@@ -254,13 +256,20 @@ impl Administration {
         }
         self.firewall = value;
       } else {
+        // A reload never replaces a draft with unsaved changes (D15); a
+        // completed write (edit, create...) always refreshes it.
+        let reload = self.operation == "snapshot";
+        let keep_user = reload && self.user_draft_changed();
+        let keep_group = reload && self.group_draft_changed();
         if let Some(users) = value["users"].as_array()
           && let Some(user) = users.iter().find(|user| user["user"] == self.user["user"])
           && matches!(self.operation.as_str(), "snapshot" | "edit" | "create")
+          && !keep_user
         {
           self.user = user.clone();
         }
-        if let Some(groups) = value["group_details"].as_array()
+        if !keep_group
+          && let Some(groups) = value["group_details"].as_array()
           && let Some(group) = groups.iter().find(|group| {
             group["name"] == self.group["original"] || group["gid"] == self.group["gid"]
           })
@@ -397,10 +406,11 @@ impl Administration {
           self.password_row(lang, 1),
           self.password_row(lang, 2),
         ];
-        rows.extend(draft_actions(
+        rows.extend(self.draft_rows(
           Item::CreateAccount,
           self.create_account_label(lang),
-          true,
+          self.create_user_changed(),
+          lang,
         ));
         rows
       }
@@ -411,10 +421,11 @@ impl Administration {
           self.password_row(lang, 1),
           self.password_row(lang, 2),
         ];
-        rows.extend(draft_actions(
+        rows.extend(self.draft_rows(
           Item::SavePassword,
           label("control_center.save_password"),
-          true,
+          self.passwords_changed(),
+          lang,
         ));
         rows
       }
@@ -494,10 +505,11 @@ impl Administration {
           )
           .icon(icons::EDIT),
         ];
-        rows.extend(draft_actions(
+        rows.extend(self.draft_rows(
           Item::SubmitGroup,
           label("control_center.create_group"),
-          true,
+          self.create_group_changed(),
+          lang,
         ));
         rows
       }
@@ -516,10 +528,11 @@ impl Administration {
             .icon(icons::USERS)
             .detail(strings(&self.group["members"]).join(", ")),
         ];
-        rows.extend(draft_actions(
+        rows.extend(self.draft_rows(
           Item::SaveGroup,
           label("control_center.save_changes"),
-          true,
+          self.group_draft_changed(),
+          lang,
         ));
         rows.push(Row::section(label("control_center.danger_zone")));
         rows.push(
@@ -580,10 +593,11 @@ impl Administration {
       .icon(icons::GROUP)
       .detail(strings(&self.user["groups"]).join(", ")),
     ];
-    rows.extend(draft_actions(
+    rows.extend(self.draft_rows(
       Item::SaveUser,
       label("control_center.save_changes"),
-      true,
+      self.user_draft_changed(),
+      lang,
     ));
     rows.extend([
       Row::section(label("control_center.section_password")),
@@ -663,10 +677,11 @@ impl Administration {
           }
         }),
     );
-    rows.extend(draft_actions(
+    rows.extend(self.draft_rows(
       Item::SaveFirewall,
       label("control_center.save_configuration"),
-      true,
+      self.firewall_draft_changed(),
+      lang,
     ));
     rows.extend([
       Row::action(
@@ -705,6 +720,118 @@ impl Administration {
       tr(lang, "control_center.create_account_password_locked")
     } else {
       tr(lang, "control_center.create_account_with_password")
+    }
+  }
+
+  /// The Save/Create row that commits a draft: dimmed and skipped while
+  /// nothing changed, marked "changed" otherwise.
+  fn draft_rows(&self, item: Item, label: &str, changed: bool, lang: Lang) -> Vec<Row<Item>> {
+    let mut rows = draft_actions(item, label, changed);
+    if changed && let Some(row) = rows.pop() {
+      rows.push(row.detail(tr(lang, "control_center.draft_changed")));
+    }
+    rows
+  }
+
+  /// The loaded account the user page edits.
+  fn loaded_user(&self) -> Option<&Value> {
+    self.accounts["users"]
+      .as_array()?
+      .iter()
+      .find(|user| user["user"] == self.user["user"])
+  }
+
+  /// Whether the user page has unsaved changes.
+  pub(crate) fn user_draft_changed(&self) -> bool {
+    let Some(loaded) = self.loaded_user() else {
+      return false;
+    };
+    let set = |value: &Value| strings(value).into_iter().collect::<BTreeSet<_>>();
+    ["name", "shell", "primary_group"]
+      .iter()
+      .any(|field| text(loaded, field) != text(&self.user, field))
+      || set(&loaded["groups"]) != set(&self.user["groups"])
+  }
+
+  /// Whether the create-user form has anything typed or chosen.
+  pub(crate) fn create_user_changed(&self) -> bool {
+    let default_shell = strings(&self.accounts["shells"])
+      .first()
+      .cloned()
+      .unwrap_or_else(|| "/bin/bash".into());
+    !text(&self.user, "user").is_empty()
+      || !text(&self.user, "name").is_empty()
+      || text(&self.user, "shell") != default_shell
+      || !strings(&self.user["groups"]).is_empty()
+      || self.passwords_changed()
+  }
+
+  /// Whether any password field has been typed.
+  pub(crate) fn passwords_changed(&self) -> bool {
+    self.passwords.iter().any(|password| !password.is_empty())
+  }
+
+  /// The loaded group the group page edits.
+  fn loaded_group(&self) -> Option<&Value> {
+    self.accounts["group_details"]
+      .as_array()?
+      .iter()
+      .find(|group| group["name"] == self.group["original"])
+  }
+
+  /// Whether the group page has unsaved changes.
+  pub(crate) fn group_draft_changed(&self) -> bool {
+    let Some(loaded) = self.loaded_group() else {
+      return false;
+    };
+    let set = |value: &Value| strings(value).into_iter().collect::<BTreeSet<_>>();
+    text(loaded, "name") != text(&self.group, "name")
+      || set(&loaded["members"]) != set(&self.group["members"])
+  }
+
+  /// Whether the create-group form has a name.
+  pub(crate) fn create_group_changed(&self) -> bool {
+    !text(&self.group, "name").is_empty()
+  }
+
+  /// Whether the firewall configuration differs from the saved one.
+  pub(crate) fn firewall_draft_changed(&self) -> bool {
+    !self.firewall.is_null() && self.config != self.firewall["config"]
+  }
+
+  /// Drops the unsaved changes of `page`, back to the loaded state.
+  pub(crate) fn discard_draft(&mut self, page: Page) {
+    match page {
+      Page::User => {
+        if let Some(loaded) = self.loaded_user().cloned() {
+          self.user = loaded;
+        }
+      }
+      Page::Group => {
+        if let Some(loaded) = self.loaded_group().cloned() {
+          let original = self.group["original"].clone();
+          self.group = loaded;
+          self.group["original"] = original;
+        }
+      }
+      Page::Firewall => self.config = self.firewall["config"].clone(),
+      Page::CreateGroup => self.group = json!({"name":""}),
+      _ => {}
+    }
+    self.passwords = Default::default();
+  }
+
+  /// Whether leaving `page` would drop unsaved changes. Subpages that edit
+  /// the same draft (shell, groups, members) keep it and do not ask.
+  pub(crate) fn leaving_drops_draft(&self, page: Page) -> bool {
+    match page {
+      Page::User => self.user_draft_changed(),
+      Page::CreateUser => self.create_user_changed(),
+      Page::UserPassword => self.passwords_changed(),
+      Page::Group => self.group_draft_changed(),
+      Page::CreateGroup => self.create_group_changed(),
+      Page::Firewall => self.firewall_draft_changed(),
+      _ => false,
     }
   }
 
@@ -1591,7 +1718,8 @@ mod tests {
   /// identity as Info, the draft fields and their Save row, the password and
   /// avatar actions, and the deletions in the Danger zone at the end.
   fn user_page_layout_has_sections_info_draft_and_danger_zone() {
-    let app = app(Page::User);
+    let mut app = app(Page::User);
+    app.admin.user["name"] = json!("Alice Liddell");
     let rows = app.rows();
     let sections: Vec<&str> = rows
       .iter()
@@ -1830,6 +1958,7 @@ mod tests {
       Item::DeleteUserAndHome,
     ] {
       let mut app = app(Page::User);
+      app.admin.user["name"] = json!("Alice Liddell");
       select(&mut app, item);
       press(&mut app, KeyCode::Enter);
       assert!(app.confirm.is_some(), "{item:?} asks first");
@@ -1845,9 +1974,9 @@ mod tests {
       Item::Shell,
       Item::PrimaryGroup,
       Item::SupplementaryGroups,
-      Item::SaveUser,
       Item::ChangePassword,
     ] {
+      // Save changes is dimmed and skipped while the draft is clean.
       press(&mut app, KeyCode::Down);
       assert_eq!(app.selected_item(), Some(expected));
     }
@@ -1858,6 +1987,174 @@ mod tests {
     assert_eq!(app.selected_item(), Some(Item::DeleteUserAndHome));
     press(&mut app, KeyCode::Home);
     assert_eq!(app.selected_item(), Some(Item::FullName));
+  }
+
+  #[test]
+  fn save_changes_is_dimmed_until_the_user_draft_changes() {
+    let mut app = app(Page::User);
+    let save = |app: &App| {
+      app
+        .rows()
+        .into_iter()
+        .find(|row| row.id() == Some(&Item::SaveUser))
+        .unwrap()
+    };
+    assert!(!save(&app).is_selectable(), "nothing to save yet");
+    assert_eq!(save(&app).detail_text(), None);
+    app.admin.user["groups"] = json!(["wheel"]);
+    assert!(!app.admin.user_draft_changed(), "same groups");
+    app.admin.user["name"] = json!("Alice Liddell");
+    assert!(save(&app).is_selectable());
+    assert_eq!(
+      save(&app).detail_text(),
+      Some(tr(app.lang, "control_center.draft_changed"))
+    );
+  }
+
+  #[test]
+  fn esc_with_a_changed_user_draft_asks_and_discard_restores_it() {
+    let mut app = app(Page::UserList);
+    app.admin_activate(Item::UserEntry(0));
+    assert_eq!(app.page(), Page::User);
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(
+      app.page(),
+      Page::UserList,
+      "clean draft leaves without asking"
+    );
+
+    app.admin_activate(Item::UserEntry(0));
+    app.admin.user["name"] = json!("Changed");
+    press(&mut app, KeyCode::Esc);
+    assert!(matches!(app.confirm, Some(PendingAction::DiscardDraft)));
+    assert!(!app.confirm_apply_selected, "focus starts on Cancel");
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(
+      app.page(),
+      Page::User,
+      "Cancel keeps the draft and the page"
+    );
+    assert_eq!(text(&app.admin.user, "name"), "Changed");
+
+    press(&mut app, KeyCode::Esc);
+    app.confirm_apply_selected = true;
+    app.confirm_accept();
+    assert_eq!(app.page(), Page::UserList);
+    assert_eq!(text(&app.admin.user, "name"), "Alice");
+  }
+
+  #[test]
+  fn subpages_of_the_same_draft_do_not_ask() {
+    let mut app = app(Page::User);
+    app.admin_activate(Item::SupplementaryGroups);
+    app.admin_activate(Item::GroupOption(2));
+    assert!(app.admin.user_draft_changed());
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.page(), Page::User);
+    assert!(app.confirm.is_none());
+    app.admin_activate(Item::Shell);
+    app.admin_activate(Item::ShellOption(1));
+    assert_eq!(app.page(), Page::User, "choosing a shell goes back");
+    assert_eq!(text(&app.admin.user, "shell"), "/bin/zsh");
+  }
+
+  #[test]
+  fn reload_keeps_a_changed_user_draft() {
+    let mut app = app(Page::User);
+    app.admin.user["name"] = json!("Changed");
+    let (sender, receiver) = mpsc::channel();
+    app.admin.operation = "snapshot".into();
+    app.admin.worker = Some(receiver);
+    sender
+      .send(Ok((false, app.admin.accounts.clone())))
+      .unwrap();
+    assert!(app.admin.poll().is_some_and(|result| result.is_ok()));
+    assert_eq!(text(&app.admin.user, "name"), "Changed");
+
+    app.admin.user["name"] = json!("Alice");
+    let mut accounts = app.admin.accounts.clone();
+    accounts["users"][1]["shell"] = json!("/bin/zsh");
+    let (sender, receiver) = mpsc::channel();
+    app.admin.worker = Some(receiver);
+    sender.send(Ok((false, accounts))).unwrap();
+    app.admin.poll();
+    assert_eq!(
+      text(&app.admin.user, "shell"),
+      "/bin/zsh",
+      "a clean draft follows the reload"
+    );
+  }
+
+  #[test]
+  fn group_firewall_create_and_password_drafts_ask_before_leaving() {
+    let mut group = app(Page::GroupList);
+    group.admin_activate(Item::GroupEntry(0));
+    group.admin_activate(Item::Members);
+    group.admin_activate(Item::Member(0));
+    press(&mut group, KeyCode::Esc);
+    assert_eq!(group.page(), Page::Group, "members share the group draft");
+    assert!(group.confirm.is_none());
+    press(&mut group, KeyCode::Esc);
+    assert!(matches!(group.confirm, Some(PendingAction::DiscardDraft)));
+
+    let mut firewall = app(Page::Firewall);
+    firewall.admin.firewall = json!({"active":true,"enabled":true,"config":{"ALLOW_SSH":"y"}});
+    firewall.admin.config = json!({"ALLOW_SSH":"y"});
+    let save = |app: &App| {
+      app
+        .rows()
+        .into_iter()
+        .find(|row| row.id() == Some(&Item::SaveFirewall))
+        .unwrap()
+        .is_selectable()
+    };
+    assert!(!save(&firewall));
+    let ssh = FIREWALL_FIELDS
+      .iter()
+      .position(|(key, _)| *key == "ALLOW_SSH")
+      .unwrap();
+    firewall.admin_activate(Item::FirewallField(ssh));
+    assert!(save(&firewall));
+    press(&mut firewall, KeyCode::Esc);
+    assert!(matches!(
+      firewall.confirm,
+      Some(PendingAction::DiscardDraft)
+    ));
+    firewall.confirm_apply_selected = true;
+    firewall.confirm_accept();
+    assert_eq!(firewall.admin.config["ALLOW_SSH"], "y", "discard restores");
+
+    let mut create = app(Page::Users);
+    create.admin_activate(Item::CreateUser);
+    let create_row = |app: &App| {
+      app
+        .rows()
+        .into_iter()
+        .find(|row| row.id() == Some(&Item::CreateAccount))
+        .unwrap()
+        .is_selectable()
+    };
+    assert!(!create_row(&create), "empty form");
+    press(&mut create, KeyCode::Esc);
+    assert_eq!(create.page(), Page::Users);
+    create.admin_activate(Item::CreateUser);
+    create.admin.user["user"] = json!("bob");
+    assert!(create_row(&create));
+    press(&mut create, KeyCode::Esc);
+    assert!(matches!(create.confirm, Some(PendingAction::DiscardDraft)));
+
+    let mut password = app(Page::User);
+    password.admin_activate(Item::ChangePassword);
+    password.admin.passwords[1] = "secret".into();
+    press(&mut password, KeyCode::Esc);
+    assert!(matches!(
+      password.confirm,
+      Some(PendingAction::DiscardDraft)
+    ));
+    password.confirm_apply_selected = true;
+    password.confirm_accept();
+    assert_eq!(password.page(), Page::User);
+    assert!(!password.admin.passwords_changed());
   }
 
   #[test]

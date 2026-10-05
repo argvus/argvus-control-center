@@ -302,6 +302,34 @@ impl App {
       return;
     }
     self.hostname_editing = false;
+    if self.leaving_drops_draft() {
+      self.open_confirm(PendingAction::DiscardDraft);
+      return;
+    }
+    self.navigation.back();
+  }
+
+  /// Whether going back from the current page would drop unsaved changes.
+  fn leaving_drops_draft(&self) -> bool {
+    match self.page() {
+      Page::SystemLocales => self.locales_changed(),
+      page => self.admin.leaving_drops_draft(page),
+    }
+  }
+
+  /// Confirmed discard: the draft returns to the loaded state, then back.
+  pub(super) fn discard_and_leave(&mut self) {
+    match self.page() {
+      Page::SystemLocales => {
+        self.selected_locales = self
+          .locale_gen_entries
+          .iter()
+          .filter(|entry| entry.enabled)
+          .map(|entry| format!("{} {}", entry.locale, entry.encoding))
+          .collect();
+      }
+      page => self.admin.discard_draft(page),
+    }
     self.navigation.back();
   }
 

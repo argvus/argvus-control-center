@@ -304,13 +304,26 @@ fn system_locales_toggle_with_enter_and_apply_from_the_last_row() {
   ];
   app.selected_locales = ["en_US.UTF-8 UTF-8".to_string()].into();
   app.navigation.current_mut().menu = argvus_tui::menu::MenuState::default();
+  let apply = |app: &App| {
+    app
+      .rows()
+      .into_iter()
+      .find(|row| row.id() == Some(&Item::ApplyLocales))
+      .unwrap()
+      .is_selectable()
+  };
+  assert!(!apply(&app), "Apply is dimmed without changes");
   press(&mut app, KeyCode::Down);
   assert_eq!(app.selected_item(), Some(Item::LocaleGen(1)));
   press(&mut app, KeyCode::Enter);
   assert!(app.selected_locales.contains("pt_BR.UTF-8 UTF-8"));
   assert!(app.confirm.is_none(), "Enter toggles instead of applying");
   press(&mut app, KeyCode::End);
-  assert_eq!(app.selected_item(), Some(Item::ApplyLocales));
+  assert_eq!(
+    app.selected_item(),
+    Some(Item::ApplyLocales),
+    "Apply is enabled"
+  );
   press(&mut app, KeyCode::Enter);
   assert!(matches!(
     app.confirm,
