@@ -85,6 +85,41 @@ fn transaction_bottom_offset(output: &str) -> u16 {
   transaction_wrapped_lines(output).saturating_sub(TRANSACTION_CONTENT_HEIGHT) as u16
 }
 
+/// Longest kernel command line accepted, the same limit the privileged
+/// `grub-cmdline` operation enforces.
+const KERNEL_CMDLINE_MAX: usize = 2048;
+/// Digits accepted by the timeout field (0–60 seconds).
+const TIMEOUT_MAX_DIGITS: usize = 2;
+/// Widest the input popup grows, for long kernel command lines.
+const INPUT_POPUP_MAX_WIDTH: u16 = 100;
+
+/// Whether the open field takes `character`: the timeout takes up to two
+/// digits; the kernel command line takes any text up to its limit, and the
+/// characters the backend rejects are reported when the value is applied.
+fn accepts_input_char(mode: Option<InputMode>, input: &str, character: char) -> bool {
+  match mode {
+    Some(InputMode::GrubCmdline) => input.len() + character.len_utf8() <= KERNEL_CMDLINE_MAX,
+    _ => character.is_ascii_digit() && input.len() < TIMEOUT_MAX_DIGITS,
+  }
+}
+
+/// The end of `input` that fits in `width` cells next to the cursor, so the
+/// typing position stays visible in long values.
+fn input_tail(input: &str, width: usize) -> String {
+  let room = width.saturating_sub(1);
+  let mut used = 0;
+  let mut start = input.len();
+  for (index, character) in input.char_indices().rev() {
+    let cells = text::display_width(character.encode_utf8(&mut [0; 4]));
+    if used + cells > room {
+      break;
+    }
+    used += cells;
+    start = index;
+  }
+  format!("{}_", &input[start..])
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
@@ -271,15 +306,11 @@ impl BootApp {
       }
       return false;
     }
-    if self.timeout_input.is_some() {
+    if let Some(input) = self.timeout_input.as_mut() {
       match key {
-        KeyCode::Char(c)
-          if c.is_ascii_digit() && self.timeout_input.as_ref().is_some_and(|v| v.len() < 2) =>
-        {
-          self.timeout_input.as_mut().unwrap().push(c)
-        }
+        KeyCode::Char(c) if accepts_input_char(self.input_mode, input, c) => input.push(c),
         KeyCode::Backspace => {
-          self.timeout_input.as_mut().unwrap().pop();
+          input.pop();
         }
         KeyCode::Enter => self.apply_input(),
         KeyCode::Esc => {
@@ -519,7 +550,7 @@ impl BootApp {
     if self.input_mode == Some(InputMode::GrubCmdline) {
       let value = self.timeout_input.take().unwrap_or_default();
       self.input_mode = None;
-      if value.len() > 2048
+      if value.len() > KERNEL_CMDLINE_MAX
         || value
           .chars()
           .any(|character| character.is_control() || matches!(character, '"' | '\\'))
@@ -748,7 +779,15 @@ impl BootApp {
       argvus_tui::buttons::draw(frame, button_area, &raw_buttons, focus, &self.theme);
     }
     if let Some(input) = &self.timeout_input {
-      let popup = argvus_tui::chrome::centered(area, 48, 7);
+      let width = if self.input_mode == Some(InputMode::GrubCmdline) {
+        area
+          .width
+          .saturating_sub(4)
+          .clamp(48, INPUT_POPUP_MAX_WIDTH)
+      } else {
+        48
+      };
+      let popup = argvus_tui::chrome::centered(area, width, 7);
       frame.render_widget(Clear, popup);
       frame.render_widget(
         Paragraph::new(vec![
@@ -757,7 +796,10 @@ impl BootApp {
           } else {
             tr(self.lang, "control_center.new_timeout_in_seconds")
           }),
-          Line::from(format!("{input}_")),
+          Line::from(input_tail(
+            input,
+            usize::from(popup.width.saturating_sub(2)),
+          )),
           Line::from(tr(self.lang, "control_center.enter_apply_esc_cancel")),
         ])
         .block(Block::bordered().title(
@@ -1534,6 +1576,77 @@ mod tests {
         .as_ref()
         .is_some_and(|status| status.kind == StatusKind::Error)
     );
+  }
+
+  #[test]
+  fn kernel_command_line_field_takes_text() {
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
+    app.snapshot.bootloader = BootloaderKind::Grub;
+    app.snapshot.bootloader_info.grub_values =
+      vec![("GRUB_CMDLINE_LINUX_DEFAULT".into(), "loglevel=3".into())];
+    app.timeout_input = Some(app.grub_value("GRUB_CMDLINE_LINUX_DEFAULT"));
+    app.input_mode = Some(InputMode::GrubCmdline);
+    for character in " quiet splash".chars() {
+      app.handle(KeyCode::Char(character));
+    }
+    assert_eq!(
+      app.timeout_input.as_deref(),
+      Some("loglevel=3 quiet splash")
+    );
+    app.handle(KeyCode::Backspace);
+    app.handle(KeyCode::Char('h'));
+    app.handle(KeyCode::Enter);
+    assert!(matches!(
+      &app.pending,
+      Some(Pending::Action(BootAction::GrubCmdline(value))) if value == "loglevel=3 quiet splash"
+    ));
+  }
+
+  #[test]
+  fn kernel_command_line_field_stops_at_the_backend_limit() {
+    let full = "a".repeat(KERNEL_CMDLINE_MAX);
+    assert!(!accepts_input_char(
+      Some(InputMode::GrubCmdline),
+      &full,
+      'b'
+    ));
+    assert!(accepts_input_char(
+      Some(InputMode::GrubCmdline),
+      &full[1..],
+      'b'
+    ));
+    assert!(!accepts_input_char(Some(InputMode::Timeout), "12", '3'));
+    assert!(!accepts_input_char(Some(InputMode::Timeout), "", 'a'));
+  }
+
+  #[test]
+  fn kernel_command_line_rejects_quotes_when_applied() {
+    let mut app = BootApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
+    app.timeout_input = Some(String::new());
+    app.input_mode = Some(InputMode::GrubCmdline);
+    app.handle(KeyCode::Char('"'));
+    app.handle(KeyCode::Enter);
+    assert!(app.pending.is_none());
+    assert!(
+      app
+        .status
+        .as_ref()
+        .is_some_and(|status| status.kind == StatusKind::Error)
+    );
+  }
+
+  #[test]
+  fn input_tail_keeps_the_cursor_visible() {
+    assert_eq!(input_tail("quiet", 10), "quiet_");
+    assert_eq!(input_tail("loglevel=3 quiet splash", 7), "splash_");
   }
 
   #[test]
