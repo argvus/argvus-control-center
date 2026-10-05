@@ -361,21 +361,15 @@ impl Administration {
           .icon(icons::ACCOUNT_COG),
       ],
       Page::UserList | Page::SystemUsers => {
-        let mut rows = vec![
-          Row::action(Item::Reload, label("control_center.reload")).icon(icons::REFRESH),
-          Row::separator(),
-        ];
-        rows.extend(
-          self
-            .users(page == Page::SystemUsers)
-            .iter()
-            .enumerate()
-            .filter(|(_, user)| matches_search(search, &[&text(user, "user"), &text(user, "name")]))
-            .map(|(index, user)| {
-              Row::submenu(Item::UserEntry(index), text(user, "user")).detail(text(user, "name"))
-            }),
-        );
-        rows
+        self
+          .users(page == Page::SystemUsers)
+          .iter()
+          .enumerate()
+          .filter(|(_, user)| matches_search(search, &[&text(user, "user"), &text(user, "name")]))
+          .map(|(index, user)| {
+            Row::submenu(Item::UserEntry(index), text(user, "user")).detail(text(user, "name"))
+          })
+          .collect()
       }
       Page::CreateUser => {
         let mut rows = vec![
@@ -469,30 +463,24 @@ impl Administration {
         Row::submenu(Item::GroupList, label("control_center.list")).icon(icons::GROUP),
       ],
       Page::GroupList | Page::SystemGroups => {
-        let mut rows = vec![
-          Row::action(Item::Reload, label("control_center.reload")).icon(icons::REFRESH),
-          Row::separator(),
-        ];
-        rows.extend(
-          self
-            .groups(true)
-            .iter()
-            .enumerate()
-            .map(|(index, group)| {
-              let members = strings(&group["members"]);
-              let detail = if members.is_empty() {
-                format!("GID {}", group["gid"])
-              } else {
-                format!("GID {} | {}", group["gid"], members.join(", "))
-              };
-              (index, text(group, "name"), detail)
-            })
-            .filter(|(_, name, detail)| matches_search(search, &[name, detail]))
-            .map(|(index, name, detail)| {
-              Row::submenu(Item::GroupEntry(index), name).detail(detail)
-            }),
-        );
-        rows
+        self
+          .groups(true)
+          .iter()
+          .enumerate()
+          .map(|(index, group)| {
+            let members = strings(&group["members"]);
+            let detail = if members.is_empty() {
+              format!("GID {}", group["gid"])
+            } else {
+              format!("GID {} | {}", group["gid"], members.join(", "))
+            };
+            (index, text(group, "name"), detail)
+          })
+          .filter(|(_, name, detail)| matches_search(search, &[name, detail]))
+          .map(|(index, name, detail)| {
+            Row::submenu(Item::GroupEntry(index), name).detail(detail)
+          })
+          .collect()
       }
       Page::CreateGroup => {
         let mut rows = vec![
@@ -956,7 +944,6 @@ impl App {
       }
       Item::UserList => self.navigation.push(Page::UserList),
       Item::SystemUsers => self.navigation.push(Page::SystemUsers),
-      Item::Reload => self.admin.load(false),
       Item::UserEntry(index) => {
         if let Some(user) = self.admin.users(page == Page::SystemUsers).get(index) {
           self.admin.user = user.clone();
@@ -1616,12 +1603,10 @@ mod tests {
     assert_eq!(app.page(), Page::UserList);
     assert_eq!(
       items(&app),
-      vec![Some(Item::Reload), None, Some(Item::UserEntry(0))]
+      vec![Some(Item::UserEntry(0))]
     );
-    assert_eq!(app.rows()[2].label(), "alice");
-    assert_eq!(app.selected_item(), Some(Item::Reload));
-    press(&mut app, KeyCode::Enter);
-    assert!(app.admin.busy(), "Reload row reloads the accounts");
+    assert_eq!(app.rows()[0].label(), "alice");
+    assert_eq!(app.selected_item(), Some(Item::UserEntry(0)));
   }
 
   #[test]
@@ -1637,7 +1622,7 @@ mod tests {
     app.search = "ali".into();
     assert_eq!(
       items(&app),
-      vec![Some(Item::Reload), None, Some(Item::UserEntry(1))]
+      vec![Some(Item::UserEntry(1))]
     );
     app.admin_activate(Item::UserEntry(1));
     assert_eq!(app.page(), Page::User);

@@ -95,7 +95,6 @@ pub enum Item {
   CreateUser,
   UserList,
   SystemUsers,
-  Reload,
   /// Index into the listed users.
   UserEntry(usize),
   Username,
