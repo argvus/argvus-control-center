@@ -18,11 +18,9 @@ use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
   chrome,
-  components::{
-    ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-    draw_confirmation,
-  },
-  hints::{HintContext, hints},
+  components::{StatusKind, StatusMessage},
+  confirm::{ConfirmDialog, ConfirmOutcome, ConfirmState, draw_confirm},
+  hints::{HintContext, confirm_hints, hints},
   icons,
   menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu},
   page::{shell, status},
@@ -51,6 +49,14 @@ enum BootAction {
   GrubRegenerate,
   Initramfs,
   Plymouth(String),
+}
+
+impl BootAction {
+  /// The regenerations listed in a Danger zone, confirmed in the danger
+  /// style; the other changes use the plain confirmation.
+  fn is_destructive(&self) -> bool {
+    matches!(self, Self::GrubRegenerate | Self::Initramfs)
+  }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Defines `ActionResult`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -175,7 +181,7 @@ pub struct BootApp {
   job: Option<JobHandle<Result<BootSnapshot, String>>>,
   action: Option<JobHandle<(ActionResult, String)>>,
   pending: Option<Pending>,
-  confirmation: ConfirmationState,
+  confirmation: ConfirmState,
   timeout_input: Option<String>,
   input_mode: Option<InputMode>,
   transaction_live: Option<LiveProcess>,
@@ -205,7 +211,7 @@ impl BootApp {
       job: None,
       action: None,
       pending: None,
-      confirmation: ConfirmationState::default(),
+      confirmation: ConfirmState::new(),
       timeout_input: None,
       input_mode: None,
       transaction_live: None,
@@ -316,15 +322,15 @@ impl BootApp {
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_some() {
       match self.confirmation.handle(key) {
-        ConfirmationOutcome::Confirmed => {
-          self.confirmation = ConfirmationState::default();
+        ConfirmOutcome::Confirmed => {
+          self.confirmation = ConfirmState::new();
           self.start_pending();
         }
-        ConfirmationOutcome::Cancelled => {
+        ConfirmOutcome::Cancelled => {
           self.pending = None;
-          self.confirmation = ConfirmationState::default();
+          self.confirmation = ConfirmState::new();
         }
-        ConfirmationOutcome::Pending => {}
+        ConfirmOutcome::Pending => {}
       }
       return false;
     }
@@ -470,7 +476,7 @@ impl BootApp {
 
   /// Asks for confirmation before running `action`.
   fn request(&mut self, action: BootAction) {
-    self.confirmation = ConfirmationState::default();
+    self.confirmation = ConfirmState::new();
     self.pending = Some(Pending::Action(action));
   }
 
@@ -613,6 +619,9 @@ impl BootApp {
   }
   /// The footer derived from the selected row.
   fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    if self.pending.is_some() {
+      return confirm_hints(self.lang);
+    }
     let mut menu = self.menu;
     menu.normalize(rows);
     hints(
@@ -689,17 +698,19 @@ impl BootApp {
     }
     if let Some(Pending::Action(action)) = &self.pending {
       let message = action_message(self.lang, action);
-      draw_confirmation(
+      draw_confirm(
         frame,
         area,
         &self.theme,
-        ConfirmationDialog {
+        ConfirmDialog {
           title: tr(self.lang, "control_center.confirm_boot_operation"),
           message: &message,
-          confirm_label: tr(self.lang, "control_center.continue"),
-          cancel_label: tr(self.lang, "control_center.cancel"),
-          confirm_selected: self.confirmation.confirm_selected,
+          confirm: tr(self.lang, "control_center.continue"),
+          cancel: tr(self.lang, "control_center.cancel"),
+          danger: action.is_destructive(),
+          deadline: None,
         },
+        &self.confirmation,
       );
     }
     if let Some(status_message) = &self.status {
@@ -1556,9 +1567,9 @@ mod tests {
     press(&mut app, Item::SetDefault);
     assert!(app.pending.is_some());
     app.handle(KeyCode::Tab);
-    assert!(app.confirmation.confirm_selected);
+    assert!(app.confirmation.is_confirm_focused());
     app.handle(KeyCode::BackTab);
-    assert!(!app.confirmation.confirm_selected);
+    assert!(!app.confirmation.is_confirm_focused());
     app.handle(KeyCode::Enter);
     assert!(app.pending.is_none());
     assert!(app.action.is_none());
@@ -1566,6 +1577,50 @@ mod tests {
     assert!(app.pending.is_some());
     app.handle(KeyCode::Esc);
     assert!(app.pending.is_none());
+  }
+
+  #[test]
+  fn confirmation_starts_on_cancel_and_n_cancels() {
+    let mut app = app();
+    app.page = BootPage::Initramfs;
+    press(&mut app, Item::RegenerateInitramfs);
+    assert!(app.pending.is_some());
+    assert!(!app.confirmation.is_confirm_focused());
+    assert_eq!(app.footer_hints(&app.rows()), confirm_hints(app.lang));
+    app.handle(KeyCode::Char('n'));
+    assert!(app.pending.is_none());
+    assert!(app.action.is_none());
+    press(&mut app, Item::RegenerateInitramfs);
+    app.handle(KeyCode::Char('k'));
+    assert!(app.confirmation.is_confirm_focused());
+    app.handle(KeyCode::Esc);
+    assert!(app.pending.is_none());
+    // A new confirmation starts on Cancel again.
+    press(&mut app, Item::RegenerateInitramfs);
+    assert!(!app.confirmation.is_confirm_focused());
+  }
+
+  #[test]
+  fn only_the_regenerations_use_the_danger_style() {
+    assert!(BootAction::GrubRegenerate.is_destructive());
+    assert!(BootAction::Initramfs.is_destructive());
+    assert!(!BootAction::SystemdDefault("arch.conf".into()).is_destructive());
+    assert!(!BootAction::SystemdTimeout(3).is_destructive());
+    assert!(!BootAction::GrubTimeout(3).is_destructive());
+    assert!(!BootAction::GrubCmdline("quiet".into()).is_destructive());
+    assert!(!BootAction::Plymouth("argvus".into()).is_destructive());
+  }
+
+  #[test]
+  fn confirmation_renders_the_boot_change() {
+    let mut app = app();
+    app.snapshot.plymouth.themes = vec!["argvus".into()];
+    app.page = BootPage::Plymouth;
+    press(&mut app, Item::Theme(0));
+    let text = screen(&mut app, 90, 25);
+    assert!(text.contains(tr(app.lang, "control_center.confirm_boot_operation")));
+    assert!(text.contains("argvus"));
+    assert!(text.contains(tr(app.lang, "control_center.continue")));
   }
 
   #[test]
