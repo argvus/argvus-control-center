@@ -469,3 +469,151 @@ fn rendered_pages_have_no_button_labels() {
     );
   }
 }
+
+/// A config that differs from the default, to tell the revert target apart.
+fn previous_config() -> PersistedConfig {
+  let mut config = PersistedConfig::default();
+  config.set_monitor(
+    "eDP-1",
+    PersistedMonitor {
+      mode: Some("1920x1080@60".into()),
+      ..Default::default()
+    },
+  );
+  config
+}
+
+fn armed(now: Instant) -> DisplaysApp {
+  let mut app = app_with(false);
+  app.arm_revert("eDP-1".into(), monitor("eDP-1"), previous_config(), now);
+  app
+}
+
+#[test]
+fn revert_window_is_fifteen_seconds_from_the_change() {
+  assert_eq!(REVERT_SECONDS, 15);
+  let now = Instant::now();
+  let app = armed(now);
+  assert_eq!(
+    app.revert.as_ref().unwrap().deadline,
+    now + Duration::from_secs(15)
+  );
+}
+
+#[test]
+fn without_an_answer_the_previous_configuration_comes_back_at_the_deadline() {
+  let now = Instant::now();
+  let mut app = armed(now);
+  assert!(
+    app
+      .take_expired_revert(now + Duration::from_millis(14_999))
+      .is_none(),
+    "nothing happens before the deadline"
+  );
+  assert!(app.revert.is_some());
+  let expired = app
+    .take_expired_revert(now + Duration::from_secs(15))
+    .expect("reverts at the deadline");
+  assert_eq!(
+    expired.previous_config,
+    previous_config(),
+    "same destination"
+  );
+  assert_eq!(expired.previous.name, "eDP-1");
+  assert!(app.revert.is_none());
+  assert_eq!(
+    revert_message(app.lang, &expired),
+    format!("{} eDP-1", tr(app.lang, "control_center.reverted")),
+    "same message as before"
+  );
+}
+
+#[test]
+fn revert_keys_follow_the_confirmation_component() {
+  let now = Instant::now();
+  let reverts = |key: KeyCode| {
+    let mut app = armed(now);
+    matches!(app.answer_revert(key), RevertAnswer::Revert(revert)
+      if revert.previous_config == previous_config())
+  };
+  assert!(reverts(KeyCode::Enter), "Enter starts on Revert");
+  assert!(reverts(KeyCode::Char('n')));
+  assert!(reverts(KeyCode::Esc));
+
+  let mut app = armed(now);
+  assert!(matches!(
+    app.answer_revert(KeyCode::Char('y')),
+    RevertAnswer::Keep(name) if name == "eDP-1"
+  ));
+  assert!(app.revert.is_none());
+
+  let mut app = armed(now);
+  assert!(matches!(
+    app.answer_revert(KeyCode::Char(' ')),
+    RevertAnswer::Pending
+  ));
+  assert!(app.revert.is_some(), "Space has no effect");
+  assert!(matches!(
+    app.answer_revert(KeyCode::Up),
+    RevertAnswer::Pending
+  ));
+  assert!(matches!(
+    app.answer_revert(KeyCode::Enter),
+    RevertAnswer::Keep(_)
+  ));
+}
+
+#[test]
+fn revert_footer_puts_y_keep_first() {
+  let app = armed(Instant::now());
+  let footer = app.footer_hints(&app.rows());
+  assert!(
+    footer.starts_with(&format!("y {}", tr(app.lang, "control_center.keep"))),
+    "{footer}"
+  );
+}
+
+#[test]
+fn revert_dialog_renders_with_the_countdown() {
+  use ratatui::{Terminal, backend::TestBackend};
+  let mut app = armed(Instant::now());
+  let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+  terminal.draw(|frame| app.draw(frame)).unwrap();
+  let rendered: String = terminal
+    .backend()
+    .buffer()
+    .content
+    .iter()
+    .map(|cell| cell.symbol())
+    .collect();
+  assert!(rendered.contains(tr(app.lang, "control_center.keep")));
+  assert!(rendered.contains(tr(app.lang, "control_center.revert")));
+  assert!(rendered.contains(" s"), "remaining seconds are shown");
+}
+
+#[test]
+fn removing_a_configuration_and_deleting_a_profile_ask_first() {
+  let mut app = app_with(false);
+  app
+    .config
+    .set_monitor("HDMI-A-1", PersistedMonitor::default());
+  app.page = DisplayPage::Detail(app.stale_start());
+  app.handle(KeyCode::Enter);
+  assert!(matches!(app.confirm, Some((Confirmation::RemoveConfig, _))));
+  app.handle(KeyCode::Enter);
+  assert!(app.confirm.is_none(), "Enter right after opening cancels");
+  assert_eq!(app.config.monitors.len(), 1, "nothing removed");
+
+  app.state.profiles.push(profile("Casa"));
+  app.page = DisplayPage::Profile(0);
+  select(&mut app, Item::DeleteProfile);
+  app.handle(KeyCode::Enter);
+  assert!(matches!(
+    app.confirm,
+    Some((Confirmation::DeleteProfile(0), _))
+  ));
+  assert!(app.footer_hints(&app.rows()).contains("y "));
+  app.handle(KeyCode::Char('n'));
+  assert!(app.confirm.is_none());
+  assert_eq!(app.state.profiles.len(), 1, "nothing deleted");
+}

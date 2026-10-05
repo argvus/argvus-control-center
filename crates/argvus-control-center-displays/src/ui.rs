@@ -15,16 +15,15 @@ use argvus_control_center_core::{
 };
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
-use argvus_tui::components::{
-  ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
-};
-use argvus_tui::hints::{HintContext, hints};
+use argvus_tui::components::{StatusKind, StatusMessage};
+use argvus_tui::confirm::{ConfirmDialog, ConfirmOutcome, ConfirmState, draw_confirm};
+use argvus_tui::hints::{HintContext, confirm_hints, hints};
 use argvus_tui::icons;
 use argvus_tui::menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu};
 use argvus_tui::page::{shell, status};
 use crossterm::event::KeyCode;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
@@ -85,6 +84,23 @@ struct RevertState {
   deadline: Instant,
 }
 
+/// A destructive action waiting for the single confirmation component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Confirmation {
+  DeleteProfile(usize),
+  RemoveConfig,
+}
+
+/// Answer to the revert countdown.
+enum RevertAnswer {
+  /// Still open (focus moved, or a key without meaning such as Space).
+  Pending,
+  /// `y`, or Enter on Keep: the new configuration stays.
+  Keep(String),
+  /// `n`, Esc, or Enter on Revert: the previous configuration comes back.
+  Revert(Box<RevertState>),
+}
+
 /// Stable identity of a Displays menu row. Monitors, saved configurations
 /// of disconnected monitors, picker options and profiles keep their index
 /// in the source list.
@@ -131,7 +147,9 @@ pub struct DisplaysApp {
   hotplug: Option<JobHandle<JobData>>,
   last_hotplug: Instant,
   revert: Option<RevertState>,
-  confirm_profile: Option<(usize, ConfirmationState)>,
+  /// Focus of the revert confirmation; starts on Revert (Cancel).
+  revert_focus: ConfirmState,
+  confirm: Option<(Confirmation, ConfirmState)>,
   prompt_buffer: String,
   prompt_error: Option<String>,
   prompt_back: Option<DisplayPage>,
@@ -171,7 +189,8 @@ impl DisplaysApp {
         .checked_sub(HOTPLUG_INTERVAL * 6)
         .unwrap_or(Instant::now()),
       revert: None,
-      confirm_profile: None,
+      revert_focus: ConfirmState::new(),
+      confirm: None,
       prompt_buffer: String::new(),
       prompt_error: None,
       prompt_back: None,
@@ -322,6 +341,26 @@ impl DisplaysApp {
       previous_config,
       deadline: now + Duration::from_secs(REVERT_SECONDS),
     });
+    self.revert_focus = ConfirmState::new();
+  }
+
+  /// A key while the revert countdown is open. The focus starts on Revert,
+  /// so Enter pressed by reflex on a broken screen never keeps the change.
+  fn answer_revert(&mut self, key: KeyCode) -> RevertAnswer {
+    if self.revert.is_none() {
+      return RevertAnswer::Pending;
+    }
+    match self.revert_focus.handle(key) {
+      ConfirmOutcome::Pending => RevertAnswer::Pending,
+      ConfirmOutcome::Confirmed => match self.revert.take() {
+        Some(revert) => RevertAnswer::Keep(revert.name),
+        None => RevertAnswer::Pending,
+      },
+      ConfirmOutcome::Cancelled => match self.revert.take() {
+        Some(revert) => RevertAnswer::Revert(Box::new(revert)),
+        None => RevertAnswer::Pending,
+      },
+    }
   }
 
   /// The armed revert whose deadline has passed at `now`, if any.
@@ -331,14 +370,8 @@ impl DisplaysApp {
 
   /// Applies the configuration saved before the change ("Reverted <name>").
   fn revert_to(&mut self, revert: RevertState) {
-    self.spawn_revert(
-      revert.previous_config,
-      format!(
-        "{} {}",
-        tr(self.lang, "control_center.reverted"),
-        revert.previous.name
-      ),
-    );
+    let message = revert_message(self.lang, &revert);
+    self.spawn_revert(revert.previous_config, message);
   }
 
   /// Whether typed characters currently go to a prompt field (profile name,
@@ -346,7 +379,7 @@ impl DisplaysApp {
   /// Mirrors the precedence of [`Self::handle`]: the profile deletion
   /// confirmation and the revert countdown are not typing.
   pub fn captures_text(&self) -> bool {
-    self.confirm_profile.is_none()
+    self.confirm.is_none()
       && self.revert.is_none()
       && self.prompt_back.is_some()
       && matches!(self.page, DisplayPage::Prompt { .. })
@@ -367,48 +400,34 @@ impl DisplaysApp {
   /// Processes `handle` in this module's event flow. Returns `true` when Esc
   /// leaves the Displays home.
   pub fn handle(&mut self, key: KeyCode) -> bool {
-    if let Some((index, mut confirm)) = self.confirm_profile.take() {
-      match confirm.handle(key) {
-        ConfirmationOutcome::Confirmed => {
-          self.delete_profile(index);
-          self.status = Some(StatusMessage {
-            kind: StatusKind::Success,
-            text: tr(self.lang, "control_center.profile_deleted").into(),
-          });
-          self.go(DisplayPage::Profiles);
+    if let Some((confirmation, mut focus)) = self.confirm.take() {
+      match focus.handle(key) {
+        ConfirmOutcome::Confirmed => self.run_confirmation(confirmation),
+        ConfirmOutcome::Cancelled => {
+          if let Confirmation::DeleteProfile(_) = confirmation {
+            self.status = Some(StatusMessage {
+              kind: StatusKind::Info,
+              text: tr(self.lang, "control_center.deletion_cancelled").into(),
+            });
+          }
         }
-        ConfirmationOutcome::Cancelled => {
-          self.status = Some(StatusMessage {
-            kind: StatusKind::Info,
-            text: tr(self.lang, "control_center.deletion_cancelled").into(),
-          });
-        }
-        ConfirmationOutcome::Pending => {
-          self.confirm_profile = Some((index, confirm));
-        }
+        ConfirmOutcome::Pending => self.confirm = Some((confirmation, focus)),
       }
       return false;
     }
     if self.revert.is_some() {
-      match key {
-        KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('y') | KeyCode::Char('Y') => {
-          let name = self.revert.take().map(|revert| revert.name);
-          if let Some(name) = name {
-            self.status = Some(StatusMessage {
-              kind: StatusKind::Success,
-              text: format!(
-                "{} · {name}",
-                tr(self.lang, "control_center.configuration_kept")
-              ),
-            });
-          }
+      match self.answer_revert(key) {
+        RevertAnswer::Keep(name) => {
+          self.status = Some(StatusMessage {
+            kind: StatusKind::Success,
+            text: format!(
+              "{} · {name}",
+              tr(self.lang, "control_center.configuration_kept")
+            ),
+          });
         }
-        KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
-          if let Some(revert) = self.revert.take() {
-            self.revert_to(revert);
-          }
-        }
-        _ => {}
+        RevertAnswer::Revert(revert) => self.revert_to(*revert),
+        RevertAnswer::Pending => {}
       }
       return false;
     }
@@ -481,7 +500,7 @@ impl DisplaysApp {
       }
       Item::Apply => self.apply_button(),
       Item::Reset => self.reset_button(),
-      Item::RemoveConfig => self.remove_button(),
+      Item::RemoveConfig => self.confirm = Some((Confirmation::RemoveConfig, ConfirmState::new())),
       Item::Option(index) => self.apply_picker_selection(index),
       Item::Custom => {
         if let Some(prompt) = self.custom_prompt() {
@@ -502,9 +521,24 @@ impl DisplaysApp {
       }
       Item::DeleteProfile => {
         if let DisplayPage::Profile(index) = self.page {
-          self.confirm_profile = Some((index, ConfirmationState::default()));
+          self.confirm = Some((Confirmation::DeleteProfile(index), ConfirmState::new()));
         }
       }
+    }
+  }
+
+  /// Runs a confirmed destructive action.
+  fn run_confirmation(&mut self, confirmation: Confirmation) {
+    match confirmation {
+      Confirmation::DeleteProfile(index) => {
+        self.delete_profile(index);
+        self.status = Some(StatusMessage {
+          kind: StatusKind::Success,
+          text: tr(self.lang, "control_center.profile_deleted").into(),
+        });
+        self.go(DisplayPage::Profiles);
+      }
+      Confirmation::RemoveConfig => self.remove_button(),
     }
   }
 
@@ -1839,6 +1873,19 @@ impl DisplaysApp {
   /// prompt, otherwise derived from the selected row.
   fn footer_hints(&self, rows: &[Row<Item>]) -> String {
     let label = |key: &str| tr(self.lang, key);
+    if self.revert.is_some() {
+      // Keeping is the explicit choice, so `y` comes first.
+      return [
+        ("y", label("control_center.keep")),
+        ("n/Esc", label("control_center.revert")),
+        ("↑/↓", label("control_center.hint.select")),
+      ]
+      .map(|(keys, action)| format!("{keys} {action}"))
+      .join(FOOTER_GAP);
+    }
+    if self.confirm.is_some() {
+      return confirm_hints(self.lang);
+    }
     if let DisplayPage::Prompt { .. } = self.page {
       return [
         ("Enter", label("control_center.hint.confirm")),
@@ -1904,33 +1951,66 @@ impl DisplaysApp {
   /// Executes the `overlays` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn overlays(&self, frame: &mut Frame, area: Rect) {
     if let Some(revert) = &self.revert {
-      draw_revert(frame, area, &self.theme, self.lang, revert);
-      return;
-    }
-    if let Some((index, confirm)) = &self.confirm_profile {
-      let name = self
-        .state
-        .profiles
-        .get(*index)
-        .map(|profile| profile.name.as_str())
-        .unwrap_or("");
       let message = format!(
         "{}\n{}",
-        tr(self.lang, "control_center.delete_this_profile"),
-        name,
+        revert.name,
+        tr(self.lang, "control_center.keep_configuration_description")
       );
-      argvus_tui::components::draw_confirmation(
-        frame,
-        area,
-        &self.theme,
-        ConfirmationDialog {
-          title: tr(self.lang, "control_center.delete_profile"),
-          message: &message,
-          confirm_label: tr(self.lang, "control_center.delete"),
-          cancel_label: tr(self.lang, "control_center.cancel"),
-          confirm_selected: confirm.confirm_selected,
-        },
-      );
+      let dialog = ConfirmDialog {
+        title: tr(self.lang, "control_center.keep_configuration_title"),
+        message: &message,
+        confirm: tr(self.lang, "control_center.keep"),
+        cancel: tr(self.lang, "control_center.revert"),
+        danger: false,
+        deadline: Some(revert.deadline.saturating_duration_since(Instant::now())),
+      };
+      draw_confirm(frame, area, &self.theme, dialog, &self.revert_focus);
+      return;
+    }
+    if let Some((confirmation, focus)) = &self.confirm {
+      let (title, message, confirm) = match confirmation {
+        Confirmation::DeleteProfile(index) => (
+          "control_center.delete_profile",
+          format!(
+            "{}\n{}",
+            tr(self.lang, "control_center.delete_this_profile"),
+            self
+              .state
+              .profiles
+              .get(*index)
+              .map(|profile| profile.name.as_str())
+              .unwrap_or("")
+          ),
+          "control_center.delete",
+        ),
+        Confirmation::RemoveConfig => (
+          "control_center.remove_config",
+          format!(
+            "{}\n{}",
+            self
+              .monitor_index()
+              .and_then(|index| {
+                self
+                  .monitors
+                  .get(index)
+                  .map(|monitor| monitor.name.clone())
+                  .or_else(|| self.stale_name(index))
+              })
+              .unwrap_or_default(),
+            tr(self.lang, "control_center.remove_config_description")
+          ),
+          "control_center.remove_config",
+        ),
+      };
+      let dialog = ConfirmDialog {
+        title: tr(self.lang, title),
+        message: &message,
+        confirm: tr(self.lang, confirm),
+        cancel: tr(self.lang, "control_center.cancel"),
+        danger: true,
+        deadline: None,
+      };
+      draw_confirm(frame, area, &self.theme, dialog, focus);
       return;
     }
     if let Some(s) = &self.status {
@@ -1960,32 +2040,13 @@ fn setting_icon(setting: MonitorSetting) -> &'static str {
   }
 }
 
-/// Renders `draw_revert` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn draw_revert(frame: &mut Frame, area: Rect, theme: &Theme, lang: Lang, revert: &RevertState) {
-  let remaining = revert
-    .deadline
-    .saturating_duration_since(Instant::now())
-    .as_secs();
-  let message = format!(
-    "{} ({}s) · {} {}",
-    tr(lang, "control_center.keep_this_configuration_enter_keep"),
-    remaining,
-    tr(
-      lang,
-      "control_center.reverting_automatically_if_no_key_is_pressed"
-    ),
-    revert.name,
-  );
-  let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
-  frame.render_widget(
-    Paragraph::new(Line::from(message)).style(
-      Style::new()
-        .bg(theme.warning)
-        .fg(theme.surface)
-        .add_modifier(Modifier::BOLD),
-    ),
-    top,
-  );
+/// Status shown after an automatic or chosen revert ("Reverted <name>").
+fn revert_message(lang: Lang, revert: &RevertState) -> String {
+  format!(
+    "{} {}",
+    tr(lang, "control_center.reverted"),
+    revert.previous.name
+  )
 }
 
 /// Executes the `resolution_options` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
