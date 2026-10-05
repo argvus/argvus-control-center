@@ -286,6 +286,13 @@ impl AudioApp {
       "control_center.device_is_no_longer_available_press_r_to_refresh",
     ));
   }
+  /// Whether typed characters currently go to the volume value field, so
+  /// `q`/`?` must not act as the global quit/help keys. The confirmation
+  /// sits above the field in [`Self::handle`] and does not take text.
+  pub fn captures_text(&self) -> bool {
+    self.pending.is_none() && self.volume_input.is_some()
+  }
+
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_some() {

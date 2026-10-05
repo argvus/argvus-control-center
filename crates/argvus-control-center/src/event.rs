@@ -67,11 +67,13 @@ pub fn handle(app: &mut App, event: Event) {
     }
     return;
   }
-  if key.code == KeyCode::Char('?') {
+  // While a page is typing, `?` and `q` are text for that page (D10).
+  let typing = app.captures_text();
+  if key.code == KeyCode::Char('?') && !typing {
     app.help = true;
     return;
   }
-  if key.code == KeyCode::Char('q') {
+  if key.code == KeyCode::Char('q') && !typing {
     app.quit = true;
     return;
   }
@@ -287,6 +289,47 @@ mod tests {
     assert!(app.settings.confirm.is_none());
   }
 
+  #[cfg(feature = "apps")]
+  #[test]
+  fn q_still_quits_and_question_mark_opens_help_outside_text_fields() {
+    let mut app = App::new(InitialRoute::Apps);
+    assert!(!app.captures_text());
+    handle(&mut app, press(KeyCode::Char('?')));
+    assert!(app.help);
+    handle(&mut app, press(KeyCode::Esc));
+    handle(&mut app, press(KeyCode::Char('q')));
+    assert!(app.quit);
+  }
+
+  #[cfg(feature = "packages")]
+  #[test]
+  fn q_is_part_of_the_filter_on_package_lists_that_filter_while_typing() {
+    let mut app = App::new(InitialRoute::Packages(
+      argvus_control_center_packages::PackagesPage::Search,
+    ));
+    assert!(app.captures_text());
+    handle(&mut app, press(KeyCode::Char('q')));
+    assert!(!app.quit);
+  }
+
+  #[cfg(feature = "apps")]
+  #[test]
+  fn ctrl_c_quits_even_while_typing() {
+    let mut app = App::new(InitialRoute::Apps);
+    app.settings.searching = true;
+    assert!(app.captures_text());
+    handle(
+      &mut app,
+      Event::Key(KeyEvent::new_with_kind_and_state(
+        KeyCode::Char('c'),
+        KeyModifiers::CONTROL,
+        KeyEventKind::Press,
+        KeyEventState::NONE,
+      )),
+    );
+    assert!(app.quit);
+  }
+
   #[cfg(feature = "about")]
   #[test]
   /// Executes the `q_quits_from_about` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -413,12 +456,17 @@ mod tests {
 
   #[cfg(feature = "fonts")]
   #[test]
-  /// Executes the `q_quits_during_settings_search` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn q_quits_during_settings_search() {
+  /// An active settings search is a text field: `q` and `?` are typed into
+  /// it instead of quitting or opening the help (D10 in `docs/ux-audit.md`;
+  /// before D10 this test asserted that `q` quit).
+  fn q_and_question_mark_are_typed_into_an_active_settings_search() {
     let mut app = App::new(InitialRoute::Fonts);
     app.settings.searching = true;
     handle(&mut app, press(KeyCode::Char('q')));
-    assert!(app.quit);
+    handle(&mut app, press(KeyCode::Char('?')));
+    assert!(!app.quit, "q must not quit while typing");
+    assert!(!app.help, "? must not open the help while typing");
+    assert_eq!(app.settings.search, "q?");
   }
 
   #[cfg(feature = "about")]

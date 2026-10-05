@@ -2945,6 +2945,23 @@ impl App {
   pub fn has_keybinding_conflict(&self) -> bool {
     self.keybinding_conflict.is_some()
   }
+
+  /// Whether a text field (or the shortcut capture) currently receives every
+  /// typed character, so the Control Center must not treat `q`/`?` as the
+  /// global quit/help keys. Mirrors the precedence of `event::handle_key`:
+  /// the task log and modals sit above the text fields and are not typing.
+  pub fn captures_text(&self) -> bool {
+    if self.task_open || self.confirm.is_some() || self.error_modal.is_some() {
+      return false;
+    }
+    let capturing_shortcut = self.keybinding_capturing
+      && !self.has_keybinding_conflict()
+      && matches!(
+        self.page(),
+        crate::navigation::Page::KeybindingEdit | crate::navigation::Page::KeybindingCapture
+      );
+    self.hostname_editing || self.admin.editor.is_some() || capturing_shortcut || self.searching
+  }
   /// Executes the `keybinding_conflict_state` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn keybinding_conflict_state(&self) -> Option<(&str, &str, Vec<String>)> {
     self

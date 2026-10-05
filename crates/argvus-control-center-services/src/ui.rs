@@ -312,6 +312,14 @@ impl ServicesApp {
     });
     self.selected = self.selected.min(self.filtered().len().saturating_sub(1));
   }
+  /// Whether typed characters currently go to the unit or log search, so
+  /// `q`/`?` must not act as the global quit/help keys. Mirrors the
+  /// precedence of [`Self::handle`]: running jobs and the confirmation sit
+  /// above the search and do not take text.
+  pub fn captures_text(&self) -> bool {
+    self.searching && self.job.is_none() && self.action.is_none() && self.pending.is_none()
+  }
+
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_none()

@@ -118,7 +118,7 @@ These actions update the logical ARGVUS state and apply the affected runtime con
 
 ## Keyboard use
 
-The settings application supports keyboard navigation. Use the arrow keys or `j`/`k` to move, `Enter` to open or apply, `Esc` to go back, `/` to search lists, `Tab` to move between fields or actions, and `?` for contextual help. A page can show a **Reset defaults** or **Restore all shortcuts** action when that page supports it.
+The settings application supports keyboard navigation. Use the arrow keys or `j`/`k` to move, `Enter` to open or apply, `Esc` to go back, `/` to search lists, `Tab` to move between fields or actions, and `?` for contextual help. While a text field, a search or a list filter is active, `q` and `?` are typed as text instead of quitting or opening the help. A page can show a **Reset defaults** or **Restore all shortcuts** action when that page supports it.
 
 ## Persistence and reset
 

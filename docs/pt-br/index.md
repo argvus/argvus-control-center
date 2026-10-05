@@ -119,7 +119,7 @@ Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de
 
 ## Uso pelo teclado
 
-O aplicativo de configurações suporta navegação pelo teclado. Use as setas ou `j`/`k` para mover, `Enter` para abrir ou aplicar, `Esc` para voltar, `/` para buscar listas, `Tab` para mover entre campos ou ações e `?` para ajuda contextual. Uma página pode mostrar a ação **Restaurar padrões** ou **Restaurar todos os atalhos** quando ela oferecer esse recurso.
+O aplicativo de configurações suporta navegação pelo teclado. Use as setas ou `j`/`k` para mover, `Enter` para abrir ou aplicar, `Esc` para voltar, `/` para buscar listas, `Tab` para mover entre campos ou ações e `?` para ajuda contextual. Enquanto um campo de texto, uma busca ou um filtro de lista estiver ativo, `q` e `?` são digitados como texto em vez de sair ou abrir a ajuda. Uma página pode mostrar a ação **Restaurar padrões** ou **Restaurar todos os atalhos** quando ela oferecer esse recurso.
 
 ## Persistência e restauração
 

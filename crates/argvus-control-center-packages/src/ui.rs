@@ -538,6 +538,29 @@ impl PackagesApp {
       self.selected_package_name().into_iter().collect()
     }
   }
+  /// Whether typed characters currently go to text (the input prompt, or the
+  /// filter of a package list), so `q`/`?` must not act as the global
+  /// quit/help keys. Mirrors the precedence of [`Self::handle`]: the mirror
+  /// editor, confirmations, the transaction log and running operations sit
+  /// above the list filter and do not take text.
+  pub fn captures_text(&self) -> bool {
+    if self.input.is_some() {
+      return true;
+    }
+    self.mirror_editor.is_none()
+      && self.pending.is_none()
+      && !self.transaction_open
+      && !self.destructive()
+      && matches!(
+        self.page,
+        PackagesPage::Search
+          | PackagesPage::Installed
+          | PackagesPage::Orphans
+          | PackagesPage::Updates
+          | PackagesPage::Aur
+      )
+  }
+
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.mirror_editor.is_some() {

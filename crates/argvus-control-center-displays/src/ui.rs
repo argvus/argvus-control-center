@@ -306,6 +306,17 @@ impl DisplaysApp {
     changed
   }
 
+  /// Whether typed characters currently go to a prompt field (profile name,
+  /// custom values), so `q`/`?` must not act as the global quit/help keys.
+  /// Mirrors the precedence of [`Self::handle`]: the profile deletion
+  /// confirmation and the revert countdown are not typing.
+  pub fn captures_text(&self) -> bool {
+    self.confirm_profile.is_none()
+      && self.revert.is_none()
+      && self.prompt_back.is_some()
+      && matches!(self.page, DisplayPage::Prompt { .. })
+  }
+
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if let Some((index, mut confirm)) = self.confirm_profile.take() {

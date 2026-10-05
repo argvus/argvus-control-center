@@ -1867,6 +1867,35 @@ impl App {
   }
 
   /// Executes the `back` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Whether the active page is typing into a text field, a search or a list
+  /// filter. While it is, `q` and `?` are text and must not quit or open the
+  /// help (decision D10 of `docs/ux-audit.md`); `Ctrl+C` still quits.
+  pub fn captures_text(&self) -> bool {
+    match self.route {
+      Route::Home => self.search_active,
+      Route::Settings => self.settings.captures_text(),
+      #[cfg(feature = "network")]
+      Route::Network => self.network.captures_text(),
+      #[cfg(feature = "packages")]
+      Route::Packages => self.packages.captures_text(),
+      #[cfg(feature = "services")]
+      Route::Services => self.services.captures_text(),
+      #[cfg(feature = "audio")]
+      Route::Audio => self.audio.captures_text(),
+      #[cfg(feature = "boot")]
+      Route::Boot => self.boot.captures_text(),
+      #[cfg(feature = "displays")]
+      Route::Displays => self.displays.captures_text(),
+      #[cfg(feature = "appearance")]
+      Route::Appearance => self.appearance.captures_text(),
+      // The remaining pages (Config, About, Hardware, Bluetooth, Storage,
+      // Diagnostics, Power, Session) have no text fields; listing them would
+      // need one cfg arm per optional feature.
+      #[allow(unreachable_patterns)]
+      _ => false,
+    }
+  }
+
   pub fn back(&mut self) {
     match self.route {
       Route::Home => {}

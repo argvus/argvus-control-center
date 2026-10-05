@@ -449,6 +449,21 @@ impl NetworkApp {
     }
   }
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Whether typed characters currently go to text (Wi-Fi password, manual
+  /// DNS, the list filter, or a text field of the embedded firewall page), so
+  /// `q`/`?` must not act as the global quit/help keys. Mirrors the
+  /// precedence of [`Self::handle`]: the forget confirmation is not typing.
+  pub fn captures_text(&self) -> bool {
+    if self.page == NetworkPage::Firewall {
+      return self
+        .firewall
+        .as_ref()
+        .is_some_and(SettingsApp::captures_text);
+    }
+    !self.confirm_forget
+      && (self.password.is_some() || self.dns_input.is_some() || self.search.is_some())
+  }
+
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.page == NetworkPage::Firewall {
       return self.handle_firewall(key);

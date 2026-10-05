@@ -1024,6 +1024,14 @@ impl AppearanceApp {
       _ => false,
     }
   }
+  /// Whether typed characters currently go to a prompt field (theme name,
+  /// file path, gaps, borders) or to the accent HEX editor, so `q`/`?` must
+  /// not act as the global quit/help keys. Same condition [`Self::handle`]
+  /// uses to route keys to `prompt_key`.
+  pub fn captures_text(&self) -> bool {
+    self.prompt_back.is_some() || self.page == AppearancePage::AccentEdit
+  }
+
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.prompt_back.is_some() || self.page == AppearancePage::AccentEdit {

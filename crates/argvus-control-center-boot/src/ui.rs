@@ -247,6 +247,14 @@ impl BootApp {
       _ => 1,
     }
   }
+  /// Whether typed characters currently go to the timeout/kernel command
+  /// line field, so `q`/`?` must not act as the global quit/help keys. The
+  /// confirmation sits above the field in [`Self::handle`] and does not take
+  /// text.
+  pub fn captures_text(&self) -> bool {
+    self.pending.is_none() && self.timeout_input.is_some()
+  }
+
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
     if self.pending.is_some() {

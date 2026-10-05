@@ -70,6 +70,10 @@ Use `--help` to see all supported routes.
 - `?`: contextual help
 - `q`: quit
 
+While a text field, a search or a list filter is active (for example the
+package search, a Wi-Fi password or a theme name), `q` and `?` are typed as
+text instead of quitting or opening the help.
+
 The Home search updates results as you type and opens registered pages directly
 through their real Control Center routes. While the Home search is active, type
 any printable character—including `j` and `k`—and use `↑` / `↓` to select a
