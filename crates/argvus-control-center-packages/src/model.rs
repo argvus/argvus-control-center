@@ -11,11 +11,16 @@ pub enum PackagesPage {
   Updates,
   Orphans,
   Cache,
+  /// Read-only list of the files in the package cache, opened from Cache.
+  CacheFiles,
   Aur,
   History,
   HistoryDetails(usize),
   Downgrade,
   Mirrors,
+  /// Reflector options, opened from Mirrors; generating the preview asks
+  /// for confirmation before the mirror list is replaced.
+  MirrorEditor,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 /// Represents `Package`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

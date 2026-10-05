@@ -20,17 +20,19 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  buttons::{Button, ButtonKind},
+  chrome,
   components::{
     ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
     draw_confirmation,
   },
-  page::{Selection, list, readonly, shell, status},
+  hints::{HintContext, hints},
+  icons,
+  menu::{MenuEvent, MenuState, MenuStyle, Row, RowKind, draw_menu},
+  page::{shell, status},
 };
 use crossterm::event::KeyCode;
 use ratatui::{
   Frame,
-  layout::{Constraint, Layout, Margin},
   style::Style,
   text::Line,
   widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -49,7 +51,7 @@ enum Loaded {
   MirrorCountries(Vec<String>),
   Dashboard(PackageDashboard),
 }
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Defines `Action`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum Action {
   Install(Vec<String>),
@@ -64,35 +66,112 @@ enum Action {
   ApplyMirrors(String),
 }
 
-#[derive(Debug, Clone)]
-/// Represents `MirrorEditor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-struct MirrorEditor {
-  selected: usize,
-  options: ReflectorOptions,
+/// What the open text field edits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputMode {
+  /// The package search query (`/`).
+  Search,
+  /// Reflector maximum age, in hours.
+  MirrorAge,
+  /// Reflector mirror count.
+  MirrorCount,
 }
 
+/// Bounds of the reflector maximum age, in hours (one year).
+const MIRROR_AGE_RANGE: (u32, u32) = (1, 24 * 365);
+/// Bounds of the reflector mirror count.
+const MIRROR_COUNT_RANGE: (u32, u32) = (1, 100);
+/// Longest search query accepted, as before the menu migration.
+const QUERY_MAX: usize = 128;
+
+/// Stable identity of a Packages menu row. List items keep their index in
+/// the loaded source list (not their visible position), so filtering never
+/// points an action at another package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum ActionButton {
+enum Item {
+  /// A page opened from the Packages home.
+  Open(PackagesPage),
+  /// Index into `packages` on the Search and Installed lists.
+  Package(usize),
+  /// Index into `aur`.
+  Aur(usize),
+  /// Index into `packages` on the Orphans list.
+  Orphan(usize),
+  /// Index into `updates`.
+  Update(usize),
+  /// Index into `cache`, on the Downgrade list.
+  CacheFile(usize),
+  /// Installs (or reinstalls) the open package.
   Install,
+  /// Removes the open package.
   Remove,
-  Update,
-  Upgrade,
+  UpgradeAll,
   RefreshDatabase,
-  ToggleMulti,
+  /// Removes the orphans marked with Space.
+  RemoveMarked,
   CleanKeepThree,
   CleanKeepOne,
   CleanUninstalled,
-  Downgrade,
+  /// Opens the read-only list of cached files.
+  CacheFiles,
+  /// Opens the reflector options.
+  ConfigureMirrors,
+  MirrorCountry,
+  MirrorProtocol,
+  MirrorAge,
+  MirrorCount,
+  MirrorSort,
+  MirrorPreview,
+}
+
+impl Item {
+  /// Rows that only open a page, show a confirmation or edit the reflector
+  /// options: they work while a list loads. Package operations wait for
+  /// every running job, as the action buttons did.
+  fn waits_for_jobs(self) -> bool {
+    matches!(
+      self,
+      Self::Install
+        | Self::Remove
+        | Self::UpgradeAll
+        | Self::RefreshDatabase
+        | Self::RemoveMarked
+        | Self::CleanKeepThree
+        | Self::CleanKeepOne
+        | Self::CleanUninstalled
+        | Self::CacheFile(_)
+    )
+  }
+
+  /// Rows of the reflector options, which the editor handled even while a
+  /// transaction ran.
+  fn is_mirror_option(self) -> bool {
+    matches!(
+      self,
+      Self::MirrorCountry
+        | Self::MirrorProtocol
+        | Self::MirrorAge
+        | Self::MirrorCount
+        | Self::MirrorSort
+        | Self::MirrorPreview
+    )
+  }
+
+  /// Rows of a package list, where a new filter puts the cursor.
+  fn is_list_entry(self) -> bool {
+    matches!(
+      self,
+      Self::Package(_) | Self::Aur(_) | Self::Orphan(_) | Self::Update(_)
+    )
+  }
 }
 
 /// Represents `PackagesApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct PackagesApp {
   pub page: PackagesPage,
-  selected: Selection,
-  on_buttons: bool,
-  button_selected: usize,
-  button_from: Option<usize>,
+  menu: MenuState,
+  /// Body height during the last draw, used as the PgUp/PgDn distance.
+  list_height: u16,
   packages: Vec<Package>,
   updates: Vec<Update>,
   cache: Vec<CachePackage>,
@@ -101,6 +180,9 @@ pub struct PackagesApp {
   mirrors: Vec<Mirror>,
   dashboard: PackageDashboard,
   details: Option<PackageDetails>,
+  /// Name of the package whose details page is open, known before its
+  /// metadata arrives.
+  details_name: Option<String>,
   details_parent: PackagesPage,
   query: String,
   job: Option<JobHandle<Result<Loaded, String>>>,
@@ -112,13 +194,15 @@ pub struct PackagesApp {
   theme: Theme,
   capabilities: Capabilities,
   input: Option<String>,
-  input_search: bool,
+  input_mode: Option<InputMode>,
   pending: Option<Action>,
   confirmation: ConfirmationState,
   preview: Option<TransactionPlan>,
   pub status: Option<StatusMessage>,
-  multi: Vec<usize>,
-  mirror_editor: Option<MirrorEditor>,
+  /// Names of the orphans marked with Space.
+  marked: Vec<String>,
+  /// Reflector options while the mirror editor page is open.
+  mirror_options: Option<ReflectorOptions>,
   mirror_countries: Option<Vec<String>>,
   transaction_live: Option<LiveProcess>,
   transaction_open: bool,
@@ -148,6 +232,19 @@ fn transaction_bottom_offset(output: &str) -> u16 {
   transaction_wrapped_lines(output).saturating_sub(TRANSACTION_CONTENT_HEIGHT) as u16
 }
 
+/// Whether typed characters filter the list on `page` (D8): letters,
+/// including `j`, `k`, `r`, `q` and `?`, become text of the filter.
+fn filters_while_typing(page: PackagesPage) -> bool {
+  matches!(
+    page,
+    PackagesPage::Search
+      | PackagesPage::Installed
+      | PackagesPage::Orphans
+      | PackagesPage::Updates
+      | PackagesPage::Aur
+  )
+}
+
 impl PackagesApp {
   /// Replaces the semantic theme used by this page.
   pub fn set_theme(&mut self, theme: &Theme) {
@@ -158,10 +255,8 @@ impl PackagesApp {
   pub fn new(lang: Lang, theme: Theme, capabilities: Capabilities) -> Self {
     Self {
       page: PackagesPage::Home,
-      selected: Selection::default(),
-      on_buttons: false,
-      button_selected: 0,
-      button_from: None,
+      menu: MenuState::default(),
+      list_height: 0,
       packages: vec![],
       updates: vec![],
       cache: vec![],
@@ -170,6 +265,7 @@ impl PackagesApp {
       mirrors: vec![],
       dashboard: PackageDashboard::default(),
       details: None,
+      details_name: None,
       details_parent: PackagesPage::Search,
       query: String::new(),
       job: None,
@@ -181,13 +277,13 @@ impl PackagesApp {
       theme,
       capabilities,
       input: None,
-      input_search: false,
+      input_mode: None,
       pending: None,
       confirmation: ConfirmationState::default(),
       preview: None,
       status: None,
-      multi: vec![],
-      mirror_editor: None,
+      marked: vec![],
+      mirror_options: None,
       mirror_countries: None,
       transaction_live: None,
       transaction_open: false,
@@ -217,7 +313,7 @@ impl PackagesApp {
       "{:?}|{}|{}",
       self.page,
       self.query,
-      self.selected_package_name().unwrap_or_default()
+      self.details_target().unwrap_or_default()
     )
   }
 
@@ -252,7 +348,7 @@ impl PackagesApp {
     let caps = self.capabilities.clone();
     let page = self.page;
     let query = self.query.clone();
-    let name = self.selected_package_name();
+    let name = self.details_target();
     self.job = Some(self.jobs.spawn(move |_| {
       let b = PackageBackend::new(SystemProcessRunner, caps);
       let data = match page {
@@ -260,9 +356,11 @@ impl PackagesApp {
         PackagesPage::Search => Loaded::Packages(b.search(&query).map_err(|e| e.to_string())?),
         PackagesPage::Updates => Loaded::Updates(b.updates().map_err(|e| e.to_string())?),
         PackagesPage::Orphans => Loaded::Packages(b.orphans().map_err(|e| e.to_string())?),
-        PackagesPage::Cache | PackagesPage::Downgrade => Loaded::Cache(b.cache()),
+        PackagesPage::Cache | PackagesPage::CacheFiles | PackagesPage::Downgrade => {
+          Loaded::Cache(b.cache())
+        }
         PackagesPage::History => Loaded::History(b.history().map_err(|e| e.to_string())?),
-        PackagesPage::Mirrors => Loaded::Mirrors(b.mirrors()),
+        PackagesPage::Mirrors | PackagesPage::MirrorEditor => Loaded::Mirrors(b.mirrors()),
         PackagesPage::Aur => {
           let h = b.aur_helper().ok_or("AUR helper is unavailable")?;
           Loaded::Aur(b.aur_search(h, &query).map_err(|e| e.to_string())?)
@@ -289,8 +387,8 @@ impl PackagesApp {
           return false;
         }
         JobState::Finished(Ok(Ok((action, preview)))) => {
+          self.request(action);
           self.preview = Some(preview);
-          self.pending = Some(action);
           self.status = None;
           return true;
         }
@@ -360,7 +458,17 @@ impl PackagesApp {
   fn apply(&mut self, d: Loaded) -> bool {
     let mut reported_error = false;
     match d {
-      Loaded::Packages(v) => self.packages = v,
+      Loaded::Packages(v) => {
+        self.packages = v;
+        if self.page == PackagesPage::Orphans {
+          // Marks follow package names, so a reload keeps the ones that are
+          // still orphans and drops the removed ones.
+          let packages = &self.packages;
+          self
+            .marked
+            .retain(|name| packages.iter().any(|package| &package.name == name));
+        }
+      }
       Loaded::Updates(v) => self.updates = v,
       Loaded::Cache(v) => self.cache = v,
       Loaded::History(v) => self.history = v,
@@ -375,26 +483,29 @@ impl PackagesApp {
       }
       Loaded::Details(v) => self.details = Some(*v),
       Loaded::MirrorPreview(content) => {
-        self.mirror_editor = None;
-        self.pending = Some(Action::ApplyMirrors(content));
-        self.confirmation = ConfirmationState::default();
+        self.mirror_options = None;
+        if self.page == PackagesPage::MirrorEditor {
+          self.go(PackagesPage::Mirrors);
+          let rows = self.rows();
+          self.menu.select(&rows, &Item::ConfigureMirrors);
+        }
+        self.request(Action::ApplyMirrors(content));
       }
       Loaded::MirrorCountries(countries) => {
         self.mirror_countries = Some(countries.clone());
         if !countries.iter().any(|country| country == "Brazil")
-          && let Some(editor) = &mut self.mirror_editor
-          && editor
-            .options
+          && let Some(options) = &mut self.mirror_options
+          && options
             .countries
             .first()
             .is_some_and(|country| country == "Brazil")
           && let Some(first) = countries.first()
         {
-          editor.options.countries = vec![first.clone()];
+          options.countries = vec![first.clone()];
         }
       }
     }
-    self.selected.normalize(self.item_count());
+    self.normalize();
     reported_error
   }
   /// Executes the `error` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -411,47 +522,21 @@ impl PackagesApp {
       text: e.into(),
     });
   }
-  /// Executes the `selected_package_name` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn selected_package_name(&self) -> Option<String> {
-    if matches!(self.page, PackagesPage::Details(_)) {
-      if let Some(name) = self
-        .details
-        .as_ref()
-        .map(|details| details.package.name.clone())
-      {
-        return Some(name);
-      }
-      return match self.details_parent {
-        PackagesPage::Search | PackagesPage::Installed => self
-          .visible_packages()
-          .get(self.selected.index)
-          .map(|package| package.name.clone()),
-        PackagesPage::Orphans => self
-          .visible_packages()
-          .get(self.selected.index)
-          .map(|package| package.name.clone()),
-        PackagesPage::Updates => self
-          .visible_updates()
-          .get(self.selected.index)
-          .map(|package| package.name.clone()),
-        PackagesPage::Aur => self
-          .aur
-          .get(self.selected.index)
-          .map(|package| package.name.clone()),
-        _ => None,
-      };
+  /// Keeps the cursor on a selectable row after the rows changed.
+  fn normalize(&mut self) {
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+  }
+  /// Name of the package whose details page is open.
+  fn details_target(&self) -> Option<String> {
+    if !matches!(self.page, PackagesPage::Details(_)) {
+      return None;
     }
     self
-      .visible_packages()
-      .get(self.selected.index)
-      .map(|p| p.name.clone())
-      .or_else(|| {
-        self
-          .visible_updates()
-          .get(self.selected.index)
-          .map(|p| p.name.clone())
-      })
-      .or_else(|| self.aur.get(self.selected.index).map(|p| p.name.clone()))
+      .details
+      .as_ref()
+      .map(|details| details.package.name.clone())
+      .or_else(|| self.details_name.clone())
   }
   /// Executes the `home_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_pages(&self) -> Vec<PackagesPage> {
@@ -470,19 +555,6 @@ impl PackagesApp {
     }
     pages
   }
-  /// Executes the `visible_packages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn visible_packages(&self) -> Vec<&Package> {
-    let query = self.query.trim().to_ascii_lowercase();
-    self
-      .packages
-      .iter()
-      .filter(|package| {
-        query.is_empty()
-          || package.name.to_ascii_lowercase().contains(&query)
-          || package.description.to_ascii_lowercase().contains(&query)
-      })
-      .collect()
-  }
   /// Executes the `matches_query` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn matches_query(&self, name: &str, description: &str) -> bool {
     let query = self.query.trim().to_ascii_lowercase();
@@ -490,82 +562,50 @@ impl PackagesApp {
       || name.to_ascii_lowercase().contains(&query)
       || description.to_ascii_lowercase().contains(&query)
   }
-  /// Executes the `visible_updates` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn visible_updates(&self) -> Vec<&Update> {
+  /// Packages matching the filter, with their index in `packages`.
+  fn visible_packages(&self) -> Vec<(usize, &Package)> {
+    self
+      .packages
+      .iter()
+      .enumerate()
+      .filter(|(_, package)| self.matches_query(&package.name, &package.description))
+      .collect()
+  }
+  /// Updates matching the filter, with their index in `updates`.
+  fn visible_updates(&self) -> Vec<(usize, &Update)> {
     self
       .updates
       .iter()
-      .filter(|update| self.matches_query(&update.name, ""))
+      .enumerate()
+      .filter(|(_, update)| self.matches_query(&update.name, ""))
       .collect()
   }
-  /// Executes the `item_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn item_count(&self) -> usize {
-    match self.page {
-      PackagesPage::Home => self.home_pages().len(),
-      PackagesPage::Search | PackagesPage::Installed => self.visible_packages().len(),
-      PackagesPage::Aur => {
-        if self.page == PackagesPage::Aur {
-          self.aur.len()
-        } else {
-          self.visible_packages().len()
-        }
-      }
-      PackagesPage::Orphans => self
-        .packages
-        .iter()
-        .filter(|package| self.matches_query(&package.name, &package.description))
-        .count(),
-      PackagesPage::Updates => self.visible_updates().len(),
-      PackagesPage::Cache | PackagesPage::Downgrade => self.cache.len(),
-      PackagesPage::History | PackagesPage::HistoryDetails(_) => self.history.len(),
-      PackagesPage::Mirrors => 1,
-      PackagesPage::Details(_) => self
-        .details
-        .as_ref()
-        .map_or(0, |details| detail_rows(self.lang, details).len()),
-    }
-  }
-  /// Executes the `selected_names` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn selected_names(&self) -> Vec<String> {
-    if self.page == PackagesPage::Orphans && !self.multi.is_empty() {
-      self
-        .multi
-        .iter()
-        .filter_map(|i| self.packages.get(*i))
-        .map(|p| p.name.clone())
-        .collect()
-    } else {
-      self.selected_package_name().into_iter().collect()
-    }
+  /// AUR results matching the filter, with their index in `aur`.
+  fn visible_aur(&self) -> Vec<(usize, &AurPackage)> {
+    self
+      .aur
+      .iter()
+      .enumerate()
+      .filter(|(_, package)| self.matches_query(&package.name, &package.description))
+      .collect()
   }
   /// Whether typed characters currently go to text (the input prompt, or the
   /// filter of a package list), so `q`/`?` must not act as the global
-  /// quit/help keys. Mirrors the precedence of [`Self::handle`]: the mirror
-  /// editor, confirmations, the transaction log and running operations sit
-  /// above the list filter and do not take text.
+  /// quit/help keys. Mirrors the precedence of [`Self::handle`]:
+  /// confirmations, the transaction log and running operations sit above
+  /// the list filter and do not take text.
   pub fn captures_text(&self) -> bool {
     if self.input.is_some() {
       return true;
     }
-    self.mirror_editor.is_none()
-      && self.pending.is_none()
+    self.pending.is_none()
       && !self.transaction_open
       && !self.destructive()
-      && matches!(
-        self.page,
-        PackagesPage::Search
-          | PackagesPage::Installed
-          | PackagesPage::Orphans
-          | PackagesPage::Updates
-          | PackagesPage::Aur
-      )
+      && filters_while_typing(self.page)
   }
 
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
-    if self.mirror_editor.is_some() {
-      return self.handle_mirror_editor(key);
-    }
     if self.input.is_some() {
       return self.handle_input(key);
     }
@@ -585,205 +625,303 @@ impl PackagesApp {
       return false;
     }
     if self.transaction_open {
-      match key {
-        KeyCode::Esc => {
-          self.transaction_open = false;
-          self.transaction_live = None;
-          self.transaction_scroll = 0;
-          self.transaction_follow = false;
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-          self.transaction_follow = false;
-          self.transaction_scroll = self.transaction_scroll.saturating_sub(1);
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-          self.transaction_follow = false;
-          self.transaction_scroll = self.transaction_scroll.saturating_add(1);
-        }
-        KeyCode::PageUp => {
-          self.transaction_follow = false;
-          self.transaction_scroll = self.transaction_scroll.saturating_sub(10);
-        }
-        KeyCode::PageDown => {
-          self.transaction_follow = false;
-          self.transaction_scroll = self.transaction_scroll.saturating_add(10);
-        }
-        KeyCode::Home => {
-          self.transaction_follow = false;
-          self.transaction_scroll = 0;
-        }
-        KeyCode::End => {
-          if let Some(live) = &self.transaction_live {
-            self.transaction_scroll = transaction_bottom_offset(&live.output());
-          }
-        }
-        _ => {}
+      self.handle_transaction(key);
+      return false;
+    }
+    // Tab only switches tabs or panes; Packages has none.
+    if matches!(key, KeyCode::Tab | KeyCode::BackTab) {
+      return false;
+    }
+    if filters_while_typing(self.page) {
+      if self.handle_filter_key(key) {
+        return false;
+      }
+    } else if key == KeyCode::Char('r') && self.page != PackagesPage::MirrorEditor {
+      if !self.destructive() {
+        self.reload_force();
+      }
+      return false;
+    } else if key == KeyCode::Char(' ') && self.page == PackagesPage::MirrorEditor {
+      // Space moved every reflector option forward, as before.
+      let rows = self.rows();
+      if let Some(item) = self.menu.selected_id(&rows) {
+        self.adjust(item, 1);
       }
       return false;
     }
-    if self.on_buttons && !self.buttons().is_empty() {
-      match key {
-        KeyCode::Tab => {
-          self.toggle_buttons(false);
-          return false;
-        }
-        KeyCode::BackTab => {
-          self.toggle_buttons(true);
-          return false;
-        }
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.move_button(-1);
-          return false;
-        }
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.move_button(1);
-          return false;
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => {
-          self.activate_button();
-          return false;
-        }
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => return false,
-        _ => {}
+    let rows = self.rows();
+    let page_size = usize::from(self.list_height.max(1));
+    match self.menu.handle(key, &rows, page_size) {
+      MenuEvent::Back => return self.back(),
+      MenuEvent::Activate(item) | MenuEvent::Toggle(item) | MenuEvent::Confirm(item) => {
+        self.activate(item)
       }
+      MenuEvent::Adjust(item, step) => self.adjust(item, step),
+      MenuEvent::Moved | MenuEvent::None => {}
     }
-    if matches!(key, KeyCode::Esc | KeyCode::Left) {
-      if self.page == PackagesPage::Home {
-        return true;
-      }
-      self.page = match self.page {
-        PackagesPage::Details(_) => self.details_parent,
-        PackagesPage::HistoryDetails(_) => PackagesPage::History,
-        _ => PackagesPage::Home,
-      };
-      self.selected.index = 0;
-      self.on_buttons = false;
-      self.button_from = None;
-      return false;
-    }
-    if self.destructive() {
-      return false;
-    }
+    false
+  }
+  /// Scrolls the live transaction output; Esc closes it.
+  fn handle_transaction(&mut self, key: KeyCode) {
     match key {
-      KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
-      KeyCode::Char(c)
-        if matches!(
-          self.page,
-          PackagesPage::Search
-            | PackagesPage::Installed
-            | PackagesPage::Orphans
-            | PackagesPage::Updates
-            | PackagesPage::Aur
-        ) && self.query.len() < 128
-          && c != '/'
-          && !c.is_control() =>
-      {
-        self.query.push(c);
-        self.selected.index = 0;
+      KeyCode::Esc => {
+        self.transaction_open = false;
+        self.transaction_live = None;
+        self.transaction_scroll = 0;
+        self.transaction_follow = false;
       }
-      KeyCode::Backspace
-        if matches!(
-          self.page,
-          PackagesPage::Search
-            | PackagesPage::Installed
-            | PackagesPage::Orphans
-            | PackagesPage::Updates
-            | PackagesPage::Aur
-        ) =>
-      {
-        self.query.pop();
-        self.selected.index = 0;
+      KeyCode::Up | KeyCode::Char('k') => {
+        self.transaction_follow = false;
+        self.transaction_scroll = self.transaction_scroll.saturating_sub(1);
       }
-      KeyCode::Enter
-        if matches!(self.page, PackagesPage::Search | PackagesPage::Aur)
-          && self.selected_package_name().is_none() =>
-      {
-        let minimum = if self.page == PackagesPage::Aur { 2 } else { 1 };
-        if self.query.trim().chars().count() < minimum {
-          self.error(tr(
-            self.lang,
-            if self.page == PackagesPage::Aur {
-              "control_center.aur_search_requires_at_least_2_characters"
-            } else {
-              "control_center.enter_a_non_empty_search_query"
-            },
-          ));
-        } else {
-          self.reload();
+      KeyCode::Down | KeyCode::Char('j') => {
+        self.transaction_follow = false;
+        self.transaction_scroll = self.transaction_scroll.saturating_add(1);
+      }
+      KeyCode::PageUp => {
+        self.transaction_follow = false;
+        self.transaction_scroll = self.transaction_scroll.saturating_sub(10);
+      }
+      KeyCode::PageDown => {
+        self.transaction_follow = false;
+        self.transaction_scroll = self.transaction_scroll.saturating_add(10);
+      }
+      KeyCode::Home => {
+        self.transaction_follow = false;
+        self.transaction_scroll = 0;
+      }
+      KeyCode::End => {
+        if let Some(live) = &self.transaction_live {
+          self.transaction_scroll = transaction_bottom_offset(&live.output());
         }
-      }
-      KeyCode::Char('/') => {
-        self.input = Some(self.query.clone());
-        self.input_search = true;
-      }
-      KeyCode::Char('r') => self.reload_force(),
-      KeyCode::Up
-      | KeyCode::Down
-      | KeyCode::Char('j')
-      | KeyCode::Char('k')
-      | KeyCode::Home
-      | KeyCode::End
-      | KeyCode::PageUp
-      | KeyCode::PageDown => {
-        self.selected.handle(key, self.item_count(), 8);
-      }
-      KeyCode::Enter | KeyCode::Right if self.page == PackagesPage::Home => {
-        let pages = self.home_pages();
-        self.page = pages
-          .get(self.selected.index)
-          .copied()
-          .unwrap_or(PackagesPage::Mirrors);
-        self.selected.index = 0;
-        if matches!(self.page, PackagesPage::Search | PackagesPage::Installed) {
-          self.query.clear();
-          self.packages.clear();
-        }
-        self.reload()
-      }
-      KeyCode::Enter | KeyCode::Right
-        if matches!(
-          self.page,
-          PackagesPage::Search
-            | PackagesPage::Installed
-            | PackagesPage::Updates
-            | PackagesPage::Orphans
-            | PackagesPage::Aur
-        ) =>
-      {
-        if self.page == PackagesPage::Aur {
-          if let Some(package) = self.aur.get(self.selected.index) {
-            self.details = Some(PackageDetails {
-              package: Package {
-                name: package.name.clone(),
-                version: package.version.clone(),
-                repository: Some("AUR".into()),
-                description: package.description.clone(),
-                installed: package.installed,
-                ..Default::default()
-              },
-              ..Default::default()
-            });
-            self.details_parent = PackagesPage::Aur;
-            self.page = PackagesPage::Details(self.selected.index);
-          }
-        } else if let Some(_name) = self.selected_package_name() {
-          self.details_parent = self.page;
-          self.details = None;
-          if self.page == PackagesPage::Updates {
-            self.pending = Some(Action::UpgradePackage(_name));
-            self.confirmation = ConfirmationState::default();
-          } else {
-            self.page = PackagesPage::Details(self.selected.index);
-            self.reload()
-          }
-        }
-      }
-      KeyCode::Enter | KeyCode::Right if self.page == PackagesPage::Mirrors => {
-        self.open_mirror_editor()
       }
       _ => {}
     }
+  }
+  /// Keys of the lists that filter while typing (D8). Returns whether the
+  /// key was used; arrows, PgUp/PgDn, Home/End, Enter and Esc go on to the
+  /// menu.
+  fn handle_filter_key(&mut self, key: KeyCode) -> bool {
+    match key {
+      KeyCode::Char(' ') if self.page == PackagesPage::Orphans => {
+        if !self.destructive() {
+          self.toggle_mark();
+        }
+      }
+      KeyCode::Char('/') => {
+        if !self.destructive() {
+          self.input = Some(self.query.clone());
+          self.input_mode = Some(InputMode::Search);
+        }
+      }
+      KeyCode::Char(c) if !c.is_control() => {
+        if !self.destructive() && self.query.len() < QUERY_MAX {
+          self.query.push(c);
+          self.cursor_to_first_entry();
+        }
+      }
+      KeyCode::Backspace => {
+        if !self.destructive() {
+          self.query.pop();
+          self.cursor_to_first_entry();
+        }
+      }
+      // With nothing to open, Enter on the Search and AUR lists searches
+      // for the typed text, as before.
+      KeyCode::Enter
+        if matches!(self.page, PackagesPage::Search | PackagesPage::Aur)
+          && !self.rows().iter().any(Row::is_selectable) =>
+      {
+        if !self.destructive() {
+          self.search_typed_query();
+        }
+      }
+      _ => return false,
+    }
+    true
+  }
+  /// Runs the remote search for the typed filter on Search and AUR.
+  fn search_typed_query(&mut self) {
+    let minimum = if self.page == PackagesPage::Aur { 2 } else { 1 };
+    if self.query.trim().chars().count() < minimum {
+      self.error(tr(
+        self.lang,
+        if self.page == PackagesPage::Aur {
+          "control_center.aur_search_requires_at_least_2_characters"
+        } else {
+          "control_center.enter_a_non_empty_search_query"
+        },
+      ));
+    } else {
+      self.reload();
+    }
+  }
+  /// After the filter changed, puts the cursor on the first package, as the
+  /// lists did before (or on the first selectable row without matches).
+  fn cursor_to_first_entry(&mut self) {
+    self.menu = MenuState::default();
+    let rows = self.rows();
+    if let Some(first) = rows
+      .iter()
+      .filter(|row| row.is_selectable())
+      .find_map(|row| row.id().copied().filter(|item| item.is_list_entry()))
+    {
+      self.menu.select(&rows, &first);
+    }
+  }
+  /// Space on an orphan marks or unmarks it for `Remove marked`.
+  fn toggle_mark(&mut self) {
+    let rows = self.rows();
+    let Some(Item::Orphan(index)) = self.menu.selected_id(&rows) else {
+      return;
+    };
+    let Some(name) = self.packages.get(index).map(|package| package.name.clone()) else {
+      return;
+    };
+    if let Some(position) = self.marked.iter().position(|marked| *marked == name) {
+      self.marked.remove(position);
+    } else {
+      self.marked.push(name);
+    }
+  }
+
+  /// Opens `page` with the cursor on its first selectable row.
+  fn go(&mut self, page: PackagesPage) {
+    self.page = page;
+    self.menu = MenuState::default();
+  }
+
+  /// Esc/`←`: one level up, with the cursor back on the row that opened the
+  /// page; `true` leaves the Packages home.
+  fn back(&mut self) -> bool {
+    let (parent, origin) = match self.page {
+      PackagesPage::Home => return true,
+      PackagesPage::Details(index) => {
+        let origin = match self.details_parent {
+          PackagesPage::Aur => Some(Item::Aur(index)),
+          PackagesPage::Orphans => Some(Item::Orphan(index)),
+          PackagesPage::Search | PackagesPage::Installed => Some(Item::Package(index)),
+          _ => None,
+        };
+        (self.details_parent, origin)
+      }
+      PackagesPage::HistoryDetails(_) => (PackagesPage::History, None),
+      PackagesPage::CacheFiles => (PackagesPage::Cache, Some(Item::CacheFiles)),
+      PackagesPage::MirrorEditor => {
+        self.mirror_options = None;
+        (PackagesPage::Mirrors, Some(Item::ConfigureMirrors))
+      }
+      page => (PackagesPage::Home, Some(Item::Open(page))),
+    };
+    self.go(parent);
+    if let Some(origin) = origin {
+      let rows = self.rows();
+      self.menu.select(&rows, &origin);
+    }
     false
+  }
+
+  /// Runs the row `item`.
+  fn activate(&mut self, item: Item) {
+    if item.waits_for_jobs() && self.busy() {
+      return;
+    }
+    if !item.is_mirror_option() && self.destructive() {
+      return;
+    }
+    match item {
+      Item::Open(page) => {
+        self.go(page);
+        if matches!(page, PackagesPage::Search | PackagesPage::Installed) {
+          self.query.clear();
+          self.packages.clear();
+        }
+        self.reload();
+      }
+      Item::Package(index) | Item::Orphan(index) => {
+        if let Some(name) = self.packages.get(index).map(|package| package.name.clone()) {
+          self.details_parent = self.page;
+          self.details = None;
+          self.details_name = Some(name);
+          self.go(PackagesPage::Details(index));
+          self.reload();
+        }
+      }
+      Item::Aur(index) => {
+        if let Some(package) = self.aur.get(index) {
+          self.details = Some(PackageDetails {
+            package: Package {
+              name: package.name.clone(),
+              version: package.version.clone(),
+              repository: Some("AUR".into()),
+              description: package.description.clone(),
+              installed: package.installed,
+              ..Default::default()
+            },
+            ..Default::default()
+          });
+          self.details_name = Some(package.name.clone());
+          self.details_parent = PackagesPage::Aur;
+          self.go(PackagesPage::Details(index));
+        }
+      }
+      Item::Update(index) => {
+        if let Some(update) = self.updates.get(index) {
+          let name = update.name.clone();
+          self.request(Action::UpgradePackage(name));
+        }
+      }
+      Item::CacheFile(index) => {
+        if let Some(file) = self.cache.get(index) {
+          let path = file.path.clone();
+          self.request(Action::Downgrade(path));
+        }
+      }
+      Item::Install => self.install_open_package(),
+      Item::Remove => self.remove_open_package(),
+      Item::UpgradeAll => self.begin_plan(Action::Upgrade),
+      Item::RefreshDatabase => self.request(Action::RefreshDatabase),
+      Item::RemoveMarked => {
+        if !self.marked.is_empty() {
+          self.begin_plan(Action::Remove(self.marked.clone()));
+        }
+      }
+      Item::CleanKeepThree => self.request(Action::CleanCache("keep-three")),
+      Item::CleanKeepOne => self.request(Action::CleanCache("keep-one")),
+      Item::CleanUninstalled => self.request(Action::CleanCache("uninstalled")),
+      Item::CacheFiles => self.go(PackagesPage::CacheFiles),
+      Item::ConfigureMirrors => self.open_mirror_editor(),
+      Item::MirrorAge => self.open_number_input(InputMode::MirrorAge),
+      Item::MirrorCount => self.open_number_input(InputMode::MirrorCount),
+      Item::MirrorCountry | Item::MirrorProtocol | Item::MirrorSort => self.adjust(item, 1),
+      Item::MirrorPreview => {
+        if let Some(options) = self.mirror_options.clone() {
+          self.start_mirror_preview(options);
+        }
+      }
+    }
+  }
+  /// `←/→` (and Space) on a reflector option: cycles the choices or moves
+  /// the number one step, within the same bounds as before.
+  fn adjust(&mut self, item: Item, step: i32) {
+    let countries = self.mirror_countries.clone().unwrap_or_default();
+    let Some(options) = self.mirror_options.as_mut() else {
+      return;
+    };
+    match item {
+      Item::MirrorCountry => cycle_country(options, &countries, step),
+      Item::MirrorProtocol => cycle_protocol(options, step),
+      Item::MirrorSort => cycle_sort(options, step),
+      Item::MirrorAge => options.age_hours = step_within(options.age_hours, step, MIRROR_AGE_RANGE),
+      Item::MirrorCount => options.count = step_within(options.count, step, MIRROR_COUNT_RANGE),
+      _ => {}
+    }
+  }
+  /// Asks for confirmation before running `action`.
+  fn request(&mut self, action: Action) {
+    self.confirmation = ConfirmationState::default();
+    self.preview = None;
+    self.pending = Some(action);
   }
   /// Executes the `open_mirror_editor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_mirror_editor(&mut self) {
@@ -800,13 +938,11 @@ impl PackagesApp {
             .and_then(|c| c.first().cloned())
         })
         .unwrap_or_else(|| "Brazil".into());
-      self.mirror_editor = Some(MirrorEditor {
-        selected: 0,
-        options: ReflectorOptions {
-          countries: vec![default_country],
-          ..Default::default()
-        },
+      self.mirror_options = Some(ReflectorOptions {
+        countries: vec![default_country],
+        ..Default::default()
       });
+      self.go(PackagesPage::MirrorEditor);
       if self.mirror_countries.is_none() && !self.busy() {
         self.spawn_country_list();
       }
@@ -822,46 +958,6 @@ impl PackagesApp {
         .jobs
         .spawn(move |_| Ok(fetch_reflector_countries(capabilities).map(Loaded::MirrorCountries))),
     );
-  }
-  /// Processes `handle_mirror_editor` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn handle_mirror_editor(&mut self, key: KeyCode) -> bool {
-    let Some(editor) = self.mirror_editor.as_mut() else {
-      return false;
-    };
-    match key {
-      KeyCode::Esc => self.mirror_editor = None,
-      KeyCode::Up | KeyCode::Char('k') => editor.selected = editor.selected.saturating_sub(1),
-      KeyCode::Down | KeyCode::Char('j') => editor.selected = (editor.selected + 1).min(5),
-      KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') => match editor.selected {
-        0 => cycle_country(
-          &mut editor.options,
-          self.mirror_countries.as_deref().unwrap_or_default(),
-        ),
-        1 => cycle_protocol(&mut editor.options),
-        2 => {
-          editor.options.age_hours = if matches!(key, KeyCode::Left) {
-            editor.options.age_hours.saturating_sub(1).max(1)
-          } else {
-            (editor.options.age_hours + 1).min(24 * 365)
-          }
-        }
-        3 => {
-          editor.options.count = if matches!(key, KeyCode::Left) {
-            editor.options.count.saturating_sub(1).max(1)
-          } else {
-            (editor.options.count + 1).min(100)
-          }
-        }
-        4 => cycle_sort(&mut editor.options),
-        _ => {}
-      },
-      KeyCode::Enter if editor.selected == 5 => {
-        let options = editor.options.clone();
-        self.start_mirror_preview(options);
-      }
-      _ => {}
-    }
-    false
   }
   /// Executes the `start_mirror_preview` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_mirror_preview(&mut self, options: ReflectorOptions) {
@@ -879,47 +975,87 @@ impl PackagesApp {
         .spawn(move |_| Ok(generate_mirror_preview(options, caps).map(Loaded::MirrorPreview))),
     );
   }
+  /// Opens the numeric field of a reflector option.
+  fn open_number_input(&mut self, mode: InputMode) {
+    self.input = Some(String::new());
+    self.input_mode = Some(mode);
+  }
   /// Processes `handle_input` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn handle_input(&mut self, key: KeyCode) -> bool {
+    let mode = self.input_mode.unwrap_or(InputMode::Search);
+    let Some(input) = self.input.as_mut() else {
+      return false;
+    };
     match key {
-      KeyCode::Char(c) if !c.is_control() && self.input.as_ref().is_some_and(|v| v.len() < 128) => {
-        self.input.as_mut().unwrap().push(c)
-      }
+      KeyCode::Char(c) if accepts_input_char(mode, input, c) => input.push(c),
       KeyCode::Backspace => {
-        self.input.as_mut().unwrap().pop();
+        input.pop();
       }
       KeyCode::Esc => {
         self.input = None;
-        if self.input_search {
+        self.input_mode = None;
+        if mode == InputMode::Search {
           self.query.clear();
           self.packages.clear();
           self.aur.clear();
-          self.selected.index = 0;
+          self.menu = MenuState::default();
         }
-        self.input_search = false
       }
       KeyCode::Enter => {
         let candidate = self.input.take().unwrap_or_default();
-        self.input_search = false;
-        let minimum = if self.page == PackagesPage::Aur { 2 } else { 1 };
-        if candidate.trim().chars().count() < minimum {
-          self.error(if self.page == PackagesPage::Aur {
-            tr(
-              self.lang,
-              "control_center.aur_search_requires_at_least_2_characters",
-            )
-          } else {
-            tr(self.lang, "control_center.enter_a_non_empty_search_query")
-          });
-          return false;
+        self.input_mode = None;
+        match mode {
+          InputMode::Search => self.apply_search_input(candidate),
+          InputMode::MirrorAge | InputMode::MirrorCount => {
+            self.apply_number_input(mode, &candidate)
+          }
         }
-        self.query = candidate;
-        self.selected.index = 0;
-        self.reload()
       }
       _ => {}
     }
     false
+  }
+  /// Confirms the `/` search field.
+  fn apply_search_input(&mut self, candidate: String) {
+    let minimum = if self.page == PackagesPage::Aur { 2 } else { 1 };
+    if candidate.trim().chars().count() < minimum {
+      self.error(if self.page == PackagesPage::Aur {
+        tr(
+          self.lang,
+          "control_center.aur_search_requires_at_least_2_characters",
+        )
+      } else {
+        tr(self.lang, "control_center.enter_a_non_empty_search_query")
+      });
+      return;
+    }
+    self.query = candidate;
+    self.menu = MenuState::default();
+    self.reload()
+  }
+  /// Confirms the numeric field of a reflector option, within its bounds.
+  fn apply_number_input(&mut self, mode: InputMode, candidate: &str) {
+    let (min, max) = if mode == InputMode::MirrorAge {
+      MIRROR_AGE_RANGE
+    } else {
+      MIRROR_COUNT_RANGE
+    };
+    match candidate.parse::<u32>() {
+      Ok(value) if (min..=max).contains(&value) => {
+        if let Some(options) = self.mirror_options.as_mut() {
+          if mode == InputMode::MirrorAge {
+            options.age_hours = value;
+          } else {
+            options.count = value;
+          }
+        }
+      }
+      _ => self.error(
+        tr(self.lang, "control_center.value_must_be_between")
+          .replace("{min}", &min.to_string())
+          .replace("{max}", &max.to_string()),
+      ),
+    }
   }
   /// Executes the `start_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending(&mut self) {
@@ -965,325 +1101,606 @@ impl PackagesApp {
       Ok(Ok((action, preview)))
     }));
   }
-  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn rows(&self) -> Vec<String> {
-    match self.page {
-      PackagesPage::Home => self.home_rows(),
-      PackagesPage::Aur => {
-        let mut rows = vec![self.search_row()];
-        rows.extend(
-          self
-            .aur
-            .iter()
-            .filter(|package| self.matches_query(&package.name, &package.description))
-            .map(|p| {
-              format!(
-                "{}  {}  [AUR]{}",
-                p.name,
-                p.version,
-                if p.installed {
-                  format!("   ● {}", tr(self.lang, "control_center.installed"))
-                } else {
-                  String::new()
-                }
-              )
-            }),
-        );
-        rows
+  /// Whether the open package is installed. Before its metadata arrives,
+  /// the flag of the list entry that opened it is used.
+  fn open_package_installed(&self) -> bool {
+    if let Some(details) = &self.details {
+      return details.package.installed;
+    }
+    match (self.page, self.details_parent) {
+      (PackagesPage::Details(index), PackagesPage::Aur) => {
+        self.aur.get(index).is_some_and(|package| package.installed)
       }
-      PackagesPage::Search => {
-        let mut rows = vec![self.search_row()];
-        rows.extend(self.visible_packages().into_iter().map(|p| {
-          let repo = p
-            .repository
-            .as_deref()
-            .map(|value| format!("  [{value}]"))
-            .unwrap_or_else(|| {
-              if p.foreign {
-                "  [AUR]".into()
-              } else {
-                String::new()
-              }
-            });
-          let badge = if p.installed {
-            format!("   ● {}", tr(self.lang, "control_center.installed"))
-          } else {
-            String::new()
-          };
-          format!("{}  {}{}{}", p.name, p.version, repo, badge)
-        }));
-        rows
-      }
-      PackagesPage::Installed => {
-        let mut rows = vec![self.search_row()];
-        rows.extend(self.visible_packages().into_iter().map(|p| {
-          let badge = if p.foreign {
-            "  [AUR]".to_owned()
-          } else {
-            String::new()
-          };
-          format!("{}  {}{}", p.name, p.version, badge)
-        }));
-        rows
-      }
-      PackagesPage::Orphans => {
-        let mut rows = vec![self.search_row()];
-        rows.extend(
-          self
-            .visible_packages()
-            .into_iter()
-            .map(|p| format!("{}  {}", p.name, p.version)),
-        );
-        rows
-      }
-      PackagesPage::Updates => {
-        let mut rows = vec![self.search_row()];
-        rows.extend(
-          self
-            .visible_updates()
-            .into_iter()
-            .map(|p| format!("{}  {} → {}", p.name, p.current, p.available)),
-        );
-        rows
-      }
-      PackagesPage::Cache | PackagesPage::Downgrade => self
-        .cache
-        .iter()
-        .map(|p| format!("{}  {}", cached_display_name(p), human_bytes(p.bytes)))
-        .collect(),
-      PackagesPage::History | PackagesPage::HistoryDetails(_) => self
-        .history
-        .iter()
-        .map(|p| {
-          let versions = match (&p.old_version, &p.new_version) {
-            (Some(old), Some(new)) => format!("  ({old} → {new})"),
-            _ => String::new(),
-          };
-          format!("{}  {}  {}{}", p.timestamp, p.action, p.package, versions)
-        })
-        .collect(),
-      PackagesPage::Mirrors => {
-        vec![tr(self.lang, "control_center.generate_mirrors_with_reflector").into()]
-      }
-      PackagesPage::Details(_) => self
-        .details
-        .as_ref()
-        .map(|d| detail_rows(self.lang, d))
-        .unwrap_or_default(),
+      (PackagesPage::Details(index), _) => self
+        .packages
+        .get(index)
+        .is_some_and(|package| package.installed),
+      _ => false,
     }
   }
-  /// Executes the `search_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn search_row(&self) -> String {
-    format!(
-      "{} {}: {}_",
-      AppConfig::icon(argvus_tui::icons::SEARCH),
-      tr(self.lang, "control_center.search_2c43ee"),
-      self.query
+  /// `Install`/`Reinstall` on the package details page.
+  fn install_open_package(&mut self) {
+    let Some(name) = self.details_target() else {
+      return;
+    };
+    if self.open_package_installed() {
+      self.begin_plan(Action::Reinstall(name));
+    } else if self.details_parent == PackagesPage::Aur {
+      self.begin_plan(Action::AurInstall(name));
+    } else {
+      self.begin_plan(Action::Install(vec![name]));
+    }
+  }
+  /// `Remove` on the package details page; only installed packages.
+  fn remove_open_package(&mut self) {
+    if let Some(name) = self.details_target()
+      && self.open_package_installed()
+    {
+      self.begin_plan(Action::Remove(vec![name]));
+    }
+  }
+
+  /// A translated field label without the trailing colon some catalog
+  /// entries carry, since Info rows draw label and value in columns.
+  fn field(&self, key: &str) -> &'static str {
+    tr(self.lang, key).trim_end_matches(':')
+  }
+  /// Rows of the current page.
+  fn rows(&self) -> Vec<Row<Item>> {
+    match self.page {
+      PackagesPage::Home => self.home_rows(),
+      PackagesPage::Search | PackagesPage::Installed => self.package_rows(),
+      PackagesPage::Aur => self.aur_rows(),
+      PackagesPage::Orphans => self.orphan_rows(),
+      PackagesPage::Updates => self.update_rows(),
+      PackagesPage::Details(_) => self.details_rows(),
+      PackagesPage::Cache => self.cache_rows(),
+      PackagesPage::CacheFiles => self.cache_file_rows(),
+      PackagesPage::Downgrade => self.downgrade_rows(),
+      PackagesPage::History | PackagesPage::HistoryDetails(_) => self.history_rows(),
+      PackagesPage::Mirrors => self.mirror_rows(),
+      PackagesPage::MirrorEditor => self.mirror_editor_rows(),
+    }
+  }
+  /// The filter typed on the list, shown as the first (read-only) row.
+  fn search_row(&self) -> Row<Item> {
+    Row::info(
+      self.field("control_center.search_2c43ee"),
+      format!("{}_", self.query),
     )
   }
   /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_rows(&self) -> Vec<String> {
+  fn home_rows(&self) -> Vec<Row<Item>> {
     let dashboard = &self.dashboard;
-    let pending = tr(self.lang, "control_center.pending");
-    let packages = tr(self.lang, "control_center.packages_c945db");
-    let files = tr(self.lang, "control_center.files_7093b3");
-    let entries = tr(self.lang, "control_center.entries");
-    let versions = tr(self.lang, "control_center.versions");
-    let active = tr(self.lang, "control_center.active_ae7190");
+    let lang = self.lang;
+    let packages = tr(lang, "control_center.packages_c945db");
     self
       .home_pages()
       .into_iter()
-      .map(|page| match page {
-        PackagesPage::Search => format!(
-          "{} {}  ·  {} {}",
-          AppConfig::icon(argvus_tui::icons::SEARCH),
-          tr(self.lang, "control_center.install_official"),
-          dashboard.available_count,
-          packages
-        ),
-        PackagesPage::Aur => format!(
-          "{} {}  ·  {}",
-          AppConfig::icon(argvus_tui::icons::SUCCESS),
-          tr(self.lang, "control_center.install_aur"),
-          dashboard.aur_helper.as_deref().unwrap_or("—")
-        ),
-        PackagesPage::Installed => format!(
-          "{} {}  ·  {} {}",
-          AppConfig::icon(argvus_tui::icons::PACKAGES),
-          tr(self.lang, "control_center.installed_official"),
-          dashboard.installed_count,
-          packages
-        ),
-        PackagesPage::Orphans => format!(
-          "{} {}  ·  {} {}",
-          AppConfig::icon(argvus_tui::icons::ERROR),
-          tr(self.lang, "control_center.installed_orphans"),
-          dashboard.orphan_count,
-          tr(self.lang, "control_center.orphans")
-        ),
-        PackagesPage::Updates => format!(
-          "{} {}  ·  {} {}",
-          AppConfig::icon(argvus_tui::icons::REFRESH),
-          tr(self.lang, "control_center.updates_official"),
-          dashboard.update_count,
-          pending
-        ),
-        PackagesPage::Cache => format!(
-          "{} {}  ·  {} {} · {}",
-          AppConfig::icon(argvus_tui::icons::STORAGE),
-          tr(self.lang, "control_center.cache"),
-          dashboard.cache_count,
-          files,
-          human_bytes(dashboard.cache_bytes)
-        ),
-        PackagesPage::History => format!(
-          "{} {}  ·  {} {}",
-          AppConfig::icon(argvus_tui::icons::LOGS),
-          tr(self.lang, "control_center.history"),
-          dashboard.history_count,
-          entries
-        ),
-        PackagesPage::Downgrade => format!(
-          "{} {}  ·  {} {}",
-          AppConfig::icon(argvus_tui::icons::UPDATE),
-          tr(self.lang, "control_center.downgrade"),
-          dashboard.cache_count,
-          versions
-        ),
-        PackagesPage::Mirrors => format!(
-          "{} {}  ·  {}/{} {}",
-          AppConfig::icon(argvus_tui::icons::NETWORK),
-          tr(self.lang, "control_center.mirrors"),
-          dashboard.mirrors_enabled,
-          dashboard.mirrors_total,
-          active
-        ),
-        _ => String::new(),
+      .map(|page| {
+        let (icon, label, detail) = match page {
+          PackagesPage::Search => (
+            icons::SEARCH,
+            "control_center.install_official",
+            format!("{} {packages}", dashboard.available_count),
+          ),
+          PackagesPage::Aur => (
+            icons::ADD,
+            "control_center.install_aur",
+            dashboard.aur_helper.clone().unwrap_or_else(|| "—".into()),
+          ),
+          PackagesPage::Installed => (
+            icons::INSTALLED,
+            "control_center.installed_official",
+            format!("{} {packages}", dashboard.installed_count),
+          ),
+          PackagesPage::Orphans => (
+            icons::CLEAN,
+            "control_center.installed_orphans",
+            format!(
+              "{} {}",
+              dashboard.orphan_count,
+              tr(lang, "control_center.orphans")
+            ),
+          ),
+          PackagesPage::Updates => (
+            icons::UPDATE,
+            "control_center.updates_official",
+            format!(
+              "{} {}",
+              dashboard.update_count,
+              tr(lang, "control_center.pending")
+            ),
+          ),
+          PackagesPage::Cache => (
+            icons::DATABASE,
+            "control_center.cache",
+            format!(
+              "{} {} · {}",
+              dashboard.cache_count,
+              tr(lang, "control_center.files_7093b3"),
+              human_bytes(dashboard.cache_bytes)
+            ),
+          ),
+          PackagesPage::History => (
+            icons::HISTORY,
+            "control_center.history",
+            format!(
+              "{} {}",
+              dashboard.history_count,
+              tr(lang, "control_center.entries")
+            ),
+          ),
+          PackagesPage::Downgrade => (
+            icons::DOWNGRADE,
+            "control_center.downgrade",
+            format!(
+              "{} {}",
+              dashboard.cache_count,
+              tr(lang, "control_center.versions")
+            ),
+          ),
+          _ => (
+            icons::NETWORK,
+            "control_center.mirrors",
+            format!(
+              "{}/{} {}",
+              dashboard.mirrors_enabled,
+              dashboard.mirrors_total,
+              tr(lang, "control_center.active_ae7190")
+            ),
+          ),
+        };
+        Row::submenu(Item::Open(page), tr(lang, label))
+          .icon(icon)
+          .detail(detail)
       })
       .collect()
   }
-  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn draw(&self, f: &mut Frame) {
-    let rows = self.rows();
-    let breadcrumb = self.breadcrumb();
-    let body = shell(f, f.area(), &self.theme, &breadcrumb, self.footer_hints());
-    let buttons = self.buttons();
-    let raw_buttons: Vec<Button> = buttons.iter().map(|(_, button)| button.clone()).collect();
-    let (body, button_area) = if raw_buttons.is_empty() {
-      (body, None)
-    } else {
-      let button_height = argvus_tui::buttons::height(&raw_buttons, body.width).min(body.height);
-      let split =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(body);
-      (split[0], Some(split[1]))
-    };
-    if self.page == PackagesPage::Mirrors {
-      let mirror_rows = self
-        .mirrors
-        .iter()
-        .map(|mirror| {
-          Line::from(format!(
-            "{} {}",
-            if mirror.enabled { "●" } else { "○" },
-            mirror.server
-          ))
-        })
-        .collect::<Vec<_>>();
-      let sections = Layout::vertical([
-        Constraint::Length(mirror_rows.len().min(12) as u16),
-        Constraint::Min(1),
-      ])
-      .split(body);
-      readonly(f, sections[0], &self.theme, &mirror_rows);
-      list(f, sections[1], &self.theme, &rows, self.selected.index);
-    } else {
-      list(
-        f,
-        body,
-        &self.theme,
-        &rows,
-        self
-          .selected
-          .index
-          .saturating_add(usize::from(matches!(
-            self.page,
-            PackagesPage::Search
-              | PackagesPage::Installed
-              | PackagesPage::Orphans
-              | PackagesPage::Updates
-              | PackagesPage::Aur
-          )))
-          .min(rows.len().saturating_sub(1)),
+  /// Search and Installed: each package opens its details page.
+  fn package_rows(&self) -> Vec<Row<Item>> {
+    let installed = tr(self.lang, "control_center.installed");
+    let mut rows = vec![self.search_row()];
+    rows.extend(self.visible_packages().into_iter().map(|(index, package)| {
+      let mut parts = vec![package.version.clone()];
+      if self.page == PackagesPage::Search {
+        if let Some(repository) = &package.repository {
+          parts.push(repository.clone());
+        } else if package.foreign {
+          parts.push("AUR".into());
+        }
+        if package.installed {
+          parts.push(installed.into());
+        }
+      } else if package.foreign {
+        parts.push("AUR".into());
+      }
+      Row::submenu(Item::Package(index), package.name.clone()).detail(joined_parts(&parts))
+    }));
+    rows
+  }
+  /// AUR search results; each opens its details page.
+  fn aur_rows(&self) -> Vec<Row<Item>> {
+    let installed = tr(self.lang, "control_center.installed");
+    let mut rows = vec![self.search_row()];
+    rows.extend(self.visible_aur().into_iter().map(|(index, package)| {
+      let mut parts = vec![package.version.clone(), "AUR".into()];
+      if package.installed {
+        parts.push(installed.into());
+      }
+      Row::submenu(Item::Aur(index), package.name.clone()).detail(joined_parts(&parts))
+    }));
+    rows
+  }
+  /// Orphans: Space marks (`[x]`), Enter opens the details; the marked set
+  /// is removed from the Danger zone.
+  fn orphan_rows(&self) -> Vec<Row<Item>> {
+    let mut rows = vec![self.search_row()];
+    rows.extend(self.visible_packages().into_iter().map(|(index, package)| {
+      let marked = self.marked.contains(&package.name);
+      let row = Row::toggle(Item::Orphan(index), package.name.clone(), marked);
+      if package.version.is_empty() {
+        row
+      } else {
+        row.detail(package.version.clone())
+      }
+    }));
+    if !self.packages.is_empty() {
+      rows.push(Row::section(tr(self.lang, "control_center.danger_zone")));
+      rows.push(
+        Row::destructive(
+          Item::RemoveMarked,
+          format!(
+            "{} ({})",
+            tr(self.lang, "control_center.remove_marked"),
+            self.marked.len()
+          ),
+        )
+        .icon(icons::DELETE)
+        .enabled(!self.marked.is_empty()),
       );
     }
-    if let Some(button_area) = button_area {
-      let focus = if self.on_buttons {
-        self.button_selected
-      } else {
-        usize::MAX
-      };
-      argvus_tui::buttons::draw(f, button_area, &raw_buttons, focus, &self.theme);
+    rows
+  }
+  /// Updates: the page actions, then one row per package (Enter updates
+  /// it after the confirmation, as before).
+  fn update_rows(&self) -> Vec<Row<Item>> {
+    let visible = self.visible_updates();
+    let mut rows = vec![
+      self.search_row(),
+      Row::section(tr(self.lang, "control_center.section_actions")),
+      Row::action(
+        Item::UpgradeAll,
+        tr(self.lang, "control_center.upgrade_all"),
+      )
+      .icon(icons::UPDATE)
+      .enabled(!visible.is_empty()),
+      Row::action(
+        Item::RefreshDatabase,
+        tr(self.lang, "control_center.refresh_database"),
+      )
+      .icon(icons::SYNC),
+    ];
+    if !visible.is_empty() {
+      rows.push(Row::section(tr(
+        self.lang,
+        "control_center.section_packages",
+      )));
+      rows.extend(visible.into_iter().map(|(index, update)| {
+        Row::action(Item::Update(index), update.name.clone())
+          .detail(format!("{} → {}", update.current, update.available))
+      }));
     }
+    rows
+  }
+  /// Details of one package: its actions first, the metadata in sections,
+  /// and `Remove` in the Danger zone.
+  fn details_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let installed = self.open_package_installed();
+    let mut rows = vec![
+      Row::section(tr(lang, "control_center.section_actions")),
+      if installed {
+        Row::action(Item::Install, tr(lang, "control_center.reinstall")).icon(icons::RESTART)
+      } else {
+        Row::action(Item::Install, tr(lang, "control_center.install")).icon(icons::ADD)
+      },
+    ];
+    if let Some(d) = &self.details {
+      let dash = |value: Option<&str>| value.unwrap_or("—").to_owned();
+      let status = if d.package.installed {
+        tr(lang, "control_center.installed")
+      } else {
+        tr(lang, "control_center.not_installed")
+      };
+      rows.extend([
+        Row::section(tr(lang, "control_center.section_package")),
+        Row::info(self.field("control_center.name"), d.package.name.clone()),
+        Row::info(
+          self.field("control_center.version_20bc85"),
+          d.package.version.clone(),
+        ),
+        Row::info(
+          self.field("control_center.repository"),
+          dash(d.package.repository.as_deref()),
+        ),
+        Row::info(self.field("control_center.status"), status),
+        Row::info(
+          self.field("control_center.description"),
+          d.package.description.clone(),
+        ),
+        Row::info(
+          self.field("control_center.installed_size"),
+          d.installed_size
+            .map(human_bytes)
+            .unwrap_or_else(|| "—".into()),
+        ),
+        Row::info(
+          self.field("control_center.download"),
+          d.download_size
+            .map(human_bytes)
+            .unwrap_or_else(|| "—".into()),
+        ),
+        Row::section(tr(lang, "control_center.section_source")),
+        Row::info(
+          self.field("control_center.architecture"),
+          dash(d.architecture.as_deref()),
+        ),
+        Row::info(self.field("control_center.url"), dash(d.url.as_deref())),
+        Row::info(
+          self.field("control_center.licenses"),
+          join_or_dash(&d.licenses),
+        ),
+        Row::info(self.field("control_center.groups"), join_or_dash(&d.groups)),
+        Row::info(
+          self.field("control_center.install_date"),
+          dash(d.install_date.as_deref()),
+        ),
+        Row::section(tr(lang, "control_center.section_dependencies")),
+        Row::info(
+          self.field("control_center.depends_on"),
+          join_or_dash(&d.dependencies),
+        ),
+        Row::info(
+          self.field("control_center.optional"),
+          join_or_dash(&d.optional_dependencies),
+        ),
+        Row::info(
+          self.field("control_center.required_by"),
+          join_or_dash(&d.required_by),
+        ),
+        Row::info(
+          self.field("control_center.provides"),
+          join_or_dash(&d.provides),
+        ),
+        Row::info(
+          self.field("control_center.conflicts"),
+          join_or_dash(&d.conflicts),
+        ),
+        Row::info(
+          self.field("control_center.replaces"),
+          join_or_dash(&d.replaces),
+        ),
+      ]);
+    }
+    rows.push(Row::section(tr(lang, "control_center.danger_zone")));
+    rows.push(
+      Row::destructive(Item::Remove, tr(lang, "control_center.remove"))
+        .icon(icons::DELETE)
+        .enabled(installed),
+    );
+    rows
+  }
+  /// Cache: a summary, the read-only file list in its own page, and the
+  /// three cleanups in the Danger zone.
+  fn cache_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let bytes = self.cache.iter().map(|file| file.bytes).sum();
+    vec![
+      Row::section(tr(lang, "control_center.section_summary")),
+      Row::info(
+        tr(lang, "control_center.cache_file_count"),
+        self.cache.len().to_string(),
+      ),
+      Row::info(self.field("control_center.total_size"), human_bytes(bytes)),
+      Row::submenu(Item::CacheFiles, tr(lang, "control_center.cache_files"))
+        .icon(icons::FOLDER)
+        .detail(format!(
+          "{} {}",
+          self.cache.len(),
+          tr(lang, "control_center.files_7093b3")
+        )),
+      Row::section(tr(lang, "control_center.danger_zone")),
+      Row::destructive(
+        Item::CleanKeepThree,
+        tr(lang, "control_center.clean_cache_keep_three"),
+      )
+      .icon(icons::CLEAN),
+      Row::destructive(
+        Item::CleanKeepOne,
+        tr(lang, "control_center.clean_cache_keep_one"),
+      )
+      .icon(icons::CLEAN),
+      Row::destructive(
+        Item::CleanUninstalled,
+        tr(lang, "control_center.clean_cache_uninstalled"),
+      )
+      .icon(icons::CLEAN),
+    ]
+  }
+  /// Read-only list of the cached package files; the page only scrolls.
+  fn cache_file_rows(&self) -> Vec<Row<Item>> {
+    self
+      .cache
+      .iter()
+      .map(|file| Row::info(cached_display_name(file), human_bytes(file.bytes)))
+      .collect()
+  }
+  /// Downgrade: every cached file installs that version after the
+  /// confirmation.
+  fn downgrade_rows(&self) -> Vec<Row<Item>> {
+    self
+      .cache
+      .iter()
+      .enumerate()
+      .map(|(index, file)| {
+        Row::destructive(Item::CacheFile(index), cached_display_name(file))
+          .detail(human_bytes(file.bytes))
+      })
+      .collect()
+  }
+  /// The pacman log, read-only; the page only scrolls.
+  fn history_rows(&self) -> Vec<Row<Item>> {
+    self
+      .history
+      .iter()
+      .map(|entry| {
+        let versions = match (&entry.old_version, &entry.new_version) {
+          (Some(old), Some(new)) => format!("{old} → {new}"),
+          _ => String::new(),
+        };
+        Row::info(
+          format!("{}  {}  {}", entry.timestamp, entry.action, entry.package),
+          versions,
+        )
+      })
+      .collect()
+  }
+  /// Mirrors: `Configure mirrors` opens the reflector options; the current
+  /// mirror list follows, read-only.
+  fn mirror_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let configure = Row::submenu(
+      Item::ConfigureMirrors,
+      tr(lang, "control_center.configure_mirrors"),
+    )
+    .icon(icons::EDIT);
+    let mut rows = vec![
+      Row::section(tr(lang, "control_center.section_actions")),
+      if self.capabilities.has_reflector {
+        configure
+      } else {
+        configure
+          .detail(tr(lang, "control_center.unavailable_no_reflector"))
+          .enabled(false)
+      },
+    ];
+    if !self.mirrors.is_empty() {
+      rows.push(Row::section(tr(lang, "control_center.section_servers")));
+      rows.extend(self.mirrors.iter().map(|mirror| {
+        Row::info(
+          mirror.server.clone(),
+          tr(
+            lang,
+            if mirror.enabled {
+              "control_center.mirror_enabled"
+            } else {
+              "control_center.mirror_disabled"
+            },
+          ),
+        )
+      }));
+    }
+    rows
+  }
+  /// Reflector options and `Generate preview`, which confirms before the
+  /// mirror list is replaced. Not a draft: nothing is saved until then.
+  fn mirror_editor_rows(&self) -> Vec<Row<Item>> {
+    let lang = self.lang;
+    let Some(options) = &self.mirror_options else {
+      return Vec::new();
+    };
+    let country = options
+      .countries
+      .first()
+      .cloned()
+      .unwrap_or_else(|| tr(lang, "control_center.all").into());
+    vec![
+      Row::value(
+        Item::MirrorCountry,
+        tr(lang, "control_center.country"),
+        country,
+        Some(1),
+      )
+      .icon(icons::EARTH),
+      Row::value(
+        Item::MirrorProtocol,
+        tr(lang, "control_center.protocol"),
+        options.protocols.join(","),
+        Some(1),
+      )
+      .icon(icons::LINK),
+      Row::value(
+        Item::MirrorAge,
+        tr(lang, "control_center.maximum_age"),
+        format!("{} h", options.age_hours),
+        Some(1),
+      )
+      .icon(icons::CLOCK),
+      Row::value(
+        Item::MirrorCount,
+        tr(lang, "control_center.count"),
+        options.count.to_string(),
+        Some(1),
+      )
+      .icon(icons::COUNTER),
+      Row::value(
+        Item::MirrorSort,
+        tr(lang, "control_center.sort"),
+        options.sort.clone(),
+        Some(1),
+      )
+      .icon(icons::SORT),
+      Row::separator(),
+      Row::action(
+        Item::MirrorPreview,
+        tr(lang, "control_center.generate_preview"),
+      )
+      .icon(icons::VISIBLE)
+      .emphasis(argvus_tui::menu::Emphasis::Primary),
+    ]
+  }
+  /// The footer derived from the selected row.
+  fn footer_hints(&self, rows: &[Row<Item>]) -> String {
+    let mut menu = self.menu;
+    menu.normalize(rows);
+    let typing = filters_while_typing(self.page);
+    // Enter opens an orphan's details; Space marks it.
+    let row = match menu.selected_kind(rows) {
+      Some(RowKind::Toggle { .. }) if self.page == PackagesPage::Orphans => Some(RowKind::Submenu),
+      kind => kind,
+    };
+    let mark = [("Space", tr(self.lang, "control_center.mark"))];
+    hints(
+      self.lang,
+      &HintContext {
+        row,
+        can_go_back: true,
+        search: typing,
+        refresh: !typing && self.page != PackagesPage::MirrorEditor,
+        extra: if self.page == PackagesPage::Orphans {
+          &mark
+        } else {
+          &[]
+        },
+        ..HintContext::default()
+      },
+    )
+  }
+  /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  pub fn draw(&mut self, f: &mut Frame) {
+    let area = f.area();
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    let body = shell(
+      f,
+      area,
+      &self.theme,
+      &self.breadcrumb(),
+      &self.footer_hints(&rows),
+    );
+    self.list_height = body.height;
+    draw_menu(
+      f,
+      body,
+      &self.theme,
+      &rows,
+      &mut self.menu,
+      MenuStyle {
+        icons: AppConfig::icons_enabled(),
+      },
+    );
+    self.overlays(f);
+  }
+  /// Draws the input field, the confirmation, the status and the live
+  /// transaction output over the page.
+  fn overlays(&self, f: &mut Frame) {
     if let Some(input) = &self.input {
-      let popup = argvus_tui::chrome::centered(f.area(), 50, 7);
+      let mode = self.input_mode.unwrap_or(InputMode::Search);
+      let (title, prompt) = match mode {
+        InputMode::Search => (
+          tr(self.lang, "control_center.search_2c43ee"),
+          tr(self.lang, "control_center.search_packages"),
+        ),
+        InputMode::MirrorAge => (
+          tr(self.lang, "control_center.maximum_age"),
+          tr(self.lang, "control_center.input_5ca63b"),
+        ),
+        InputMode::MirrorCount => (
+          tr(self.lang, "control_center.count"),
+          tr(self.lang, "control_center.input_5ca63b"),
+        ),
+      };
+      let popup = chrome::centered(f.area(), 50, 7);
       f.render_widget(Clear, popup);
       f.render_widget(
         Paragraph::new(vec![
-          Line::from(if self.input_search {
-            tr(self.lang, "control_center.search_packages")
-          } else {
-            tr(self.lang, "control_center.input_5ca63b")
-          }),
+          Line::from(prompt),
           Line::from(format!("{input}_")),
           Line::from(tr(self.lang, "control_center.enter_apply_esc_cancel")),
         ])
-        .block(Block::bordered().title(tr(self.lang, "control_center.search_2c43ee"))),
+        .block(Block::bordered().title(title)),
         popup,
-      );
-    }
-    if let Some(editor) = &self.mirror_editor {
-      let popup = argvus_tui::chrome::centered(f.area(), 60, 15);
-      f.render_widget(Clear, popup);
-      f.render_widget(
-        Block::bordered().title(tr(self.lang, "control_center.mirrors")),
-        popup,
-      );
-      let country = editor
-        .options
-        .countries
-        .first()
-        .map(String::as_str)
-        .unwrap_or(tr(self.lang, "control_center.all"));
-      let fields = vec![
-        format!("{}: {country}", tr(self.lang, "control_center.country")),
-        format!(
-          "{}: {}",
-          tr(self.lang, "control_center.protocol"),
-          editor.options.protocols.join(",")
-        ),
-        format!(
-          "{}: {} h",
-          tr(self.lang, "control_center.maximum_age"),
-          editor.options.age_hours
-        ),
-        format!(
-          "{}: {}",
-          tr(self.lang, "control_center.count"),
-          editor.options.count
-        ),
-        format!(
-          "{}: {}",
-          tr(self.lang, "control_center.sort"),
-          editor.options.sort
-        ),
-        tr(self.lang, "control_center.generate_preview").into(),
-      ];
-      list(
-        f,
-        popup.inner(Margin::new(1, 1)),
-        &self.theme,
-        &fields,
-        editor.selected,
       );
     }
     if let Some(a) = &self.pending {
@@ -1315,7 +1732,7 @@ impl PackagesApp {
     if self.transaction_open
       && let Some(output) = self.transaction_live.as_ref().map(|live| live.output())
     {
-      let popup = argvus_tui::chrome::centered(f.area(), 100, 20);
+      let popup = chrome::centered(f.area(), TRANSACTION_POPUP_WIDTH, TRANSACTION_POPUP_HEIGHT);
       let total = transaction_wrapped_lines(&output);
       let shown_total = total.max(1);
       let current = (self.transaction_scroll as usize + 1).min(shown_total);
@@ -1362,381 +1779,63 @@ impl PackagesApp {
     }
   }
   /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn page_label(&self) -> &'static str {
+  fn page_label(&self) -> String {
+    let label = |key| tr(self.lang, key).to_owned();
     match self.page {
-      PackagesPage::Search | PackagesPage::Details(_) => {
-        tr(self.lang, "control_center.search_2c43ee")
-      }
-      PackagesPage::Installed => tr(self.lang, "control_center.installed_e91b6d"),
-      PackagesPage::Updates => tr(self.lang, "control_center.updates"),
-      PackagesPage::Orphans => tr(self.lang, "control_center.orphans_29aae8"),
-      PackagesPage::Cache => tr(self.lang, "control_center.cache"),
-      PackagesPage::Aur => tr(self.lang, "control_center.aur"),
-      PackagesPage::History | PackagesPage::HistoryDetails(_) => {
-        tr(self.lang, "control_center.history")
-      }
-      PackagesPage::Downgrade => tr(self.lang, "control_center.downgrade"),
-      PackagesPage::Mirrors => tr(self.lang, "control_center.mirrors"),
-      PackagesPage::Home => tr(self.lang, "control_center.packages"),
-    }
-  }
-  /// Applies the `toggle_multi` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn toggle_multi(&mut self) {
-    if let Some(p) = self.multi.iter().position(|v| *v == self.selected.index) {
-      self.multi.remove(p);
-    } else {
-      self.multi.push(self.selected.index)
-    }
-  }
-  /// Executes the `install_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn install_selected(&mut self) {
-    let Some(name) = self.selected_package_name() else {
-      return;
-    };
-    let installed = self.selection_installed();
-    self.begin_plan(if installed {
-      Action::Reinstall(name)
-    } else if self.page == PackagesPage::Aur || self.details_parent == PackagesPage::Aur {
-      Action::AurInstall(name)
-    } else {
-      Action::Install(vec![name])
-    });
-  }
-  /// Executes the `remove_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn remove_selected(&mut self) {
-    let installed = self.selection_installed();
-    let v = self.selected_names();
-    if installed && !v.is_empty() {
-      self.begin_plan(Action::Remove(v))
-    }
-  }
-  /// Executes the `selection_installed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn selection_installed(&self) -> bool {
-    match self.page {
-      PackagesPage::Details(_) => self
-        .details
-        .as_ref()
-        .map(|details| details.package.installed)
-        .unwrap_or(false),
-      PackagesPage::Aur => self
-        .aur
-        .get(self.selected.index)
-        .map(|package| package.installed)
-        .unwrap_or(false),
-      PackagesPage::Updates => self.selected_package_name().is_some(),
-      _ => self
-        .visible_packages()
-        .get(self.selected.index)
-        .map(|package| package.installed)
-        .unwrap_or(false),
-    }
-  }
-  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn toggle_buttons(&mut self, backwards: bool) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    if self.on_buttons {
-      self.on_buttons = false;
-      if let Some(index) = self.button_from.take() {
-        self.selected.index = index;
-      }
-    } else {
-      self.button_from = Some(self.selected.index);
-      self.button_selected = if backwards { count - 1 } else { 0 };
-      self.on_buttons = true;
-    }
-  }
-  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn move_button(&mut self, delta: isize) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    self.button_selected =
-      (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
-  }
-  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn activate_button(&mut self) {
-    if self.busy() {
-      return;
-    }
-    let actions = self.buttons();
-    let Some((action, _)) = actions.get(self.button_selected) else {
-      return;
-    };
-    match *action {
-      ActionButton::Install => self.install_selected(),
-      ActionButton::Remove => self.remove_selected(),
-      ActionButton::Update => {
-        if let Some(name) = self.selected_package_name() {
-          self.pending = Some(Action::UpgradePackage(name));
-          self.confirmation = ConfirmationState::default();
-        }
-      }
-      ActionButton::Upgrade => self.begin_plan(Action::Upgrade),
-      ActionButton::RefreshDatabase => {
-        self.pending = Some(Action::RefreshDatabase);
-        self.confirmation = ConfirmationState::default();
-      }
-      ActionButton::ToggleMulti => self.toggle_multi(),
-      ActionButton::CleanKeepThree => self.pending = Some(Action::CleanCache("keep-three")),
-      ActionButton::CleanKeepOne => self.pending = Some(Action::CleanCache("keep-one")),
-      ActionButton::CleanUninstalled => self.pending = Some(Action::CleanCache("uninstalled")),
-      ActionButton::Downgrade => {
-        if let Some(p) = self.cache.get(self.selected.index) {
-          self.pending = Some(Action::Downgrade(p.path.clone()));
-        }
-      }
-    }
-  }
-  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn buttons(&self) -> Vec<(ActionButton, Button)> {
-    let install = Button::new(tr(self.lang, "control_center.install"), ButtonKind::Primary);
-    let reinstall = Button::new(
-      tr(self.lang, "control_center.reinstall"),
-      ButtonKind::Primary,
-    );
-    let remove = Button::new(tr(self.lang, "control_center.remove"), ButtonKind::Danger);
-    match self.page {
-      PackagesPage::Home
-      | PackagesPage::History
-      | PackagesPage::HistoryDetails(_)
-      | PackagesPage::Mirrors => Vec::new(),
-      PackagesPage::Installed if self.selected_package_name().is_some() => {
-        vec![
-          (ActionButton::Install, reinstall),
-          (ActionButton::Remove, remove),
-        ]
-      }
-      PackagesPage::Search | PackagesPage::Aur | PackagesPage::Details(_)
-        if self.selected_package_name().is_some() =>
-      {
-        vec![
-          (ActionButton::Install, install),
-          (ActionButton::Remove, remove),
-        ]
-      }
-      PackagesPage::Updates => {
-        let mut buttons = vec![(
-          ActionButton::RefreshDatabase,
-          Button::new(
-            tr(self.lang, "control_center.refresh_database"),
-            ButtonKind::Secondary,
-          ),
-        )];
-        if !self.visible_updates().is_empty() {
-          buttons.insert(
-            0,
-            (
-              ActionButton::Update,
-              Button::new(tr(self.lang, "control_center.update"), ButtonKind::Primary),
-            ),
-          );
-          buttons.insert(
-            1,
-            (
-              ActionButton::Upgrade,
-              Button::new(
-                tr(self.lang, "control_center.upgrade_all"),
-                ButtonKind::Secondary,
-              ),
-            ),
-          );
-        }
-        buttons
-      }
-      PackagesPage::Orphans if !self.packages.is_empty() => vec![
-        (
-          ActionButton::ToggleMulti,
-          Button::new(
-            tr(self.lang, "control_center.select"),
-            ButtonKind::Secondary,
-          ),
-        ),
-        (ActionButton::Remove, remove),
-      ],
-      PackagesPage::Cache => vec![
-        (
-          ActionButton::CleanKeepThree,
-          Button::new(
-            tr(self.lang, "control_center.clean_cache"),
-            ButtonKind::Primary,
-          ),
-        ),
-        (
-          ActionButton::CleanKeepOne,
-          Button::new(
-            tr(self.lang, "control_center.keep_one"),
-            ButtonKind::Secondary,
-          ),
-        ),
-        (
-          ActionButton::CleanUninstalled,
-          Button::new(
-            tr(self.lang, "control_center.uninstalled"),
-            ButtonKind::Secondary,
-          ),
-        ),
-      ],
-      PackagesPage::Downgrade if self.cache.get(self.selected.index).is_some() => vec![(
-        ActionButton::Downgrade,
-        Button::new(
-          tr(self.lang, "control_center.downgrade_c6e26f"),
-          ButtonKind::Primary,
-        ),
-      )],
-      _ => Vec::new(),
-    }
-  }
-  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn footer_hints(&self) -> &'static str {
-    let home = tr(
-      self.lang,
-      "control_center.navigate_enter_open_esc_back_r_refresh_help",
-    );
-    let action = tr(
-      self.lang,
-      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
-    );
-    let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
-    match self.page {
-      PackagesPage::Home => home,
-      PackagesPage::History | PackagesPage::HistoryDetails(_) => readonly,
-      _ => {
-        if self.buttons().is_empty() {
-          readonly
-        } else {
-          action
-        }
-      }
+      PackagesPage::Search => label("control_center.search_2c43ee"),
+      PackagesPage::Details(_) => format!(
+        "{} > {}",
+        match self.details_parent {
+          PackagesPage::Installed => label("control_center.installed_e91b6d"),
+          PackagesPage::Orphans => label("control_center.orphans_29aae8"),
+          PackagesPage::Aur => label("control_center.aur"),
+          _ => label("control_center.search_2c43ee"),
+        },
+        self.details_target().unwrap_or_default()
+      ),
+      PackagesPage::Installed => label("control_center.installed_e91b6d"),
+      PackagesPage::Updates => label("control_center.updates"),
+      PackagesPage::Orphans => label("control_center.orphans_29aae8"),
+      PackagesPage::Cache => label("control_center.cache"),
+      PackagesPage::CacheFiles => format!(
+        "{} > {}",
+        label("control_center.cache"),
+        label("control_center.cache_files")
+      ),
+      PackagesPage::Aur => label("control_center.aur"),
+      PackagesPage::History | PackagesPage::HistoryDetails(_) => label("control_center.history"),
+      PackagesPage::Downgrade => label("control_center.downgrade"),
+      PackagesPage::Mirrors => label("control_center.mirrors"),
+      PackagesPage::MirrorEditor => format!(
+        "{} > {}",
+        label("control_center.mirrors"),
+        label("control_center.configure_mirrors")
+      ),
+      PackagesPage::Home => label("control_center.packages"),
     }
   }
 }
-/// Executes the `detail_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn detail_rows(lang: Lang, d: &PackageDetails) -> Vec<String> {
-  let status = if d.package.installed {
-    format!("● {}", tr(lang, "control_center.installed"))
-  } else {
-    tr(lang, "control_center.not_installed").into()
-  };
-  let installed_size = d
-    .installed_size
-    .map(human_bytes)
-    .unwrap_or_else(|| "—".into());
-  let download_size = d
-    .download_size
-    .map(human_bytes)
-    .unwrap_or_else(|| "—".into());
-  vec![
-    format!(
-      " {} {}",
-      AppConfig::icon(argvus_tui::icons::PACKAGES),
-      tr(lang, "control_center.package_b3ef4b")
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.name"),
-      d.package.name
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.version_20bc85"),
-      d.package.version
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.repository"),
-      d.package.repository.as_deref().unwrap_or("—")
-    ),
-    format!("   {:<18} {}", tr(lang, "control_center.status"), status),
-    "".into(),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.description"),
-      d.package.description
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.installed_size"),
-      installed_size
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.download"),
-      download_size
-    ),
-    "".into(),
-    format!(
-      " {} {}",
-      AppConfig::icon(argvus_tui::icons::LINK),
-      tr(lang, "control_center.source_70835f")
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.architecture"),
-      d.architecture.as_deref().unwrap_or("—")
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.url"),
-      d.url.as_deref().unwrap_or("—")
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.licenses"),
-      join_or_dash(&d.licenses)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.groups"),
-      join_or_dash(&d.groups)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.install_date"),
-      d.install_date.as_deref().unwrap_or("—")
-    ),
-    "".into(),
-    format!(
-      " {} {}",
-      AppConfig::icon(argvus_tui::icons::SETTINGS),
-      tr(lang, "control_center.dependencies")
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.depends_on"),
-      join_or_dash(&d.dependencies)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.optional"),
-      join_or_dash(&d.optional_dependencies)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.required_by"),
-      join_or_dash(&d.required_by)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.provides"),
-      join_or_dash(&d.provides)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.conflicts"),
-      join_or_dash(&d.conflicts)
-    ),
-    format!(
-      "   {:<18} {}",
-      tr(lang, "control_center.replaces"),
-      join_or_dash(&d.replaces)
-    ),
-    "".into(),
-    tr(lang, "control_center.tab_actions_r_refresh").into(),
-  ]
+/// Whether the open field takes `character`: the search takes any text up
+/// to its limit; the reflector numbers take digits only.
+fn accepts_input_char(mode: InputMode, input: &str, character: char) -> bool {
+  match mode {
+    InputMode::Search => !character.is_control() && input.len() < QUERY_MAX,
+    InputMode::MirrorAge => character.is_ascii_digit() && input.len() < 4,
+    InputMode::MirrorCount => character.is_ascii_digit() && input.len() < 3,
+  }
+}
+/// `value` moved by `step`, kept within `(min, max)`.
+fn step_within(value: u32, step: i32, (min, max): (u32, u32)) -> u32 {
+  value.saturating_add_signed(step).clamp(min, max)
+}
+/// Non-empty parts of a list row's detail, joined with ` · `.
+fn joined_parts(parts: &[String]) -> String {
+  parts
+    .iter()
+    .filter(|part| !part.is_empty())
+    .cloned()
+    .collect::<Vec<_>>()
+    .join(" · ")
 }
 /// Executes the `join_or_dash` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn join_or_dash(values: &[String]) -> String {
@@ -1972,8 +2071,15 @@ fn mirror_preview_summary(content: &str) -> String {
   summary
 }
 
-/// Executes the `cycle_country` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn cycle_country(options: &mut ReflectorOptions, countries: &[String]) {
+/// Moves `index` by `step` within `len` choices, wrapping around.
+fn cycled(index: usize, step: i32, len: usize) -> usize {
+  (index as i64 + i64::from(step)).rem_euclid(len.max(1) as i64) as usize
+}
+
+/// Moves the reflector country by `step`: forward with `→`/Space, back
+/// with `←`. Until reflector lists its countries, a short fallback list is
+/// used; `None` means every country.
+fn cycle_country(options: &mut ReflectorOptions, countries: &[String], step: i32) {
   /// Defines the constant `FALLBACK`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const FALLBACK: &[Option<&str>] = &[
     None,
@@ -1983,34 +2089,28 @@ fn cycle_country(options: &mut ReflectorOptions, countries: &[String]) {
     Some("France"),
   ];
   let current = options.countries.first().map(String::as_str);
-  if countries.is_empty() {
-    let index = FALLBACK
-      .iter()
-      .position(|country| *country == current)
-      .unwrap_or(0);
-    options.countries = FALLBACK[(index + 1) % FALLBACK.len()]
-      .map(|country| vec![country.into()])
-      .unwrap_or_default();
-    return;
-  }
   let mut names: Vec<Option<&str>> = vec![None];
-  let mut seen = std::collections::HashSet::new();
-  for country in countries {
-    if seen.insert(country.as_str()) {
-      names.push(Some(country.as_str()));
+  if countries.is_empty() {
+    names = FALLBACK.to_vec();
+  } else {
+    let mut seen = std::collections::HashSet::new();
+    for country in countries {
+      if seen.insert(country.as_str()) {
+        names.push(Some(country.as_str()));
+      }
     }
   }
   let index = names
     .iter()
     .position(|country| *country == current)
     .unwrap_or(0);
-  options.countries = names[(index + 1) % names.len()]
+  options.countries = names[cycled(index, step, names.len())]
     .map(|country| vec![country.into()])
     .unwrap_or_default();
 }
 
-/// Executes the `cycle_protocol` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn cycle_protocol(options: &mut ReflectorOptions) {
+/// Moves the reflector protocol by `step`.
+fn cycle_protocol(options: &mut ReflectorOptions, step: i32) {
   /// Defines the constant `PROTOCOLS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const PROTOCOLS: &[&str] = &["https", "http", "rsync"];
   let current = options
@@ -2022,18 +2122,18 @@ fn cycle_protocol(options: &mut ReflectorOptions) {
     .iter()
     .position(|protocol| *protocol == current)
     .unwrap_or(0);
-  options.protocols = vec![PROTOCOLS[(index + 1) % PROTOCOLS.len()].into()];
+  options.protocols = vec![PROTOCOLS[cycled(index, step, PROTOCOLS.len())].into()];
 }
 
-/// Executes the `cycle_sort` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn cycle_sort(options: &mut ReflectorOptions) {
+/// Moves the reflector sort order by `step`.
+fn cycle_sort(options: &mut ReflectorOptions, step: i32) {
   /// Defines the constant `SORTS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
   const SORTS: &[&str] = &["rate", "age", "score", "delay", "country"];
   let index = SORTS
     .iter()
     .position(|sort| *sort == options.sort)
     .unwrap_or(0);
-  options.sort = SORTS[(index + 1) % SORTS.len()].into();
+  options.sort = SORTS[cycled(index, step, SORTS.len())].into();
 }
 
 #[cfg(test)]
@@ -2041,14 +2141,65 @@ mod tests {
   use super::*;
   use ratatui::{Terminal, backend::TestBackend};
 
-  #[test]
-  /// Executes the `package_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn package_home_rows_act_as_a_status_dashboard() {
-    let mut app = PackagesApp::new(
+  fn app() -> PackagesApp {
+    PackagesApp::new(
       Lang::for_locale("en-US"),
       Theme::load(),
       Capabilities::default(),
-    );
+    )
+  }
+
+  fn screen(app: &mut PackagesApp, width: u16, height: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..height)
+      .map(|y| {
+        (0..width)
+          .map(|x| buffer[(x, y)].symbol())
+          .collect::<String>()
+      })
+      .collect::<Vec<_>>()
+      .join("\n")
+  }
+
+  fn row(rows: &[Row<Item>], item: Item) -> &Row<Item> {
+    rows
+      .iter()
+      .find(|row| row.id() == Some(&item))
+      .unwrap_or_else(|| panic!("no row {item:?}"))
+  }
+
+  fn package(name: &str, installed: bool) -> Package {
+    Package {
+      name: name.into(),
+      version: "1.0".into(),
+      installed,
+      ..Default::default()
+    }
+  }
+
+  /// Moves the cursor to `item` and presses Enter.
+  fn press(app: &mut PackagesApp, item: Item) {
+    let rows = app.rows();
+    assert!(app.menu.select(&rows, &item), "{item:?} is not selectable");
+    app.handle(KeyCode::Enter);
+  }
+
+  fn orphans_app() -> PackagesApp {
+    let mut app = app();
+    app.page = PackagesPage::Orphans;
+    app.packages = vec![
+      package("libfoo", true),
+      package("python-bar", true),
+      package("libbaz", true),
+    ];
+    app
+  }
+
+  #[test]
+  fn package_home_rows_are_submenus_with_their_counters() {
+    let mut app = app();
     app.dashboard = PackageDashboard {
       installed_count: 1200,
       update_count: 7,
@@ -2064,37 +2215,176 @@ mod tests {
     };
     let rows = app.home_rows();
     assert_eq!(rows.len(), 8);
-    assert!(rows[0].contains("18500"), "{}", rows[0]);
-    assert!(
-      rows[1].contains("1200") && rows[1].contains("Installed"),
-      "{}",
-      rows[1]
+    assert!(rows.iter().all(|row| row.kind() == RowKind::Submenu));
+    assert_eq!(
+      rows.iter().map(Row::icon_glyph).collect::<Vec<_>>(),
+      [
+        icons::SEARCH,
+        icons::INSTALLED,
+        icons::CLEAN,
+        icons::UPDATE,
+        icons::DATABASE,
+        icons::HISTORY,
+        icons::DOWNGRADE,
+        icons::NETWORK
+      ]
+      .map(Some)
     );
-    assert!(
-      rows[3].contains("7") && rows[3].contains("pending"),
-      "{}",
-      rows[3]
-    );
-    assert!(
-      rows[4].contains("12") && rows[4].contains("223.6 GiB"),
-      "{}",
-      rows[4]
-    );
-    assert!(
-      rows[7].contains("4/6") && rows[7].contains("active"),
-      "{}",
-      rows[7]
-    );
+    assert_eq!(rows[0].detail_text(), Some("18500 packages"));
+    assert_eq!(rows[1].label(), "Installed / Official");
+    assert_eq!(rows[3].detail_text(), Some("7 pending"));
+    assert_eq!(rows[4].detail_text(), Some("12 files · 223.6 GiB"));
+    assert_eq!(rows[7].detail_text(), Some("4/6 active"));
   }
 
   #[test]
-  /// Executes the `package_detail_pages_render_section_headers_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn package_detail_pages_render_section_headers_and_aligned_rows() {
-    let mut app = PackagesApp::new(
+  fn aur_appears_on_the_home_only_with_a_helper() {
+    let app = PackagesApp::new(
       Lang::for_locale("en-US"),
       Theme::load(),
-      Capabilities::default(),
+      Capabilities {
+        has_paru: true,
+        ..Default::default()
+      },
     );
+    let rows = app.home_rows();
+    assert_eq!(rows[1].id(), Some(&Item::Open(PackagesPage::Aur)));
+    assert_eq!(rows[1].icon_glyph(), Some(icons::ADD));
+  }
+
+  #[test]
+  fn package_home_is_navigable_and_back_returns_to_the_origin() {
+    let mut app = app();
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.page, PackagesPage::Installed);
+    assert!(!app.handle(KeyCode::Esc));
+    assert_eq!(app.page, PackagesPage::Home);
+    assert_eq!(
+      app.menu.selected_id(&app.rows()),
+      Some(Item::Open(PackagesPage::Installed))
+    );
+    assert!(app.handle(KeyCode::Esc));
+
+    let text = screen(&mut app, 90, 25);
+    assert!(text.contains("ARGVUS"));
+    assert!(text.contains("Packages"));
+    assert!(text.contains("Enter"));
+  }
+
+  #[test]
+  fn packages_pages_have_no_button_bar_and_tab_does_nothing() {
+    let mut app = app();
+    app.page = PackagesPage::Updates;
+    app.updates.push(Update {
+      name: "linux".into(),
+      current: "1".into(),
+      available: "2".into(),
+      ..Default::default()
+    });
+    let before = app.menu;
+    app.handle(KeyCode::Tab);
+    app.handle(KeyCode::BackTab);
+    assert_eq!(app.menu, before);
+    let text = screen(&mut app, 90, 25);
+    assert!(!text.contains("[ "), "{text}");
+    assert!(text.contains("Upgrade all"));
+    assert!(text.contains("linux"));
+  }
+
+  #[test]
+  fn typing_filters_lists_and_keeps_letters_as_text() {
+    let mut app = app();
+    app.page = PackagesPage::Installed;
+    app.packages = vec![package("firefox", true), package("jq", true)];
+    for key in ['j', 'q'] {
+      app.handle(KeyCode::Char(key));
+    }
+    assert_eq!(app.query, "jq");
+    assert!(app.captures_text());
+    let rows = app.rows();
+    assert_eq!(rows.iter().filter(|row| row.is_selectable()).count(), 1);
+    assert_eq!(app.menu.selected_id(&rows), Some(Item::Package(1)));
+    app.handle(KeyCode::Backspace);
+    app.handle(KeyCode::Char('r'));
+    assert_eq!(app.query, "jr");
+    assert!(app.job.is_none(), "r is text on the filtered lists");
+  }
+
+  #[test]
+  fn empty_search_does_not_create_package_action() {
+    let mut app = app();
+    app.page = PackagesPage::Search;
+    app.handle(KeyCode::Tab);
+    app.handle(KeyCode::Enter);
+    assert!(app.pending.is_none());
+    app.handle(KeyCode::Right);
+    app.handle(KeyCode::Enter);
+    assert!(app.pending.is_none());
+    assert!(app.plan.is_none());
+  }
+
+  #[test]
+  fn enter_opens_the_details_and_back_returns_to_the_package() {
+    let mut app = app();
+    app.page = PackagesPage::Search;
+    app.packages = vec![package("firefox", false), package("zsh", false)];
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.page, PackagesPage::Details(1));
+    assert_eq!(app.details_target().as_deref(), Some("zsh"));
+    app.handle(KeyCode::Esc);
+    assert_eq!(app.page, PackagesPage::Search);
+    assert_eq!(app.menu.selected_id(&app.rows()), Some(Item::Package(1)));
+  }
+
+  #[test]
+  fn search_pages_do_not_spawn_until_a_valid_query_is_confirmed() {
+    let mut app = app();
+    app.page = PackagesPage::Search;
+    app.reload();
+    assert!(app.job.is_none());
+    app.page = PackagesPage::Aur;
+    app.reload();
+    assert!(app.job.is_none());
+    app.handle(KeyCode::Char('/'));
+    app.handle(KeyCode::Char('a'));
+    app.handle(KeyCode::Enter);
+    assert!(app.job.is_none());
+    assert!(app.status.as_ref().unwrap().text.contains("at least 2"));
+    app.handle(KeyCode::Char('a'));
+    app.handle(KeyCode::Enter);
+    assert!(app.job.is_none());
+    assert!(app.status.as_ref().unwrap().text.contains("at least 2"));
+  }
+
+  #[test]
+  fn cancelling_package_search_clears_the_query() {
+    let mut app = app();
+    app.page = PackagesPage::Search;
+    app.query = "firefox".into();
+    app.input = Some(app.query.clone());
+    app.input_mode = Some(InputMode::Search);
+    app.handle(KeyCode::Esc);
+    assert!(app.query.is_empty());
+    assert!(app.input.is_none());
+  }
+
+  #[test]
+  fn opening_package_details_keeps_the_selected_name_until_metadata_arrives() {
+    let mut app = app();
+    app.page = PackagesPage::Search;
+    app.packages.push(package("firefox", false));
+    press(&mut app, Item::Package(0));
+    assert!(app.details.is_none());
+    assert_eq!(app.details_target().as_deref(), Some("firefox"));
+    assert_eq!(app.reload_key(), "Details(0)||firefox");
+  }
+
+  #[test]
+  fn package_details_render_actions_sections_and_danger_zone() {
+    let mut app = app();
+    app.page = PackagesPage::Details(0);
     app.details = Some(PackageDetails {
       package: Package {
         name: "firefox".into(),
@@ -2109,25 +2399,179 @@ mod tests {
       dependencies: vec!["gtk4".into(), "libx11".into()],
       ..Default::default()
     });
-    app.page = PackagesPage::Details(0);
     let rows = app.rows();
-    assert!(rows[0].contains("PACKAGE"), "{}", rows[0]);
-    assert!(rows.iter().any(|r| r.contains("firefox")));
-    assert!(rows.iter().any(|r| r.contains("x86_64")));
-    assert!(rows.iter().any(|r| r.contains("gtk4")));
-    assert!(rows.iter().any(|r| r.contains("● Installed")));
-    assert!(rows.last().unwrap().contains("Actions"));
-    assert!(rows.len() > 10);
+    let titles = rows
+      .iter()
+      .filter(|row| row.is_section())
+      .map(Row::label)
+      .collect::<Vec<_>>();
+    assert_eq!(
+      titles,
+      [
+        "control_center.section_actions",
+        "control_center.section_package",
+        "control_center.section_source",
+        "control_center.section_dependencies",
+        "control_center.danger_zone",
+      ]
+      .map(|key| tr(app.lang, key))
+    );
+    assert_eq!(row(&rows, Item::Install).label(), "Reinstall");
+    assert_eq!(row(&rows, Item::Install).icon_glyph(), Some(icons::RESTART));
+    let remove = rows.last().unwrap();
+    assert_eq!(remove.kind(), RowKind::Destructive);
+    assert!(remove.is_selectable());
+    let info = |label: &str| {
+      rows
+        .iter()
+        .find(|row| row.kind() == RowKind::Info && row.label() == label)
+        .and_then(Row::detail_text)
+        .map(str::to_owned)
+    };
+    assert_eq!(info("Status").as_deref(), Some("Installed"));
+    assert_eq!(info("Architecture").as_deref(), Some("x86_64"));
+    assert_eq!(info("Depends on").as_deref(), Some("gtk4 libx11"));
+    assert!(rows.iter().all(|row| !row.label().contains("Tab")));
   }
 
   #[test]
-  /// Executes the `cache_rows_strip_package_suffixes_and_humanize_bytes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn cache_rows_strip_package_suffixes_and_humanize_bytes() {
-    let mut app = PackagesApp::new(
+  fn install_and_remove_follow_the_open_package() {
+    let mut app = app();
+    app.page = PackagesPage::Search;
+    app.packages.push(package("firefox", false));
+    press(&mut app, Item::Package(0));
+    let rows = app.rows();
+    assert_eq!(row(&rows, Item::Install).label(), "Install");
+    assert!(
+      !row(&rows, Item::Remove).is_selectable(),
+      "an uninstalled package cannot be removed"
+    );
+    // The details load runs; package operations wait for it, as before.
+    press(&mut app, Item::Install);
+    assert!(app.plan.is_none());
+    app.job = None;
+    press(&mut app, Item::Install);
+    assert!(app.plan.is_some(), "installing plans the transaction first");
+
+    let mut installed = PackagesApp::new(
       Lang::for_locale("en-US"),
       Theme::load(),
       Capabilities::default(),
     );
+    installed.page = PackagesPage::Installed;
+    installed.packages.push(package("zsh", true));
+    press(&mut installed, Item::Package(0));
+    installed.job = None;
+    let rows = installed.rows();
+    assert_eq!(row(&rows, Item::Install).label(), "Reinstall");
+    press(&mut installed, Item::Remove);
+    assert!(installed.plan.is_some());
+  }
+
+  #[test]
+  fn aur_rows_open_the_filtered_package() {
+    let mut app = app();
+    app.page = PackagesPage::Aur;
+    app.aur = vec![
+      AurPackage {
+        name: "yay-bin".into(),
+        ..Default::default()
+      },
+      AurPackage {
+        name: "paru-bin".into(),
+        installed: true,
+        ..Default::default()
+      },
+    ];
+    for key in "paru".chars() {
+      app.handle(KeyCode::Char(key));
+    }
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.page, PackagesPage::Details(1));
+    assert_eq!(app.details_target().as_deref(), Some("paru-bin"));
+    assert_eq!(app.details_parent, PackagesPage::Aur);
+  }
+
+  #[test]
+  fn space_marks_orphans_and_the_marks_follow_the_filter() {
+    let mut app = orphans_app();
+    let rows = app.rows();
+    assert!(!row(&rows, Item::RemoveMarked).is_selectable());
+    for key in "lib".chars() {
+      app.handle(KeyCode::Char(key));
+    }
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Char(' '));
+    assert_eq!(app.marked, ["libbaz"]);
+    assert_eq!(app.query, "lib", "Space marks instead of typing");
+    let rows = app.rows();
+    assert_eq!(
+      row(&rows, Item::Orphan(2)).kind(),
+      RowKind::Toggle { on: true }
+    );
+    assert_eq!(
+      row(&rows, Item::RemoveMarked).label(),
+      format!("{} (1)", tr(app.lang, "control_center.remove_marked"))
+    );
+    let text = screen(&mut app, 90, 25);
+    assert!(text.contains("[x]"), "{text}");
+    let mark = format!("Space {}", tr(app.lang, "control_center.mark"));
+    assert!(text.contains(&mark), "{text}");
+    press(&mut app, Item::RemoveMarked);
+    assert!(app.plan.is_some(), "the marked set is planned for removal");
+  }
+
+  #[test]
+  fn enter_on_an_orphan_opens_its_details() {
+    let mut app = orphans_app();
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.page, PackagesPage::Details(0));
+    assert!(app.marked.is_empty());
+    app.handle(KeyCode::Esc);
+    assert_eq!(app.menu.selected_id(&app.rows()), Some(Item::Orphan(0)));
+  }
+
+  #[test]
+  fn reloading_orphans_keeps_only_the_marks_still_listed() {
+    let mut app = orphans_app();
+    app.marked = vec!["libfoo".into(), "gone".into()];
+    app.apply(Loaded::Packages(vec![package("libfoo", true)]));
+    assert_eq!(app.marked, ["libfoo"]);
+  }
+
+  #[test]
+  fn update_rows_confirm_one_package_or_plan_all() {
+    let mut app = app();
+    app.page = PackagesPage::Updates;
+    app.updates.push(Update {
+      name: "linux".into(),
+      current: "1".into(),
+      available: "2".into(),
+      ..Default::default()
+    });
+    press(&mut app, Item::Update(0));
+    assert_eq!(app.pending, Some(Action::UpgradePackage("linux".into())));
+    app.handle(KeyCode::Esc);
+    assert!(app.pending.is_none());
+    press(&mut app, Item::RefreshDatabase);
+    assert_eq!(app.pending, Some(Action::RefreshDatabase));
+    app.handle(KeyCode::Esc);
+    press(&mut app, Item::UpgradeAll);
+    assert!(app.plan.is_some());
+  }
+
+  #[test]
+  fn upgrade_all_is_disabled_without_updates() {
+    let mut app = app();
+    app.page = PackagesPage::Updates;
+    let rows = app.rows();
+    assert!(!row(&rows, Item::UpgradeAll).is_selectable());
+    assert!(row(&rows, Item::RefreshDatabase).is_selectable());
+  }
+
+  #[test]
+  fn cache_page_summarizes_and_cleans_from_the_danger_zone() {
+    let mut app = app();
     app.page = PackagesPage::Cache;
     app.cache = vec![CachePackage {
       name: "firefox-155.0.1-1-x86_64.pkg.tar.zst".into(),
@@ -2135,138 +2579,71 @@ mod tests {
       ..Default::default()
     }];
     let rows = app.rows();
-    assert_eq!(rows[0], "firefox-155.0.1-1-x86_64  2 MiB");
-  }
-
-  #[test]
-  /// Executes the `package_home_is_navigable_and_uses_shared_chrome` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn package_home_is_navigable_and_uses_shared_chrome() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.handle(KeyCode::Down);
-    app.handle(KeyCode::Enter);
-    assert_eq!(app.page, PackagesPage::Installed);
-    assert!(!app.handle(KeyCode::Esc));
-    assert!(app.handle(KeyCode::Esc));
-
-    let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
-    terminal.draw(|frame| app.draw(frame)).unwrap();
-    let text = terminal
-      .backend()
-      .buffer()
-      .content
-      .iter()
-      .map(|cell| cell.symbol())
-      .collect::<String>();
-    assert!(text.contains("ARGVUS"));
-    assert!(text.contains("Packages"));
-    assert!(text.contains("Enter"));
-  }
-
-  #[test]
-  /// Executes the `empty_selection_does_not_create_package_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn empty_selection_does_not_create_package_action() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Search;
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    app.handle(KeyCode::Enter);
-    assert!(app.pending.is_none());
-    app.handle(KeyCode::Right);
-    app.handle(KeyCode::Enter);
-    assert!(app.pending.is_none());
-  }
-
-  #[test]
-  /// Executes the `enter_opens_selected_package_details` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn enter_opens_selected_package_details() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Search;
-    app.packages.push(Package {
-      name: "firefox".into(),
-      version: "1.0".into(),
-      ..Default::default()
-    });
-    app.handle(KeyCode::Enter);
-    assert_eq!(app.page, PackagesPage::Details(0));
-  }
-
-  #[test]
-  /// Executes the `search_pages_do_not_spawn_until_a_valid_query_is_confirmed` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn search_pages_do_not_spawn_until_a_valid_query_is_confirmed() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Search;
-    app.reload();
-    assert!(app.job.is_none());
-    app.page = PackagesPage::Aur;
-    app.reload();
-    assert!(app.job.is_none());
-    app.handle(KeyCode::Char('/'));
-    app.handle(KeyCode::Char('a'));
-    app.handle(KeyCode::Enter);
-    assert!(app.job.is_none());
-    assert!(app.status.as_ref().unwrap().text.contains("at least 2"));
-  }
-
-  #[test]
-  /// Executes the `cancelling_package_search_clears_the_query` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn cancelling_package_search_clears_the_query() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Search;
-    app.query = "firefox".into();
-    app.input = Some(app.query.clone());
-    app.input_search = true;
+    assert_eq!(rows.last().unwrap().id(), Some(&Item::CleanUninstalled));
+    for (item, policy) in [
+      (Item::CleanKeepThree, "keep-three"),
+      (Item::CleanKeepOne, "keep-one"),
+      (Item::CleanUninstalled, "uninstalled"),
+    ] {
+      assert_eq!(row(&rows, item).kind(), RowKind::Destructive);
+      press(&mut app, item);
+      assert_eq!(app.pending, Some(Action::CleanCache(policy)));
+      app.handle(KeyCode::Esc);
+    }
+    press(&mut app, Item::CacheFiles);
+    assert_eq!(app.page, PackagesPage::CacheFiles);
+    let files = app.rows();
+    assert_eq!(files[0].label(), "firefox-155.0.1-1-x86_64");
+    assert_eq!(files[0].detail_text(), Some("2 MiB"));
+    assert!(files.iter().all(|row| !row.is_selectable()));
     app.handle(KeyCode::Esc);
-    assert!(app.query.is_empty());
-    assert!(app.input.is_none());
+    assert_eq!(app.page, PackagesPage::Cache);
+    assert_eq!(app.menu.selected_id(&app.rows()), Some(Item::CacheFiles));
   }
 
   #[test]
-  /// Executes the `opening_package_details_keeps_the_selected_name_until_metadata_arrives` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn opening_package_details_keeps_the_selected_name_until_metadata_arrives() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Search;
-    app.packages.push(Package {
-      name: "firefox".into(),
-      version: "1.0".into(),
+  fn downgrade_rows_confirm_the_cached_file() {
+    let mut app = app();
+    app.page = PackagesPage::Downgrade;
+    app.cache = vec![CachePackage {
+      name: "zsh".into(),
+      version: "5.9-1".into(),
+      path: "/var/cache/pacman/pkg/zsh-5.9-1-x86_64.pkg.tar.zst".into(),
       ..Default::default()
-    });
-    app.details_parent = PackagesPage::Search;
-    app.page = PackagesPage::Details(0);
-    assert_eq!(app.selected_package_name().as_deref(), Some("firefox"));
+    }];
+    let rows = app.rows();
+    assert_eq!(rows[0].kind(), RowKind::Destructive);
+    assert_eq!(rows[0].label(), "zsh 5.9-1");
+    app.handle(KeyCode::Enter);
+    assert_eq!(
+      app.pending,
+      Some(Action::Downgrade(
+        "/var/cache/pacman/pkg/zsh-5.9-1-x86_64.pkg.tar.zst".into()
+      ))
+    );
   }
 
   #[test]
-  /// Executes the `package_confirmation_cancel_does_not_start_an_operation` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn history_is_read_only_and_has_no_cursor() {
+    let mut app = app();
+    app.page = PackagesPage::History;
+    app.history = vec![HistoryEntry {
+      timestamp: "2026-10-05T10:00".into(),
+      action: "upgraded".into(),
+      package: "linux".into(),
+      old_version: Some("1".into()),
+      new_version: Some("2".into()),
+    }];
+    let rows = app.rows();
+    assert!(rows.iter().all(|row| !row.is_selectable()));
+    assert_eq!(rows[0].detail_text(), Some("1 → 2"));
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.page, PackagesPage::History);
+  }
+
+  #[test]
   fn package_confirmation_cancel_does_not_start_an_operation() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+    let mut app = app();
     app.pending = Some(Action::Upgrade);
     app.handle(KeyCode::Enter);
     assert!(app.pending.is_none());
@@ -2274,8 +2651,29 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `mirror_editor_is_visible_and_configurable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn mirror_editor_is_visible_and_configurable() {
+  fn configure_mirrors_is_disabled_without_reflector() {
+    let mut app = app();
+    app.page = PackagesPage::Mirrors;
+    app.mirrors = vec![Mirror {
+      server: "https://mirror.example/$repo/os/$arch".into(),
+      enabled: true,
+      ..Default::default()
+    }];
+    let rows = app.rows();
+    let configure = row(&rows, Item::ConfigureMirrors);
+    assert!(!configure.is_selectable());
+    assert_eq!(
+      configure.detail_text(),
+      Some(tr(app.lang, "control_center.unavailable_no_reflector"))
+    );
+    assert_eq!(
+      rows.last().unwrap().detail_text(),
+      Some(tr(app.lang, "control_center.mirror_enabled"))
+    );
+  }
+
+  #[test]
+  fn mirror_editor_is_a_page_with_adjustable_options() {
     let caps = Capabilities {
       has_reflector: true,
       ..Default::default()
@@ -2285,179 +2683,95 @@ mod tests {
     app.page = PackagesPage::Mirrors;
     app.handle(KeyCode::Tab);
     app.handle(KeyCode::Enter);
-    assert!(app.mirror_editor.is_some());
+    assert_eq!(app.page, PackagesPage::MirrorEditor);
+    let countries = |app: &PackagesApp| app.mirror_options.as_ref().unwrap().countries.clone();
+    assert_eq!(countries(&app), ["Brazil"]);
     app.handle(KeyCode::Right);
-    assert_eq!(
-      app.mirror_editor.as_ref().unwrap().options.countries,
-      ["Argentina"]
-    );
+    assert_eq!(countries(&app), ["Argentina"]);
     app.handle(KeyCode::Left);
-    assert!(
-      app
-        .mirror_editor
-        .as_ref()
-        .unwrap()
-        .options
-        .countries
-        .is_empty()
-    );
+    assert_eq!(countries(&app), ["Brazil"], "← moves back");
+    app.handle(KeyCode::Char(' '));
+    assert_eq!(countries(&app), ["Argentina"], "Space moves forward");
+
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Left);
+    assert_eq!(app.mirror_options.as_ref().unwrap().age_hours, 11);
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Right);
+    assert_eq!(app.mirror_options.as_ref().unwrap().count, 11);
+    app.handle(KeyCode::Down);
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.mirror_options.as_ref().unwrap().sort, "age");
+
     app.handle(KeyCode::Esc);
-    assert!(app.mirror_editor.is_none());
+    assert_eq!(app.page, PackagesPage::Mirrors);
+    assert!(app.mirror_options.is_none());
+    assert_eq!(
+      app.menu.selected_id(&app.rows()),
+      Some(Item::ConfigureMirrors)
+    );
   }
 
   #[test]
-  /// Executes the `country_cycling_falls_back_to_a_small_static_list_until_reflector_loads` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn mirror_numbers_open_a_bounded_field() {
+    let mut app = app();
+    app.page = PackagesPage::MirrorEditor;
+    app.mirror_options = Some(ReflectorOptions::default());
+    press(&mut app, Item::MirrorCount);
+    assert!(app.captures_text());
+    for key in ['1', 'x', '5', '0', '0'] {
+      app.handle(KeyCode::Char(key));
+    }
+    assert_eq!(app.input.as_deref(), Some("150"));
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.mirror_options.as_ref().unwrap().count, 10);
+    assert_eq!(
+      app.status.as_ref().map(|status| status.kind),
+      Some(StatusKind::Error),
+      "values out of 1–100 are rejected"
+    );
+    press(&mut app, Item::MirrorAge);
+    for key in ['4', '8'] {
+      app.handle(KeyCode::Char(key));
+    }
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.mirror_options.as_ref().unwrap().age_hours, 48);
+  }
+
+  #[test]
+  fn mirror_preview_returns_to_mirrors_and_asks_for_confirmation() {
+    let mut app = app();
+    app.page = PackagesPage::MirrorEditor;
+    app.mirror_options = Some(ReflectorOptions::default());
+    app.apply(Loaded::MirrorPreview(
+      "Server = https://a/$repo/os/$arch\n".into(),
+    ));
+    assert_eq!(app.page, PackagesPage::Mirrors);
+    assert!(matches!(app.pending, Some(Action::ApplyMirrors(_))));
+  }
+
+  #[test]
   fn country_cycling_falls_back_to_a_small_static_list_until_reflector_loads() {
     let mut options = ReflectorOptions {
       countries: vec!["Brazil".into()],
       ..Default::default()
     };
-    cycle_country(&mut options, &[]);
+    cycle_country(&mut options, &[], 1);
     assert_eq!(options.countries, ["United States"]);
-    cycle_country(&mut options, &["Brazil".into(), "Argentina".into()]);
+    cycle_country(&mut options, &["Brazil".into(), "Argentina".into()], 1);
     assert_eq!(options.countries, ["Brazil"]);
-    cycle_country(&mut options, &["Brazil".into(), "Argentina".into()]);
+    cycle_country(&mut options, &["Brazil".into(), "Argentina".into()], 1);
+    assert_eq!(options.countries, ["Argentina"]);
+    cycle_country(&mut options, &["Brazil".into(), "Argentina".into()], 1);
+    assert!(options.countries.is_empty(), "wraps to every country");
+    cycle_country(&mut options, &["Brazil".into(), "Argentina".into()], -1);
     assert_eq!(options.countries, ["Argentina"]);
   }
 
   #[test]
-  /// Executes the `packages_expose_action_buttons_per_page_and_none_on_history` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn packages_expose_action_buttons_per_page_and_none_on_history() {
-    let app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    assert_eq!(app.buttons().len(), 0);
-    let mut search = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    search.page = PackagesPage::Search;
-    search.packages.push(Package {
-      name: "firefox".into(),
-      ..Default::default()
-    });
-    assert_eq!(search.buttons().len(), 2);
-    let mut orphans = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    orphans.page = PackagesPage::Orphans;
-    orphans.packages.push(Package {
-      name: "orphan".into(),
-      ..Default::default()
-    });
-    assert_eq!(orphans.buttons().len(), 2);
-    let mut cache = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    cache.page = PackagesPage::Cache;
-    assert_eq!(cache.buttons().len(), 3);
-    let mut history = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    history.page = PackagesPage::History;
-    assert_eq!(history.buttons().len(), 0);
-  }
-
-  #[test]
-  /// Executes the `stale_details_do_not_block_removal_on_list_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn stale_details_do_not_block_removal_on_list_pages() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Orphans;
-    app.packages.push(Package {
-      name: "orphan".into(),
-      installed: true,
-      ..Default::default()
-    });
-    app.details = Some(PackageDetails {
-      package: Package {
-        name: "firefox".into(),
-        installed: false,
-        ..Default::default()
-      },
-      ..Default::default()
-    });
-    app.remove_selected();
-    assert!(
-      app.plan.is_some(),
-      "removal of an orphan must proceed despite stale uninstalled details"
-    );
-  }
-
-  #[test]
-  /// Executes the `install_selected_follows_list_state_not_stale_details` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn install_selected_follows_list_state_not_stale_details() {
-    let mut installed_list = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    installed_list.page = PackagesPage::Installed;
-    installed_list.packages.push(Package {
-      name: "firefox".into(),
-      installed: true,
-      ..Default::default()
-    });
-    installed_list.details = Some(PackageDetails {
-      package: Package {
-        name: "zsh".into(),
-        installed: false,
-        ..Default::default()
-      },
-      ..Default::default()
-    });
-    installed_list.install_selected();
-    assert!(
-      installed_list.plan.is_some(),
-      "installed list entry should trigger a plan (reinstall)"
-    );
-
-    let mut not_installed = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    not_installed.page = PackagesPage::Search;
-    not_installed.packages.push(Package {
-      name: "firefox".into(),
-      installed: false,
-      ..Default::default()
-    });
-    not_installed.details = Some(PackageDetails {
-      package: Package {
-        name: "firefox".into(),
-        installed: true,
-        ..Default::default()
-      },
-      ..Default::default()
-    });
-    not_installed.install_selected();
-    assert!(
-      not_installed.plan.is_some(),
-      "uninstalled search entry should trigger an install plan"
-    );
-  }
-
-  #[test]
-  /// Executes the `transaction_window_scrolls_closes_and_generates_action_plans` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_window_scrolls_closes_and_generates_action_plans() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+    let mut app = app();
     let live = LiveProcess::new();
     for _ in 0..40 {
       live.push_line("line");
@@ -2485,13 +2799,8 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `start_pending_opens_the_process_window_immediately` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_pending_opens_the_process_window_immediately() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+    let mut app = app();
     app.pending = Some(Action::RefreshDatabase);
     app.start_pending();
     assert!(
@@ -2506,13 +2815,8 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `transaction_bottom_offset_is_zero_for_short_output` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_bottom_offset_is_zero_for_short_output() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+    let mut app = app();
     let live = LiveProcess::new();
     live.push_line("done.");
     app.transaction_live = Some(live);
@@ -2523,7 +2827,6 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `transaction_window_uses_theme_background_and_border` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn transaction_window_uses_theme_background_and_border() {
     let theme = Theme::load();
     let mut app = PackagesApp::new(
@@ -2548,49 +2851,10 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `packages_tab_cycles_between_list_and_buttons_and_backtab_lands_last` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn packages_tab_cycles_between_list_and_buttons_and_backtab_lands_last() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Cache;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    app.handle(KeyCode::BackTab);
-    assert!(app.on_buttons);
-    assert_eq!(app.button_selected, 2);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-  }
-
-  #[test]
-  /// Executes the `packages_renders_button_bar_on_action_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn packages_renders_button_bar_on_action_pages() {
-    let mut app = PackagesApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
-    app.page = PackagesPage::Updates;
-    app.updates.push(Update {
-      name: "linux".into(),
-      current: "1".into(),
-      available: "2".into(),
-      ..Default::default()
-    });
-    let mut terminal = Terminal::new(TestBackend::new(90, 25)).unwrap();
-    terminal.draw(|frame| app.draw(frame)).unwrap();
-    let text = terminal
-      .backend()
-      .buffer()
-      .content
-      .iter()
-      .map(|cell| cell.symbol())
-      .collect::<String>();
-    assert!(text.contains("Actions") || text.contains("Ações"));
+  fn packages_render_at_80x24() {
+    let mut app = orphans_app();
+    let text = screen(&mut app, 80, 24);
+    assert!(text.contains("libfoo"));
+    assert!(text.contains("Danger zone"));
   }
 }
