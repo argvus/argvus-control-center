@@ -10,14 +10,16 @@ pub mod search;
 
 use argvus_control_center_core::config::AppConfig;
 use argvus_tui::menu::{MenuStyle, draw_menu};
+use argvus_tui::action_buttons::{ActionButton, draw_aligned as draw_action_buttons};
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
-use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 
 use crate::app::{App, MIN_HEIGHT, MIN_WIDTH};
 use crate::i18n::tr;
+use crate::item::Item;
 
 /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(app: &mut App, frame: &mut Frame) {
@@ -38,6 +40,11 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     return;
   }
 
+  if crate::administration::is_user_form(app.navigation.current().page) {
+    draw_user_page(app, frame, area);
+    return;
+  }
+
   let areas = layout::areas(area);
   let rows = app.rows();
   app.set_viewport(areas.body.height as usize);
@@ -55,6 +62,148 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   );
   search::draw(frame, areas.message, app);
   footer::draw(frame, areas.footer, app);
+  if app.hostname_editing {
+    popup::draw_hostname_input(frame, area, app);
+  }
+  if let Some(editor) = &app.admin.editor {
+    editor.draw(frame, area, app);
+  }
+  if let Some(message) = app.error_modal.as_deref() {
+    popup::draw_error(frame, area, app, message);
+  }
+  popup::draw_confirmation(frame, area, app);
+  draw_task_window(app, frame, area);
+}
+
+/// Renderiza a tela de usuário igual à demo.
+fn draw_user_page(app: &mut App, frame: &mut Frame, area: Rect) {
+  let inner = area.inner(ratatui::layout::Margin {
+    horizontal: 1,
+    vertical: 1,
+  });
+
+  let chunks = Layout::default()
+    .direction(Direction::Vertical)
+    .constraints([
+      Constraint::Length(3),
+      Constraint::Min(8),
+      Constraint::Length(4),
+      Constraint::Length(1),
+      Constraint::Length(1),
+    ])
+    .split(inner);
+
+  // Title
+  let title_text = "ARGVUS Control Center > System > Users";
+  let title = Paragraph::new(title_text)
+    .style(Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD))
+    .block(Block::default().borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Plain)
+      .border_style(Style::new().fg(app.theme.border_active)));
+  frame.render_widget(title, chunks[0]);
+
+  // The rows before the "Actions" section are the info block; the rows
+  // after it are the buttons below. Both come from the same single list.
+  let all_rows = app.rows();
+  let actions_at = all_rows
+    .iter()
+    .position(|row| row.is_section())
+    .unwrap_or(all_rows.len());
+  let (info_rows, action_rows) = all_rows.split_at(actions_at);
+
+  app.set_viewport(chunks[1].height as usize);
+  frame.render_widget(Clear, chunks[1]);
+
+  let menu_block = Block::default()
+    .borders(Borders::ALL)
+    .border_type(ratatui::widgets::BorderType::Plain)
+    .border_style(Style::new().fg(app.theme.border_active))
+    .title(tr(app.lang, "control_center.user_info"));
+  frame.render_widget(menu_block, chunks[1]);
+
+  let menu_inner = Rect {
+    x: chunks[1].x + 1,
+    y: chunks[1].y + 1,
+    width: chunks[1].width.saturating_sub(2),
+    height: chunks[1].height.saturating_sub(2),
+  };
+
+  draw_menu(
+    frame,
+    menu_inner,
+    &app.theme,
+    info_rows,
+    &mut app.navigation.current_mut().menu,
+    MenuStyle {
+      icons: AppConfig::icons_enabled(),
+    },
+  );
+
+  // Action buttons are the action rows of the single list, so they run the
+  // same activation as Enter on the row. The selected button follows Tab.
+  let mut buttons = Vec::new();
+  for row in action_rows.iter().filter(|row| row.id().is_some()) {
+    let Some(&item) = row.id() else { continue };
+    let label = row.label();
+    // No shortcut is shown: the footer explains how the buttons run.
+    let button = match row.kind() {
+      argvus_tui::menu::RowKind::Destructive => ActionButton::danger("", label, ""),
+      _ if item == Item::SaveUser => ActionButton::primary("", label, ""),
+      _ => ActionButton::secondary("", label, ""),
+    };
+    buttons.push(button);
+  }
+  // Only the focused button is highlighted; none while the info list has focus.
+  let selected_button = app.user_button_cursor().unwrap_or(usize::MAX);
+
+  let buttons_block = Block::default()
+    .borders(Borders::ALL)
+    .border_type(ratatui::widgets::BorderType::Plain)
+    .border_style(Style::new().fg(app.theme.border_active))
+    .title(format!(
+      "{} · {}",
+      tr(app.lang, "control_center.actions"),
+      tr(app.lang, "control_center.actions_hint")
+    ));
+  frame.render_widget(buttons_block, chunks[2]);
+
+  // The buttons fill the block's inside; the bar wraps them to its width.
+  let inner_buttons = Rect {
+    x: chunks[2].x + 1,
+    y: chunks[2].y + 1,
+    width: chunks[2].width.saturating_sub(2),
+    height: chunks[2].height.saturating_sub(2),
+  };
+
+  draw_action_buttons(
+    frame,
+    inner_buttons,
+    &buttons,
+    selected_button,
+    &app.theme,
+    Alignment::Center,
+  );
+
+  // Status
+  // Footer: a warning while any edit waits for Save, otherwise the ready state.
+  let status = if app.admin.any_user_draft_changed() {
+    Paragraph::new(tr(app.lang, "control_center.unsaved_changes")).style(
+      Style::default()
+        .fg(app.theme.warning)
+        .add_modifier(Modifier::BOLD),
+    )
+  } else {
+    Paragraph::new(tr(app.lang, "control_center.ready"))
+      .style(Style::default().fg(app.theme.muted))
+  };
+  frame.render_widget(status, chunks[3]);
+
+  // Navigation footer, always the last line of the screen.
+  let nav = Paragraph::new(tr(app.lang, "control_center.user_page_keys"))
+    .alignment(Alignment::Right)
+    .style(Style::default().fg(app.theme.muted));
+  frame.render_widget(nav, chunks[4]);
+
+  // Popups/Dialogs
   if app.hostname_editing {
     popup::draw_hostname_input(frame, area, app);
   }
@@ -200,20 +349,15 @@ mod tests {
     let mut app = user_app();
     let selected_bg = app.theme.selected_background;
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_eq!(line_bg(&terminal, "Full name"), Some(selected_bg));
-    assert_ne!(line_bg(&terminal, "Save changes"), Some(selected_bg));
-    assert_ne!(
-      line_bg(&terminal, "Delete user (keep home)"),
-      Some(selected_bg)
-    );
+    // The list starts on its first option; the buttons are not highlighted.
+    assert_eq!(line_bg(&terminal, "Avatar image"), Some(selected_bg));
+    assert_ne!(line_bg(&terminal, "Save"), Some(selected_bg));
 
+    // End moves the list to its last option, the info block's end.
     crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::End)));
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_eq!(
-      line_bg(&terminal, "Delete user and home"),
-      Some(selected_bg)
-    );
-    assert_ne!(line_bg(&terminal, "Full name"), Some(selected_bg));
+    assert_eq!(line_bg(&terminal, "Password"), Some(selected_bg));
+    assert_ne!(line_bg(&terminal, "Avatar image"), Some(selected_bg));
   }
 
   #[test]

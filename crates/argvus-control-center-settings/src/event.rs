@@ -5,6 +5,7 @@
 use argvus_tui::confirm::ConfirmOutcome;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
+use crate::administration::is_user_form;
 use crate::app::App;
 use crate::navigation::Page;
 
@@ -160,6 +161,8 @@ fn handle_regular_key(app: &mut App, key: KeyEvent) {
     }
     KeyCode::Char('+') | KeyCode::Char('=') => return app.adjust_size(1),
     KeyCode::Char('-') => return app.adjust_size(-1),
+    // Tab moves focus between the info list and the action buttons.
+    KeyCode::Tab | KeyCode::BackTab if is_user_form(page) => return app.toggle_user_focus(),
     // Tab only switches tabs or panes; Settings has none.
     KeyCode::Tab | KeyCode::BackTab => return,
     // Enter sets the default layout; Space (a Toggle) enables or disables it.
@@ -173,6 +176,29 @@ fn handle_regular_key(app: &mut App, key: KeyEvent) {
     KeyCode::Char(' ') if page == Page::Keybindings => return app.toggle_selected_keybinding(),
     _ => {}
   }
+  // User page, cfdisk style: Up/Down move the info list, Left/Right move
+  // across the action buttons, Enter runs the focused one.
+  if is_user_form(page) {
+    match key.code {
+      KeyCode::Left | KeyCode::Char('h') => return app.move_user_button(true),
+      KeyCode::Right | KeyCode::Char('l') => return app.move_user_button(false),
+      KeyCode::Enter | KeyCode::Char(' ') if app.user_button_cursor().is_some() => {
+        return app.activate_user_button();
+      }
+      KeyCode::Up
+      | KeyCode::Down
+      | KeyCode::PageUp
+      | KeyCode::PageDown
+      | KeyCode::Home
+      | KeyCode::End
+        if app.user_button_cursor().is_some() =>
+      {
+        app.focus_user_info()
+      }
+      _ => {}
+    }
+  }
+
   let code = match key.code {
     // Space keeps activating any row where it did before (account and
     // firewall pages, shortcut editor, Mouse & Touchpad).

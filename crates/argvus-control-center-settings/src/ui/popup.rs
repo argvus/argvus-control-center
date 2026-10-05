@@ -57,7 +57,11 @@ pub fn draw_confirmation(frame: &mut Frame, area: Rect, app: &App) {
     title: &title,
     message: &message,
     confirm,
-    cancel: tr(app.lang, "control_center.cancel"),
+    cancel: if app.admin.delete_confirm {
+      tr(app.lang, "control_center.no")
+    } else {
+      tr(app.lang, "control_center.cancel")
+    },
     danger,
     deadline: None,
   };

@@ -357,7 +357,11 @@ impl App {
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
-      | Page::UserPrimaryGroup => format!(
+      | Page::UserPrimaryGroup
+      | Page::UserAvatar
+      | Page::UserUsername
+      | Page::UserFullName
+      | Page::UserDelete => format!(
         "{root} > {} > {}",
         tr(self.lang, "control_center.system"),
         tr(self.lang, "control_center.users")
@@ -593,9 +597,14 @@ impl App {
 
   /// Executes the `cancel_modal` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cancel_modal(&mut self) {
+    let delete_asked = self.admin.delete_confirm;
     self.admin.cancel_pending();
     self.confirm = None;
     self.confirm_focus = ConfirmState::new();
+    // No on the delete confirmation returns to the user list.
+    if delete_asked {
+      self.leave_user_pages();
+    }
   }
 
   /// Texts of the open confirmation: title, message, confirm label and
@@ -621,6 +630,10 @@ impl App {
     let action = self.confirm.as_ref()?;
     let (title, message) = pending_action_text(self.lang, action);
     let (confirm, danger) = match action {
+      // The user delete confirmation answers Yes / No.
+      PendingAction::Administration { danger: true, .. } if self.admin.delete_confirm => {
+        (label("control_center.yes"), true)
+      }
       PendingAction::Administration { danger: true, .. } => (label("control_center.delete"), true),
       PendingAction::DiscardDraft => (label("control_center.discard"), false),
       PendingAction::ResetApps
@@ -692,7 +705,9 @@ impl App {
               self.navigation.current_mut().page = Page::User;
               self.normalize_selection();
             }
-            Some("delete") | Some("delete-group") => {
+            // A deleted user leaves every user subpage; the account is gone.
+            Some("delete") => self.leave_user_pages(),
+            Some("delete-group") => {
               self.navigation.back();
             }
             _ => {}
@@ -1243,7 +1258,7 @@ impl App {
   }
 
   /// Executes the `success` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn success(&mut self, text: String) {
+  pub(crate) fn success(&mut self, text: String) {
     self.status = Some(Status {
       text,
       kind: StatusKind::Success,

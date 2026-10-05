@@ -53,6 +53,12 @@ const FIREWALL_FIELDS: [(&str, &str); 15] = [
 ];
 
 /// Checks the condition represented by `is_page` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+/// Pages drawn with the two-block layout (User Data and Actions): the user
+/// page and the create form.
+pub fn is_user_form(page: Page) -> bool {
+  matches!(page, Page::User | Page::CreateUser)
+}
+
 pub fn is_page(page: Page) -> bool {
   matches!(
     page,
@@ -62,10 +68,14 @@ pub fn is_page(page: Page) -> bool {
       | Page::SystemUsers
       | Page::User
       | Page::CreateUser
+      | Page::UserUsername
       | Page::UserGroups
       | Page::UserPassword
       | Page::UserShell
       | Page::UserPrimaryGroup
+      | Page::UserAvatar
+      | Page::UserFullName
+      | Page::UserDelete
       | Page::Groups
       | Page::GroupList
       | Page::SystemGroups
@@ -169,6 +179,22 @@ pub struct Administration {
   passwords: [String; 3],
   pub editor: Option<Editor>,
   pending: Option<(bool, Value)>,
+  /// Requests of the same Save still waiting: each runs after the previous one succeeds.
+  queued: Vec<Value>,
+  /// Index of the focused action button of the user page (see `user_action_rows`).
+  user_button: usize,
+  /// Whether Left/Right and Enter act on the action buttons instead of the info list.
+  user_buttons_focused: bool,
+  /// The open confirmation is the delete one: its yes and no both leave the user pages.
+  pub(crate) delete_confirm: bool,
+  /// Create form: the new account is made an administrator (joins `sudo`).
+  pub(crate) create_admin: bool,
+  /// The password page was opened from the create form (only new password rows).
+  pub(crate) creating_password: bool,
+  /// Lock draft: `Some(true)` locks, `Some(false)` unlocks, `None` keeps the account as is.
+  lock_draft: Option<bool>,
+  /// Require a password change at the next login, applied by Save.
+  expire_draft: bool,
   worker: Option<Receiver<Result<(bool, Value), String>>>,
   operation: String,
   pub completed: Option<String>,
@@ -186,6 +212,14 @@ impl Administration {
       passwords: Default::default(),
       editor: None,
       pending: None,
+      queued: Vec::new(),
+      user_button: 0,
+      user_buttons_focused: false,
+      delete_confirm: false,
+      create_admin: false,
+      creating_password: false,
+      lock_draft: None,
+      expire_draft: false,
       worker: None,
       operation: String::new(),
       completed: None,
@@ -211,6 +245,7 @@ impl Administration {
   /// Executes the `cancel_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn cancel_pending(&mut self) {
     self.pending = None;
+    self.queued.clear();
   }
 
   /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -248,7 +283,9 @@ impl Administration {
       Err(mpsc::TryRecvError::Disconnected) => Err("backend worker disconnected".into()),
     };
     self.worker = None;
-    Some(result.map(|(firewall, value)| {
+    self.delete_confirm = false;
+    let mut queued = std::mem::take(&mut self.queued);
+    let done = result.map(|(firewall, value)| {
       self.completed = Some(self.operation.clone());
       if firewall {
         if matches!(self.operation.as_str(), "snapshot" | "save-config") {
@@ -263,7 +300,10 @@ impl Administration {
         let keep_group = reload && self.group_draft_changed();
         if let Some(users) = value["users"].as_array()
           && let Some(user) = users.iter().find(|user| user["user"] == self.user["user"])
-          && matches!(self.operation.as_str(), "snapshot" | "edit" | "create")
+          && matches!(
+            self.operation.as_str(),
+            "snapshot" | "edit" | "create" | "avatar" | "password"
+          )
           && !keep_user
         {
           self.user = user.clone();
@@ -285,7 +325,25 @@ impl Administration {
           self.group = Value::Null;
         }
       }
-    }))
+    });
+    // The requests of one Save run in order (edit, avatar, password). A failed
+    // step stops the chain and keeps the drafts, so Save can be tried again.
+    if done.is_ok() {
+      // The password draft is cleared only once the password change succeeded.
+      match self.operation.as_str() {
+        "password" => self.passwords = Default::default(),
+        "lock" => self.lock_draft = None,
+        "expire-password" => self.expire_draft = false,
+        "create" => self.create_admin = false,
+        _ => {}
+      }
+      if !queued.is_empty() {
+        let next = queued.remove(0);
+        self.queued = queued;
+        self.start(false, next, true);
+      }
+    }
+    Some(done)
   }
 
   /// Executes the `submit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -371,58 +429,50 @@ impl Administration {
           })
           .collect()
       }
-      Page::CreateUser => {
-        let mut rows = vec![
-          Row::section(label("control_center.account")),
-          Row::value(
-            Item::Username,
-            label("control_center.username"),
-            text(&self.user, "user"),
-            None,
-          )
-          .icon(icons::USER),
-          Row::value(
-            Item::FullName,
-            label("control_center.full_name"),
-            text(&self.user, "name"),
-            None,
-          )
-          .icon(icons::ID_CARD),
-          Row::submenu(Item::Shell, label("control_center.shell"))
-            .icon(icons::TERMINAL)
-            .detail(text(&self.user, "shell")),
-          Row::submenu(
-            Item::SupplementaryGroups,
-            label("control_center.supplementary_groups"),
-          )
-          .icon(icons::GROUP)
-          .detail(strings(&self.user["groups"]).join(", ")),
-          self.password_row(lang, 1),
-          self.password_row(lang, 2),
-        ];
-        rows.extend(self.draft_rows(
-          Item::CreateAccount,
-          self.create_account_label(lang),
-          self.create_user_changed(),
-          lang,
-        ));
-        rows
-      }
+      Page::CreateUser => self.create_rows(lang),
+      Page::UserUsername => self.username_rows(lang),
       Page::User => self.user_rows(lang),
-      Page::UserPassword => {
-        let mut rows = vec![
-          self.password_row(lang, 0),
-          self.password_row(lang, 1),
-          self.password_row(lang, 2),
-        ];
-        rows.extend(self.draft_rows(
-          Item::SavePassword,
-          label("control_center.save_password"),
-          self.passwords_changed(),
-          lang,
-        ));
-        rows
-      }
+      Page::UserAvatar => self.avatar_rows(lang),
+      Page::UserFullName => self.full_name_rows(lang),
+      Page::UserDelete => self.delete_rows(lang),
+      // The password page edits drafts only: Ok returns to the user page and
+      // Save applies the password and the security options.
+      // Creating an account only asks for the new password.
+      Page::UserPassword if self.creating_password => vec![
+        Row::info(label("control_center.esc_cancels"), String::new()),
+        self.password_row(lang, 1),
+        self.password_row(lang, 2),
+        Row::separator(),
+        Row::action(Item::OkPassword, label("control_center.password_ok")).icon(icons::APPLY),
+      ],
+      Page::UserPassword => vec![
+        Row::section(label("control_center.password_configuration")),
+        Row::info(label("control_center.esc_cancels"), String::new()),
+        self.password_row(lang, 0),
+        self.password_row(lang, 1),
+        self.password_row(lang, 2),
+        Row::section(label("control_center.security")),
+        Row::toggle(
+          Item::LockPassword,
+          label("control_center.lock_password"),
+          self.lock_draft == Some(true),
+        )
+        .icon(icons::LOCK),
+        Row::toggle(
+          Item::UnlockPassword,
+          label("control_center.unlock_password"),
+          self.lock_draft == Some(false),
+        )
+        .icon(icons::LOCK_OPEN),
+        Row::toggle(
+          Item::ExpirePassword,
+          label("control_center.require_password_change_at_login"),
+          self.expire_draft,
+        )
+        .icon(icons::LOCK_RESET),
+        Row::separator(),
+        Row::action(Item::OkPassword, label("control_center.password_ok")).icon(icons::APPLY),
+      ],
       Page::UserShell | Page::UserPrimaryGroup => {
         let (source, field) = if page == Page::UserShell {
           ("shells", "shell")
@@ -459,7 +509,9 @@ impl Administration {
           .collect()
       }
       Page::Groups => vec![
-        Row::submenu(Item::CreateGroup, label("control_center.create")).icon(icons::ADD),
+        Row::submenu(Item::CreateGroup, label("control_center.create"))
+        .icon(icons::ADD)
+        .enabled(self.is_admin()),
         Row::submenu(Item::GroupList, label("control_center.list")).icon(icons::GROUP),
       ],
       Page::GroupList | Page::SystemGroups => {
@@ -548,10 +600,17 @@ impl Administration {
 
   /// System > Users > (user): account fields and their Save row, then the
   /// password and avatar actions, with the deletions in the Danger zone.
+  /// The user page. The "User info" block holds the readonly identity and the
+  /// fields that open their own page; the "Actions" block (after a section
+  /// row, reached with Tab) holds Save, Cancel and Delete.
   fn user_rows(&self, lang: Lang) -> Vec<Row<Item>> {
     let label = |key: &str| tr(lang, key);
+    let avatar = if text(&self.user, "avatar").is_empty() {
+      label("control_center.avatar_none")
+    } else {
+      label("control_center.avatar_loaded")
+    };
     let mut rows = vec![
-      Row::section(label("control_center.account")),
       Row::info(label("control_center.username"), text(&self.user, "user")),
       Row::info(
         label("control_center.uid_gid"),
@@ -561,67 +620,149 @@ impl Administration {
         label("control_center.home_directory"),
         text(&self.user, "home"),
       ),
-      Row::value(
-        Item::FullName,
-        label("control_center.full_name"),
-        text(&self.user, "name"),
-        None,
-      )
-      .icon(icons::ID_CARD),
+      Row::submenu(Item::AvatarImage, label("control_center.avatar_image"))
+        .icon(icons::AVATAR)
+        .detail(avatar),
+      Row::submenu(Item::FullName, label("control_center.full_name"))
+        .icon(icons::ID_CARD)
+        .detail(text(&self.user, "name")),
       Row::submenu(Item::Shell, label("control_center.shell"))
         .icon(icons::TERMINAL)
         .detail(text(&self.user, "shell")),
       Row::submenu(Item::PrimaryGroup, label("control_center.primary_group"))
         .icon(icons::ACCOUNT_STAR)
         .detail(text(&self.user, "primary_group")),
-      Row::submenu(
-        Item::SupplementaryGroups,
-        label("control_center.supplementary_groups"),
+      Row::submenu(Item::SupplementaryGroups, label("control_center.user_groups")).icon(icons::GROUP),
+      Row::toggle(
+        Item::UserAdmin,
+        label("control_center.make_admin"),
+        strings(&self.user["groups"]).iter().any(|group| group == "sudo"),
       )
-      .icon(icons::GROUP)
-      .detail(strings(&self.user["groups"]).join(", ")),
+      .icon(icons::SHIELD)
+      .enabled(self.is_admin()),
+      Row::submenu(Item::ChangePassword, label("control_center.password"))
+        .icon(icons::KEY)
+        .detail("****"),
+      Row::section(label("control_center.actions")),
     ];
-    rows.extend(self.draft_rows(
-      Item::SaveUser,
-      label("control_center.save_changes"),
-      self.user_draft_changed(),
-      lang,
-    ));
+    // Save is always selectable: with nothing to save it says so, instead of
+    // being dead in the bar. The draft note appears only when there is a draft.
+    let mut save = draft_actions(Item::SaveUser, label("control_center.save_user"), true);
+    if self.any_user_draft_changed()
+      && let Some(row) = save.pop()
+    {
+      save.push(row.detail(label("control_center.draft_changed")));
+    }
+    rows.extend(save);
     rows.extend([
-      Row::section(label("control_center.section_password")),
-      Row::submenu(
-        Item::ChangePassword,
-        label("control_center.change_password"),
-      )
-      .icon(icons::KEY),
-      Row::action(Item::LockPassword, label("control_center.lock_password")).icon(icons::LOCK),
-      Row::action(
-        Item::UnlockPassword,
-        label("control_center.unlock_password"),
-      )
-      .icon(icons::LOCK_OPEN),
-      Row::action(
-        Item::ExpirePassword,
-        label("control_center.require_password_change_at_login"),
-      )
-      .icon(icons::LOCK_RESET),
-      Row::section(label("control_center.section_avatar")),
-      Row::action(Item::AvatarImage, label("control_center.avatar_image")).icon(icons::AVATAR),
-      Row::action(Item::RemoveAvatar, label("control_center.remove_avatar"))
-        .icon(icons::IMAGE_REMOVE),
-      Row::section(label("control_center.danger_zone")),
-      Row::destructive(
-        Item::DeleteUser,
-        label("control_center.delete_user_keep_home"),
-      )
-      .icon(icons::ACCOUNT_REMOVE),
-      Row::destructive(
-        Item::DeleteUserAndHome,
-        label("control_center.delete_user_and_home"),
-      )
-      .icon(icons::DELETE_FOREVER),
+      Row::action(Item::CancelUser, label("control_center.cancel")).icon(icons::CANCEL),
+      Row::destructive(Item::DeleteUserMenu, label("control_center.delete_user"))
+        .icon(icons::ACCOUNT_REMOVE),
     ]);
     rows
+  }
+
+  /// The create page: the same two blocks as the user page. The fields open
+  /// their own pages, and Actions creates the account or cancels the form.
+  fn create_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    let label = |key: &str| tr(lang, key);
+    let user = text(&self.user, "user");
+    let home = if user.is_empty() {
+      String::new()
+    } else {
+      format!("/home/{user}")
+    };
+    let avatar = if text(&self.user, "avatar").is_empty() {
+      label("control_center.avatar_none")
+    } else {
+      label("control_center.avatar_loaded")
+    };
+    let password = if self.passwords_changed() { "****" } else { "" };
+    vec![
+      Row::submenu(Item::AvatarImage, label("control_center.avatar_image"))
+        .icon(icons::AVATAR)
+        .detail(avatar),
+      Row::submenu(Item::Username, label("control_center.username"))
+        .icon(icons::USER)
+        .detail(user),
+      Row::submenu(Item::FullName, label("control_center.full_name"))
+        .icon(icons::ID_CARD)
+        .detail(text(&self.user, "name")),
+      Row::submenu(Item::Shell, label("control_center.shell"))
+        .icon(icons::TERMINAL)
+        .detail(text(&self.user, "shell")),
+      Row::info(label("control_center.home_directory"), home),
+      Row::submenu(Item::ChangePassword, label("control_center.password"))
+        .icon(icons::KEY)
+        .detail(password),
+      Row::submenu(Item::SupplementaryGroups, label("control_center.user_groups"))
+        .icon(icons::GROUP),
+      Row::toggle(
+        Item::CreateAdmin,
+        label("control_center.make_admin"),
+        self.create_admin,
+      )
+      .icon(icons::SHIELD),
+      Row::section(label("control_center.actions")),
+      Row::action(Item::CreateAccount, label("control_center.create")).icon(icons::ADD),
+      Row::action(Item::CancelCreate, label("control_center.cancel")).icon(icons::CANCEL),
+    ]
+  }
+
+  /// The username page of the create form: the hint says Esc cancels the edit.
+  fn username_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    vec![
+      Row::info(tr(lang, "control_center.esc_cancels"), String::new()),
+      Row::value(
+        Item::UsernameField,
+        tr(lang, "control_center.username"),
+        text(&self.user, "user"),
+        None,
+      )
+      .icon(icons::USER),
+    ]
+  }
+
+  /// The avatar page: edit the image path or remove the avatar.
+  fn avatar_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    let has_avatar = !text(&self.user, "avatar").is_empty();
+    vec![
+      Row::action(Item::EditAvatar, tr(lang, "control_center.edit_avatar")).icon(icons::AVATAR),
+      Row::action(Item::RemoveAvatar, tr(lang, "control_center.remove_avatar"))
+        .icon(icons::IMAGE_REMOVE)
+        .enabled(has_avatar),
+    ]
+  }
+
+  /// The full name page: the hint says Esc cancels the edit.
+  fn full_name_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    vec![
+      Row::info(tr(lang, "control_center.esc_cancels"), String::new()),
+      Row::value(
+        Item::FullNameField,
+        tr(lang, "control_center.full_name"),
+        text(&self.user, "name"),
+        None,
+      )
+      .icon(icons::ID_CARD),
+    ]
+  }
+
+  /// The delete page: a choice between keeping the home directory and
+  /// deleting it too. Either one asks the same confirmation.
+  fn delete_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    let home = text(&self.user, "home");
+    vec![
+      Row::section(tr(lang, "control_center.choice")),
+      Row::action(
+        Item::DeleteUser,
+        format!("1 - {} {home}", tr(lang, "control_center.maintain")),
+      ),
+      Row::destructive(
+        Item::DeleteUserAndHome,
+        format!("2 - {} {home}", tr(lang, "control_center.delete")),
+      ),
+    ]
   }
 
   /// Service state, the configuration draft with its Save and Cancel rows,
@@ -741,6 +882,33 @@ impl Administration {
       || set(&loaded["groups"]) != set(&self.user["groups"])
   }
 
+  /// Whether the signed-in account administers accounts (root or `sudo`), as
+  /// the backend reported it. Administrators only see and change other accounts.
+  pub(crate) fn is_admin(&self) -> bool {
+    self.accounts["actor_is_admin"].as_bool().unwrap_or(false)
+  }
+
+  /// Whether the user page has any draft to save: fields, avatar or a typed password.
+  pub(crate) fn any_user_draft_changed(&self) -> bool {
+    self.user_draft_changed()
+      || self.avatar_draft_changed()
+      || self.passwords_changed()
+      || self.security_changed()
+  }
+
+  /// Whether the lock or the forced password change has a pending draft.
+  pub(crate) fn security_changed(&self) -> bool {
+    self.lock_draft.is_some() || self.expire_draft
+  }
+
+  /// Whether the avatar draft differs from the saved avatar ("" means none).
+  pub(crate) fn avatar_draft_changed(&self) -> bool {
+    let Some(loaded) = self.loaded_user() else {
+      return false;
+    };
+    text(loaded, "avatar") != text(&self.user, "avatar")
+  }
+
   /// Whether the create-user form has anything typed or chosen.
   pub(crate) fn create_user_changed(&self) -> bool {
     let default_shell = strings(&self.accounts["shells"])
@@ -751,6 +919,8 @@ impl Administration {
       || !text(&self.user, "name").is_empty()
       || text(&self.user, "shell") != default_shell
       || !strings(&self.user["groups"]).is_empty()
+      || self.create_admin
+      || !text(&self.user, "avatar").is_empty()
       || self.passwords_changed()
   }
 
@@ -804,18 +974,31 @@ impl Administration {
       }
       Page::Firewall => self.config = self.firewall["config"].clone(),
       Page::CreateGroup => self.group = json!({"name":""}),
+      Page::CreateUser => {
+        // A discarded form starts again empty, with the default shell.
+        self.create_admin = false;
+        self.creating_password = false;
+        let shell = strings(&self.accounts["shells"])
+          .first()
+          .cloned()
+          .unwrap_or_else(|| "/bin/bash".into());
+        self.user = json!({"user":"", "name":"", "shell":shell, "groups":[]});
+      }
       _ => {}
     }
     self.passwords = Default::default();
+    self.queued.clear();
+    self.lock_draft = None;
+    self.expire_draft = false;
   }
 
   /// Whether leaving `page` would drop unsaved changes. Subpages that edit
   /// the same draft (shell, groups, members) keep it and do not ask.
   pub(crate) fn leaving_drops_draft(&self, page: Page) -> bool {
     match page {
-      Page::User => self.user_draft_changed(),
+      Page::User => self.any_user_draft_changed(),
       Page::CreateUser => self.create_user_changed(),
-      Page::UserPassword => self.passwords_changed(),
+      Page::UserPassword => self.passwords_changed() || self.security_changed(),
       Page::Group => self.group_draft_changed(),
       Page::CreateGroup => self.create_group_changed(),
       Page::Firewall => self.firewall_draft_changed(),
@@ -858,6 +1041,100 @@ impl App {
     self.admin.pending = Some((firewall, value));
     self.confirm = Some(PendingAction::Administration { message, danger });
     self.confirm_focus = argvus_tui::confirm::ConfirmState::new();
+  }
+
+  /// The action buttons of the user page: the rows after its "Actions"
+  /// section, disabled ones included so the index matches the drawn bar.
+  pub(crate) fn user_action_rows(&self) -> Vec<Row<Item>> {
+    self
+      .rows()
+      .into_iter()
+      .skip_while(|row| !row.is_section())
+      .skip(1)
+      .filter(|row| row.id().is_some())
+      .collect()
+  }
+
+  /// Index of the focused action button, or `None` while the info list has focus.
+  pub(crate) fn user_button_cursor(&self) -> Option<usize> {
+    self.admin.user_buttons_focused.then_some(self.admin.user_button)
+  }
+
+  /// Left/Right on the user page: moves across the enabled buttons, like
+  /// cfdisk does on its bar. The first press only moves the focus there.
+  pub(crate) fn move_user_button(&mut self, backwards: bool) {
+    let enabled: Vec<usize> = self
+      .user_action_rows()
+      .iter()
+      .enumerate()
+      .filter(|(_, row)| row.is_selectable())
+      .map(|(index, _)| index)
+      .collect();
+    let Some(&first) = enabled.first() else {
+      return;
+    };
+    if !self.admin.user_buttons_focused {
+      self.admin.user_buttons_focused = true;
+      self.admin.user_button = first;
+      return;
+    }
+    let current = self.admin.user_button;
+    let next = if backwards {
+      enabled.iter().rev().find(|&&index| index < current).or(enabled.last())
+    } else {
+      enabled.iter().find(|&&index| index > current).or(enabled.first())
+    };
+    if let Some(&index) = next {
+      self.admin.user_button = index;
+    }
+  }
+
+  /// Up/Down/Home/End and similar: give the focus back to the info list.
+  pub(crate) fn focus_user_info(&mut self) {
+    self.admin.user_buttons_focused = false;
+  }
+
+  /// Tab: switches focus between the info list and the buttons.
+  pub(crate) fn toggle_user_focus(&mut self) {
+    if self.admin.user_buttons_focused {
+      self.focus_user_info();
+    } else {
+      self.move_user_button(false);
+    }
+  }
+
+  /// Leaves the user pages for the user list: after a delete, or when the
+  /// delete confirmation is answered no. The page's edits go with them.
+  pub(crate) fn leave_user_pages(&mut self) {
+    self.admin.delete_confirm = false;
+    self.admin.discard_draft(Page::User);
+    while matches!(
+      self.page(),
+      Page::User
+        | Page::UserDelete
+        | Page::UserAvatar
+        | Page::UserFullName
+        | Page::UserPassword
+        | Page::UserShell
+        | Page::UserPrimaryGroup
+        | Page::UserGroups
+    ) && self.navigation.back()
+    {}
+    self.normalize_selection();
+  }
+
+  /// Enter on a focused button: runs its row, as Enter on the row would.
+  pub(crate) fn activate_user_button(&mut self) {
+    let rows = self.user_action_rows();
+    let Some(row) = rows.get(self.admin.user_button) else {
+      return;
+    };
+    if !row.is_selectable() {
+      return;
+    }
+    if let Some(item) = row.id().copied() {
+      self.activate(item);
+    }
   }
 
   /// Runs the row `item` of an account or firewall page. Toggles, actions,
@@ -950,7 +1227,8 @@ impl App {
           self.navigation.push(Page::User);
         }
       }
-      Item::Username => {
+      Item::Username => self.navigation.push(Page::UserUsername),
+      Item::UsernameField => {
         self.admin.editor = Some(Editor::new(
           tr(lang, "control_center.username").into(),
           user,
@@ -958,7 +1236,12 @@ impl App {
           false,
         ));
       }
-      Item::FullName => {
+      Item::CancelCreate => {
+        self.admin.discard_draft(Page::CreateUser);
+        self.navigation.back();
+      }
+      Item::FullName => self.navigation.push(Page::UserFullName),
+      Item::FullNameField => {
         self.admin.editor = Some(Editor::new(
           tr(lang, "control_center.full_name").into(),
           text(&self.admin.user, "name"),
@@ -983,9 +1266,25 @@ impl App {
         ));
       }
       Item::CreateAccount => {
+        if user.is_empty() {
+          self.fail(tr(lang, "control_center.username_required"));
+          return;
+        }
+        // A chosen avatar is set once the account exists, after the create.
+        let avatar = text(&self.admin.user, "avatar");
+        let queue = if avatar.is_empty() {
+          Vec::new()
+        } else {
+          vec![json!({"action":"avatar", "user":user, "path":avatar})]
+        };
         let title = self.admin.create_account_label(lang);
-        let mut value = json!({"action":"create", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"]});
+        let mut groups = strings(&self.admin.user["groups"]);
+        if self.admin.create_admin && !groups.iter().any(|group| group == "sudo") {
+          groups.push("sudo".into());
+        }
+        let mut value = json!({"action":"create", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":groups});
         if self.admin.passwords[1].is_empty() && self.admin.passwords[2].is_empty() {
+          self.admin.queued = queue;
           self.admin_confirm(false, value, format!("{title}: {user}?"));
           return;
         }
@@ -995,36 +1294,72 @@ impl App {
         }
         value["password"] = self.admin.passwords[1].clone().into();
         self.admin.passwords = Default::default();
+        self.admin.queued = queue;
         self.admin_confirm(false, value, format!("{title}: {user}?"));
       }
+      // Save is the only place where the user page writes: the field edit,
+      // the avatar and a typed password run in that order, one confirmation.
       Item::SaveUser => {
-        let value = json!({"action":"edit", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"], "primary_group":self.admin.user["primary_group"]});
-        self.admin_confirm(false, value, confirm_user("control_center.save_changes"));
+        if !self.admin.any_user_draft_changed() {
+          self.success(tr(lang, "control_center.nothing_to_save").into());
+          return;
+        }
+        if self.admin.passwords_changed() && !self.admin.new_password_is_valid() {
+          self.reject_password();
+          return;
+        }
+        let mut requests = Vec::new();
+        if self.admin.user_draft_changed() {
+          requests.push(json!({"action":"edit", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"], "primary_group":self.admin.user["primary_group"]}));
+        }
+        if self.admin.avatar_draft_changed() {
+          requests.push(json!({"action":"avatar", "user":user, "path":text(&self.admin.user, "avatar")}));
+        }
+        if self.admin.passwords_changed() {
+          requests.push(json!({"action":"password", "user":user, "old":self.admin.passwords[0], "new":self.admin.passwords[1], "confirm":self.admin.passwords[2]}));
+        }
+        if let Some(locked) = self.admin.lock_draft {
+          requests.push(json!({"action":"lock", "user":user, "locked":locked}));
+        }
+        if self.admin.expire_draft {
+          requests.push(json!({"action":"expire-password", "user":user}));
+        }
+        let first = requests.remove(0);
+        self.admin.queued = requests;
+        self.admin_confirm(false, first, confirm_user("control_center.save_changes"));
+      }
+      // Cancel only discards the edits; the user page stays open.
+      Item::CancelUser => self.admin.discard_draft(Page::User),
+      Item::CreateAdmin => self.admin.create_admin = !self.admin.create_admin,
+      // The sudo membership is part of the groups draft, so Save applies it.
+      Item::UserAdmin => {
+        let mut groups = strings(&self.admin.user["groups"]);
+        if groups.iter().any(|group| group == "sudo") {
+          groups.retain(|group| group != "sudo");
+        } else {
+          groups.push("sudo".into());
+        }
+        self.admin.user["groups"] = json!(groups);
       }
       Item::ChangePassword => {
-        self.admin.passwords = Default::default();
+        self.admin.creating_password = page == Page::CreateUser;
         self.navigation.push(Page::UserPassword);
       }
-      Item::LockPassword | Item::UnlockPassword => {
-        let (locked, key) = if item == Item::LockPassword {
-          (true, "control_center.lock_password")
-        } else {
-          (false, "control_center.unlock_password")
-        };
-        self.admin_confirm(
-          false,
-          json!({"action":"lock", "user":user, "locked":locked}),
-          confirm_user(key),
-        );
+      // Ok returns to the user page; the password is applied by its Save.
+      Item::OkPassword => {
+        self.navigation.back();
       }
-      Item::ExpirePassword => {
-        self.admin_confirm(
-          false,
-          json!({"action":"expire-password", "user":user}),
-          confirm_user("control_center.require_password_change_at_login"),
-        );
+      Item::DeleteUserMenu => self.navigation.push(Page::UserDelete),
+      // Lock and Unlock are exclusive options: choosing one again clears it.
+      Item::LockPassword => {
+        self.admin.lock_draft = if self.admin.lock_draft == Some(true) { None } else { Some(true) };
       }
-      Item::AvatarImage => {
+      Item::UnlockPassword => {
+        self.admin.lock_draft = if self.admin.lock_draft == Some(false) { None } else { Some(false) };
+      }
+      Item::ExpirePassword => self.admin.expire_draft = !self.admin.expire_draft,
+      Item::AvatarImage => self.navigation.push(Page::UserAvatar),
+      Item::EditAvatar => {
         self.admin.editor = Some(Editor::new(
           tr(lang, "control_center.avatar_image").into(),
           String::new(),
@@ -1032,32 +1367,17 @@ impl App {
           false,
         ));
       }
-      Item::RemoveAvatar => {
-        self.admin_confirm(
-          false,
-          json!({"action":"avatar", "user":user, "path":""}),
-          confirm_user("control_center.remove_avatar"),
-        );
-      }
+      // Removing the avatar is a draft too: Save applies it.
+      Item::RemoveAvatar => self.admin.user["avatar"] = json!(""),
+      // Either choice asks the same irreversible-delete confirmation; yes and
+      // no both return to the user list.
       Item::DeleteUser | Item::DeleteUserAndHome => {
-        let (remove_home, key) = if item == Item::DeleteUserAndHome {
-          (true, "control_center.delete_user_and_home")
-        } else {
-          (false, "control_center.delete_user_keep_home")
-        };
+        let remove_home = item == Item::DeleteUserAndHome;
+        self.admin.delete_confirm = true;
         self.admin_confirm_danger(
           json!({"action":"delete", "user":user, "remove_home":remove_home}),
-          confirm_user(key),
+          tr(lang, "control_center.delete_irreversible").into(),
         );
-      }
-      Item::SavePassword => {
-        if !self.admin.new_password_is_valid() {
-          self.reject_password();
-          return;
-        }
-        let value = json!({"action":"password", "user":self.admin.user["user"], "old":self.admin.passwords[0], "new":self.admin.passwords[1], "confirm":self.admin.passwords[2]});
-        self.admin.passwords = Default::default();
-        self.admin_confirm(false, value, confirm_user("control_center.save_password"));
       }
       Item::ShellOption(index) | Item::PrimaryGroupOption(index) => {
         let (source, field) = if matches!(item, Item::ShellOption(_)) {
@@ -1230,11 +1550,8 @@ impl App {
           Ok(()) => self.refresh_time(),
           Err(error) => self.fail(error),
         },
-        EditTarget::Avatar => self.admin_confirm(
-          false,
-          json!({"action":"avatar", "user":self.admin.user["user"], "path":value}),
-          tr(self.lang, "control_center.change_avatar").into(),
-        ),
+        // The avatar is a draft like the other fields: Save applies it.
+        EditTarget::Avatar => self.admin.user["avatar"] = json!(value),
       }
     } else {
       editor.input(key);
@@ -1411,7 +1728,7 @@ mod tests {
     );
     app.error_modal = None;
     app.navigation.push(page);
-    app.admin.accounts = json!({"actor_uid":1000, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel", "audio"], "group_details":[
+    app.admin.accounts = json!({"actor_uid":1000, "actor_is_admin":true, "shells":["/bin/bash", "/bin/zsh"], "groups":["users", "wheel", "audio"], "group_details":[
       {"name":"audio","gid":986,"members":["alice"]},
       {"name":"users","gid":1000,"members":[]},
       {"name":"wheel","gid":998,"members":["alice"]}
@@ -1526,8 +1843,14 @@ mod tests {
   /// Executes the `destructive_actions_default_to_cancel_and_never_run_on_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn destructive_actions_default_to_cancel_and_never_run_on_selection() {
     let mut app = app(Page::User);
+    // Save, Cancel, then Delete user.
+    press(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Right);
+    assert!(app.confirm.is_none(), "moving the focus does not run anything");
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::UserDelete, "Delete asks Keep or Delete home first");
     select(&mut app, Item::DeleteUserAndHome);
-    assert!(app.confirm.is_none(), "selecting does not run anything");
     press(&mut app, KeyCode::Enter);
     assert!(app.confirm.is_some());
     assert!(!app.confirm_focus.is_confirm_focused());
@@ -1541,9 +1864,9 @@ mod tests {
   #[test]
   /// Executes the `password_mismatch_stays_local_and_passwords_are_masked` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn password_mismatch_stays_local_and_passwords_are_masked() {
-    let mut app = app(Page::UserPassword);
+    let mut app = app(Page::User);
     app.admin.passwords = ["old secret".into(), "new secret".into(), "different".into()];
-    app.admin_activate(Item::SavePassword);
+    app.admin_activate(Item::SaveUser);
     assert!(app.error_modal.is_some());
     assert!(app.admin.pending.is_none());
     for row in app.rows() {
@@ -1635,24 +1958,33 @@ mod tests {
     let mut app = app(Page::CreateUser);
     let rows = app.rows();
     let labels = rows.iter().map(|row| row.label()).collect::<Vec<_>>();
+    // Same two blocks as the user page: User Data, then Actions.
     assert_eq!(
       labels,
       vec![
-        "Account",
-        "Username",
-        "Full name",
+        tr(app.lang, "control_center.avatar_image"),
+        tr(app.lang, "control_center.username"),
+        tr(app.lang, "control_center.full_name"),
         tr(app.lang, "control_center.shell"),
-        "Supplementary groups",
-        "New password",
-        "Confirm password",
-        "",
-        tr(app.lang, "control_center.create_account_password_locked"),
+        tr(app.lang, "control_center.home_directory"),
+        tr(app.lang, "control_center.password"),
+        tr(app.lang, "control_center.user_groups"),
+        tr(app.lang, "control_center.make_admin"),
+        tr(app.lang, "control_center.actions"),
+        tr(app.lang, "control_center.create"),
+        tr(app.lang, "control_center.cancel"),
       ]
     );
-    assert!(rows[0].is_section());
-    assert!(rows[5].is_selectable() && rows[6].is_selectable());
-    assert_eq!(rows[7].kind(), RowKind::Separator);
-    assert_eq!(app.selected_item(), Some(Item::Username));
+    assert!(rows[8].is_section());
+    assert_eq!(app.selected_item(), Some(Item::AvatarImage));
+    // The username has its own page; the password page only asks the new one.
+    select(&mut app, Item::Username);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::UserUsername);
+    press(&mut app, KeyCode::Esc);
+    select(&mut app, Item::ChangePassword);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::UserPassword);
     select(&mut app, Item::Password(1));
     press(&mut app, KeyCode::Enter);
     let editor = app.admin.editor.take().expect("password row opens editor");
@@ -1664,6 +1996,7 @@ mod tests {
   /// Executes the `create_user_button_is_dynamic_and_validates_passwords` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn create_user_button_is_dynamic_and_validates_passwords() {
     let mut app = app(Page::CreateUser);
+    app.admin.user["user"] = json!("carol");
     let pt = Lang::for_locale("pt-BR");
     let create_label = |app: &App| {
       app
@@ -1674,10 +2007,10 @@ mod tests {
         .map(|row| row.label().to_string())
         .unwrap()
     };
-    assert_eq!(create_label(&app), "Criar conta (senha bloqueada)");
+    assert_eq!(create_label(&app), tr(pt, "control_center.create"));
     app.admin.passwords[1] = "segredo".into();
     app.admin.passwords[2] = "segredo".into();
-    assert_eq!(create_label(&app), "Criar conta com senha");
+    assert_eq!(create_label(&app), tr(pt, "control_center.create"), "the label does not change");
     app.admin_activate(Item::CreateAccount);
     assert!(
       app.admin.pending.is_some(),
@@ -1710,7 +2043,7 @@ mod tests {
   /// The user page follows the approved layout: titled sections, read-only
   /// identity as Info, the draft fields and their Save row, the password and
   /// avatar actions, and the deletions in the Danger zone at the end.
-  fn user_page_layout_has_sections_info_draft_and_danger_zone() {
+  fn user_page_layout_has_info_block_and_actions_block() {
     let mut app = app(Page::User);
     app.admin.user["name"] = json!("Alice Liddell");
     let rows = app.rows();
@@ -1719,15 +2052,7 @@ mod tests {
       .filter(|row| row.is_section())
       .map(|row| row.label())
       .collect();
-    assert_eq!(
-      sections,
-      vec![
-        "Account",
-        tr(app.lang, "control_center.section_password"),
-        tr(app.lang, "control_center.section_avatar"),
-        tr(app.lang, "control_center.danger_zone"),
-      ]
-    );
+    assert_eq!(sections, vec![tr(app.lang, "control_center.actions")]);
     assert!(rows.iter().all(|row| !row.label().starts_with("--")));
     let infos: Vec<&str> = rows
       .iter()
@@ -1750,19 +2075,16 @@ mod tests {
     assert_eq!(
       selectable,
       vec![
+        Item::AvatarImage,
         Item::FullName,
         Item::Shell,
         Item::PrimaryGroup,
         Item::SupplementaryGroups,
-        Item::SaveUser,
+        Item::UserAdmin,
         Item::ChangePassword,
-        Item::LockPassword,
-        Item::UnlockPassword,
-        Item::ExpirePassword,
-        Item::AvatarImage,
-        Item::RemoveAvatar,
-        Item::DeleteUser,
-        Item::DeleteUserAndHome,
+        Item::SaveUser,
+        Item::CancelUser,
+        Item::DeleteUserMenu,
       ]
     );
     let kind = |item: Item| {
@@ -1772,20 +2094,19 @@ mod tests {
         .map(|row| row.kind())
         .unwrap()
     };
-    assert_eq!(kind(Item::FullName), RowKind::Value { step: None });
+    assert_eq!(kind(Item::AvatarImage), RowKind::Submenu);
+    assert_eq!(kind(Item::FullName), RowKind::Submenu);
     assert_eq!(kind(Item::Shell), RowKind::Submenu);
-    assert_eq!(kind(Item::RemoveAvatar), RowKind::Action);
-    assert_eq!(kind(Item::DeleteUser), RowKind::Destructive);
-    assert_eq!(kind(Item::DeleteUserAndHome), RowKind::Destructive);
+    assert_eq!(kind(Item::CancelUser), RowKind::Action);
+    assert_eq!(kind(Item::DeleteUserMenu), RowKind::Destructive);
     let save = rows
       .iter()
       .position(|row| row.id() == Some(&Item::SaveUser))
       .unwrap();
     assert_eq!(rows[save - 1].kind(), RowKind::Separator);
-    assert_eq!(
-      rows[save - 2].id(),
-      Some(&Item::SupplementaryGroups),
-      "Save follows the editable fields"
+    assert!(
+      rows[save - 2].is_section(),
+      "Save starts the Actions block"
     );
   }
 
@@ -1793,11 +2114,11 @@ mod tests {
   /// Retrieves data for `readonly_user_and_group_rows_are_not_selectable` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn readonly_user_and_group_rows_are_not_selectable() {
     let mut user_app = app(Page::User);
-    assert_eq!(user_app.selected_item(), Some(Item::FullName));
+    assert_eq!(user_app.selected_item(), Some(Item::AvatarImage));
     press(&mut user_app, KeyCode::Up);
     assert_eq!(
       user_app.selected_item(),
-      Some(Item::FullName),
+      Some(Item::AvatarImage),
       "Info rows above are skipped"
     );
 
@@ -1836,6 +2157,7 @@ mod tests {
   fn group_members_picker_toggles_users_in_list() {
     let mut app = app(Page::GroupMembers);
     app.admin.accounts = json!({
+      "actor_is_admin": true,
       "users": [
         {"user":"alice","uid":1000,"shell":"/bin/bash","groups":["users"],"password":"x","locked":false},
         {"user":"bob","uid":1001,"shell":"/bin/bash","groups":["users"],"password":"x","locked":false}
@@ -1941,49 +2263,146 @@ mod tests {
   #[test]
   /// Applies the `save_and_delete_buttons_confirm_without_running` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn save_and_delete_rows_confirm_without_running() {
-    for item in [
-      Item::SaveUser,
-      Item::LockPassword,
-      Item::UnlockPassword,
-      Item::ExpirePassword,
-      Item::RemoveAvatar,
-      Item::DeleteUser,
-      Item::DeleteUserAndHome,
+    for (page, item) in [
+      (Page::User, Item::SaveUser),
+      (Page::UserDelete, Item::DeleteUser),
+      (Page::UserDelete, Item::DeleteUserAndHome),
     ] {
-      let mut app = app(Page::User);
+      let mut app = app(page);
       app.admin.user["name"] = json!("Alice Liddell");
-      select(&mut app, item);
-      press(&mut app, KeyCode::Enter);
+      app.admin_activate(item);
       assert!(app.confirm.is_some(), "{item:?} asks first");
       assert!(!app.admin.busy());
     }
   }
 
   #[test]
-  fn arrows_walk_the_single_list_and_tab_does_nothing() {
+  fn up_down_walk_the_info_list_and_left_right_walk_the_buttons() {
     let mut app = app(Page::User);
-    assert_eq!(app.selected_item(), Some(Item::FullName));
+    assert_eq!(app.selected_item(), Some(Item::AvatarImage));
     for expected in [
+      Item::FullName,
       Item::Shell,
       Item::PrimaryGroup,
       Item::SupplementaryGroups,
+      Item::UserAdmin,
       Item::ChangePassword,
     ] {
-      // Save changes is dimmed and skipped while the draft is clean.
       press(&mut app, KeyCode::Down);
       assert_eq!(app.selected_item(), Some(expected));
     }
+    press(&mut app, KeyCode::Down);
+    assert_eq!(app.selected_item(), Some(Item::ChangePassword), "the list ends at the info block");
+    assert_eq!(app.user_button_cursor(), None);
+
+    // The bar is Save, Cancel, Delete: the first Right focuses Save.
+    press(&mut app, KeyCode::Right);
+    assert_eq!(app.user_button_cursor(), Some(0));
+    press(&mut app, KeyCode::Right);
+    assert_eq!(app.user_button_cursor(), Some(1), "Cancel");
+    press(&mut app, KeyCode::Right);
+    assert_eq!(app.user_button_cursor(), Some(2), "Delete user");
+    press(&mut app, KeyCode::Right);
+    assert_eq!(app.user_button_cursor(), Some(0), "Right wraps to the first button");
+    press(&mut app, KeyCode::Left);
+    assert_eq!(app.user_button_cursor(), Some(2), "Left wraps back");
+
+    // Up gives the focus back to the list and moves it one option up.
+    press(&mut app, KeyCode::Up);
+    assert_eq!(app.user_button_cursor(), None, "Up gives the focus back to the list");
+    assert_eq!(app.selected_item(), Some(Item::UserAdmin));
     press(&mut app, KeyCode::Tab);
-    press(&mut app, KeyCode::BackTab);
-    assert_eq!(app.selected_item(), Some(Item::ChangePassword));
-    press(&mut app, KeyCode::End);
-    assert_eq!(app.selected_item(), Some(Item::DeleteUserAndHome));
-    press(&mut app, KeyCode::Home);
-    assert_eq!(app.selected_item(), Some(Item::FullName));
+    assert_eq!(app.user_button_cursor(), Some(0), "Tab moves to the buttons");
+    press(&mut app, KeyCode::Tab);
+    assert_eq!(app.user_button_cursor(), None, "Tab again returns to the list");
   }
 
   #[test]
-  fn save_changes_is_dimmed_until_the_user_draft_changes() {
+  /// Cancel on the focused button discards the edits and stays on the user page.
+  fn focused_cancel_button_discards_the_edits_and_stays() {
+    let mut app = app(Page::User);
+    app.admin.user["name"] = json!("Alice Liddell");
+    // Save, then Cancel.
+    press(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::User, "Cancel keeps the user page open");
+    assert!(!app.admin.user_draft_changed(), "the edits were discarded");
+    assert!(app.confirm.is_none(), "Cancel does not ask");
+  }
+
+  #[test]
+  /// Lock and Unlock are exclusive drafts and Expire is a checkbox; none run
+  /// until Save, and Esc on the page asks before dropping them.
+  fn password_page_security_options_are_drafts() {
+    let mut app = app(Page::UserPassword);
+    select(&mut app, Item::LockPassword);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.admin.lock_draft, Some(true));
+    select(&mut app, Item::UnlockPassword);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.admin.lock_draft, Some(false), "Unlock replaces Lock");
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.admin.lock_draft, None, "choosing it again clears it");
+    select(&mut app, Item::ExpirePassword);
+    press(&mut app, KeyCode::Enter);
+    assert!(app.admin.expire_draft);
+    assert!(app.confirm.is_none(), "nothing is confirmed or saved while editing");
+    assert!(app.admin.any_user_draft_changed(), "the footer warns about it");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.confirm.is_some(), "Esc asks before dropping the options");
+  }
+
+  #[test]
+  /// Edits made on the subpages are drafts: nothing runs until Save.
+  fn subpage_edits_are_drafts_until_save() {
+    let mut app = app(Page::UserAvatar);
+    app.admin.editor = Some(Editor::new(
+      "Avatar".into(),
+      "/tmp/face.png".into(),
+      EditTarget::Avatar,
+      false,
+    ));
+    press(&mut app, KeyCode::Enter);
+    assert!(app.confirm.is_none(), "the avatar is not saved while editing");
+    assert_eq!(text(&app.admin.user, "avatar"), "/tmp/face.png", "held in the draft");
+    assert!(!app.admin.busy());
+  }
+
+  #[test]
+  /// Without administration rights the group pages are read-only: no row can run.
+  fn group_writes_are_disabled_for_non_administrators() {
+    let mut app = app(Page::Group);
+    app.admin.accounts["actor_is_admin"] = json!(false);
+    assert!(
+      app.rows().iter().all(|row| !row.is_selectable()),
+      "no group row is selectable"
+    );
+  }
+
+  #[test]
+  /// Covers the subpages of the user page: Full name and Password open their
+  /// own page, and Ok of the password page goes back, keeping the change for Save.
+  fn user_subpages_open_their_pages_and_ok_keeps_the_password_draft() {
+    let mut app = app(Page::User);
+    select(&mut app, Item::FullName);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::UserFullName);
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.page(), Page::User, "Esc cancels the Full name page");
+
+    select(&mut app, Item::ChangePassword);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::UserPassword);
+    app.admin.passwords = ["old".into(), "new".into(), "new".into()];
+    select(&mut app, Item::OkPassword);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.page(), Page::User, "Ok returns to the user page");
+    assert!(app.admin.passwords_changed(), "the password waits for Save");
+  }
+
+  #[test]
+  fn save_changes_is_always_selectable_and_notes_the_draft() {
     let mut app = app(Page::User);
     let save = |app: &App| {
       app
@@ -1992,8 +2411,8 @@ mod tests {
         .find(|row| row.id() == Some(&Item::SaveUser))
         .unwrap()
     };
-    assert!(!save(&app).is_selectable(), "nothing to save yet");
-    assert_eq!(save(&app).detail_text(), None);
+    assert!(save(&app).is_selectable(), "Save is always reachable");
+    assert_eq!(save(&app).detail_text(), None, "no draft note while clean");
     app.admin.user["groups"] = json!(["wheel"]);
     assert!(!app.admin.user_draft_changed(), "same groups");
     app.admin.user["name"] = json!("Alice Liddell");
@@ -2128,7 +2547,7 @@ mod tests {
         .unwrap()
         .is_selectable()
     };
-    assert!(!create_row(&create), "empty form");
+    assert!(create_row(&create), "Create is always reachable; an empty name is refused");
     press(&mut create, KeyCode::Esc);
     assert_eq!(create.page(), Page::Users);
     create.admin_activate(Item::CreateUser);
@@ -2185,15 +2604,15 @@ mod tests {
     for (item, danger) in [
       (Item::DeleteUser, true),
       (Item::DeleteUserAndHome, true),
-      (Item::RemoveAvatar, false),
-      (Item::LockPassword, false),
     ] {
       user.admin_activate(item);
       let (_, message, confirm, is_danger) = user.confirm_dialog().unwrap();
       assert_eq!(is_danger, danger, "{item:?}");
-      assert!(message.ends_with("alice?"), "{message}");
       if danger {
-        assert_eq!(confirm, tr(user.lang, "control_center.delete"));
+        assert!(message.contains("irreversible"), "{message}");
+        assert_eq!(confirm, tr(user.lang, "control_center.yes"));
+      } else {
+        assert!(message.ends_with("alice?"), "{message}");
       }
       user.cancel_modal();
     }
@@ -2219,8 +2638,9 @@ mod tests {
       .iter()
       .map(|cell| cell.symbol())
       .collect();
-    assert!(rendered.contains(tr(app.lang, "control_center.delete")));
-    assert!(rendered.contains(tr(app.lang, "control_center.cancel")));
+    assert!(rendered.contains(tr(app.lang, "control_center.yes")));
+    assert!(rendered.contains(tr(app.lang, "control_center.no")));
+    assert!(rendered.contains("irreversible"));
     assert!(!rendered.contains(tr(app.lang, "control_center.cancel_f8378f")));
   }
 
@@ -2239,6 +2659,9 @@ mod tests {
         Page::UserShell,
         Page::UserPrimaryGroup,
         Page::UserPassword,
+        Page::UserAvatar,
+        Page::UserFullName,
+        Page::UserDelete,
         Page::Groups,
         Page::GroupList,
         Page::SystemGroups,
@@ -2258,12 +2681,17 @@ mod tests {
           .map(|cell| cell.symbol())
           .collect();
         assert!(rendered.chars().any(|cell| cell != ' '));
-        assert!(
-          !rendered.replace("[ ]", "").contains("[ "),
-          "{page:?} has no button labels"
-        );
+        // The user page draws its action buttons, so only the other pages
+        // must not show bracketed button labels.
+        if !matches!(page, Page::User | Page::CreateUser) {
+          assert!(
+            !rendered.replace("[ ]", "").contains("[ "),
+            "{page:?} has no button labels"
+          );
+        }
         if page == Page::User && height == 40 {
-          assert!(rendered.contains("Delete user (keep home)"));
+          assert!(rendered.contains("Delete"));
+          assert!(rendered.contains("Actions"));
           assert!(!rendered.contains("--"));
         }
         app.admin.editor = Some(Editor::new(

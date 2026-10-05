@@ -87,7 +87,13 @@ impl App {
 
   /// Sends a key to the page's menu list and runs the resulting event.
   pub(crate) fn handle_menu_key(&mut self, key: KeyCode) {
-    let rows = self.rows();
+    let mut rows = self.rows();
+    if crate::administration::is_user_form(self.page()) {
+      // The user page's list is the info block only; its buttons are driven
+      // by Left/Right, so the cursor never walks into them.
+      let actions_at = rows.iter().position(|row| row.is_section()).unwrap_or(rows.len());
+      rows.truncate(actions_at);
+    }
     let page_size = self.viewport;
     let event = self
       .navigation

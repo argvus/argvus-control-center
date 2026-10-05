@@ -3,7 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::{
-  backend::{AudioBackend, clamp_volume},
+  backend::{AudioBackend, AudioError, clamp_volume},
   model::{AudioDevice, AudioPage, AudioSnapshot},
 };
 use argvus_control_center_core::{
@@ -15,7 +15,6 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
-  buttons::{Button, ButtonKind},
   components::{
     ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
     draw_confirmation,
@@ -25,34 +24,49 @@ use argvus_tui::{
 use crossterm::event::KeyCode;
 use ratatui::{
   Frame,
-  layout::{Constraint, Layout},
   text::Line,
   widgets::{Block, Clear, Paragraph},
 };
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone)]
-/// Defines `Pending`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum Pending {
-  Action(AudioAction),
+/// Changes made on device pages that stay in the draft until `s` saves them.
+#[derive(Debug, Clone, Default)]
+struct AudioDraft {
+  default_output: Option<u32>,
+  default_input: Option<u32>,
+  volumes: BTreeMap<u32, u8>,
+  mutes: BTreeMap<u32, bool>,
 }
 
-#[derive(Debug, Clone)]
-/// Defines `AudioAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum AudioAction {
-  SetDefault(u32),
+/// One change that `s` writes to the audio server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Change {
+  Default(u32),
+  Volume(u32, u8),
+  Mute(u32, bool),
+}
+
+impl Change {
+  /// Writes this change through the backend, the only place that touches the audio server.
+  fn apply(self, backend: &AudioBackend<SystemProcessRunner>) -> Result<(), AudioError> {
+    match self {
+      Change::Default(id) => backend.set_default(id),
+      Change::Volume(id, volume) => backend.set_volume(id, volume),
+      Change::Mute(id, mute) => backend.set_mute(id, mute),
+    }
+  }
 }
 
 /// Represents `AudioApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct AudioApp {
   pub page: AudioPage,
   selected: Selection,
-  on_buttons: bool,
-  button_selected: usize,
-  button_from: Option<usize>,
   snapshot: AudioSnapshot,
   job: Option<JobHandle<Result<AudioSnapshot, String>>>,
   action: Option<JobHandle<Result<String, String>>>,
-  pending: Option<Pending>,
+  draft: AudioDraft,
+  saving: bool,
+  confirm_discard: bool,
   confirmation: ConfirmationState,
   jobs: JobManager,
   lang: Lang,
@@ -60,16 +74,6 @@ pub struct AudioApp {
   capabilities: Capabilities,
   pub status: Option<StatusMessage>,
   volume_input: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-enum ActionButton {
-  SetDefault,
-  VolumeUp,
-  VolumeDown,
-  Mute,
-  SetVolume,
 }
 
 impl AudioApp {
@@ -83,13 +87,12 @@ impl AudioApp {
     Self {
       page: AudioPage::Home,
       selected: Selection::default(),
-      on_buttons: false,
-      button_selected: 0,
-      button_from: None,
       snapshot: Default::default(),
       job: None,
       action: None,
-      pending: None,
+      draft: AudioDraft::default(),
+      saving: false,
+      confirm_discard: false,
       confirmation: ConfirmationState::default(),
       jobs: JobManager::default(),
       lang,
@@ -140,6 +143,9 @@ impl AudioApp {
       self.action = None;
       match r {
         Ok(Ok(msg)) => {
+          if self.saving {
+            self.draft = AudioDraft::default();
+          }
           self.success(msg);
           self.reload();
         }
@@ -148,6 +154,7 @@ impl AudioApp {
           self.reload();
         }
       };
+      self.saving = false;
       changed = true;
     }
     changed
@@ -165,10 +172,6 @@ impl AudioApp {
       kind: StatusKind::Error,
       text: text.into(),
     });
-  }
-  /// Executes the `busy` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn busy(&self) -> bool {
-    self.job.is_some() || self.action.is_some()
   }
   /// Executes the `normalize` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn normalize(&mut self) {
@@ -206,12 +209,80 @@ impl AudioApp {
       .copied()
       .filter(|device| device.id > 0)
   }
+  /// Looks up a device from the last snapshot by its id, on either side.
+  fn snapshot_device(&self, id: u32) -> Option<&AudioDevice> {
+    self
+      .snapshot
+      .outputs
+      .iter()
+      .chain(self.snapshot.inputs.iter())
+      .find(|device| device.id == id)
+  }
+  /// Volume shown and edited for a device: the draft value when one exists, otherwise the system value.
+  fn volume_of(&self, device: &AudioDevice) -> Option<u8> {
+    self
+      .draft
+      .volumes
+      .get(&device.id)
+      .copied()
+      .or(device.volume)
+  }
+  /// Mute state shown for a device: the draft value when one exists, otherwise the system value.
+  fn muted_of(&self, device: &AudioDevice) -> bool {
+    self
+      .draft
+      .mutes
+      .get(&device.id)
+      .copied()
+      .unwrap_or(device.muted)
+  }
+  /// Whether a device is the default for its direction, counting the draft choice.
+  fn is_default_of(&self, device: &AudioDevice) -> bool {
+    let (draft, current) = if device.direction == "output" {
+      (self.draft.default_output, self.snapshot.default_output)
+    } else {
+      (self.draft.default_input, self.snapshot.default_input)
+    };
+    draft.or(current) == Some(device.id)
+  }
+  /// Changes in the draft that differ from the system state and therefore need `s`.
+  fn pending_changes(&self) -> Vec<Change> {
+    let mut changes = Vec::new();
+    let defaults = [
+      (self.draft.default_output, self.snapshot.default_output),
+      (self.draft.default_input, self.snapshot.default_input),
+    ];
+    for (draft, current) in defaults {
+      if let Some(id) = draft.filter(|id| Some(*id) != current) {
+        changes.push(Change::Default(id));
+      }
+    }
+    for (&id, &volume) in &self.draft.volumes {
+      if self
+        .snapshot_device(id)
+        .is_some_and(|device| device.volume != Some(volume))
+      {
+        changes.push(Change::Volume(id, volume));
+      }
+    }
+    for (&id, &mute) in &self.draft.mutes {
+      if self
+        .snapshot_device(id)
+        .is_some_and(|device| device.muted != mute)
+      {
+        changes.push(Change::Mute(id, mute));
+      }
+    }
+    changes
+  }
+  /// Whether the draft holds changes that `s` would apply.
+  fn has_changes(&self) -> bool {
+    !self.pending_changes().is_empty()
+  }
   /// Executes the `start_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn start_action(
     &mut self,
-    action: impl FnOnce(AudioBackend<SystemProcessRunner>) -> Result<(), crate::backend::AudioError>
-    + Send
-    + 'static,
+    action: impl FnOnce(AudioBackend<SystemProcessRunner>) -> Result<(), AudioError> + Send + 'static,
     success: String,
   ) {
     if self.action.is_some() {
@@ -230,51 +301,58 @@ impl AudioApp {
       )
     }));
   }
-  /// Executes the `start_pending` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn start_pending(&mut self) {
-    let Some(Pending::Action(action)) = self.pending.take() else {
+  /// Applies every pending draft change to the audio server. Nothing else writes to the system.
+  fn save(&mut self) {
+    if self.action.is_some() {
       return;
-    };
-    match action {
-      AudioAction::SetDefault(id) => {
-        self.start_action(
-          move |b| b.set_default(id),
-          tr(self.lang, "control_center.default_device_updated").into(),
-        );
-      }
     }
+    let changes = self.pending_changes();
+    if changes.is_empty() {
+      self.status = Some(StatusMessage {
+        kind: StatusKind::Info,
+        text: tr(self.lang, "control_center.nothing_to_save").into(),
+      });
+      return;
+    }
+    self.saving = true;
+    self.start_action(
+      move |backend| {
+        changes
+          .into_iter()
+          .try_for_each(|change| change.apply(&backend))
+      },
+      tr(self.lang, "control_center.saved").into(),
+    );
   }
-  /// Executes the `request_default` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn request_default(&mut self) {
+  /// Stages the selected device as the default for its direction; `s` applies it.
+  fn set_draft_default(&mut self) {
     if let Some(d) = self.selected_device() {
-      self.pending = Some(Pending::Action(AudioAction::SetDefault(d.id)));
+      let (id, output) = (d.id, d.direction == "output");
+      if output {
+        self.draft.default_output = Some(id);
+      } else {
+        self.draft.default_input = Some(id);
+      }
     } else {
       self.warn_disappeared();
     }
   }
-  /// Executes the `adjust_volume` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Stages a volume step of the selected device; `s` applies it.
   fn adjust_volume(&mut self, delta: i16) {
     if let Some(d) = self.selected_device() {
       let id = d.id;
-      let current = d.volume.unwrap_or(0) as i16;
-      let value = clamp_volume(current + delta);
-      self.start_action(
-        move |b| b.set_volume(id, value),
-        tr(self.lang, "control_center.volume_changed").into(),
-      );
+      let current = self.volume_of(d).unwrap_or(0) as i16;
+      self.draft.volumes.insert(id, clamp_volume(current + delta));
     } else {
       self.warn_disappeared();
     }
   }
-  /// Applies the `toggle_mute` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Stages the mute toggle of the selected device; `s` applies it.
   fn toggle_mute(&mut self) {
     if let Some(d) = self.selected_device() {
       let id = d.id;
-      let mute = !d.muted;
-      self.start_action(
-        move |b| b.set_mute(id, mute),
-        tr(self.lang, "control_center.mute_changed").into(),
-      );
+      let mute = !self.muted_of(d);
+      self.draft.mutes.insert(id, mute);
     } else {
       self.warn_disappeared();
     }
@@ -286,23 +364,30 @@ impl AudioApp {
       "control_center.device_is_no_longer_available_press_r_to_refresh",
     ));
   }
+  /// Leaves the device page and drops any draft that was not saved.
+  fn leave_page(&mut self) {
+    self.page = AudioPage::Home;
+    self.selected.index = 0;
+    self.draft = AudioDraft::default();
+  }
   /// Whether typed characters currently go to the volume value field, so
   /// `q`/`?` must not act as the global quit/help keys. The confirmation
   /// sits above the field in [`Self::handle`] and does not take text.
   pub fn captures_text(&self) -> bool {
-    self.pending.is_none() && self.volume_input.is_some()
+    !self.confirm_discard && self.volume_input.is_some()
   }
 
   /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn handle(&mut self, key: KeyCode) -> bool {
-    if self.pending.is_some() {
+    if self.confirm_discard {
       match self.confirmation.handle(key) {
         ConfirmationOutcome::Confirmed => {
+          self.confirm_discard = false;
           self.confirmation = ConfirmationState::default();
-          self.start_pending();
+          self.leave_page();
         }
         ConfirmationOutcome::Cancelled => {
-          self.pending = None;
+          self.confirm_discard = false;
           self.confirmation = ConfirmationState::default();
         }
         ConfirmationOutcome::Pending => {}
@@ -312,29 +397,28 @@ impl AudioApp {
     if self.volume_input.is_some() {
       return self.handle_volume_input(key);
     }
-    if self.on_buttons && !self.buttons().is_empty() {
+    if self.has_device_actions() {
       match key {
-        KeyCode::Tab => {
-          self.toggle_buttons(false);
+        KeyCode::Left | KeyCode::Char('-') => {
+          self.adjust_volume(-5);
           return false;
         }
-        KeyCode::BackTab => {
-          self.toggle_buttons(true);
+        KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
+          self.adjust_volume(5);
           return false;
         }
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.move_button(-1);
+        KeyCode::Char(' ') => {
+          self.toggle_mute();
           return false;
         }
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.move_button(1);
+        KeyCode::Char('v') => {
+          self.volume_input = Some(String::new());
           return false;
         }
-        KeyCode::Enter | KeyCode::Char(' ') => {
-          self.activate_button();
+        KeyCode::Char('s') => {
+          self.save();
           return false;
         }
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => return false,
         _ => {}
       }
     }
@@ -342,15 +426,16 @@ impl AudioApp {
       if self.page == AudioPage::Home {
         return true;
       }
-      self.page = AudioPage::Home;
-      self.selected.index = 0;
-      self.on_buttons = false;
-      self.button_from = None;
+      if self.has_changes() {
+        self.confirm_discard = true;
+        self.confirmation = ConfirmationState::default();
+        return false;
+      }
+      self.leave_page();
       return false;
     }
     match key {
       KeyCode::Char('r') => self.reload(),
-      KeyCode::Tab | KeyCode::BackTab => self.toggle_buttons(key == KeyCode::BackTab),
       KeyCode::Up
       | KeyCode::Char('k')
       | KeyCode::Down
@@ -378,91 +463,18 @@ impl AudioApp {
       self.selected.index = 0;
       self.reload();
     } else if matches!(self.page, AudioPage::Output | AudioPage::Input) {
-      self.request_default();
+      self.set_draft_default();
     }
   }
-  /// Applies the `toggle_buttons` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn toggle_buttons(&mut self, backwards: bool) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    if self.on_buttons {
-      self.on_buttons = false;
-      if let Some(index) = self.button_from.take() {
-        self.selected.index = index;
-      }
-    } else {
-      self.button_from = Some(self.selected.index);
-      self.button_selected = if backwards { count - 1 } else { 0 };
-      self.on_buttons = true;
-    }
+  /// Whether the current page lists devices that accept default, volume and mute actions.
+  fn has_device_actions(&self) -> bool {
+    matches!(self.page, AudioPage::Output | AudioPage::Input) && !self.devices().is_empty()
   }
-  /// Executes the `move_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn move_button(&mut self, delta: isize) {
-    let count = self.buttons().len();
-    if count == 0 {
-      return;
-    }
-    self.button_selected =
-      (self.button_selected as isize + delta).rem_euclid(count as isize) as usize;
-  }
-  /// Executes the `activate_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn activate_button(&mut self) {
-    if self.busy() {
-      return;
-    }
-    let actions = self.buttons();
-    let Some((action, _)) = actions.get(self.button_selected) else {
-      return;
-    };
-    match *action {
-      ActionButton::SetDefault => self.request_default(),
-      ActionButton::VolumeUp => self.adjust_volume(5),
-      ActionButton::VolumeDown => self.adjust_volume(-5),
-      ActionButton::Mute => self.toggle_mute(),
-      ActionButton::SetVolume => self.volume_input = Some(String::new()),
-    }
-  }
-  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn buttons(&self) -> Vec<(ActionButton, Button)> {
-    if !matches!(self.page, AudioPage::Output | AudioPage::Input) || self.devices().is_empty() {
-      return Vec::new();
-    }
-    vec![
-      (
-        ActionButton::SetDefault,
-        Button::new(tr(self.lang, "control_center.default"), ButtonKind::Primary),
-      ),
-      (
-        ActionButton::VolumeUp,
-        Button::new(
-          tr(self.lang, "control_center.volume"),
-          ButtonKind::Secondary,
-        ),
-      ),
-      (
-        ActionButton::VolumeDown,
-        Button::new(
-          tr(self.lang, "control_center.volume_c53634"),
-          ButtonKind::Secondary,
-        ),
-      ),
-      (
-        ActionButton::Mute,
-        Button::new(tr(self.lang, "control_center.mute"), ButtonKind::Secondary),
-      ),
-      (
-        ActionButton::SetVolume,
-        Button::new(tr(self.lang, "control_center.value"), ButtonKind::Secondary),
-      ),
-    ]
-  }
-  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Returns the footer hints for the current page: device pages list their keys, others stay read-only.
   fn footer_hints(&self) -> &'static str {
-    let action = tr(
+    let devices = tr(
       self.lang,
-      "control_center.navigate_tab_actions_move_enter_activate_r_refresh_esc_back_help",
+      "control_center.navigate_volume_enter_set_default_r_refresh_s_save_esc_back_help",
     );
     let readonly = tr(self.lang, "control_center.r_refresh_esc_back_help");
     let home = tr(
@@ -471,8 +483,8 @@ impl AudioApp {
     );
     if self.page == AudioPage::Home {
       home
-    } else if !self.buttons().is_empty() {
-      action
+    } else if self.has_device_actions() {
+      devices
     } else {
       readonly
     }
@@ -489,14 +501,12 @@ impl AudioApp {
           .filter(|value| (0..=100).contains(value))
           .map(clamp_volume);
         self.volume_input = None;
-        if let (Some(v), Some(d)) = (value, self.selected_device()) {
-          let id = d.id;
-          self.start_action(
-            move |b| b.set_volume(id, v),
-            tr(self.lang, "control_center.volume_set").into(),
-          );
-        } else {
-          self.error(tr(self.lang, "control_center.invalid_volume_0_100"));
+        let id = self.selected_device().map(|d| d.id);
+        match (value, id) {
+          (Some(v), Some(id)) => {
+            self.draft.volumes.insert(id, v);
+          }
+          _ => self.error(tr(self.lang, "control_center.invalid_volume_0_100")),
         }
       }
       KeyCode::Backspace => {
@@ -517,16 +527,6 @@ impl AudioApp {
       &self.breadcrumb(),
       self.footer_hints(),
     );
-    let buttons = self.buttons();
-    let raw_buttons: Vec<Button> = buttons.iter().map(|(_, button)| button.clone()).collect();
-    let (body, button_area) = if raw_buttons.is_empty() {
-      (body, None)
-    } else {
-      let button_height = argvus_tui::buttons::height(&raw_buttons, body.width).min(body.height);
-      let split =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(body);
-      (split[0], Some(split[1]))
-    };
     let rows = self.rows();
     if matches!(self.page, AudioPage::Summary | AudioPage::Devices) {
       readonly(
@@ -544,14 +544,6 @@ impl AudioApp {
         self.selected.index.min(rows.len().saturating_sub(1)),
       );
     }
-    if let Some(button_area) = button_area {
-      let focus = if self.on_buttons {
-        self.button_selected
-      } else {
-        usize::MAX
-      };
-      argvus_tui::buttons::draw(frame, button_area, &raw_buttons, focus, &self.theme);
-    }
     if let Some(value) = &self.volume_input {
       let popup = argvus_tui::chrome::centered(area, 48, 7);
       frame.render_widget(Clear, popup);
@@ -565,29 +557,15 @@ impl AudioApp {
         popup,
       );
     }
-    if let Some(Pending::Action(AudioAction::SetDefault(id))) = &self.pending {
-      let dev_name = self
-        .snapshot
-        .outputs
-        .iter()
-        .chain(self.snapshot.inputs.iter())
-        .find(|d| d.id == *id)
-        .map(|d| d.description.as_str())
-        .unwrap_or("dispositivo");
-      let message = format!(
-        "{} '{}' {}?",
-        tr(self.lang, "control_center.set"),
-        dev_name,
-        tr(self.lang, "control_center.as_default_audio_device")
-      );
+    if self.confirm_discard {
       draw_confirmation(
         frame,
         area,
         &self.theme,
         ConfirmationDialog {
-          title: tr(self.lang, "control_center.confirm_audio_operation"),
-          message: &message,
-          confirm_label: tr(self.lang, "control_center.continue"),
+          title: tr(self.lang, "control_center.discard_changes_title"),
+          message: tr(self.lang, "control_center.discard_changes_description"),
+          confirm_label: tr(self.lang, "control_center.discard"),
           cancel_label: tr(self.lang, "control_center.cancel"),
           confirm_selected: self.confirmation.confirm_selected,
         },
@@ -776,20 +754,14 @@ impl AudioApp {
       .iter()
       .map(|d| {
         let mut badges = Vec::new();
-        if Some(d.id)
-          == (if d.direction == "output" {
-            self.snapshot.default_output
-          } else {
-            self.snapshot.default_input
-          })
-        {
+        if self.is_default_of(d) {
           badges.push(format!("● {}", tr(self.lang, "control_center.default")));
         }
-        if d.muted {
+        if self.muted_of(d) {
           badges.push(format!("✖ {}", tr(self.lang, "control_center.muted")));
         }
-        let vol = d
-          .volume
+        let vol = self
+          .volume_of(d)
           .map(|v| format!("{}%", v))
           .unwrap_or_else(|| "—".into());
         let badge_str = if badges.is_empty() {
@@ -909,6 +881,25 @@ mod tests {
   use super::*;
   use ratatui::{Terminal, backend::TestBackend};
 
+  /// Builds an app on an output page with one device, without touching the audio server.
+  fn app_with_output(volume: Option<u8>) -> AudioApp {
+    let mut app = AudioApp::new(
+      Lang::for_locale("en-US"),
+      Theme::load(),
+      Capabilities::default(),
+    );
+    app.snapshot.available = true;
+    app.snapshot.outputs = vec![AudioDevice {
+      id: 1,
+      description: "Speakers".into(),
+      direction: "output".into(),
+      volume,
+      ..Default::default()
+    }];
+    app.page = AudioPage::Output;
+    app
+  }
+
   #[test]
   /// Executes the `audio_home_rows_act_as_a_status_dashboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn audio_home_rows_act_as_a_status_dashboard() {
@@ -1008,8 +999,8 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `audio_confirmation_dialog_shown_and_cancelable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn audio_confirmation_dialog_shown_and_cancelable() {
+  /// Enter stages the default device; nothing reaches the system until `s`, and leaving asks first.
+  fn audio_default_stays_in_draft_until_save() {
     let mut app = AudioApp::new(
       Lang::for_locale("en-US"),
       Theme::load(),
@@ -1022,32 +1013,55 @@ mod tests {
       ..Default::default()
     }];
     app.page = AudioPage::Output;
-    app.handle(KeyCode::Enter); // trigger default request
-    assert!(app.pending.is_some());
-    app.handle(KeyCode::Esc); // cancel
-    assert!(app.pending.is_none());
+    app.handle(KeyCode::Enter);
+    assert_eq!(app.draft.default_output, Some(10));
+    assert!(app.action.is_none());
+    assert!(app.has_changes());
+    app.handle(KeyCode::Esc); // asks before dropping the draft
+    assert!(app.confirm_discard);
+    app.handle(KeyCode::Esc); // cancel keeps the page and the draft
+    assert!(!app.confirm_discard);
+    assert_eq!(app.page, AudioPage::Output);
+    assert_eq!(app.draft.default_output, Some(10));
   }
 
   #[test]
-  /// Executes the `audio_tab_cycles_between_list_and_buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn audio_tab_cycles_between_list_and_buttons() {
-    let mut app = AudioApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
+  /// Volume and mute keys change only the draft and show it in the rows.
+  fn audio_volume_and_mute_stay_in_draft_until_save() {
+    let mut app = app_with_output(Some(70));
+    app.handle(KeyCode::Right);
+    assert_eq!(app.draft.volumes.get(&1), Some(&75));
+    app.handle(KeyCode::Char(' '));
+    assert_eq!(app.draft.mutes.get(&1), Some(&true));
+    assert!(app.action.is_none());
+    let rows = app.rows();
+    assert!(rows[0].contains("75%"));
+    assert!(rows[0].contains("Muted") || rows[0].contains("Mudo"));
+  }
+
+  #[test]
+  /// Saving with no pending change reports it instead of touching the audio server.
+  fn audio_save_without_changes_reports_nothing_to_save() {
+    let mut app = app_with_output(Some(70));
+    app.handle(KeyCode::Char('s'));
+    assert!(app.action.is_none());
+    assert_eq!(
+      app.status.as_ref().map(|s| s.text.as_str()),
+      Some(tr(app.lang, "control_center.nothing_to_save"))
     );
-    app.snapshot.outputs = vec![AudioDevice {
-      id: 1,
-      description: "Speakers".into(),
-      direction: "output".into(),
-      ..Default::default()
-    }];
-    app.page = AudioPage::Output;
-    app.selected.index = 0;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
+  }
+
+  #[test]
+  /// Device pages expose their actions and the save key in the footer and render no button bar.
+  fn audio_device_footer_lists_volume_default_and_save_keys() {
+    let app = app_with_output(Some(70));
+    assert_eq!(
+      app.footer_hints(),
+      tr(
+        app.lang,
+        "control_center.navigate_volume_enter_set_default_r_refresh_s_save_esc_back_help"
+      )
+    );
   }
 
   #[test]

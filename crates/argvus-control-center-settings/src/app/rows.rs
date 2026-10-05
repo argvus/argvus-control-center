@@ -65,7 +65,14 @@ impl App {
   pub fn rows(&self) -> Vec<Row<Item>> {
     let page = self.page();
     if crate::administration::is_page(page) {
-      return self.admin.rows(page, self.lang, &self.search);
+      let rows = self.admin.rows(page, self.lang, &self.search);
+      // Group create and edit are for administrators only; everyone else
+      // sees the group pages with every row disabled.
+      let group_writes = matches!(page, Page::CreateGroup | Page::Group | Page::GroupMembers);
+      if group_writes && !self.admin.is_admin() {
+        return rows.into_iter().map(|row| row.enabled(false)).collect();
+      }
+      return rows;
     }
     match page {
       Page::Main => vec![
@@ -449,6 +456,10 @@ impl App {
       | Page::UserPassword
       | Page::UserShell
       | Page::UserPrimaryGroup
+      | Page::UserAvatar
+      | Page::UserUsername
+      | Page::UserFullName
+      | Page::UserDelete
       | Page::Groups
       | Page::GroupList
       | Page::SystemGroups

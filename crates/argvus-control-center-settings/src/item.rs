@@ -105,16 +105,32 @@ pub enum Item {
   /// 0 = current, 1 = new, 2 = confirmation.
   Password(usize),
   CreateAccount,
+  /// Create form: give the new account administration rights (`sudo` group).
+  CreateAdmin,
+  /// Username field of its own page on the create form (Enter opens the editor).
+  UsernameField,
+  /// Cancel of the create form: discards it and goes back to the list.
+  CancelCreate,
+  /// User page: administration rights of the account (`sudo` membership), applied by Save.
+  UserAdmin,
   SaveUser,
   ChangePassword,
   LockPassword,
   UnlockPassword,
   ExpirePassword,
   AvatarImage,
+  EditAvatar,
   RemoveAvatar,
+  /// Full name field of its own page (Enter opens the editor).
+  FullNameField,
+  /// Ok of the password page: returns to the user page, the change waits for Save.
+  OkPassword,
+  /// Cancel of the user page: discards the draft and goes back.
+  CancelUser,
+  /// Delete of the user page: opens the Keep home / Delete home choice.
+  DeleteUserMenu,
   DeleteUser,
   DeleteUserAndHome,
-  SavePassword,
   /// Index into the available shells.
   ShellOption(usize),
   /// Index into the system groups (primary group picker).
