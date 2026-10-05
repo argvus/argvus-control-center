@@ -14,7 +14,7 @@ use argvus_tui::menu::{MenuStyle, draw_menu};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 
 use crate::app::{App, MIN_HEIGHT, MIN_WIDTH};
