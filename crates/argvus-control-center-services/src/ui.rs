@@ -21,11 +21,13 @@ use argvus_tui::components::{
   ConfirmationDialog, ConfirmationOutcome, ConfirmationState, StatusKind, StatusMessage,
   draw_confirmation,
 };
+use argvus_tui::hints::{HintContext, hints};
+use argvus_tui::menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu};
 use argvus_tui::page::{list, readonly, shell, status};
 use crossterm::event::KeyCode;
 use ratatui::{
   Frame,
-  layout::{Constraint, Layout},
+  layout::{Constraint, Layout, Rect},
   text::Line,
 };
 
@@ -37,13 +39,16 @@ enum Pending {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Defines `ActionButton`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum ActionButton {
-  Start,
-  Stop,
-  Restart,
-  Filter,
   PrevBoot,
   NextUnit,
   Priority,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Identifies the rows of the unit lists (System, User, Failed).
+enum Item {
+  Filter,
+  Unit(usize),
+  DetailAction(&'static str),
 }
 /// Represents `ServicesApp`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct ServicesApp {
@@ -73,6 +78,7 @@ pub struct ServicesApp {
   logs_unit: Option<String>,
   filter: UnitFilter,
   log_search: String,
+  menu: MenuState,
 }
 /// Defines `JobData`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 enum JobData {
@@ -152,6 +158,7 @@ impl ServicesApp {
       logs_unit: None,
       filter: UnitFilter::All,
       log_search: String::new(),
+      menu: MenuState::default(),
     }
   }
   /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -358,6 +365,10 @@ impl ServicesApp {
       if self.page == ServicePage::Home {
         return true;
       }
+      if self.is_list_page() {
+        // The filter is per visit: leaving a list clears it.
+        self.filter = UnitFilter::All;
+      }
       self.page = if self.page == ServicePage::Detail {
         self.detail_parent
       } else if matches!(self.page, ServicePage::LogDetail(_)) {
@@ -366,6 +377,7 @@ impl ServicesApp {
         ServicePage::Home
       };
       self.selected = 0;
+      self.menu = MenuState::default();
       self.on_buttons = false;
       self.button_from = None;
       if self.page == ServicePage::Home {
@@ -401,6 +413,10 @@ impl ServicesApp {
       }
       return false;
     }
+    if self.searching && self.is_list_page() && matches!(key, KeyCode::Up | KeyCode::Down) {
+      // Arrows leave the search field and move the cursor of the list.
+      self.searching = false;
+    }
     if self.searching {
       let logs = self.page == ServicePage::Logs;
       match key {
@@ -431,6 +447,25 @@ impl ServicesApp {
         self.filtered().len()
       };
       self.selected = self.selected.min(count.saturating_sub(1));
+      return false;
+    }
+    if self.is_list_page() || self.page == ServicePage::Detail {
+      match key {
+        KeyCode::Char('r') => self.refresh(),
+        KeyCode::Char('/') if self.is_list_page() => self.searching = true,
+        _ => {
+          let rows = self.menu_rows();
+          match self.menu.handle(key, &rows, 8) {
+            MenuEvent::Activate(Item::Filter) => self.cycle_filter(),
+            MenuEvent::Activate(Item::Unit(index)) => {
+              self.selected = index;
+              self.open();
+            }
+            MenuEvent::Activate(Item::DetailAction(action)) => self.run_detail(action),
+            _ => {}
+          }
+        }
+      }
       return false;
     }
     match key {
@@ -489,6 +524,7 @@ impl ServicesApp {
           ServicePage::Logs,
         ][self.selected.min(3)];
         self.selected = 0;
+        self.menu = MenuState::default();
         self.refresh()
       }
       ServicePage::System | ServicePage::User | ServicePage::Failed => {
@@ -503,12 +539,8 @@ impl ServicesApp {
       }
       ServicePage::Detail => {
         if let Some((action, _)) = self.detail_actions().get(self.selected) {
-          if *action == "logs" {
-            self.open_logs();
-          } else {
-            let action = *action;
-            self.request(action);
-          }
+          let action = *action;
+          self.run_detail(action);
         }
       }
       ServicePage::Logs => {
@@ -517,6 +549,15 @@ impl ServicesApp {
         }
       }
       ServicePage::LogDetail(_) => {}
+    }
+  }
+  /// Runs one row of the service details: `logs` opens the journal, any
+  /// other action asks for confirmation first.
+  fn run_detail(&mut self, action: &'static str) {
+    if action == "logs" {
+      self.open_logs();
+    } else {
+      self.request(action);
     }
   }
   /// Executes the `request` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -645,6 +686,7 @@ impl ServicesApp {
   fn cycle_filter(&mut self) {
     self.filter = self.filter.next();
     self.selected = 0;
+    self.menu = MenuState::default();
   }
   /// Executes the `cycle_priority` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn cycle_priority(&mut self) {
@@ -690,10 +732,6 @@ impl ServicesApp {
       return;
     };
     match *action {
-      ActionButton::Start => self.request("start"),
-      ActionButton::Stop => self.request("stop"),
-      ActionButton::Restart => self.request("restart"),
-      ActionButton::Filter => self.cycle_filter(),
       ActionButton::PrevBoot => {
         self.previous_boot = !self.previous_boot;
         self.refresh();
@@ -704,34 +742,8 @@ impl ServicesApp {
   }
   /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn buttons(&self) -> Vec<(ActionButton, Button)> {
-    let primary = ButtonKind::Primary;
     let secondary = ButtonKind::Secondary;
     match self.page {
-      ServicePage::System | ServicePage::User | ServicePage::Failed => vec![
-        (
-          ActionButton::Start,
-          Button::new(tr(self.lang, "control_center.start"), primary),
-        ),
-        (
-          ActionButton::Stop,
-          Button::new(tr(self.lang, "control_center.stop"), secondary),
-        ),
-        (
-          ActionButton::Restart,
-          Button::new(tr(self.lang, "control_center.restart"), secondary),
-        ),
-        (
-          ActionButton::Filter,
-          Button::new(
-            format!(
-              "{}: {}",
-              tr(self.lang, "control_center.filter"),
-              self.filter.label(self.lang)
-            ),
-            secondary,
-          ),
-        ),
-      ],
       ServicePage::Logs => vec![
         (
           ActionButton::PrevBoot,
@@ -771,25 +783,114 @@ impl ServicesApp {
           ),
         ),
       ],
-      ServicePage::Home | ServicePage::Detail | ServicePage::LogDetail(_) => Vec::new(),
+      ServicePage::System
+      | ServicePage::User
+      | ServicePage::Failed
+      | ServicePage::Home
+      | ServicePage::Detail
+      | ServicePage::LogDetail(_) => Vec::new(),
     }
   }
-  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn footer_hints(&self) -> &'static str {
-    match self.page {
-      ServicePage::Detail => tr(
-        self.lang,
-        "control_center.navigate_enter_run_r_refresh_esc_back_help",
+  /// Whether the page is one of the unit lists (System, User, Failed).
+  fn is_list_page(&self) -> bool {
+    matches!(
+      self.page,
+      ServicePage::System | ServicePage::User | ServicePage::Failed
+    )
+  }
+  /// Builds the rows of a unit list: the filter, then the units with their
+  /// Active and Enabled columns.
+  fn list_rows(&self) -> Vec<Row<Item>> {
+    let mut rows = vec![
+      Row::value(
+        Item::Filter,
+        tr(self.lang, "control_center.filter"),
+        self.filter.label(self.lang),
+        None,
       ),
-      ServicePage::LogDetail(_) => tr(self.lang, "control_center.scroll_esc_back_help"),
+      Row::section(tr(self.lang, "control_center.name")).detail(format!(
+        "  {:<COLUMN$}  {}",
+        tr(self.lang, "control_center.active_095d39"),
+        tr(self.lang, "control_center.enabled_78438d"),
+        COLUMN = STATUS_COLUMN,
+      )),
+    ];
+    if self.page == ServicePage::Failed && self.filtered().is_empty() {
+      rows.push(Row::info(
+        format!("[OK] {}", tr(self.lang, "control_center.no_failed_units")),
+        "",
+      ));
+      return rows;
+    }
+    rows.extend(self.filtered().iter().enumerate().map(|(index, unit)| {
+      let mut label = unit.name.clone();
+      if self.page == ServicePage::Failed && unit.scope == "user" {
+        label.push_str(&format!(
+          "   [{}]",
+          tr(self.lang, "control_center.user_e7acba")
+        ));
+      }
+      Row::submenu(Item::Unit(index), label).detail(self.status_cells(unit))
+    }));
+    rows
+  }
+  /// The Active and Enabled cells of a unit. A filled dot means the state is
+  /// on, an empty dot means it is off.
+  fn status_cells(&self, unit: &Unit) -> String {
+    let active = unit.active == "active";
+    let enabled = matches!(unit.file_state.as_str(), "enabled" | "static" | "indirect");
+    format!(
+      "{} {:<COLUMN$}{} {}",
+      state_dot(active),
+      tr(self.lang, "control_center.active_095d39"),
+      state_dot(enabled),
+      tr(self.lang, "control_center.enabled_78438d"),
+      COLUMN = STATUS_COLUMN,
+    )
+  }
+  /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn footer_hints(&self) -> String {
+    match self.page {
+      ServicePage::LogDetail(_) => tr(self.lang, "control_center.scroll_esc_back_help").into(),
       ServicePage::Home => tr(
         self.lang,
         "control_center.navigate_enter_open_r_refresh_esc_back_help",
-      ),
+      )
+      .into(),
+      ServicePage::System | ServicePage::User | ServicePage::Failed => {
+        let mut menu = self.menu;
+        let rows = self.list_rows();
+        menu.normalize(&rows);
+        hints(
+          self.lang,
+          &HintContext {
+            row: menu.selected_kind(&rows),
+            can_go_back: true,
+            search: true,
+            refresh: true,
+            ..HintContext::default()
+          },
+        )
+      }
+      ServicePage::Detail => {
+        let mut menu = self.menu;
+        let rows = self.detail_rows();
+        menu.normalize(&rows);
+        hints(
+          self.lang,
+          &HintContext {
+            row: menu.selected_kind(&rows),
+            can_go_back: true,
+            refresh: true,
+            ..HintContext::default()
+          },
+        )
+      }
       _ => tr(
         self.lang,
         "control_center.navigate_tab_actions_enter_activate_move_search_r_refresh_esc_back_hel",
-      ),
+      )
+      .into(),
     }
   }
   /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -800,40 +901,14 @@ impl ServicesApp {
       area,
       &self.theme,
       &self.breadcrumb(),
-      self.footer_hints(),
+      &self.footer_hints(),
     );
+    if self.is_list_page() {
+      self.draw_list(frame, area, body);
+      return;
+    }
     if self.page == ServicePage::Detail {
-      let sections = Layout::vertical([Constraint::Length(7), Constraint::Min(1)]).split(body);
-      readonly(frame, sections[0], &self.theme, &self.detail_lines());
-      let actions = self
-        .detail_actions()
-        .into_iter()
-        .map(|(_, label)| label)
-        .collect::<Vec<_>>();
-      list(
-        frame,
-        sections[1],
-        &self.theme,
-        &actions,
-        self.selected.min(actions.len().saturating_sub(1)),
-      );
-      if let Some(s) = &self.status {
-        status(frame, area, &self.theme, s)
-      }
-      if self.job.is_some() {
-        status(
-          frame,
-          area,
-          &self.theme,
-          &StatusMessage {
-            kind: StatusKind::Info,
-            text: tr(self.lang, "control_center.loading_services").into(),
-          },
-        )
-      }
-      if let Some(Pending::Action(a, u)) = &self.pending {
-        self.draw_pending(frame, area, a, u);
-      }
+      self.draw_detail(frame, area, body);
       return;
     }
     let mut lines: Vec<String> = if self.page == ServicePage::Home {
@@ -851,13 +926,8 @@ impl ServicesApp {
         .into_iter()
         .map(|l| l.to_string())
         .collect()
-    } else if self.page == ServicePage::Failed && self.filtered().is_empty() {
-      vec![format!(
-        "[OK] {}",
-        tr(self.lang, "control_center.no_failed_units")
-      )]
     } else {
-      self.unit_rows()
+      Vec::new()
     };
     if self.page == ServicePage::Logs {
       lines.insert(0, self.logs_header());
@@ -900,6 +970,68 @@ impl ServicesApp {
       };
       argvus_tui::buttons::draw(frame, button_area, &raw_buttons, focus, &self.theme);
     }
+    if let Some(s) = &self.status {
+      status(frame, area, &self.theme, s)
+    }
+    if self.job.is_some() {
+      status(
+        frame,
+        area,
+        &self.theme,
+        &StatusMessage {
+          kind: StatusKind::Info,
+          text: tr(self.lang, "control_center.loading_services").into(),
+        },
+      );
+    }
+    if let Some(Pending::Action(a, u)) = &self.pending {
+      self.draw_pending(frame, area, a, u)
+    }
+  }
+  /// Renders a unit list: the search field stays visible on top, then the
+  /// menu with the filter and the units.
+  fn draw_list(&mut self, frame: &mut Frame, area: Rect, body: Rect) {
+    let rows = self.list_rows();
+    self.menu.normalize(&rows);
+    let sections = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(body);
+    let search = format!(
+      "{}: {}{}",
+      tr(self.lang, "control_center.search"),
+      self.search,
+      if self.searching { "_" } else { "" },
+    );
+    readonly(frame, sections[0], &self.theme, &[Line::from(search)]);
+    draw_menu(
+      frame,
+      sections[1],
+      &self.theme,
+      &rows,
+      &mut self.menu,
+      MenuStyle {
+        icons: AppConfig::icons_enabled(),
+      },
+    );
+    self.draw_overlays(frame, area);
+  }
+  /// Renders the details page: the service information and its actions.
+  fn draw_detail(&mut self, frame: &mut Frame, area: Rect, body: Rect) {
+    let rows = self.detail_rows();
+    self.menu.normalize(&rows);
+    draw_menu(
+      frame,
+      body,
+      &self.theme,
+      &rows,
+      &mut self.menu,
+      MenuStyle {
+        icons: AppConfig::icons_enabled(),
+      },
+    );
+    self.draw_overlays(frame, area);
+  }
+  /// Status line, loading indicator and the confirmation, shared by the
+  /// menu pages.
+  fn draw_overlays(&self, frame: &mut Frame, area: Rect) {
     if let Some(s) = &self.status {
       status(frame, area, &self.theme, s)
     }
@@ -1015,108 +1147,56 @@ impl ServicesApp {
       self.logs_unit.as_deref().unwrap_or("—"),
     )
   }
-  /// Executes the `unit_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn unit_rows(&self) -> Vec<String> {
-    self
-      .filtered()
-      .iter()
-      .map(|unit| self.unit_row(unit))
-      .collect()
-  }
-  /// Executes the `unit_row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn unit_row(&self, u: &Unit) -> String {
-    let mut row = u.name.clone();
-    if let Some(badge) = self.active_badge(u) {
-      row.push_str(&badge);
-    }
-    row.push_str(&self.file_badge(u));
-    if self.page == ServicePage::Failed && u.scope == "user" {
-      row.push_str(&format!(
-        "   [{}]",
-        tr(self.lang, "control_center.user_e7acba")
-      ));
-    }
-    row
-  }
-  /// Executes the `active_badge` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn active_badge(&self, u: &Unit) -> Option<String> {
-    let (symbol, label) = match u.active.as_str() {
-      "active" => ("●", tr(self.lang, "control_center.active_095d39")),
-      "inactive" => ("○", tr(self.lang, "control_center.inactive_6eb764")),
-      "failed" => ("✕", tr(self.lang, "control_center.failed_b852d2")),
-      "activating" => ("◌", tr(self.lang, "control_center.activating")),
-      "deactivating" => ("◌", tr(self.lang, "control_center.deactivating")),
-      "reloading" => ("◌", tr(self.lang, "control_center.reloading")),
-      _ => return None,
-    };
-    Some(format!("   {symbol} {label}"))
-  }
-  /// Executes the `file_badge` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn file_badge(&self, u: &Unit) -> String {
-    match u.file_state.as_str() {
-      "enabled" | "static" | "indirect" => {
-        format!("   ● {}", tr(self.lang, "control_center.enabled_78438d"))
-      }
-      "disabled" | "masked" => {
-        format!("   ○ {}", tr(self.lang, "control_center.disabled_483392"))
-      }
-      _ => String::new(),
-    }
-  }
   /// Executes the `detail_lines` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn detail_lines(&self) -> Vec<Line<'static>> {
-    let filtered = self.filtered();
-    let Some(u) = self
-      .detail_unit
-      .as_deref()
-      .and_then(|name| self.units.iter().find(|unit| unit.name == name))
-      .or_else(|| filtered.get(self.selected).copied())
-    else {
-      return vec![Line::from(tr(
-        self.lang,
-        "control_center.service_not_found",
-      ))];
+  /// Rows of the service details: the service information, then its
+  /// actions. Info rows are read-only; actions reuse `detail_actions`.
+  fn detail_rows(&self) -> Vec<Row<Item>> {
+    let mut rows = vec![Row::section(tr(self.lang, "control_center.service_bfe08e"))];
+    let Some(u) = self.detail_or_selected_unit() else {
+      rows.push(Row::info(
+        tr(self.lang, "control_center.service_not_found"),
+        "",
+      ));
+      return rows;
     };
-    let rows = vec![
-      Line::from(format!(
-        " {} {}",
-        AppConfig::icon(argvus_tui::icons::SETTINGS),
-        tr(self.lang, "control_center.service_bfe08e")
-      )),
-      Line::from(format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.name"),
-        u.name
-      )),
-      Line::from(format!(
-        "   {:<12} {}",
+    rows.extend([
+      Row::info(tr(self.lang, "control_center.name"), u.name.clone()),
+      Row::info(
         tr(self.lang, "control_center.description"),
-        u.description
-      )),
-      Line::from(format!(
-        "   {:<12} {}",
-        tr(self.lang, "control_center.state"),
-        state_value(u)
-      )),
-      Line::from(format!(
-        "   {:<12} {}",
+        u.description.clone(),
+      ),
+      Row::info(tr(self.lang, "control_center.state"), state_value(u)),
+      Row::info(
         tr(self.lang, "control_center.boot_f0640d"),
-        file_state_label(self.lang, &u.file_state)
-      )),
-      Line::from(format!(
-        "   {:<12} {}",
+        file_state_label(self.lang, &u.file_state),
+      ),
+      Row::info(
         tr(self.lang, "control_center.main_pid"),
         u.main_pid
           .map(|v| v.to_string())
-          .unwrap_or_else(|| "—".into())
-      )),
-      Line::from(format!(
-        "   {:<12} {}",
+          .unwrap_or_else(|| "—".into()),
+      ),
+      Row::info(
         tr(self.lang, "control_center.unit_file"),
-        u.fragment.as_deref().unwrap_or("—")
-      )),
-    ];
+        u.fragment.clone().unwrap_or_else(|| "—".into()),
+      ),
+      Row::section(tr(self.lang, "control_center.section_actions")),
+    ]);
+    rows.extend(
+      self
+        .detail_actions()
+        .into_iter()
+        .map(|(action, label)| Row::action(Item::DetailAction(action), label)),
+    );
     rows
+  }
+  /// The rows of the page that is currently a menu (lists and details).
+  fn menu_rows(&self) -> Vec<Row<Item>> {
+    if self.page == ServicePage::Detail {
+      self.detail_rows()
+    } else {
+      self.list_rows()
+    }
   }
   /// Executes the `detail_actions` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn detail_actions(&self) -> Vec<(&'static str, String)> {
@@ -1136,7 +1216,7 @@ impl ServicesApp {
     .filter(|action| can_action(action, unit))
     .map(|action| (action, action_label(self.lang, action)))
     .collect::<Vec<_>>();
-    actions.push(("logs", tr(self.lang, "control_center.logs").into()));
+    actions.push(("logs", tr(self.lang, "control_center.view_logs").into()));
     actions
   }
   /// Executes the `detail_or_selected_unit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1191,6 +1271,12 @@ impl ServicesApp {
       Line::from(message),
     ]
   }
+}
+/// Width of the Active column in the unit lists; Enabled starts after it.
+const STATUS_COLUMN: usize = 12;
+/// A filled dot when the state is on, an empty dot when it is off.
+fn state_dot(on: bool) -> &'static str {
+  if on { "●" } else { "○" }
 }
 /// Checks the condition represented by `can_action` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn can_action(action: &str, unit: &Unit) -> bool {
@@ -1286,6 +1372,7 @@ fn privileged_failure(output: &argvus_control_center_core::process::ProcessOutpu
 #[cfg(test)]
 mod tests {
   use super::*;
+  use argvus_tui::menu::RowKind;
   #[test]
   /// Executes the `failed_filter_is_explicit` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn failed_filter_is_explicit() {
@@ -1331,16 +1418,12 @@ mod tests {
     app.handle(KeyCode::Down);
     assert_eq!(app.selected, 0);
     app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Tab);
     assert!(!app.on_buttons);
-    app.handle(KeyCode::BackTab);
-    assert!(app.on_buttons);
+    app.handle(KeyCode::Up);
+    assert_eq!(app.menu.selected_id(&app.list_rows()), Some(Item::Filter));
     app.handle(KeyCode::Enter);
     assert_eq!(app.filter, UnitFilter::Running);
     assert_eq!(app.filtered().len(), 1);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
     app.handle(KeyCode::Char('/'));
     app.handle(KeyCode::Char('z'));
     assert!(app.filtered().is_empty());
@@ -1394,36 +1477,19 @@ mod tests {
     assert_eq!(home.buttons().len(), 0);
     let mut system = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     system.page = ServicePage::System;
-    assert_eq!(system.buttons().len(), 4);
+    assert_eq!(
+      system.buttons().len(),
+      0,
+      "lists use menu rows, not buttons"
+    );
     let mut logs = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     logs.page = ServicePage::Logs;
     assert_eq!(logs.buttons().len(), 3);
   }
 
   #[test]
-  /// Executes the `services_tab_cycles_between_list_and_buttons_and_backtab_lands_last` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn services_tab_cycles_between_list_and_buttons_and_backtab_lands_last() {
-    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
-    app.page = ServicePage::System;
-    app.units = (0..4)
-      .map(|i| Unit {
-        name: format!("svc{i}.service"),
-        ..Default::default()
-      })
-      .collect();
-    app.selected = 3;
-    app.handle(KeyCode::Tab);
-    assert!(app.on_buttons);
-    app.handle(KeyCode::Down);
-    assert_eq!(app.selected, 3);
-    app.handle(KeyCode::Tab);
-    assert!(!app.on_buttons);
-    assert_eq!(app.selected, 3);
-  }
-
-  #[test]
-  /// Executes the `services_renders_button_bar_on_list_pages` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn services_renders_button_bar_on_list_pages() {
+  /// Executes the `services_render_menu_rows_with_status_columns_on_lists` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn services_render_menu_rows_with_status_columns_on_lists() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(90, 25)).unwrap();
@@ -1435,8 +1501,8 @@ mod tests {
       .iter()
       .map(|cell| cell.symbol())
       .collect::<String>();
-    assert!(text.contains("Start") || text.contains("Iniciar"));
-    assert!(text.contains("Actions") || text.contains("Ações"));
+    assert!(text.contains("Active") && text.contains("Enabled"));
+    assert!(!text.contains("Start") && !text.contains("Iniciar"));
   }
 
   #[test]
@@ -1475,8 +1541,8 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `services_unit_rows_render_state_badges` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn services_unit_rows_render_state_badges() {
+  /// Executes the `services_list_rows_render_status_columns` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn services_list_rows_render_status_columns() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::System;
     app.units = vec![
@@ -1499,17 +1565,18 @@ mod tests {
         ..Default::default()
       },
     ];
-    let rows = app.unit_rows();
-    assert_eq!(rows.len(), 3);
-    assert!(rows[0].starts_with("NetworkManager.service"));
-    assert!(rows[0].contains("●") && rows[0].contains("Active") && rows[0].contains("Enabled"));
-    assert!(rows[1].contains("○") && rows[1].contains("Inactive"));
-    assert!(rows[2].contains("✕") && rows[2].contains("Failed"));
+    let rows = app.list_rows();
+    // Filter, column header, then one row per unit.
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[2].label(), "NetworkManager.service");
+    assert_eq!(rows[2].detail_text(), Some("● Active      ● Enabled"));
+    assert_eq!(rows[3].detail_text(), Some("○ Active      ○ Enabled"));
+    assert_eq!(rows[4].detail_text(), Some("○ Active      ● Enabled"));
   }
 
   #[test]
   /// Executes the `services_detail_lines_use_section_header_and_aligned_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn services_detail_lines_use_section_header_and_aligned_rows() {
+  fn services_detail_rows_show_info_then_actions() {
     let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
     app.page = ServicePage::Detail;
     app.detail_parent = ServicePage::System;
@@ -1524,16 +1591,30 @@ mod tests {
       fragment: Some("/usr/lib/systemd/system/demo.service".into()),
       ..Default::default()
     }];
-    let lines = app.detail_lines();
-    let text = lines
+    let rows = app.detail_rows();
+    let text = rows
       .iter()
-      .map(|line| line.to_string())
-      .collect::<String>();
-    assert!(text.contains("SERVICE"));
+      .map(|row| format!("{} {}", row.label(), row.detail_text().unwrap_or_default()))
+      .collect::<Vec<_>>()
+      .join("\n");
     assert!(text.contains("demo.service"));
     assert!(text.contains("1234"));
     assert!(text.contains("Enabled"));
-    assert!(text.contains("Unit file:"));
+    assert!(text.contains("Unit file"));
+    // Info rows are read-only; the actions follow them as menu rows.
+    assert!(rows.iter().any(|row| row.is_section()));
+    assert!(rows.iter().any(|row| row.kind() == RowKind::Action));
+  }
+
+  #[test]
+  /// Leaving a unit list clears the filter, so each visit starts on All.
+  fn leaving_a_list_clears_the_filter() {
+    let mut app = ServicesApp::new(Lang::for_locale("en-US"), Theme::load());
+    app.page = ServicePage::Failed;
+    app.filter = UnitFilter::Enabled;
+    app.handle(KeyCode::Esc);
+    assert_eq!(app.page, ServicePage::Home);
+    assert_eq!(app.filter, UnitFilter::All);
   }
 
   #[test]

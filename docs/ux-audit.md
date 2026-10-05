@@ -402,12 +402,13 @@ helper elevado do DNS (`SystemSettingsOperation`) não muda.
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
 | Home | Resumo, Saídas, Entradas, Dispositivos | Abre páginas | Submenu ×4 | `Enter` | pendente |
-| Saídas / Entradas | Dispositivo | `request_default` (confirmado) | Choice confirmada (`●` no padrão) | `Enter` | pendente |
-| Saídas / Entradas | **`[ Default ]`** | Igual ao Enter | Sem linha própria. **Equivalente: Enter na linha do item** (Choice) (D5) | `Enter` | pendente |
-| Saídas / Entradas | **`[ Volume + ]` / `[ Volume - ]`** | `adjust_volume(±5)` (imediato) | Value `Volume` com `←/→` | `←→` | pendente |
-| Saídas / Entradas | **`[ Mute ]`** | `toggle_mute` (imediato) | Toggle `Mudo` | `Space` | pendente |
-| Saídas / Entradas | **`[ Value ]`** | Input numérico de volume | Edição da Value `Volume` | `Enter` | pendente |
-| Global | Recarregar | `reload` | Atalho mantido | `r` | pendente |
+| Saídas / Entradas | Dispositivo | `request_default` (confirmado) | Choice confirmada (`●` no padrão) | `Enter` | migrado como linha de texto com `● Padrão` (não é tipo Choice ainda) |
+| Saídas / Entradas | **`[ Default ]`** | Igual ao Enter | Sem linha própria. **Equivalente: Enter na linha do item**; vira rascunho e só vale no `s Salvar` (D5) | `Enter`, `s` | migrado |
+| Saídas / Entradas | **`[ Volume + ]` / `[ Volume - ]`** | `adjust_volume(±5)` (rascunho, aplicado no `s`) | Sem linha própria; `←/→` (e `+`/`-`) ajustam ±5 no rascunho do dispositivo selecionado | `←→ + -`, `s` | migrado |
+| Saídas / Entradas | **`[ Mute ]`** | `toggle_mute` (rascunho, aplicado no `s`) | Sem linha própria; `Space` alterna o mudo no rascunho (decisão: o mudo também segue o `s`) | `Space`, `s` | migrado |
+| Saídas / Entradas | Salvar | Aplica todo o rascunho (`set-default`, `set-volume`, `set-mute`) | Nova linha de rodapé `s Salvar`; sem rascunho mostra "Nenhuma alteração para salvar"; `Esc` com rascunho pede confirmação para descartar | `s`, `Esc` | migrado |
+| Saídas / Entradas | **`[ Value ]`** | Input numérico de volume | Sem linha própria; tecla `v` abre o campo 0–100 (fora do rodapé pedido; a confirmar) | `v` | migrado (a confirmar) |
+| Global | Recarregar | `reload` | Atalho mantido | `r` | migrado |
 
 ### 0.9 `argvus-control-center-bluetooth`
 
@@ -883,8 +884,8 @@ Notas de projeto:
 | 3 | `boot` | concluída (`93bc44f`, `1d04196`, `a82ada7`; `argvus-i18n` `2e6be4e`) |
 | 3 | `packages` | concluída (`33a033f`, `63689aa`; `argvus-tui` `6beda24`; `argvus-i18n` `ef69e70`) |
 | 3 | `network` | concluída (`83a0461`, `d5df88d`; `argvus-tui` `541d788`; `argvus-i18n` `b46d99b`) |
-| 3 | `services` | pendente |
-| 3 | `audio` | pendente |
+| 3 | `services` | parcial, sem commit: listas Sistema/Usuário/Falhos migradas (filtro como linha no topo, busca sempre visível com `/`, colunas Active/Enabled com bolinha cheia/vazia, Enter abre detalhe, detalhe da unidade como menu: bloco "Service" com informações somente leitura e bloco "Actions" com Start/Stop/Restart/Enable/Disable/Enable now/Disable now/Logs; filtro volta a All ao sair da lista). Pendentes: decisão "ações no topo da lista" (sem alvo com um cursor só), barra de botões de Logs (Boot/Service/Priority), cabeçalho "Name:" com dois-pontos; rótulo "View Logs" com a chave nova `control_center.view_logs` em argvus-i18n |
+| 3 | `audio` | migrada, sem commit (barra de botões removida; teclas no rodapé; `argvus-i18n` com a chave `navigate_volume_enter_set_default_r_refresh_esc_back_help`; `[Value]` em `v`, a confirmar) |
 | 3 | `bluetooth` | pendente |
 | 3 | `power` | pendente |
 | 3 | `storage` | pendente |
