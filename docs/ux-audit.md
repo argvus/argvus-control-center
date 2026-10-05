@@ -758,12 +758,12 @@ Notas de projeto:
 | Fase | Item | Status |
 | --- | --- | --- |
 | 0 | Auditoria (`docs/ux-audit.md`) | concluída (2026-10-04); decisões em 6.1 |
-| 1 | Catálogo: corrigir codepoints (1.1) e adicionar glyphs (1.2) | pendente |
-| 1 | `RowKind`, `Row`, `MenuState`, `draw_menu` em `argvus-tui` | pendente |
-| 1 | Componente único de confirmação (`y`/`n`) | pendente |
-| 1 | Rodapé contextual (`hints`) | pendente |
-| 1 | Testes de cursor e confirmação | pendente |
-| 1 | Campo de texto ativo captura `q`/`?` (D10) | pendente |
+| 1 | Catálogo: corrigir codepoints (1.1) e adicionar glyphs (1.2) | concluída (`argvus-tui` `29808a3`) |
+| 1 | `RowKind`, `Row`, `MenuState`, `draw_menu` em `argvus-tui` | concluída (`argvus-tui` `e2fd513`) |
+| 1 | Componente único de confirmação (`y`/`n`) | concluída (`argvus-tui` `1d3459d`) |
+| 1 | Rodapé contextual (`hints`) | concluída (`argvus-tui` `bee7e32`, `argvus-i18n` `0c2d823`) |
+| 1 | Testes de cursor e confirmação | concluída (junto com cada componente) |
+| 1 | Campo de texto ativo captura `q`/`?` (D10) | concluída (`argvus-control-center` `5b346ca`) |
 | 2 | `appearance` | pendente |
 | 3 | `settings` | pendente |
 | 3 | `displays` | pendente |
@@ -784,6 +784,58 @@ Notas de projeto:
 | 4 | Código morto (páginas `Transparency`/`Blur*`, `argvus_tui::buttons`) | pendente |
 | 4 | README "Keyboard controls" e entrada no CHANGELOG | pendente |
 
+### 5.1 Notas da Fase 1 (2026-10-04)
+
+API entregue em `argvus-tui` (nada no Control Center usa ainda; as telas
+migram nas Fases 2 e 3):
+
+- `menu::{RowKind, Row, Emphasis, draft_actions, MenuState, MenuEvent,
+  MenuStyle, draw_menu}`. `Row::value(id, label, text, step)` guarda o valor
+  em `detail`; `MenuState::select(rows, &id)` restaura a seleção por id.
+- `confirm::{ConfirmState, ConfirmOutcome, ConfirmDialog, draw_confirm}`. O
+  `components::ConfirmationState` antigo continua até a migração dos crates.
+- `hints::{HintContext, hint_keys, hints, confirm_hint_keys, confirm_hints}`,
+  com chaves `control_center.hint.*` e `control_center.confirm` (en-US e
+  pt-BR) no `argvus-i18n`.
+- Catálogo `icons`: das 15 constantes da seção 1.1, 12 tiveram o codepoint
+  corrigido; `WIFI`, `GPU` e `PACKAGES` mantiveram o glyph (variantes de mesmo
+  sentido) e o comentário passou a nomear o glyph real. 56 constantes novas
+  (seção 1.2 mais `POWER_PLUG`), todas conferidas na fonte instalada.
+
+Telas que mudam de comportamento com o D10 (`q`/`?` passam a ser texto):
+
+| Crate | Tela / estado | Antes |
+| --- | --- | --- |
+| `packages` | Instalar (oficial), AUR, Instalados, Órfãos, Atualizações: listas que filtram ao digitar | `q` saía, `?` abria a ajuda |
+| `packages` | Prompt de entrada (`input`) | idem |
+| `settings` | Busca ativa (`/`) em qualquer página | idem |
+| `settings` | Edição de hostname | idem |
+| `settings` | Captura de atalho de teclado | idem (`Super+Q` também saía) |
+| `network` | Senha Wi-Fi, DNS manual, filtro de lista (`/`) | idem |
+| `network` | Firewall embutido: editor de administração | idem (só a rota Settings era protegida) |
+| `services` | Busca de unidades e de logs | idem |
+| `audio` | Campo de valor do volume | idem |
+| `boot` | Campo de timeout / linha de comando do kernel | idem |
+| `displays` | Prompts (nome de perfil, valores) | idem |
+| `appearance` | Prompts (nome de tema, caminho, espaços, bordas) e editor HEX do destaque | idem |
+
+Sem mudança: Home (a busca global já era protegida), editor de
+administração na rota Settings (já protegido), e todas as listas que não
+filtram ao digitar. Os prompts de texto/número foram incluídos como "campo de
+texto ativo" segundo o registro do D10 em 6.1; confirmar se o ajuste "só
+filtro ou busca" pretendia excluí-los.
+
+Achados fora do escopo, sem alteração:
+
+- `Ctrl+C` não sai do app enquanto a busca global da Home está ativa (o ramo
+  da busca retorna antes); comportamento anterior à Fase 1.
+- `boot`: a edição de "Kernel command line" (GRUB) reutiliza `timeout_input`,
+  cujo tratamento de teclas só aceita dígitos até 2 caracteres; com o valor
+  atual carregado, só é possível apagar, não digitar. Tratar na migração do
+  `boot` (Fase 3).
+- O cspell não está instalado nesta máquina; `docs/ux-audit.md` já está no
+  `ignorePaths`.
+
 ---
 
 ## 6. Pontos de decisão
@@ -792,19 +844,42 @@ Notas de projeto:
 
 | Ponto | Decisão | Status |
 | --- | --- | --- |
-| D1 | Sem resposta ainda (recomendação: `[x]`/`[ ]`) | **aguardando** |
+| D1 | Toggle como `[x]`/`[ ]` em todo o app. | decidido |
 | D2 | Aceito. Sem linha `Cancel` nas páginas com rascunho do `appearance`; `Esc` com rascunho pendente pede confirmação (componente único). | decidido |
-| D3 | Sem resposta ainda (recomendação: em Value, `←/→` ajustam; `Home/End` navegam) | **aguardando** |
+| D3 | Em linhas Value com step, `←/→` ajustam; `Home/End` continuam navegando; `Esc` volta; o rodapé mostra a dica de ajuste nessas linhas. | decidido |
 | D4 | Enter mantém o que faz hoje na ação principal do item. Ações secundárias (ex.: Forget, Remove, Trust) vão para a página de detalhes do item, mantendo os atalhos de uma tecla existentes. | decidido |
 | D5 | Aceito, desde que cada botão sem linha própria fique marcado no inventário como "Equivalente: Enter na linha do item" (feito nas seções 0.4, 0.5, 0.6, 0.8 e 0.10). | decidido |
 | D6 | Manter `r` = restaurar padrões no `settings`, passando pela confirmação única, e criar também a linha `Restore defaults` / `Restaurar padrões`. | decidido |
-| D7 | Sem resposta ainda (recomendação: manter `Tab` na grade da Home) | **aguardando** |
-| D8 | Sem resposta ainda (recomendação: manter o comportamento atual) | **aguardando** |
-| D9 | Sem resposta ainda (recomendação: decidir com captura de tela) | **aguardando** |
+| D7 | Recomendação aceita: manter `Tab`/`BackTab` na grade da Home. | decidido (provisório, ver nota) |
+| D8 | Recomendação aceita: listas com filtro por digitação mantêm o comportamento atual (letras viram texto da busca). | decidido (provisório, ver nota) |
+| D9 | Recomendação aceita: ícones com mais de uma opção são decididos com captura de tela, na migração de cada crate. | decidido (provisório, ver nota) |
 | D10 | Incluir. Campo de texto ativo captura as teclas; `q` e `?` globais não fecham o app nem abrem a ajuda durante a digitação. | decidido (Fase 1) |
 | D11 | Fora do escopo. Mouse nas páginas de domínio fica para outra tarefa; o critério "com e sem mouse" vale para a Home (que já trata clique) e não é exigido das páginas de domínio neste refactor. | decidido |
-| D12 | Sem resposta ainda (recomendação: rodapé contextual + chave i18n para Hostname) | **aguardando** |
+| D12 | Recomendação aceita: hints em inglês fixo resolvidos pelo rodapé contextual; chave i18n nova para `Hostname`. | decidido (provisório, ver nota) |
 | D13 | `docs/ux-audit.md` entra no `ignorePaths` do `cspell.json`. Verificado: o site só publica `docs/en/` e `docs/pt-br/`; arquivos na raiz de `docs/` são ignorados (`web/argvus-website/src/lib/documentation/loader.ts`, filtro de locale `en`/`pt-br`). | decidido |
+
+Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
+`[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram
+registradas como recomendação aceita; confirmar antes da fase que depende de
+cada uma (D7: Home; D8: `packages`; D9: migração de cada crate; D12:
+`appearance` e `settings`).
+
+Ajustes aprovados junto com o plano da Fase 1:
+
+- **Foco inicial da confirmação.** Verificado: todos os usos de
+  `ConfirmationState` (`audio`, `bluetooth`, `boot`, `displays`, `hardware`,
+  `network`, `packages`, `power`, `services`, `session`) criam o estado com
+  `::default()`, ou seja, foco em **Cancel**. O componente único mantém Cancel
+  como foco inicial; com `danger` ligado o foco também é Cancel, e
+  confirmações comuns seguem o mesmo padrão já existente.
+- **Cursor nas pontas.** Verificado: nenhuma lista dá a volta hoje
+  (`argvus_tui::page::Selection`, `settings::App::move_selection`,
+  `App::move_home` e as listas com índice próprio usam
+  `saturating_sub`/`clamp`). Só as barras de botões davam a volta
+  (`rem_euclid`), e elas serão removidas. A lista única para nas pontas.
+- **D10, escopo.** `q` deixa de sair do app só onde a lista já trata
+  caracteres digitáveis como filtro ou onde um campo de busca/texto está
+  ativo. As telas afetadas estão listadas na seção 5 (Progresso, D10).
 
 ### 6.2 Propostas originais
 
