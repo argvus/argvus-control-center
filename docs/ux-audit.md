@@ -249,25 +249,40 @@ linhas no mesmo cursor (`selected - rows.len()`), desenhados com
 
 ### 0.4 `argvus-control-center-displays`
 
-Detalhe do monitor edita `self.config` como **rascunho**; `Apply` aplica e abre
-a contagem regressiva de reversão.
+**Correção (Fase 3):** a versão anterior desta seção dizia que o detalhe do
+monitor editava `self.config` como rascunho e que `Apply` aplicava. O código
+não tem rascunho: cada opção do seletor e cada prompt (posição, escala, SDR)
+aplicam **na hora** (`apply_picker_selection`, `commit_prompt`). As opções
+"arriscadas" (`option_is_risky`: resolução/taxa, posição, espelho,
+desativar, profundidade de cor) e o prompt de posição armam a contagem de
+reversão de 15 s. `[ Apply ]` só reaplica a configuração salva, também com a
+contagem (cujo destino é a mesma configuração). `[ Default ]` remove os
+ajustes salvos do monitor e aplica, **sem** contagem.
+
+**Fase 3 (2026-10-04): todas as linhas abaixo migradas.** Commits
+`545bcfe` (lista única) e `c394639` (`ConfirmDialog` com prazo);
+`argvus-tui` `106013b` (ícones); `argvus-i18n` `bb784d3`. O crate não tem
+mais `Button`, `ActionButton`, `on_buttons` nem linhas `[ ... ]`.
 
 | Tela | Botão/opção atual | Ação (momento) | Nova linha equivalente | Atalho | Status |
 | --- | --- | --- | --- | --- | --- |
-| Home | Monitores conectados / configs antigas | Abre detalhe | Submenu | `Enter` | pendente |
-| Home | Perfis | Abre perfis | Submenu | `Enter` | pendente |
-| Home | **`[ Refresh ]`** | Recarrega | Action `Atualizar` | `Enter`, `r` | pendente |
-| Home | **`[ Profiles ]`** | Abre perfis | Sem linha própria. **Equivalente: Enter na linha do item** `Perfis` (Submenu) (D5) | `Enter` | pendente |
-| Detalhe (conectado) | Resolução, taxa, escala, posição, orientação, VRR, HDR, primário, ativo, espelho, profundidade, DPMS, brilho/saturação SDR, workspaces | Abre Picker/Prompt; altera rascunho | Choice/Value/Toggle por ajuste | `Enter` | pendente |
-| Detalhe (conectado) | **`[ Apply ]`** | Aplica rascunho + reversão em 15 s | Action `Apply` no fim (desabilitada sem mudança) | `Enter` | pendente |
-| Detalhe (conectado) | **`[ Default ]`** | `reset_button` (volta ao padrão) | Action `Restaurar padrão` | `Enter` | pendente |
-| Detalhe (desconectado) | **`[ Remove config ]`** | Remove config persistida | Destructive | `Enter` | pendente |
-| Perfis | **`[ New ]`** | Prompt de nome → salva perfil | Action (abre Value) | `Enter` | pendente |
-| Perfis | **`[ Apply ]`** | Aplica perfil selecionado | Action na página do perfil (D4) | `Enter` | pendente |
-| Perfis | **`[ Rename ]`** | Prompt de nome | Action (abre Value) | `Enter` | pendente |
-| Perfis | **`[ Delete ]`** | `confirm_profile` → exclui | Destructive | `Enter` | pendente |
-| Picker | Opção | Aplica ao rascunho / cancela | Choice | `Enter`; `r`/`q` cancelam (`q` hoje é capturado pelo sair global) | pendente |
-| Reversão | "Manter configuração?" | Mantém / reverte | Componente de confirmação com prazo | `Enter`/`Space`/`y`, `Esc`/`n` | pendente |
+| Home | Monitores conectados / configs antigas | Abre detalhe | Submenu com estado à direita; cada config antiga abre a **própria** config (antes abria sempre a primeira) | `Enter` | migrado |
+| Home | Perfis | Abre perfis (linha só aparecia com perfis ou sem monitores) | Submenu `Perfis`, sempre visível | `Enter` | migrado |
+| Home | **`[ Refresh ]`** | Recarrega | Action `Atualizar`, última linha | `Enter`, `r` | migrado |
+| Home | **`[ Profiles ]`** | Abre perfis | Sem linha própria. **Equivalente: Enter na linha do item** `Perfis` (Submenu) (D5) | `Enter` | migrado |
+| Detalhe (conectado) | Informações do monitor | Bloco readonly | Info na seção Monitor | — | migrado |
+| Detalhe (conectado) | Resolução, taxa, escala, posição, orientação, ativo, espelho, profundidade, VRR, HDR, DPMS, brilho/saturação SDR, workspaces, primário | Abre seletor/prompt; aplica **na hora** (arriscadas com contagem) | Submenu por ajuste (ícone próprio, valor atual) na seção Configuração; o seletor usa Choice com `●` no valor em vigor, Toggle nos workspaces (imediato, como antes) e Value no valor personalizado | `Enter` | migrado |
+| Detalhe (conectado) | **`[ Apply ]`** | Reaplica a configuração salva + contagem de 15 s | Action `Aplicar` na seção Ações, sempre habilitada, mesmo efeito; sem `draft_actions`, porque não há rascunho (D25) | `Enter` | migrado |
+| Detalhe (conectado) | **`[ Default ]`** | `reset_button`: remove os ajustes salvos e aplica, imediato e **sem** contagem | Action `Restaurar padrão` na seção Ações, imediata e sem contagem, como antes (D26) | `Enter` | migrado |
+| Detalhe (desconectado) | **`[ Remove config ]`** | Remove config persistida (imediato, sem confirmação) | Destructive `Remover configuração` na Zona de perigo, com confirmação em estilo de perigo | `Enter` | migrado |
+| Perfis | Perfil | — (Enter só agia em "+ Novo") | Submenu que abre a página do perfil (D4); o ativo leva o valor "Ativo" | `Enter` | migrado |
+| Perfis | **`[ New ]`** / "+ Novo perfil" | Prompt de nome → salva perfil | Action `Novo perfil` (abre o prompt) | `Enter` | migrado |
+| Perfis | **`[ Apply ]`** | Aplica perfil selecionado | Action `Aplicar perfil` na página do perfil (D4) | `Enter` | migrado |
+| Perfis | **`[ Rename ]`** | Prompt de nome | Action `Renomear` na página do perfil (abre o prompt) | `Enter` | migrado |
+| Perfis | **`[ Delete ]`** | `confirm_profile` → exclui | Destructive `Excluir perfil` na Zona de perigo da página do perfil, componente único em estilo de perigo | `Enter` | migrado |
+| Perfis | `r` | Recarrega o estado dos perfis | Mantido (também na página do perfil) | `r` | migrado |
+| Picker | Opção | Aplica e volta ao detalhe / cancela | Choice (ou Toggle/Value, ver acima); continua voltando ao detalhe | `Enter`; `r`/`q` cancelam (`q` é capturado pelo sair global) | migrado |
+| Reversão | "Manter configuração?" (faixa no topo) | Mantém / reverte; sem resposta em 15 s reverte para a config anterior (`apply_all`, "Revertido <nome>") | Componente de confirmação com prazo (`Manter`/`Reverter`, segundos restantes); prazo, destino e mensagem idênticos; foco em Reverter (D24) | `y` mantém; `n`/`Esc`/Enter (em Reverter) revertem | migrado |
 
 ### 0.5 `argvus-control-center-boot` (todas as ações passam por `ConfirmationState`)
 
@@ -588,8 +603,11 @@ Sessões › = `LAYOUT`; editores de valor = `BLUR` / `OPACITY`; `Apply` =
 | boot > detalhes | cabeçalhos | `MEMORY`, `STORAGE`, `PACKAGES` | sem ícone (Info) |
 | diagnostics > Home | Resumo, Serviços, Kernel e boot, Gráficos, Rede, Áudio, Bluetooth, Armazenamento, Pacotes, ARGVUS | `MONITOR`, `SETTINGS`, `MEMORY`, `GPU`, `NETWORK`, `AUDIO`, `LINK`, `STORAGE`, `PACKAGES`, `SUCCESS` | `INFO`, `SERVICES`, `BOOT`, `GPU`, `NETWORK`, `AUDIO`, `BLUETOOTH`, `STORAGE`, `PACKAGES`, `PALETTE`/logo (D9) |
 | diagnostics | `category_icon` (mapa duplicado do anterior) | idem | unificar com o item |
-| displays > Home | Monitor / desconectado / Perfis | `MONITOR` / `ETHERNET` / `APPS` | `MONITOR` / `LINK_OFF` / `PROFILE` |
-| displays > detalhe | "Monitor desconectado" | `ETHERNET` | `WARNING` |
+| displays > Home | Monitor / desconectado / Perfis / Atualizar | `MONITOR` / `ETHERNET` / `APPS` / — | `MONITOR` / `LINK_OFF` / `PROFILE` / `REFRESH` (Fase 3) |
+| displays > detalhe | "Monitor desconectado" | `ETHERNET` | sem ícone (Info) (Fase 3) |
+| displays > detalhe | Resolução / Taxa / Escala / Posição / Orientação / Ativo / Espelho / Profundidade / VRR / HDR / DPMS / Brilho SDR / Saturação SDR / Workspaces / Primário | — | `ASPECT_RATIO` / `SINE_WAVE` / `ZOOM` / `ARROW_ALL` / `ROTATE` / `POWER` / `MONITOR_MULTIPLE` / `PALETTE` / `SYNC` / `HDR` / `SLEEP` / `BRIGHTNESS` / `CONTRAST` / `GRID` / `STAR` (Fase 3) |
+| displays > detalhe | Aplicar / Restaurar padrão / Remover configuração | — | `APPLY` / `RESTORE` / `DELETE` (Fase 3) |
+| displays > perfis | Novo perfil / Aplicar perfil / Renomear / Excluir perfil | — | `ADD` / `APPLY` / `EDIT` / `DELETE` (Fase 3) |
 | hardware > Home | Resumo / CPU / GPU / Memória / Energia / Dispositivos | `MONITOR` / `MEMORY` / `GPU` / `POWER` / `BATTERY` / `ETHERNET` | `INFO` / `CPU` / `GPU` / `MEMORY` / `BATTERY` / `USB` |
 | network > Home | Status / Interfaces / Ethernet / Wi-Fi / VPN / DNS / Proxy / Firewall | `NETWORK` / `ETHERNET` / `NETWORK` / `WIFI` / `LOCK` / `SEARCH` / `LOCK` / `WARNING` | `INFO` / `NETWORK` / `ETHERNET` / `WIFI` / `VPN` / `DNS` / `LINK` / `SHIELD` |
 | network > páginas | cabeçalhos de seção | `NETWORK`, `WIFI`, `ETHERNET`, `SEARCH`, `LOCK` | sem ícone (Info) |
@@ -804,7 +822,7 @@ Notas de projeto:
 | 1 | Campo de texto ativo captura `q`/`?` (D10) | concluída (`argvus-control-center` `5b346ca`) |
 | 2 | `appearance` | concluída (`2f57d07`, `75d3dc1`, `4737a4c`; `argvus-i18n` `a62346d`) |
 | 3 | `settings` | concluída (`2f694e3`, `c423f33`, `14e51c1`; `argvus-tui` `0ee7a52`, `908e747`; `argvus-i18n` `c49a792`) |
-| 3 | `displays` | pendente |
+| 3 | `displays` | concluída (`545bcfe`, `c394639`; `argvus-tui` `106013b`; `argvus-i18n` `bb784d3`) |
 | 3 | `boot` | pendente |
 | 3 | `packages` | pendente |
 | 3 | `network` | pendente |
@@ -996,6 +1014,57 @@ Achados para a Fase 4 (sem alteração):
 - `App::keybinding_editor_state` ficou sem chamador.
 - Mouse e touchpad: as linhas seguem sem ícone, como antes (D9 provisório).
 
+### 5.4 Notas da Fase 3: `displays` (2026-10-04)
+
+Dependências: como nas fases anteriores, `argvus-tui` e `argvus-i18n` na
+branch `ux_ui`; em execução, as chaves `keep`, `revert`,
+`keep_configuration_*`, `section_actions`, `remove_config_description` e
+`profile_monitors` exigem o `argvus-i18n` instalado a partir de `ux_ui`.
+
+Reversão (conferida no código antigo e coberta por testes): o prazo continua
+15 s (`REVERT_SECONDS`) contados de quando a mudança é armada; sem resposta,
+`poll` aplica o `previous_config` armado com `apply_all` (salva
+`monitors.lua` e roda `hyprctl reload`) e mostra "Revertido <nome>", como
+antes. A detecção de hotplug continua suspensa durante a contagem. As
+decisões foram extraídas em `arm_revert`, `take_expired_revert` e
+`answer_revert`, testadas sem disco nem `hyprctl`.
+
+Mudanças de comportamento, além da apresentação:
+
+- Reversão pelo componente único (D24): foco em Reverter; `Enter` logo
+  após a mudança reverte (antes mantinha), `Space` não mantém mais; `y`
+  mantém; `n`/`Esc` revertem; o rodapé começa por `y Manter`.
+- `Remover configuração` pede confirmação (antes era imediata).
+- A linha Perfis aparece sempre na Home.
+- Enter num perfil abre a página do perfil (D4).
+- O seletor marca o valor em vigor com `●` (sem sufixos "atual"/"primário");
+  workspaces são Toggle, ainda imediatos e voltando ao detalhe.
+- Enquanto um snapshot ou ação roda, o cursor pode se mover (antes ficava
+  parado); ativar continua bloqueado.
+
+Correção feita na migração: abrir uma configuração antiga (monitor ausente)
+abria sempre a primeira delas (`Detail(stale_start())`); agora abre a
+escolhida. O texto fixo em português "escala" da Home passou a ser
+traduzido.
+
+Bugs encontrados, **sem alteração** (tarefa separada):
+
+- Orientação: as opções usam `PersistChange::None` e o `args` é ignorado;
+  escolher uma orientação não salva nem aplica nada.
+- Presets de brilho e saturação SDR: também `PersistChange::None`, sem
+  efeito; só o valor personalizado funciona.
+- `Monitor::info_rows` (`model.rs`) usa rótulos fixos em português
+  ("Fabricante", "Modelo"...), sem i18n.
+
+Achados para a Fase 4 (sem alteração): chaves que o `displays` deixou de
+usar, sem uso em outro crate: `navigate_enter_apply_r_cancel_help`,
+`type_value_enter_confirm_esc_cancel`,
+`navigate_tab_actions_enter_new_r_reload_esc_back_help`,
+`navigate_tab_actions_enter_open_r_refresh_esc_back_help`,
+`keep_this_configuration_enter_keep`,
+`reverting_automatically_if_no_key_is_pressed`, `current_4cdf18`,
+`primary`, `new`.
+
 ---
 
 ## 6. Pontos de decisão
@@ -1027,6 +1096,9 @@ Achados para a Fase 4 (sem alteração):
 | D21 | Fontes: Tamanho vira Value no topo do seletor (prompt 8–32 no Enter). Sistema > Hostname abre o popup direto; a página Hostname segue para a rota CLI. | decidido (Fase 3) |
 | D22 | Layouts: Enter define o padrão e Space liga/desliga o layout na lista; o rodapé mostra as duas teclas (`Enter Definir padrão`, `Space Alternar`). | decidido (Fase 3) |
 | D23 | Firewall: Iniciar/Parar viram uma linha de estado `Serviço · Ativo/Parado` cuja Enter alterna (o backend informa `active`), confirmada como antes. | decidido (Fase 3) |
+| D24 | Reversão de monitor pelo componente único com prazo: foco em Reverter, `Enter` imediato reverte, `Space` sem efeito, `y` mantém, `n`/`Esc` revertem; o rodapé destaca `y Manter`. Motivo: `Enter` por reflexo com a tela ruim não pode manter a configuração. Prazo (15 s), destino (`previous_config` com `apply_all`) e mensagem idênticos. | decidido (Fase 3) |
+| D25 | `displays` não tem rascunho: `Aplicar` é Action comum que reaplica a configuração salva com a contagem, sem `draft_actions`; o inventário 0.4 foi corrigido. | decidido (Fase 3) |
+| D26 | `Restaurar padrão` mantém o comportamento atual: imediato e sem contagem de reversão (`reset_button` não arma `RevertState`). | decidido (Fase 3) |
 
 Nota sobre D7, D8, D9 e D12: a resposta veio como o modelo
 `[aceito as recomendações / minhas respostas]`, sem escolha explícita. Foram

@@ -70,7 +70,7 @@ This area contains time zone, date and time, regional locale, system locales and
 
 ### Hardware and displays
 
-When the corresponding capabilities are installed, the Control Center can show hardware information such as CPU, GPU, memory, power and devices. The input page configures mouse and touchpad behavior; the display area handles monitor resolution, refresh rate, scale, position, orientation, primary display, VRR and HDR where supported by the running session.
+When the corresponding capabilities are installed, the Control Center can show hardware information such as CPU, GPU, memory, power and devices. The input page configures mouse and touchpad behavior; the display area handles monitor resolution, refresh rate, scale, position, orientation, primary display, VRR and HDR where supported by the running session. Display changes apply immediately. After a change that can leave the screen unusable (resolution or refresh rate, position, mirroring, disabling a monitor, color depth) or after **Apply**, Control Center asks whether to keep it, with the focus on **Revert**: press `y` to keep it; `n`, `Esc` or `Enter` revert it, and without an answer within 15 seconds the previous configuration comes back automatically. Removing the saved configuration of a disconnected monitor and deleting a profile ask for confirmation; profiles open their own page with **Apply profile**, **Rename** and **Delete profile**.
 
 ### Connectivity and audio
 
