@@ -84,6 +84,8 @@ Power provides the system power controls and policy pages available to the insta
 
 The system section can expose boot information, packages, services, storage, diagnostics, user/group administration and system information. These are administrative or diagnostic tools; a page may be read-only or require authorization depending on the operation.
 
+On the **Packages** lists that filter while typing (Search, AUR, Installed, Orphans and Updates), letters go to the filter; use the arrow keys to move and `/` to type a new search. `Enter` on a package opens its page, with **Install** (or **Reinstall**) and, in its **Danger zone**, **Remove**. On **Orphans**, `Space` marks packages (`[x]`) and **Remove marked** removes them together. **Upgrade all** and **Refresh database** are rows of the Updates page, the cache cleanups are in the Danger zone of the Cache page, and **Mirrors → Configure mirrors** sets the reflector options before **Generate preview**. Every package operation shows its plan and asks for confirmation (`y` confirms, `n` or `Esc` cancels) before it runs, and its output is shown while it runs.
+
 ### Users and groups
 
 When the account provider is available, open **Settings → System → Users** or search for **users**. The interface can list normal and system accounts, create a user, edit account metadata, manage supplementary and primary groups, change or lock a password, unlock it, require a password change at the next login, and set or remove an avatar.

@@ -85,6 +85,8 @@ Energia oferece os controles de energia do sistema e as páginas de política di
 
 A seção de sistema pode expor informações de boot, pacotes, serviços, armazenamento, diagnósticos, administração de usuários/grupos e informações do sistema. São ferramentas administrativas ou de diagnóstico; uma página pode ser somente leitura ou exigir autorização dependendo da operação.
 
+Nas listas de **Pacotes** que filtram ao digitar (Buscar, AUR, Instalados, Órfãos e Atualizações), as letras vão para o filtro; use as setas para navegar e `/` para digitar uma nova busca. `Enter` num pacote abre a página dele, com **Instalar** (ou **Reinstalar**) e, na **Zona de perigo**, **Remover**. Em **Órfãos**, `Space` marca pacotes (`[x]`) e **Remover marcados** remove todos juntos. **Atualizar tudo** e **Atualizar banco** são linhas da página Atualizações, as limpezas de cache ficam na Zona de perigo da página Cache, e **Mirrors → Configurar mirrors** define as opções do reflector antes de **Gerar preview**. Toda operação de pacotes mostra o plano e pede confirmação (`y` confirma, `n` ou `Esc` cancela) antes de rodar, e a saída aparece enquanto ela roda.
+
 ### Usuários e grupos
 
 Quando o provider de contas está disponível, abra **Configurações → Sistema → Usuários** ou busque por **usuários**. A interface pode listar contas normais e de sistema, criar usuários, editar metadados, gerenciar grupos suplementares e primários, alterar ou bloquear uma senha, desbloqueá-la, exigir troca de senha no próximo login e definir ou remover um avatar.
