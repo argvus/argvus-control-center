@@ -10,5 +10,5 @@ use crate::app::App;
 
 /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-  draw_footer(frame, area, &app.theme, None, app.footer());
+  draw_footer(frame, area, &app.theme, None, &app.footer());
 }

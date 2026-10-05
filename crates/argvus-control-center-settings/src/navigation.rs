@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use argvus_control_center_apps::catalog::Category;
+use argvus_tui::menu::MenuState;
 
 use crate::config::fonts::{FontTarget, SettingKind};
 
@@ -53,17 +54,16 @@ pub enum Page {
 /// Represents `Location`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub struct Location {
   pub page: Page,
-  pub selected: usize,
-  pub scroll: usize,
+  /// Cursor and scroll of the page's menu list, restored when going back.
+  pub menu: MenuState,
 }
 
 impl Location {
   /// Executes the const function documented in this module. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-  pub const fn new(page: Page) -> Self {
+  pub fn new(page: Page) -> Self {
     Self {
       page,
-      selected: 0,
-      scroll: 0,
+      menu: MenuState::default(),
     }
   }
 }
@@ -122,15 +122,16 @@ mod tests {
   #[test]
   /// Executes the `stack_restores_page_selection_and_scroll` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn stack_restores_page_selection_and_scroll() {
+    use argvus_tui::menu::Row;
+    let rows: Vec<Row<u8>> = (0..4).map(|id| Row::action(id, "row")).collect();
     let mut navigation = Navigation::new(Page::Main);
-    navigation.current_mut().selected = 1;
-    navigation.current_mut().scroll = 3;
+    assert!(navigation.current_mut().menu.select(&rows, &2));
     navigation.push(Page::Fonts);
     assert_eq!(navigation.current().page, Page::Fonts);
+    assert_eq!(navigation.current().menu.selected_index(), None);
     assert!(navigation.back());
     assert_eq!(navigation.current().page, Page::Main);
-    assert_eq!(navigation.current().selected, 1);
-    assert_eq!(navigation.current().scroll, 3);
+    assert_eq!(navigation.current().menu.selected_id(&rows), Some(2));
     assert!(!navigation.back());
   }
 }

@@ -2,16 +2,16 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
-pub mod buttons;
 pub mod footer;
 pub mod header;
 pub mod layout;
-pub mod list;
 pub mod popup;
 pub mod search;
 
+use argvus_control_center_core::config::AppConfig;
+use argvus_tui::menu::{MenuStyle, draw_menu};
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
@@ -39,31 +39,20 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   }
 
   let areas = layout::areas(area);
-  let buttons = app.page_buttons();
-  if buttons.is_empty() {
-    frame.render_widget(Clear, areas.body);
-    app.set_viewport(areas.body.height as usize);
-    header::draw(frame, areas.header, app);
-    list::draw(frame, areas.body, app);
-  } else {
-    let button_height = buttons::height(&buttons, areas.body.width).min(areas.body.height);
-    let split =
-      Layout::vertical([Constraint::Min(1), Constraint::Length(button_height)]).split(areas.body);
-    app.set_viewport(split[0].height as usize);
-    frame.render_widget(Clear, split[0]);
-    header::draw(frame, areas.header, app);
-    list::draw(frame, split[0], app);
-    let selected = app.navigation.current().selected;
-    let rows = app.rows().len();
-    let focus = selected.checked_sub(rows);
-    buttons::draw(
-      frame,
-      split[1],
-      &buttons,
-      focus.unwrap_or(usize::MAX),
-      &app.theme,
-    );
-  }
+  let rows = app.rows();
+  app.set_viewport(areas.body.height as usize);
+  frame.render_widget(Clear, areas.body);
+  header::draw(frame, areas.header, app);
+  draw_menu(
+    frame,
+    areas.body,
+    &app.theme,
+    &rows,
+    &mut app.navigation.current_mut().menu,
+    MenuStyle {
+      icons: AppConfig::icons_enabled(),
+    },
+  );
   search::draw(frame, areas.message, app);
   footer::draw(frame, areas.footer, app);
   if app.hostname_editing {
@@ -192,53 +181,44 @@ mod tests {
     app
   }
 
-  /// Executes the `button_cell` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn button_cell(terminal: &Terminal<TestBackend>, label: &str) -> (u16, u16) {
+  /// Background of the first cell of the line that shows `label`.
+  fn line_bg(terminal: &Terminal<TestBackend>, label: &str) -> Option<ratatui::style::Color> {
     let width = terminal.backend().buffer().area.width as usize;
-    for (y, row) in terminal
+    terminal
       .backend()
       .buffer()
       .content
       .chunks(width)
-      .enumerate()
-    {
-      let text: String = row.iter().map(|cell| cell.symbol()).collect();
-      if let Some(index) = text.find(label)
-        && index >= 2
-      {
-        return (index as u16 - 2, y as u16);
-      }
-    }
-    (0, 0)
-  }
-
-  /// Executes the `button_bg` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn button_bg(terminal: &Terminal<TestBackend>, label: &str) -> ratatui::style::Color {
-    let (x, y) = button_cell(terminal, label);
-    let width = terminal.backend().buffer().area.width;
-    terminal.backend().buffer().content[(y * width + x) as usize].bg
+      .find(|line| {
+        line
+          .iter()
+          .map(|cell| cell.symbol())
+          .collect::<String>()
+          .contains(label)
+      })
+      .map(|line| line[3].bg)
   }
 
   #[test]
-  /// Executes the `button_bar_highlights_only_the_focused_action` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn button_bar_highlights_only_the_focused_action() {
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+  fn actions_are_rows_and_only_the_cursor_row_is_highlighted() {
+    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
     let mut app = user_app();
-    app.normalize_selection();
-    assert_eq!(app.navigation.current().selected, 2);
     let selected_bg = app.theme.selected_background;
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_ne!(button_bg(&terminal, "Save changes"), selected_bg);
-    assert_ne!(button_bg(&terminal, "Delete user (keep home)"), selected_bg);
+    assert_eq!(line_bg(&terminal, "Full name"), Some(selected_bg));
+    assert_ne!(line_bg(&terminal, "Save changes"), Some(selected_bg));
+    assert_ne!(
+      line_bg(&terminal, "Delete user (keep home)"),
+      Some(selected_bg)
+    );
 
-    app.navigation.current_mut().selected = 10;
+    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::End)));
     terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_eq!(button_bg(&terminal, "Save changes"), selected_bg);
-
-    app.navigation.current_mut().selected = 17;
-    terminal.draw(|frame| draw(&mut app, frame)).unwrap();
-    assert_ne!(button_bg(&terminal, "Save changes"), selected_bg);
-    assert_eq!(button_bg(&terminal, "Delete user (keep home)"), selected_bg);
+    assert_eq!(
+      line_bg(&terminal, "Delete user and home"),
+      Some(selected_bg)
+    );
+    assert_ne!(line_bg(&terminal, "Full name"), Some(selected_bg));
   }
 
   #[test]
@@ -257,7 +237,11 @@ mod tests {
       .collect::<String>();
     assert!(rendered.contains("ARGVUS"));
     assert!(rendered.contains("Default Apps") || rendered.contains("Apps Padrão"));
-    assert!(rendered.contains("Quit") || rendered.contains("Sair"));
+    let quit = format!(
+      "q {}",
+      crate::i18n::tr(app.lang, "control_center.hint.quit")
+    );
+    assert!(app.footer().ends_with(&quit), "{}", app.footer());
   }
 
   #[test]
@@ -275,19 +259,22 @@ mod tests {
       .map(|cell| cell.symbol())
       .collect::<String>();
     let rows = app.rows();
-    for row in rows.iter().filter(|row| row.detail.is_some()).take(3) {
+    for row in rows
+      .iter()
+      .filter(|row| row.detail_text().is_some())
+      .take(3)
+    {
       assert!(
-        rendered.contains(&row.label),
+        rendered.contains(row.label()),
         "missing rendered row: {}",
-        row.label
+        row.label()
       );
     }
   }
 
   #[test]
-  /// Executes the `reset_pages_render_a_reset_defaults_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn reset_pages_render_a_reset_defaults_button() {
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+  fn reset_pages_render_a_restore_defaults_row_without_brackets() {
+    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
     for page in [Page::DefaultApps, Page::Fonts] {
       let mut app = App::new(page);
       app.error_modal = None;
@@ -299,9 +286,8 @@ mod tests {
         .iter()
         .map(|cell| cell.symbol())
         .collect::<String>();
-      assert!(
-        rendered.contains("[ Restaurar padrões ]") || rendered.contains("[ Reset Defaults ]")
-      );
+      assert!(rendered.contains(crate::i18n::tr(app.lang, "control_center.reset_defaults")));
+      assert!(!rendered.contains("[ "), "no button labels on {page:?}");
     }
   }
 
@@ -333,45 +319,38 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `tab_enters_reset_button_and_enter_opens_confirm` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn tab_enters_reset_button_and_enter_opens_confirm() {
+  fn tab_no_longer_jumps_to_actions_and_end_reaches_the_reset_row() {
     let mut app = App::new(Page::DefaultApps);
     app.error_modal = None;
-    assert!(!app.on_buttons());
-    app.normalize_selection();
-
+    let before = app.selected_item();
     crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Tab)));
-    assert!(app.on_buttons());
-
+    assert_eq!(app.selected_item(), before);
+    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::End)));
     crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Enter)));
     assert!(matches!(
       app.confirm,
       Some(crate::app::PendingAction::ResetApps)
     ));
-
     crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Esc)));
     assert!(app.confirm.is_none());
-
-    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Tab)));
-    assert!(!app.on_buttons());
-    assert_eq!(app.navigation.current().selected, 0);
   }
 
   #[test]
-  /// Executes the `font_selector_page_has_reset_button_and_search_still_works` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn font_selector_page_has_reset_button_and_search_still_works() {
+  fn font_selector_page_has_reset_row_and_search_still_works() {
     let mut app = App::new(Page::Fonts);
     app.error_modal = None;
     app
       .navigation
       .push(Page::FontSelector(crate::config::fonts::FontTarget::Apps));
-    assert!(matches!(
-      app.page_buttons().first(),
-      Some(button) if button.label.ends_with("Defaults") || button.label.ends_with("padrões")
-    ));
-    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Tab)));
-    assert!(app.on_buttons());
-    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Enter)));
+    assert_eq!(
+      app.rows().last().and_then(|row| row.id().copied()),
+      Some(crate::item::Item::ResetDefaults)
+    );
+    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Char('/'))));
+    assert!(app.searching);
+    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Esc)));
+    assert!(!app.searching);
+    crate::event::handle(&mut app, Event::Key(KeyEvent::from(KeyCode::Char('r'))));
     assert!(app.confirm.is_some());
   }
 

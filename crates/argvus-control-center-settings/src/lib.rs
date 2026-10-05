@@ -7,6 +7,7 @@ pub mod app;
 pub mod config;
 pub mod error;
 pub mod event;
+pub mod item;
 pub mod navigation;
 pub mod system;
 pub mod ui;

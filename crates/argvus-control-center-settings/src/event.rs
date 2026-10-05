@@ -5,6 +5,7 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::app::App;
+use crate::navigation::Page;
 
 /// Processes `handle` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn handle(app: &mut App, event: Event) {
@@ -86,9 +87,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
 
   if matches!(
     app.page(),
-    crate::navigation::Page::Keybindings
-      | crate::navigation::Page::KeybindingEdit
-      | crate::navigation::Page::KeybindingCapture
+    Page::Keybindings | Page::KeybindingEdit | Page::KeybindingCapture
   ) && app.has_keybinding_conflict()
   {
     match key.code {
@@ -99,10 +98,8 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     return;
   }
 
-  if matches!(
-    app.page(),
-    crate::navigation::Page::KeybindingEdit | crate::navigation::Page::KeybindingCapture
-  ) && (app.is_keybinding_capturing() || key.code == KeyCode::Char('e'))
+  if matches!(app.page(), Page::KeybindingEdit | Page::KeybindingCapture)
+    && (app.is_keybinding_capturing() || key.code == KeyCode::Char('e'))
   {
     if !app.is_keybinding_capturing() {
       app.begin_keybinding_capture();
@@ -120,8 +117,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         app.open_or_apply();
       }
       KeyCode::Backspace => app.pop_search(),
-      KeyCode::Down => app.move_selection(1),
-      KeyCode::Up => app.move_selection(-1),
+      KeyCode::Down | KeyCode::Up => app.handle_menu_key(key.code),
       KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
         app.push_search(character)
       }
@@ -130,60 +126,68 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     return;
   }
 
-  if app.page() == crate::navigation::Page::MouseTouchpad {
-    match key.code {
-      KeyCode::Left | KeyCode::Char('h') => {
-        let selected = app.navigation.current().selected;
-        app.input_cycle(selected, -1);
+  if app.page() == Page::MouseTouchpad {
+    // `←/→` and `h/l` step any Mouse & Touchpad row, as before.
+    let direction = match key.code {
+      KeyCode::Left | KeyCode::Char('h') => Some(-1),
+      KeyCode::Right | KeyCode::Char('l') => Some(1),
+      _ => None,
+    };
+    if let Some(direction) = direction {
+      if let Some(item) = app.selected_item() {
+        app.input_cycle(item, direction);
       }
-      KeyCode::Right | KeyCode::Char('l') => {
-        let selected = app.navigation.current().selected;
-        app.input_cycle(selected, 1);
-      }
-      KeyCode::Char(' ') => app.toggle_current(),
-      _ => handle_regular_key(app, key),
+      return;
     }
-    return;
   }
 
   handle_regular_key(app, key);
 }
 
-/// Processes `handle_regular_key` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+/// Page shortcuts first, then the single menu list.
 fn handle_regular_key(app: &mut App, key: KeyEvent) {
+  let page = app.page();
   match key.code {
-    KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
-    KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),
-    KeyCode::Tab => app.cycle_selection(1),
-    KeyCode::BackTab => app.cycle_selection(-1),
-    KeyCode::Right | KeyCode::Char('l') if app.on_buttons() => app.move_button(1),
-    KeyCode::Left | KeyCode::Char('h') if app.on_buttons() => app.move_button(-1),
-    KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.open_or_apply(),
-    KeyCode::Left | KeyCode::Char('h') | KeyCode::Esc => app.back(),
-    KeyCode::Char('/') => app.begin_search(),
+    KeyCode::Char('/') => return app.begin_search(),
     KeyCode::Char('r') => {
-      if app.page() == crate::navigation::Page::System {
-        app.refresh_system();
-      } else {
-        app.reset_current();
+      match page {
+        Page::System => app.refresh_system(),
+        Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups => {
+          app.admin.load(false)
+        }
+        _ => app.reset_current(),
       }
+      return;
     }
-    KeyCode::Char(' ') => app.toggle_current(),
-    KeyCode::Char('+') | KeyCode::Char('=') => app.adjust_size(1),
-    KeyCode::Char('-') => app.adjust_size(-1),
-    KeyCode::Home => {
-      let selected = app.navigation.current().selected;
-      app.move_selection(-(selected as isize));
+    KeyCode::Char('+') | KeyCode::Char('=') => return app.adjust_size(1),
+    KeyCode::Char('-') => return app.adjust_size(-1),
+    // Tab only switches tabs or panes; Settings has none.
+    KeyCode::Tab | KeyCode::BackTab => return,
+    // Enter sets the default layout; Space (a Toggle) enables or disables it.
+    KeyCode::Enter if page == Page::KeyboardLayout => {
+      if let Some(item) = app.selected_item() {
+        app.activate(item);
+      }
+      return;
     }
-    KeyCode::End => {
-      let count = app.item_count();
-      let selected = app.navigation.current().selected;
-      app.move_selection(count.saturating_sub(selected + 1) as isize);
-    }
-    KeyCode::PageUp => app.move_selection(-(app.viewport as isize)),
-    KeyCode::PageDown => app.move_selection(app.viewport as isize),
+    // Space flips the shortcut under the cursor.
+    KeyCode::Char(' ') if page == Page::Keybindings => return app.toggle_selected_keybinding(),
     _ => {}
   }
+  let code = match key.code {
+    // Space keeps activating any row where it did before (account and
+    // firewall pages, shortcut editor, Mouse & Touchpad).
+    KeyCode::Char(' ')
+      if crate::administration::is_page(page)
+        || matches!(page, Page::KeybindingEdit | Page::MouseTouchpad) =>
+    {
+      KeyCode::Enter
+    }
+    KeyCode::Char('h') => KeyCode::Left,
+    KeyCode::Char('l') => KeyCode::Right,
+    code => code,
+  };
+  app.handle_menu_key(code);
 }
 
 #[cfg(test)]
@@ -193,7 +197,7 @@ mod tests {
   #[test]
   /// Executes the `resize_is_forwarded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn resize_is_forwarded() {
-    let mut app = App::new(crate::navigation::Page::Main);
+    let mut app = App::new(Page::Main);
     handle(&mut app, Event::Resize(100, 30));
     assert_eq!((app.width, app.height), (100, 30));
   }

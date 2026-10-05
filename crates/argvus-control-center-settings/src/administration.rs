@@ -15,10 +15,14 @@ use ratatui::{
 };
 use serde_json::{Value, json};
 
+use argvus_tui::icons;
+use argvus_tui::menu::{Row, draft_actions};
+
 use crate::{
   Page,
-  app::{App, PendingAction, Row},
+  app::{App, PendingAction},
   i18n::{Lang, tr},
+  item::Item,
 };
 
 /// Defines the constant `FIREWALL_FIELDS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -86,32 +90,10 @@ fn strings(value: &Value) -> Vec<String> {
     })
     .unwrap_or_default()
 }
-/// Executes the `row` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn row(label: &str, detail: impl Into<String>) -> Row {
-  Row {
-    label: label.into(),
-    detail: Some(detail.into()),
-    current: false,
-  }
+/// Case-insensitive search over the visible texts of a list entry.
+fn matches_search(query: &str, values: &[&str]) -> bool {
+  crate::app::search_matches(query.trim(), values)
 }
-/// Executes the `plain` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn plain(label: &str) -> Row {
-  Row {
-    label: label.into(),
-    detail: None,
-    current: false,
-  }
-}
-/// Executes the `section` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn section(label: &str) -> Row {
-  Row {
-    label: format!("-- {label}"),
-    detail: None,
-    current: false,
-  }
-}
-
-pub use argvus_tui::buttons::{Button, ButtonKind};
 
 /// Executes the `request` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn request(firewall: bool, value: Value, privileged: bool) -> Result<Value, String> {
@@ -348,361 +330,387 @@ impl Administration {
       })
   }
 
-  /// Executes the `buttons` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn buttons(&self, page: Page, lang: Lang) -> Vec<Button> {
-    if self.busy() {
-      return Vec::new();
-    }
-    match page {
-      Page::User => vec![
-        Button::new(tr(lang, "control_center.save_changes"), ButtonKind::Primary),
-        Button::new(
-          tr(lang, "control_center.change_password"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(
-          tr(lang, "control_center.lock_password"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(
-          tr(lang, "control_center.unlock_password"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(
-          tr(lang, "control_center.require_password_change_at_login"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(
-          tr(lang, "control_center.avatar_image"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(tr(lang, "control_center.remove_avatar"), ButtonKind::Danger),
-        Button::new(
-          tr(lang, "control_center.delete_user_keep_home"),
-          ButtonKind::Danger,
-        ),
-        Button::new(
-          tr(lang, "control_center.delete_user_and_home"),
-          ButtonKind::Danger,
-        ),
-      ],
-      Page::CreateUser => vec![Button::new(
-        if self.passwords[1].is_empty() {
-          tr(lang, "control_center.create_account_password_locked")
-        } else {
-          tr(lang, "control_center.create_account_with_password")
-        },
-        ButtonKind::Primary,
-      )],
-      Page::CreateGroup => vec![Button::new(
-        tr(lang, "control_center.create_group"),
-        ButtonKind::Primary,
-      )],
-      Page::UserList | Page::SystemUsers => vec![Button::new(
-        tr(lang, "control_center.reload"),
-        ButtonKind::Secondary,
-      )],
-      Page::Group => vec![
-        Button::new(tr(lang, "control_center.save_changes"), ButtonKind::Primary),
-        Button::new(
-          tr(lang, "control_center.edit_members"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(tr(lang, "control_center.delete_group"), ButtonKind::Danger),
-      ],
-      Page::Firewall => vec![
-        Button::new(
-          tr(lang, "control_center.save_configuration"),
-          ButtonKind::Primary,
-        ),
-        Button::new(
-          tr(lang, "control_center.add_iptables_rules"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(
-          tr(lang, "control_center.apply_saved_rules"),
-          ButtonKind::Secondary,
-        ),
-        Button::new(tr(lang, "control_center.cancel"), ButtonKind::Danger),
-      ],
-      _ => Vec::new(),
-    }
-  }
-
-  /// Executes the `rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn rows(&self, page: Page, lang: Lang) -> Vec<Row> {
+  /// Rows of an account or firewall page. `search` narrows the user and
+  /// group lists, whose items keep their index in the unfiltered list.
+  pub fn rows(&self, page: Page, lang: Lang, search: &str) -> Vec<Row<Item>> {
+    let label = |key: &str| tr(lang, key);
     // Keep the already-loaded rows on screen while a write is running. The
     // placeholder is only useful when there is nothing to show yet; replacing
     // loaded rows made the user's selections vanish until the snapshot returned.
     if self.busy() && !self.has_loaded_data(page) {
-      return vec![row(
-        tr(lang, "control_center.waiting_for_backend_authentication"),
+      return vec![Row::info(
+        label("control_center.waiting_for_backend_authentication"),
         "",
       )];
     }
     match page {
-      Page::Firewall => {
-        if self.firewall.is_null() {
-          return vec![row(tr(lang, "control_center.reload"), "")];
-        }
-        let mut rows = vec![
-          row(
-            tr(lang, "control_center.service"),
-            if self.firewall["active"] == true {
-              tr(lang, "control_center.active_095d39")
-            } else {
-              tr(lang, "control_center.stopped_c2dfd3")
-            },
-          ),
-          row(
-            tr(lang, "control_center.start_at_boot"),
-            if self.firewall["enabled"] == true {
-              "[x]"
-            } else {
-              "[ ]"
-            },
-          ),
-        ];
-        rows.extend(FIREWALL_FIELDS.iter().map(|(key, label)| {
-          let value = text(&self.config, key);
-          row(
-            tr(lang, label),
-            match value.as_str() {
-              "y" => "[x]".into(),
-              "n" => "[ ]".into(),
-              _ => value,
-            },
-          )
-        }));
-        rows
-      }
-      Page::Users => {
-        vec![
-          plain(tr(lang, "control_center.create")),
-          plain(tr(lang, "control_center.list")),
-          plain(tr(lang, "control_center.system_accounts")),
-        ]
-      }
+      Page::Firewall => self.firewall_rows(lang),
+      Page::Users => vec![
+        Row::submenu(Item::CreateUser, label("control_center.create")).icon(icons::ADD),
+        Row::submenu(Item::UserList, label("control_center.list")).icon(icons::USERS),
+        Row::submenu(Item::SystemUsers, label("control_center.system_accounts"))
+          .icon(icons::ACCOUNT_COG),
+      ],
       Page::UserList | Page::SystemUsers => {
-        let include_system = page == Page::SystemUsers;
-        self
-          .users(include_system)
-          .iter()
-          .map(|user| row(&text(user, "user"), text(user, "name")))
-          .collect()
-      }
-      Page::CreateUser => vec![
-        section(tr(lang, "control_center.account")),
-        row(
-          tr(lang, "control_center.username"),
-          text(&self.user, "user"),
-        ),
-        row(
-          tr(lang, "control_center.full_name"),
-          text(&self.user, "name"),
-        ),
-        row("Shell", text(&self.user, "shell")),
-        row(
-          tr(lang, "control_center.supplementary_groups"),
-          strings(&self.user["groups"]).join(", "),
-        ),
-        row(
-          tr(lang, "control_center.new_password"),
-          "*".repeat(argvus_tui::text::display_width(&self.passwords[1])),
-        ),
-        row(
-          tr(lang, "control_center.confirm_password"),
-          "*".repeat(argvus_tui::text::display_width(&self.passwords[2])),
-        ),
-      ],
-      Page::User => vec![
-        section(tr(lang, "control_center.account")),
-        row(
-          tr(lang, "control_center.username"),
-          text(&self.user, "user"),
-        ),
-        row(
-          tr(lang, "control_center.full_name"),
-          text(&self.user, "name"),
-        ),
-        row("Shell", text(&self.user, "shell")),
-        row(
-          tr(lang, "control_center.supplementary_groups"),
-          strings(&self.user["groups"]).join(", "),
-        ),
-        section(tr(lang, "control_center.identity")),
-        row(
-          tr(lang, "control_center.primary_group"),
-          text(&self.user, "primary_group"),
-        ),
-        section(tr(lang, "control_center.information")),
-        row(
-          "UID / GID",
-          format!("{} / {}", self.user["uid"], self.user["gid"]),
-        ),
-        row("Home", text(&self.user, "home")),
-      ],
-      Page::Groups => vec![
-        plain(tr(lang, "control_center.create")),
-        plain(tr(lang, "control_center.list")),
-      ],
-      Page::GroupList | Page::SystemGroups => {
-        let mut rows = vec![plain(tr(lang, "control_center.reload"))];
-        rows.extend(self.groups(true).iter().map(|group| {
-          let members = strings(&group["members"]);
-          row(
-            &text(group, "name"),
-            if members.is_empty() {
-              format!("GID {}", group["gid"])
-            } else {
-              format!("GID {} | {}", group["gid"], members.join(", "))
-            },
-          )
-        }));
+        let mut rows = vec![
+          Row::action(Item::Reload, label("control_center.reload")).icon(icons::REFRESH),
+          Row::separator(),
+        ];
+        rows.extend(
+          self
+            .users(page == Page::SystemUsers)
+            .iter()
+            .enumerate()
+            .filter(|(_, user)| matches_search(search, &[&text(user, "user"), &text(user, "name")]))
+            .map(|(index, user)| {
+              Row::submenu(Item::UserEntry(index), text(user, "user")).detail(text(user, "name"))
+            }),
+        );
         rows
       }
-      Page::CreateGroup => vec![
-        section(tr(lang, "control_center.group")),
-        row(
-          tr(lang, "control_center.group_name"),
-          text(&self.group, "name"),
-        ),
-      ],
-      Page::Group => vec![
-        section(tr(lang, "control_center.group")),
-        row(
-          tr(lang, "control_center.name_8d6abd"),
-          text(&self.group, "name"),
-        ),
-        row("GID", self.group["gid"].to_string()),
-        section(tr(lang, "control_center.members")),
-        row(
-          tr(lang, "control_center.users"),
-          strings(&self.group["members"]).join(", "),
-        ),
-      ],
-      Page::GroupMembers => self
-        .users(true)
-        .iter()
-        .map(|user| {
-          let name = text(user, "user");
-          row(
-            &name,
-            if strings(&self.group["members"]).contains(&name) {
-              "[x]"
-            } else {
-              "[ ]"
-            },
+      Page::CreateUser => {
+        let mut rows = vec![
+          Row::section(label("control_center.account")),
+          Row::value(
+            Item::Username,
+            label("control_center.username"),
+            text(&self.user, "user"),
+            None,
           )
-        })
-        .collect(),
+          .icon(icons::USER),
+          Row::value(
+            Item::FullName,
+            label("control_center.full_name"),
+            text(&self.user, "name"),
+            None,
+          )
+          .icon(icons::ID_CARD),
+          Row::submenu(Item::Shell, label("control_center.shell"))
+            .icon(icons::TERMINAL)
+            .detail(text(&self.user, "shell")),
+          Row::submenu(
+            Item::SupplementaryGroups,
+            label("control_center.supplementary_groups"),
+          )
+          .icon(icons::GROUP)
+          .detail(strings(&self.user["groups"]).join(", ")),
+          self.password_row(lang, 1),
+          self.password_row(lang, 2),
+        ];
+        rows.extend(draft_actions(
+          Item::CreateAccount,
+          self.create_account_label(lang),
+          true,
+        ));
+        rows
+      }
+      Page::User => self.user_rows(lang),
+      Page::UserPassword => {
+        let mut rows = vec![
+          self.password_row(lang, 0),
+          self.password_row(lang, 1),
+          self.password_row(lang, 2),
+        ];
+        rows.extend(draft_actions(
+          Item::SavePassword,
+          label("control_center.save_password"),
+          true,
+        ));
+        rows
+      }
       Page::UserShell | Page::UserPrimaryGroup => {
         let (source, field) = if page == Page::UserShell {
           ("shells", "shell")
         } else {
           ("groups", "primary_group")
         };
+        let current = text(&self.user, field);
         strings(&self.accounts[source])
-          .iter()
-          .map(|value| {
-            row(
-              value,
-              if *value == text(&self.user, field) {
-                "[x]"
-              } else {
-                "[ ]"
-              },
-            )
+          .into_iter()
+          .enumerate()
+          .map(|(index, value)| {
+            let item = if page == Page::UserShell {
+              Item::ShellOption(index)
+            } else {
+              Item::PrimaryGroupOption(index)
+            };
+            let is_current = value == current;
+            Row::choice(item, value, is_current)
           })
           .collect()
       }
-      Page::UserGroups => strings(&self.accounts["groups"])
-        .iter()
-        .map(|group| {
-          row(
-            group,
-            if strings(&self.user["groups"]).contains(group)
-              || text(&self.user, "primary_group") == *group
-            {
-              "[x]"
-            } else {
-              "[ ]"
-            },
-          )
-        })
-        .collect(),
-      Page::UserPassword => vec![
-        row(
-          tr(lang, "control_center.current_password_own_account"),
-          "*".repeat(argvus_tui::text::display_width(&self.passwords[0])),
-        ),
-        row(
-          tr(lang, "control_center.new_password"),
-          "*".repeat(argvus_tui::text::display_width(&self.passwords[1])),
-        ),
-        row(
-          tr(lang, "control_center.confirm_password"),
-          "*".repeat(argvus_tui::text::display_width(&self.passwords[2])),
-        ),
-        row(tr(lang, "control_center.save_password"), ""),
+      Page::UserGroups => {
+        let primary = text(&self.user, "primary_group");
+        let groups = strings(&self.user["groups"]);
+        strings(&self.accounts["groups"])
+          .into_iter()
+          .enumerate()
+          .map(|(index, group)| {
+            let is_primary = group == primary;
+            let on = is_primary || groups.contains(&group);
+            // The primary group always stays a member; it cannot be removed here.
+            Row::toggle(Item::GroupOption(index), group, on).enabled(!is_primary)
+          })
+          .collect()
+      }
+      Page::Groups => vec![
+        Row::submenu(Item::CreateGroup, label("control_center.create")).icon(icons::ADD),
+        Row::submenu(Item::GroupList, label("control_center.list")).icon(icons::GROUP),
       ],
+      Page::GroupList | Page::SystemGroups => {
+        let mut rows = vec![
+          Row::action(Item::Reload, label("control_center.reload")).icon(icons::REFRESH),
+          Row::separator(),
+        ];
+        rows.extend(
+          self
+            .groups(true)
+            .iter()
+            .enumerate()
+            .map(|(index, group)| {
+              let members = strings(&group["members"]);
+              let detail = if members.is_empty() {
+                format!("GID {}", group["gid"])
+              } else {
+                format!("GID {} | {}", group["gid"], members.join(", "))
+              };
+              (index, text(group, "name"), detail)
+            })
+            .filter(|(_, name, detail)| matches_search(search, &[name, detail]))
+            .map(|(index, name, detail)| {
+              Row::submenu(Item::GroupEntry(index), name).detail(detail)
+            }),
+        );
+        rows
+      }
+      Page::CreateGroup => {
+        let mut rows = vec![
+          Row::section(label("control_center.group")),
+          Row::value(
+            Item::GroupName,
+            label("control_center.group_name"),
+            text(&self.group, "name"),
+            None,
+          )
+          .icon(icons::EDIT),
+        ];
+        rows.extend(draft_actions(
+          Item::SubmitGroup,
+          label("control_center.create_group"),
+          true,
+        ));
+        rows
+      }
+      Page::Group => {
+        let mut rows = vec![
+          Row::section(label("control_center.group")),
+          Row::value(
+            Item::GroupName,
+            label("control_center.name_8d6abd"),
+            text(&self.group, "name"),
+            None,
+          )
+          .icon(icons::EDIT),
+          Row::info(label("control_center.gid"), self.group["gid"].to_string()),
+          Row::submenu(Item::Members, label("control_center.members"))
+            .icon(icons::USERS)
+            .detail(strings(&self.group["members"]).join(", ")),
+        ];
+        rows.extend(draft_actions(
+          Item::SaveGroup,
+          label("control_center.save_changes"),
+          true,
+        ));
+        rows.push(Row::section(label("control_center.danger_zone")));
+        rows.push(
+          Row::destructive(Item::DeleteGroup, label("control_center.delete_group"))
+            .icon(icons::DELETE),
+        );
+        rows
+      }
+      Page::GroupMembers => {
+        let members = strings(&self.group["members"]);
+        self
+          .users(true)
+          .iter()
+          .enumerate()
+          .map(|(index, user)| {
+            let name = text(user, "user");
+            let on = members.contains(&name);
+            Row::toggle(Item::Member(index), name, on)
+          })
+          .collect()
+      }
       _ => Vec::new(),
     }
   }
 
-  /// Executes the `rows_filtered` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn rows_filtered(&self, page: Page, lang: Lang, query: &str) -> Vec<Row> {
-    let rows = self.rows(page, lang);
-    if query.trim().is_empty()
-      || !matches!(
-        page,
-        Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups
+  /// System > Users > (user): account fields and their Save row, then the
+  /// password and avatar actions, with the deletions in the Danger zone.
+  fn user_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    let label = |key: &str| tr(lang, key);
+    let mut rows = vec![
+      Row::section(label("control_center.account")),
+      Row::info(label("control_center.username"), text(&self.user, "user")),
+      Row::info(
+        label("control_center.uid_gid"),
+        format!("{} / {}", self.user["uid"], self.user["gid"]),
+      ),
+      Row::info(
+        label("control_center.home_directory"),
+        text(&self.user, "home"),
+      ),
+      Row::value(
+        Item::FullName,
+        label("control_center.full_name"),
+        text(&self.user, "name"),
+        None,
       )
-    {
-      return rows;
-    }
-    let query = query.to_lowercase();
+      .icon(icons::ID_CARD),
+      Row::submenu(Item::Shell, label("control_center.shell"))
+        .icon(icons::TERMINAL)
+        .detail(text(&self.user, "shell")),
+      Row::submenu(Item::PrimaryGroup, label("control_center.primary_group"))
+        .icon(icons::ACCOUNT_STAR)
+        .detail(text(&self.user, "primary_group")),
+      Row::submenu(
+        Item::SupplementaryGroups,
+        label("control_center.supplementary_groups"),
+      )
+      .icon(icons::GROUP)
+      .detail(strings(&self.user["groups"]).join(", ")),
+    ];
+    rows.extend(draft_actions(
+      Item::SaveUser,
+      label("control_center.save_changes"),
+      true,
+    ));
+    rows.extend([
+      Row::section(label("control_center.section_password")),
+      Row::submenu(
+        Item::ChangePassword,
+        label("control_center.change_password"),
+      )
+      .icon(icons::KEY),
+      Row::action(Item::LockPassword, label("control_center.lock_password")).icon(icons::LOCK),
+      Row::action(
+        Item::UnlockPassword,
+        label("control_center.unlock_password"),
+      )
+      .icon(icons::LOCK_OPEN),
+      Row::action(
+        Item::ExpirePassword,
+        label("control_center.require_password_change_at_login"),
+      )
+      .icon(icons::LOCK_RESET),
+      Row::section(label("control_center.section_avatar")),
+      Row::action(Item::AvatarImage, label("control_center.avatar_image")).icon(icons::AVATAR),
+      Row::action(Item::RemoveAvatar, label("control_center.remove_avatar"))
+        .icon(icons::IMAGE_REMOVE),
+      Row::section(label("control_center.danger_zone")),
+      Row::destructive(
+        Item::DeleteUser,
+        label("control_center.delete_user_keep_home"),
+      )
+      .icon(icons::ACCOUNT_REMOVE),
+      Row::destructive(
+        Item::DeleteUserAndHome,
+        label("control_center.delete_user_and_home"),
+      )
+      .icon(icons::DELETE_FOREVER),
+    ]);
     rows
-      .into_iter()
-      .enumerate()
-      .filter(|(index, row)| {
-        *index == 0
-          || row.label.to_lowercase().contains(&query)
-          || row
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.to_lowercase().contains(&query))
-      })
-      .map(|(_, row)| row)
-      .collect()
   }
 
-  /// Executes the `row_selectable` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn row_selectable(&self, page: Page, index: usize) -> bool {
-    if self.busy() {
-      return false;
+  /// Service state, the configuration draft with its Save and Cancel rows,
+  /// and the rule actions.
+  fn firewall_rows(&self, lang: Lang) -> Vec<Row<Item>> {
+    let label = |key: &str| tr(lang, key);
+    if self.firewall.is_null() {
+      return vec![
+        Row::action(Item::LoadFirewall, label("control_center.reload")).icon(icons::REFRESH),
+      ];
     }
-    match page {
-      Page::User => matches!(index, 2 | 3 | 4 | 6),
-      Page::CreateUser => matches!(index, 1..=6),
-      Page::UserGroups => strings(&self.accounts["groups"])
-        .get(index)
-        .is_some_and(|group| *group != text(&self.user, "primary_group")),
-      Page::Group => matches!(index, 1),
-      Page::GroupMembers => true,
-      Page::CreateGroup => matches!(index, 1),
-      Page::Firewall
-      | Page::Users
-      | Page::UserList
-      | Page::SystemUsers
-      | Page::UserPassword
-      | Page::UserShell
-      | Page::UserPrimaryGroup
-      | Page::Groups
-      | Page::GroupList
-      | Page::SystemGroups => true,
-      _ => true,
+    let mut rows = vec![
+      Row::section(label("control_center.service")),
+      // Paired Start/Stop: one status row whose Enter switches the state.
+      Row::action(Item::FirewallService, label("control_center.service"))
+        .icon(icons::SHIELD)
+        .detail(if self.firewall["active"] == true {
+          label("control_center.active_095d39")
+        } else {
+          label("control_center.stopped_c2dfd3")
+        }),
+      Row::toggle(
+        Item::FirewallBoot,
+        label("control_center.start_at_boot"),
+        self.firewall["enabled"] == true,
+      )
+      .icon(icons::AUTOSTART),
+      Row::section(label("control_center.configuration")),
+    ];
+    rows.extend(
+      FIREWALL_FIELDS
+        .iter()
+        .enumerate()
+        .map(|(index, (key, field_label))| {
+          let value = text(&self.config, key);
+          let item = Item::FirewallField(index);
+          match value.as_str() {
+            "y" | "n" => Row::toggle(item, label(field_label), value == "y"),
+            _ if *key == "PROTECTION_LEVEL" => Row::value(item, label(field_label), value, Some(1)),
+            _ => Row::value(item, label(field_label), value, None),
+          }
+        }),
+    );
+    rows.extend(draft_actions(
+      Item::SaveFirewall,
+      label("control_center.save_configuration"),
+      true,
+    ));
+    rows.extend([
+      Row::action(
+        Item::DiscardFirewall,
+        label("control_center.discard_config_changes"),
+      )
+      .icon(icons::CANCEL),
+      Row::section(label("control_center.section_rules")),
+      Row::action(Item::AddRules, label("control_center.add_iptables_rules")).icon(icons::SCRIPT),
+      Row::action(Item::ApplyRules, label("control_center.apply_saved_rules"))
+        .icon(icons::SHIELD_REFRESH),
+    ]);
+    rows
+  }
+
+  /// A masked password field: 0 = current, 1 = new, 2 = confirmation.
+  fn password_row(&self, lang: Lang, index: usize) -> Row<Item> {
+    let key = match index {
+      0 => "control_center.current_password_own_account",
+      1 => "control_center.new_password",
+      _ => "control_center.confirm_password",
+    };
+    Row::value(
+      Item::Password(index),
+      tr(lang, key),
+      "*".repeat(argvus_tui::text::display_width(&self.passwords[index])),
+      None,
+    )
+    .icon(if index == 0 { icons::LOCK } else { icons::KEY })
+  }
+
+  /// Label of the create-account row: the account stays password-locked
+  /// unless a new password was typed.
+  fn create_account_label(&self, lang: Lang) -> &'static str {
+    if self.passwords[1].is_empty() {
+      tr(lang, "control_center.create_account_password_locked")
+    } else {
+      tr(lang, "control_center.create_account_with_password")
     }
+  }
+
+  /// Whether the new password is non-empty and matches its confirmation.
+  pub(crate) fn new_password_is_valid(&self) -> bool {
+    !self.passwords[1].is_empty() && self.passwords[1] == self.passwords[2]
   }
 }
 
@@ -728,220 +736,220 @@ impl App {
     self.confirm_apply_selected = false;
   }
 
-  /// Executes the `admin_open` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn admin_open(&mut self) {
+  /// Runs the row `item` of an account or firewall page. Toggles, actions,
+  /// submenus and destructive rows all land here; the effect and its timing
+  /// (draft edit, confirmation, page change) are the same as before rows
+  /// replaced the button bar.
+  pub(crate) fn admin_activate(&mut self, item: Item) {
     if self.admin.busy() {
       return;
     }
-    let selected = self.navigation.current().selected;
-    if !self.row_selectable(selected) {
-      return;
-    }
     let page = self.page();
-    let rows = self.admin.rows_filtered(page, self.lang, &self.search);
-    let title = if selected >= rows.len() {
-      self
-        .admin
-        .buttons(page, self.lang)
-        .get(selected - rows.len())
-        .map(|button| button.label.clone())
-        .unwrap_or_default()
-    } else {
-      rows
-        .get(selected)
-        .map(|row| row.label.clone())
-        .unwrap_or_default()
-    };
-    if selected >= rows.len() {
-      self.admin_button(selected - rows.len());
-      return;
-    }
-    match page {
-      Page::Firewall => {
-        if self.admin.firewall.is_null() {
-          self.admin.load(true);
-          return;
-        }
-        if (2..17).contains(&selected) {
-          let key = FIREWALL_FIELDS[selected - 2].0;
-          let value = text(&self.admin.config, key);
-          if matches!(value.as_str(), "y" | "n") {
-            self.admin.config[key] = json!(if value == "y" { "n" } else { "y" });
-          } else if key == "PROTECTION_LEVEL" {
-            let levels = ["low", "medium", "high", "paranoid"];
-            let index = levels.iter().position(|level| *level == value).unwrap_or(0);
-            self.admin.config[key] = json!(levels[(index + 1) % levels.len()]);
-          } else {
-            self.admin.editor = Some(Editor::new(
-              title,
-              value,
-              EditTarget::Config(key.into()),
-              false,
-            ));
-          }
-          return;
-        }
-        let value = match selected {
-          0 => {
-            json!({"action": if self.admin.firewall["active"] == true { "stop" } else { "start" }})
-          }
-          1 => {
-            json!({"action": if self.admin.firewall["enabled"] == true { "disable" } else { "enable" }})
-          }
-          _ => return,
+    let lang = self.lang;
+    let user = text(&self.admin.user, "user");
+    let confirm_user = |key: &str| format!("{}: {user}?", tr(lang, key));
+    match item {
+      // Firewall.
+      Item::LoadFirewall | Item::DiscardFirewall => self.admin.load(true),
+      Item::FirewallService | Item::FirewallBoot => {
+        let value = if item == Item::FirewallService {
+          json!({"action": if self.admin.firewall["active"] == true { "stop" } else { "start" }})
+        } else {
+          json!({"action": if self.admin.firewall["enabled"] == true { "disable" } else { "enable" }})
         };
         self.admin_confirm(
           true,
           value,
           tr(
-            self.lang,
+            lang,
             "control_center.change_the_firewall_network_connectivity_may_be_interrupted_saving_doe",
           )
           .into(),
         );
       }
-      Page::Users => match selected {
-        0 => {
-          self.admin.user = json!({"user":"", "name":"", "shell":strings(&self.admin.accounts["shells"]).first().cloned().unwrap_or("/bin/bash".into()), "groups":[]});
-          self.navigation.push(Page::CreateUser);
-          self.normalize_selection();
+      Item::FirewallField(index) => {
+        let Some((key, field_label)) = FIREWALL_FIELDS.get(index) else {
+          return;
+        };
+        let value = text(&self.admin.config, key);
+        if matches!(value.as_str(), "y" | "n") {
+          self.admin.config[*key] = json!(if value == "y" { "n" } else { "y" });
+        } else if *key == "PROTECTION_LEVEL" {
+          self.cycle_protection_level(1);
+        } else {
+          self.admin.editor = Some(Editor::new(
+            tr(lang, field_label).into(),
+            value,
+            EditTarget::Config((*key).into()),
+            false,
+          ));
         }
-        1 => {
-          self.navigation.push(Page::UserList);
-          self.normalize_selection();
-        }
-        2 => {
-          self.navigation.push(Page::SystemUsers);
-          self.normalize_selection();
-        }
-        _ => {}
-      },
-      Page::UserList | Page::SystemUsers => {
-        let include_system = page == Page::SystemUsers;
-        let user = self
-          .admin
-          .users(include_system)
-          .into_iter()
-          .find(|user| text(user, "user") == title);
-        if let Some(user) = user {
+      }
+      Item::SaveFirewall => {
+        let value = json!({"action":"save-config", "original":self.admin.firewall["config_text"], "config":self.admin.config});
+        self.admin_confirm(
+          true,
+          value,
+          format!("{}?", tr(lang, "control_center.save_configuration")),
+        );
+      }
+      Item::AddRules => {
+        self.admin.editor = Some(Editor::new(
+          tr(lang, "control_center.add_iptables_rules").into(),
+          text(&self.admin.firewall, "rules"),
+          EditTarget::Rules,
+          true,
+        ));
+      }
+      Item::ApplyRules => {
+        self.admin_confirm(
+          true,
+          json!({"action":"restart"}),
+          format!(
+            "{}?\n{}",
+            tr(lang, "control_center.apply_saved_rules"),
+            tr(lang, "control_center.apply_saved_rules_description")
+          ),
+        );
+      }
+
+      // Users.
+      Item::CreateUser => {
+        self.admin.user = json!({"user":"", "name":"", "shell":strings(&self.admin.accounts["shells"]).first().cloned().unwrap_or("/bin/bash".into()), "groups":[]});
+        self.navigation.push(Page::CreateUser);
+      }
+      Item::UserList => self.navigation.push(Page::UserList),
+      Item::SystemUsers => self.navigation.push(Page::SystemUsers),
+      Item::Reload => self.admin.load(false),
+      Item::UserEntry(index) => {
+        if let Some(user) = self.admin.users(page == Page::SystemUsers).get(index) {
           self.admin.user = user.clone();
           self.navigation.push(Page::User);
-          self.normalize_selection();
         }
       }
-      Page::CreateUser | Page::User => {
-        let user = text(&self.admin.user, "user");
-        match selected {
-          1 if page == Page::CreateUser => {
-            self.admin.editor = Some(Editor::new(
-              title,
-              user,
-              EditTarget::User("user".into()),
-              false,
-            ))
-          }
-          2 => {
-            self.admin.editor = Some(Editor::new(
-              title,
-              text(&self.admin.user, "name"),
-              EditTarget::User("name".into()),
-              false,
-            ))
-          }
-          3 => {
-            self.navigation.push(Page::UserShell);
-            self.normalize_selection();
-          }
-          4 => {
-            self.navigation.push(Page::UserGroups);
-            self.normalize_selection();
-          }
-          5 | 6 if page == Page::CreateUser => {
-            let target = if selected == 5 { 1 } else { 2 };
-            self.admin.editor = Some(Editor::new(
-              title,
-              self.admin.passwords[target].clone(),
-              EditTarget::Password(target),
-              false,
-            ));
-          }
-          6 if page == Page::User => {
-            self.navigation.push(Page::UserPrimaryGroup);
-            self.normalize_selection();
-          }
-          _ => {}
-        }
-      }
-      Page::Groups => match selected {
-        0 => {
-          self.admin.group = json!({"name":""});
-          self.navigation.push(Page::CreateGroup);
-          self.normalize_selection();
-        }
-        1 => {
-          self.navigation.push(Page::GroupList);
-          self.normalize_selection();
-        }
-        _ => {}
-      },
-      Page::GroupList | Page::SystemGroups => match selected {
-        0 => self.admin.load(false),
-        _ => {
-          let group = self
-            .admin
-            .groups(true)
-            .into_iter()
-            .find(|group| text(group, "name") == title);
-          if let Some(group) = group {
-            self.admin.group = group.clone();
-            self.admin.group["original"] = self.admin.group["name"].clone();
-            self.navigation.push(Page::Group);
-            self.normalize_selection();
-          }
-        }
-      },
-      Page::CreateGroup if selected == 1 => {
+      Item::Username => {
         self.admin.editor = Some(Editor::new(
-          title,
-          text(&self.admin.group, "name"),
-          EditTarget::Group,
+          tr(lang, "control_center.username").into(),
+          user,
+          EditTarget::User("user".into()),
           false,
         ));
       }
-      Page::Group if selected == 1 => {
+      Item::FullName => {
         self.admin.editor = Some(Editor::new(
-          title,
-          text(&self.admin.group, "name"),
-          EditTarget::Group,
+          tr(lang, "control_center.full_name").into(),
+          text(&self.admin.user, "name"),
+          EditTarget::User("name".into()),
           false,
         ));
       }
-      Page::GroupMembers => {
-        if let Some(user) = self.admin.users(true).get(selected)
-          && let Some(member) = user["user"].as_str()
-        {
-          let mut members = strings(&self.admin.group["members"]);
-          if members.iter().any(|value| value == member) {
-            members.retain(|value| value != member);
-          } else {
-            members.push(member.to_string());
-          }
-          self.admin.group["members"] = json!(members);
-        }
+      Item::Shell => self.navigation.push(Page::UserShell),
+      Item::PrimaryGroup => self.navigation.push(Page::UserPrimaryGroup),
+      Item::SupplementaryGroups => self.navigation.push(Page::UserGroups),
+      Item::Password(index) => {
+        let key = match index {
+          0 => "control_center.current_password_own_account",
+          1 => "control_center.new_password",
+          _ => "control_center.confirm_password",
+        };
+        self.admin.editor = Some(Editor::new(
+          tr(lang, key).into(),
+          self.admin.passwords[index].clone(),
+          EditTarget::Password(index),
+          false,
+        ));
       }
-      Page::UserShell | Page::UserPrimaryGroup => {
-        let (source, field) = if page == Page::UserShell {
+      Item::CreateAccount => {
+        let title = self.admin.create_account_label(lang);
+        let mut value = json!({"action":"create", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"]});
+        if self.admin.passwords[1].is_empty() && self.admin.passwords[2].is_empty() {
+          self.admin_confirm(false, value, format!("{title}: {user}?"));
+          return;
+        }
+        if !self.admin.new_password_is_valid() {
+          self.reject_password();
+          return;
+        }
+        value["password"] = self.admin.passwords[1].clone().into();
+        self.admin.passwords = Default::default();
+        self.admin_confirm(false, value, format!("{title}: {user}?"));
+      }
+      Item::SaveUser => {
+        let value = json!({"action":"edit", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"], "primary_group":self.admin.user["primary_group"]});
+        self.admin_confirm(false, value, confirm_user("control_center.save_changes"));
+      }
+      Item::ChangePassword => {
+        self.admin.passwords = Default::default();
+        self.navigation.push(Page::UserPassword);
+      }
+      Item::LockPassword | Item::UnlockPassword => {
+        let (locked, key) = if item == Item::LockPassword {
+          (true, "control_center.lock_password")
+        } else {
+          (false, "control_center.unlock_password")
+        };
+        self.admin_confirm(
+          false,
+          json!({"action":"lock", "user":user, "locked":locked}),
+          confirm_user(key),
+        );
+      }
+      Item::ExpirePassword => {
+        self.admin_confirm(
+          false,
+          json!({"action":"expire-password", "user":user}),
+          confirm_user("control_center.require_password_change_at_login"),
+        );
+      }
+      Item::AvatarImage => {
+        self.admin.editor = Some(Editor::new(
+          tr(lang, "control_center.avatar_image").into(),
+          String::new(),
+          EditTarget::Avatar,
+          false,
+        ));
+      }
+      Item::RemoveAvatar => {
+        self.admin_confirm(
+          false,
+          json!({"action":"avatar", "user":user, "path":""}),
+          confirm_user("control_center.remove_avatar"),
+        );
+      }
+      Item::DeleteUser | Item::DeleteUserAndHome => {
+        let (remove_home, key) = if item == Item::DeleteUserAndHome {
+          (true, "control_center.delete_user_and_home")
+        } else {
+          (false, "control_center.delete_user_keep_home")
+        };
+        self.admin_confirm(
+          false,
+          json!({"action":"delete", "user":user, "remove_home":remove_home}),
+          confirm_user(key),
+        );
+      }
+      Item::SavePassword => {
+        if !self.admin.new_password_is_valid() {
+          self.reject_password();
+          return;
+        }
+        let value = json!({"action":"password", "user":self.admin.user["user"], "old":self.admin.passwords[0], "new":self.admin.passwords[1], "confirm":self.admin.passwords[2]});
+        self.admin.passwords = Default::default();
+        self.admin_confirm(false, value, confirm_user("control_center.save_password"));
+      }
+      Item::ShellOption(index) | Item::PrimaryGroupOption(index) => {
+        let (source, field) = if matches!(item, Item::ShellOption(_)) {
           ("shells", "shell")
         } else {
           ("groups", "primary_group")
         };
-        if let Some(value) = strings(&self.admin.accounts[source]).get(selected) {
+        if let Some(value) = strings(&self.admin.accounts[source]).get(index) {
           self.admin.user[field] = json!(value);
           self.navigation.back();
         }
       }
-      Page::UserGroups => {
-        if let Some(group) = strings(&self.admin.accounts["groups"]).get(selected) {
+      Item::GroupOption(index) => {
+        if let Some(group) = strings(&self.admin.accounts["groups"]).get(index) {
           if *group == text(&self.admin.user, "primary_group") {
             return;
           }
@@ -954,175 +962,114 @@ impl App {
           self.admin.user["groups"] = json!(groups);
         }
       }
-      Page::UserPassword => {
-        if selected < 3 {
-          self.admin.editor = Some(Editor::new(
-            title,
-            self.admin.passwords[selected].clone(),
-            EditTarget::Password(selected),
-            false,
-          ));
-        } else {
-          if self.admin.passwords[1].is_empty()
-            || self.admin.passwords[1] != self.admin.passwords[2]
-          {
-            self.error_modal = Some(
-              tr(
-                self.lang,
-                "control_center.the_new_password_must_be_nonempty_and_match_its_confirmation",
-              )
-              .into(),
-            );
-            return;
-          }
-          let value = json!({"action":"password", "user":self.admin.user["user"], "old":self.admin.passwords[0], "new":self.admin.passwords[1], "confirm":self.admin.passwords[2]});
-          self.admin.passwords = Default::default();
-          self.admin_confirm(
-            false,
-            value,
-            format!("{}: {}?", title, text(&self.admin.user, "user")),
-          );
+
+      // Groups.
+      Item::CreateGroup => {
+        self.admin.group = json!({"name":""});
+        self.navigation.push(Page::CreateGroup);
+      }
+      Item::GroupList => self.navigation.push(Page::GroupList),
+      Item::GroupEntry(index) => {
+        if let Some(group) = self.admin.groups(true).get(index) {
+          self.admin.group = group.clone();
+          self.admin.group["original"] = self.admin.group["name"].clone();
+          self.navigation.push(Page::Group);
         }
+      }
+      Item::GroupName => {
+        let key = if page == Page::CreateGroup {
+          "control_center.group_name"
+        } else {
+          "control_center.name_8d6abd"
+        };
+        self.admin.editor = Some(Editor::new(
+          tr(lang, key).into(),
+          text(&self.admin.group, "name"),
+          EditTarget::Group,
+          false,
+        ));
+      }
+      Item::Members => self.navigation.push(Page::GroupMembers),
+      Item::Member(index) => {
+        if let Some(user) = self.admin.users(true).get(index)
+          && let Some(member) = user["user"].as_str()
+        {
+          let mut members = strings(&self.admin.group["members"]);
+          if members.iter().any(|value| value == member) {
+            members.retain(|value| value != member);
+          } else {
+            members.push(member.to_string());
+          }
+          self.admin.group["members"] = json!(members);
+        }
+      }
+      Item::SubmitGroup => {
+        let group = text(&self.admin.group, "name");
+        self.admin_confirm(
+          false,
+          json!({"action":"create-group", "group":group}),
+          format!("{}: {group}?", tr(lang, "control_center.create_group")),
+        );
+      }
+      Item::SaveGroup => {
+        self.admin_confirm(
+          false,
+          json!({
+            "action":"edit-group",
+            "group": text(&self.admin.group, "original"),
+            "name": text(&self.admin.group, "name"),
+            "members": self.admin.group["members"]}),
+          format!(
+            "{}: {}?",
+            tr(lang, "control_center.save_changes"),
+            text(&self.admin.group, "original")
+          ),
+        );
+      }
+      Item::DeleteGroup => {
+        let group = text(&self.admin.group, "original");
+        self.admin_confirm(
+          false,
+          json!({"action":"delete-group", "group":group}),
+          format!("{}: {group}?", tr(lang, "control_center.delete_group")),
+        );
       }
       _ => {}
     }
   }
 
-  /// Executes the `admin_button` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  pub fn admin_button(&mut self, button: usize) {
-    let page = self.page();
-    let user = text(&self.admin.user, "user");
-    let title = self
-      .admin
-      .buttons(page, self.lang)
-      .get(button)
-      .map(|button| button.label.clone())
-      .unwrap_or_default();
-    match page {
-      Page::User => match button {
-        0 => {
-          let value = json!({"action":"edit", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"], "primary_group":self.admin.user["primary_group"]});
-          self.admin_confirm(false, value, format!("{title}: {user}?"));
-        }
-        1 => {
-          self.admin.passwords = Default::default();
-          self.navigation.push(Page::UserPassword);
-          self.normalize_selection();
-        }
-        2 | 3 => {
-          self.admin_confirm(
-            false,
-            json!({"action":"lock", "user":user, "locked":button == 2}),
-            format!("{title}: {user}?"),
-          );
-        }
-        4 => {
-          self.admin_confirm(
-            false,
-            json!({"action":"expire-password", "user":user}),
-            format!("{title}: {user}?"),
-          );
-        }
-        5 => {
-          self.admin.editor = Some(Editor::new(title, String::new(), EditTarget::Avatar, false));
-        }
-        6 => {
-          self.admin_confirm(
-            false,
-            json!({"action":"avatar", "user":user, "path":""}),
-            format!("{title}: {user}?"),
-          );
-        }
-        7 | 8 => {
-          let remove_home = button == 8;
-          self.admin_confirm(
-            false,
-            json!({"action":"delete", "user":user, "remove_home":remove_home}),
-            format!("{title}: {user}?"),
-          );
-        }
-        _ => {}
-      },
-      Page::CreateUser if button == 0 => {
-        let mut value = json!({"action":"create", "user":user, "name":self.admin.user["name"], "shell":self.admin.user["shell"], "groups":self.admin.user["groups"]});
-        if self.admin.passwords[1].is_empty() && self.admin.passwords[2].is_empty() {
-          self.admin_confirm(false, value, format!("{title}: {user}?"));
-          return;
-        }
-        if self.admin.passwords[1].is_empty() || self.admin.passwords[1] != self.admin.passwords[2]
-        {
-          self.error_modal = Some(
-            tr(
-              self.lang,
-              "control_center.the_new_password_must_be_nonempty_and_match_its_confirmation",
-            )
-            .into(),
-          );
-          return;
-        }
-        value["password"] = self.admin.passwords[1].clone().into();
-        self.admin.passwords = Default::default();
-        self.admin_confirm(false, value, format!("{title}: {user}?"));
-      }
-      Page::UserList | Page::SystemUsers if button == 0 => self.admin.load(false),
-      Page::CreateGroup if button == 0 => {
-        let group = text(&self.admin.group, "name");
-        self.admin_confirm(
-          false,
-          json!({"action":"create-group", "group":group}),
-          format!("{title}: {group}?"),
-        );
-      }
-      Page::Group => match button {
-        0 => {
-          let group = text(&self.admin.group, "name");
-          self.admin_confirm(
-            false,
-            json!({
-              "action":"edit-group",
-              "group": text(&self.admin.group, "original"),
-              "name": group,
-              "members": self.admin.group["members"]}),
-            format!("{title}: {}?", text(&self.admin.group, "original")),
-          );
-        }
-        1 => {
-          self.navigation.push(Page::GroupMembers);
-          self.normalize_selection();
-        }
-        2 => {
-          let group = text(&self.admin.group, "original");
-          self.admin_confirm(
-            false,
-            json!({"action":"delete-group", "group":group}),
-            format!("{title}: {group}?"),
-          );
-        }
-        _ => {}
-      },
-      Page::Firewall => match button {
-        0 => {
-          let value = json!({"action":"save-config", "original":self.admin.firewall["config_text"], "config":self.admin.config});
-          self.admin_confirm(true, value, format!("{title}?"));
-        }
-        1 => {
-          self.admin.editor = Some(Editor::new(
-            title,
-            text(&self.admin.firewall, "rules"),
-            EditTarget::Rules,
-            true,
-          ));
-        }
-        2 => {
-          self.admin_confirm(true, json!({"action":"restart"}), format!("{title}?"));
-        }
-        3 => {
-          self.admin.load(true);
-        }
-        _ => {}
-      },
-      _ => {}
+  /// `←/→` on a Value row with a step of an account or firewall page.
+  pub(crate) fn admin_adjust(&mut self, item: Item, delta: i32) {
+    if self.admin.busy() {
+      return;
     }
+    if let Item::FirewallField(index) = item
+      && FIREWALL_FIELDS
+        .get(index)
+        .is_some_and(|(key, _)| *key == "PROTECTION_LEVEL")
+    {
+      self.cycle_protection_level(delta);
+    }
+  }
+
+  /// Moves the firewall protection level by `delta` steps, wrapping around.
+  fn cycle_protection_level(&mut self, delta: i32) {
+    let levels = ["low", "medium", "high", "paranoid"];
+    let value = text(&self.admin.config, "PROTECTION_LEVEL");
+    let index = levels.iter().position(|level| *level == value).unwrap_or(0) as i32;
+    let next = (index + delta.signum()).rem_euclid(levels.len() as i32) as usize;
+    self.admin.config["PROTECTION_LEVEL"] = json!(levels[next]);
+  }
+
+  /// Rejects an empty or unconfirmed new password before any confirmation.
+  fn reject_password(&mut self) {
+    self.error_modal = Some(
+      tr(
+        self.lang,
+        "control_center.the_new_password_must_be_nonempty_and_match_its_confirmation",
+      )
+      .into(),
+    );
   }
 
   /// Executes the `admin_input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1151,6 +1098,13 @@ impl App {
           .into(),
         ),
         EditTarget::Group => self.admin.group["name"] = json!(value),
+        EditTarget::FontSize => match value.trim().parse::<u16>() {
+          Ok(size) if (8..=32).contains(&size) => self.pending_size = size,
+          _ => self.fail(format!(
+            "{}: 8–32",
+            tr(self.lang, "control_center.font_size")
+          )),
+        },
         EditTarget::DateTime => match crate::system::time::set_local_time(&value) {
           Ok(()) => self.refresh_time(),
           Err(error) => self.fail(error),
@@ -1178,6 +1132,8 @@ pub(crate) enum EditTarget {
   Group,
   Avatar,
   DateTime,
+  /// Size used when a font is applied on the font selector (8–32).
+  FontSize,
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -1322,6 +1278,8 @@ impl Editor {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use argvus_tui::menu::RowKind;
+  use crossterm::event::Event;
 
   /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app(page: Page) -> App {
@@ -1344,6 +1302,23 @@ mod tests {
     app
   }
 
+  fn press(app: &mut App, code: KeyCode) {
+    crate::event::handle(app, Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+  }
+
+  /// Moves the cursor to `item` and asserts that it is selectable.
+  fn select(app: &mut App, item: Item) {
+    let rows = app.rows();
+    assert!(
+      app.navigation.current_mut().menu.select(&rows, &item),
+      "{item:?} is not selectable"
+    );
+  }
+
+  fn items(app: &App) -> Vec<Option<Item>> {
+    app.rows().iter().map(|row| row.id().copied()).collect()
+  }
+
   #[test]
   /// Executes the `every_firewall_field_is_editable_without_writing` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn every_firewall_field_is_editable_without_writing() {
@@ -1356,8 +1331,7 @@ mod tests {
       } else {
         ""
       });
-      app.navigation.current_mut().selected = index + 2;
-      app.admin_open();
+      app.admin_activate(Item::FirewallField(index));
       if *key == "PROTECTION_LEVEL" {
         assert_eq!(app.admin.config[*key], "paranoid");
       } else {
@@ -1365,22 +1339,65 @@ mod tests {
       }
     }
     app.admin.config["ALLOW_SSH"] = json!("n");
-    app.navigation.current_mut().selected = 6;
-    app.admin_open();
+    let ssh = FIREWALL_FIELDS
+      .iter()
+      .position(|(key, _)| *key == "ALLOW_SSH")
+      .unwrap();
+    app.admin_activate(Item::FirewallField(ssh));
     assert_eq!(app.admin.config["ALLOW_SSH"], "y");
     assert!(!app.admin.busy());
+  }
+
+  #[test]
+  fn firewall_rows_are_toggles_values_and_a_protection_level_step() {
+    let mut app = app(Page::Firewall);
+    app.admin.firewall = json!({"active":true,"enabled":true});
+    app.admin.config = json!({"ALLOW_SSH":"y","PROTECTION_LEVEL":"low","SSH_PORT":"22"});
+    let rows = app.rows();
+    let kind = |key: &str| {
+      let index = FIREWALL_FIELDS.iter().position(|(k, _)| *k == key).unwrap();
+      rows
+        .iter()
+        .find(|row| row.id() == Some(&Item::FirewallField(index)))
+        .map(|row| row.kind())
+        .unwrap()
+    };
+    assert_eq!(kind("ALLOW_SSH"), RowKind::Toggle { on: true });
+    assert_eq!(kind("PROTECTION_LEVEL"), RowKind::Value { step: Some(1) });
+    assert_eq!(kind("SSH_PORT"), RowKind::Value { step: None });
+    let level = FIREWALL_FIELDS
+      .iter()
+      .position(|(key, _)| *key == "PROTECTION_LEVEL")
+      .unwrap();
+    select(&mut app, Item::FirewallField(level));
+    press(&mut app, KeyCode::Left);
+    assert_eq!(
+      app.admin.config["PROTECTION_LEVEL"], "paranoid",
+      "wraps around"
+    );
+    press(&mut app, KeyCode::Right);
+    assert_eq!(app.admin.config["PROTECTION_LEVEL"], "low");
+    assert_eq!(
+      app.page(),
+      Page::Firewall,
+      "← adjusts instead of going back"
+    );
   }
 
   #[test]
   /// Executes the `user_group_selection_preserves_primary_group` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn user_group_selection_preserves_primary_group() {
     let mut app = app(Page::UserGroups);
-    app.admin_open();
+    let rows = app.rows();
+    assert!(!rows[0].is_selectable(), "primary group row is disabled");
+    assert_eq!(rows[0].kind(), RowKind::Toggle { on: true });
+    app.admin_activate(Item::GroupOption(0));
     assert_eq!(strings(&app.admin.user["groups"]), vec!["wheel"]);
-    app.navigation.current_mut().selected = 2;
-    app.admin_open();
+    app.normalize_selection();
+    select(&mut app, Item::GroupOption(2));
+    press(&mut app, KeyCode::Enter);
     assert_eq!(strings(&app.admin.user["groups"]), vec!["wheel", "audio"]);
-    app.admin_open();
+    press(&mut app, KeyCode::Char(' '));
     assert_eq!(strings(&app.admin.user["groups"]), vec!["wheel"]);
   }
 
@@ -1388,8 +1405,9 @@ mod tests {
   /// Executes the `destructive_actions_default_to_cancel_and_never_run_on_selection` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn destructive_actions_default_to_cancel_and_never_run_on_selection() {
     let mut app = app(Page::User);
-    app.navigation.current_mut().selected = 17;
-    app.admin_open();
+    select(&mut app, Item::DeleteUserAndHome);
+    assert!(app.confirm.is_none(), "selecting does not run anything");
+    press(&mut app, KeyCode::Enter);
     assert!(app.confirm.is_some());
     assert!(!app.confirm_apply_selected);
     assert!(!app.admin.busy());
@@ -1403,12 +1421,11 @@ mod tests {
   fn password_mismatch_stays_local_and_passwords_are_masked() {
     let mut app = app(Page::UserPassword);
     app.admin.passwords = ["old secret".into(), "new secret".into(), "different".into()];
-    app.navigation.current_mut().selected = 3;
-    app.admin_open();
+    app.admin_activate(Item::SavePassword);
     assert!(app.error_modal.is_some());
     assert!(app.admin.pending.is_none());
     for row in app.rows() {
-      assert!(!row.detail.unwrap_or_default().contains("secret"));
+      assert!(!row.detail_text().unwrap_or_default().contains("secret"));
     }
   }
 
@@ -1455,49 +1472,69 @@ mod tests {
     let mut app = app(Page::Users);
     let labels = app
       .rows()
-      .into_iter()
-      .map(|row| row.label)
+      .iter()
+      .map(|row| row.label().to_string())
       .collect::<Vec<_>>();
     assert_eq!(labels, vec!["Create", "List", "System accounts"]);
-    app.navigation.current_mut().selected = 1;
-    app.admin_open();
+    select(&mut app, Item::UserList);
+    press(&mut app, KeyCode::Enter);
     assert_eq!(app.page(), Page::UserList);
-    assert_eq!(app.rows()[0].label, "alice");
-    assert!(app.rows().iter().any(|row| row.label == "alice"));
-    let buttons = app.admin.buttons(Page::UserList, Lang::for_locale("en-US"));
-    assert_eq!(buttons.len(), 1);
-    assert_eq!(buttons[0].label, "Reload");
-    app.admin_button(0);
+    assert_eq!(
+      items(&app),
+      vec![Some(Item::Reload), None, Some(Item::UserEntry(0))]
+    );
+    assert_eq!(app.rows()[2].label(), "alice");
+    assert_eq!(app.selected_item(), Some(Item::Reload));
+    press(&mut app, KeyCode::Enter);
+    assert!(app.admin.busy(), "Reload row reloads the accounts");
+  }
+
+  #[test]
+  fn r_reloads_the_account_lists() {
+    let mut app = app(Page::SystemUsers);
+    press(&mut app, KeyCode::Char('r'));
     assert!(app.admin.busy());
+  }
+
+  #[test]
+  fn user_search_keeps_the_original_index() {
+    let mut app = app(Page::SystemUsers);
+    app.search = "ali".into();
+    assert_eq!(
+      items(&app),
+      vec![Some(Item::Reload), None, Some(Item::UserEntry(1))]
+    );
+    app.admin_activate(Item::UserEntry(1));
+    assert_eq!(app.page(), Page::User);
+    assert_eq!(text(&app.admin.user, "user"), "alice");
   }
 
   #[test]
   /// Executes the `create_user_screen_has_masked_password_rows_and_routes_to_editor` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn create_user_screen_has_masked_password_rows_and_routes_to_editor() {
     let mut app = app(Page::CreateUser);
-    app.normalize_selection();
-    let labels = app
-      .rows()
-      .into_iter()
-      .map(|row| row.label)
-      .collect::<Vec<_>>();
+    let rows = app.rows();
+    let labels = rows.iter().map(|row| row.label()).collect::<Vec<_>>();
     assert_eq!(
       labels,
       vec![
-        "-- Account",
+        "Account",
         "Username",
         "Full name",
-        "Shell",
+        tr(app.lang, "control_center.shell"),
         "Supplementary groups",
         "New password",
         "Confirm password",
+        "",
+        tr(app.lang, "control_center.create_account_password_locked"),
       ]
     );
-    assert!(app.row_selectable(5));
-    assert!(app.row_selectable(6));
-    assert!(!app.row_selectable(0));
-    app.navigation.current_mut().selected = 5;
-    app.admin_open();
+    assert!(rows[0].is_section());
+    assert!(rows[5].is_selectable() && rows[6].is_selectable());
+    assert_eq!(rows[7].kind(), RowKind::Separator);
+    assert_eq!(app.selected_item(), Some(Item::Username));
+    select(&mut app, Item::Password(1));
+    press(&mut app, KeyCode::Enter);
     let editor = app.admin.editor.take().expect("password row opens editor");
     assert_eq!(editor.target, EditTarget::Password(1));
     assert!(editor.value.is_empty());
@@ -1507,23 +1544,21 @@ mod tests {
   /// Executes the `create_user_button_is_dynamic_and_validates_passwords` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn create_user_button_is_dynamic_and_validates_passwords() {
     let mut app = app(Page::CreateUser);
-    assert_eq!(
+    let pt = Lang::for_locale("pt-BR");
+    let create_label = |app: &App| {
       app
         .admin
-        .buttons(Page::CreateUser, Lang::for_locale("pt-BR"))[0]
-        .label,
-      "Criar conta (senha bloqueada)"
-    );
+        .rows(Page::CreateUser, pt, "")
+        .iter()
+        .find(|row| row.id() == Some(&Item::CreateAccount))
+        .map(|row| row.label().to_string())
+        .unwrap()
+    };
+    assert_eq!(create_label(&app), "Criar conta (senha bloqueada)");
     app.admin.passwords[1] = "segredo".into();
     app.admin.passwords[2] = "segredo".into();
-    assert_eq!(
-      app
-        .admin
-        .buttons(Page::CreateUser, Lang::for_locale("pt-BR"))[0]
-        .label,
-      "Criar conta com senha"
-    );
-    app.admin_button(0);
+    assert_eq!(create_label(&app), "Criar conta com senha");
+    app.admin_activate(Item::CreateAccount);
     assert!(
       app.admin.pending.is_some(),
       "valid passwords must reach the confirm flow"
@@ -1534,7 +1569,7 @@ mod tests {
 
     app.admin.passwords[1] = "a".into();
     app.admin.passwords[2] = "b".into();
-    app.admin_button(0);
+    app.admin_activate(Item::CreateAccount);
     assert!(
       app.error_modal.is_some(),
       "mismatched passwords must be rejected"
@@ -1544,7 +1579,7 @@ mod tests {
 
     app.admin.passwords[1].clear();
     app.admin.passwords[2].clear();
-    app.admin_button(0);
+    app.admin_activate(Item::CreateAccount);
     assert!(
       app.admin.pending.is_some(),
       "empty passwords keep the locked-account confirm flow"
@@ -1552,36 +1587,127 @@ mod tests {
   }
 
   #[test]
-  /// Retrieves data for `readonly_user_and_group_rows_are_not_selectable` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn readonly_user_and_group_rows_are_not_selectable() {
-    let mut user_app = app(Page::User);
-    user_app.normalize_selection();
-    assert_eq!(user_app.navigation.current().selected, 2);
-    assert!(!user_app.row_selectable(0));
-    assert!(!user_app.row_selectable(1));
-    assert!(!user_app.row_selectable(8));
-    assert!(!user_app.row_selectable(9));
-    assert_eq!(user_app.item_count(), 19);
-    assert!(user_app.row_selectable(18));
-
-    let group_app = app(Page::Group);
-    assert!(!group_app.row_selectable(0));
-    assert!(group_app.row_selectable(1));
-    assert!(!group_app.row_selectable(2));
-    assert!(!group_app.row_selectable(4));
+  /// The user page follows the approved layout: titled sections, read-only
+  /// identity as Info, the draft fields and their Save row, the password and
+  /// avatar actions, and the deletions in the Danger zone at the end.
+  fn user_page_layout_has_sections_info_draft_and_danger_zone() {
+    let app = app(Page::User);
+    let rows = app.rows();
+    let sections: Vec<&str> = rows
+      .iter()
+      .filter(|row| row.is_section())
+      .map(|row| row.label())
+      .collect();
+    assert_eq!(
+      sections,
+      vec![
+        "Account",
+        tr(app.lang, "control_center.section_password"),
+        tr(app.lang, "control_center.section_avatar"),
+        tr(app.lang, "control_center.danger_zone"),
+      ]
+    );
+    assert!(rows.iter().all(|row| !row.label().starts_with("--")));
+    let infos: Vec<&str> = rows
+      .iter()
+      .filter(|row| row.kind() == RowKind::Info)
+      .map(|row| row.label())
+      .collect();
+    assert_eq!(
+      infos,
+      vec![
+        "Username",
+        tr(app.lang, "control_center.uid_gid"),
+        tr(app.lang, "control_center.home_directory"),
+      ]
+    );
+    let selectable: Vec<Item> = rows
+      .iter()
+      .filter(|row| row.is_selectable())
+      .filter_map(|row| row.id().copied())
+      .collect();
+    assert_eq!(
+      selectable,
+      vec![
+        Item::FullName,
+        Item::Shell,
+        Item::PrimaryGroup,
+        Item::SupplementaryGroups,
+        Item::SaveUser,
+        Item::ChangePassword,
+        Item::LockPassword,
+        Item::UnlockPassword,
+        Item::ExpirePassword,
+        Item::AvatarImage,
+        Item::RemoveAvatar,
+        Item::DeleteUser,
+        Item::DeleteUserAndHome,
+      ]
+    );
+    let kind = |item: Item| {
+      rows
+        .iter()
+        .find(|row| row.id() == Some(&item))
+        .map(|row| row.kind())
+        .unwrap()
+    };
+    assert_eq!(kind(Item::FullName), RowKind::Value { step: None });
+    assert_eq!(kind(Item::Shell), RowKind::Submenu);
+    assert_eq!(kind(Item::RemoveAvatar), RowKind::Action);
+    assert_eq!(kind(Item::DeleteUser), RowKind::Destructive);
+    assert_eq!(kind(Item::DeleteUserAndHome), RowKind::Destructive);
+    let save = rows
+      .iter()
+      .position(|row| row.id() == Some(&Item::SaveUser))
+      .unwrap();
+    assert_eq!(rows[save - 1].kind(), RowKind::Separator);
+    assert_eq!(
+      rows[save - 2].id(),
+      Some(&Item::SupplementaryGroups),
+      "Save follows the editable fields"
+    );
   }
 
   #[test]
-  /// Executes the `group_actions_are_buttons_outside_the_field_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn group_actions_are_buttons_outside_the_field_list() {
+  /// Retrieves data for `readonly_user_and_group_rows_are_not_selectable` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn readonly_user_and_group_rows_are_not_selectable() {
+    let mut user_app = app(Page::User);
+    assert_eq!(user_app.selected_item(), Some(Item::FullName));
+    press(&mut user_app, KeyCode::Up);
+    assert_eq!(
+      user_app.selected_item(),
+      Some(Item::FullName),
+      "Info rows above are skipped"
+    );
+
+    let group_app = app(Page::Group);
+    let rows = group_app.rows();
+    assert!(!rows[0].is_selectable(), "section title");
+    assert_eq!(rows[1].id(), Some(&Item::GroupName));
+    assert_eq!(rows[2].kind(), RowKind::Info, "GID");
+  }
+
+  #[test]
+  fn group_page_has_save_after_fields_and_delete_in_the_danger_zone() {
     let app = app(Page::Group);
-    let rows = app.admin.rows(Page::Group, Lang::for_locale("pt-BR"));
-    assert!(rows.iter().all(|row| !row.label.contains("Excluir grupo")));
-    let buttons = app.admin.buttons(Page::Group, Lang::for_locale("pt-BR"));
-    assert_eq!(buttons.len(), 3);
-    assert_eq!(buttons[0].label, "Salvar alterações");
-    assert_eq!(buttons[2].kind, ButtonKind::Danger);
-    assert!(app.admin.row_selectable(Page::Group, 1));
+    let rows = app.admin.rows(Page::Group, Lang::for_locale("pt-BR"), "");
+    let ids: Vec<Option<Item>> = rows.iter().map(|row| row.id().copied()).collect();
+    assert_eq!(
+      ids,
+      vec![
+        None,
+        Some(Item::GroupName),
+        None,
+        Some(Item::Members),
+        None,
+        Some(Item::SaveGroup),
+        None,
+        Some(Item::DeleteGroup),
+      ]
+    );
+    assert_eq!(rows[5].label(), "Salvar alterações");
+    assert_eq!(rows[7].kind(), RowKind::Destructive);
+    assert!(rows[6].is_section());
   }
 
   #[test]
@@ -1598,10 +1724,11 @@ mod tests {
     });
     app.admin.group = json!({"name":"dev","gid":1000,"members":["alice"]});
     assert_eq!(strings(&app.admin.group["members"]), vec!["alice"]);
-    app.navigation.current_mut().selected = 1;
-    app.admin_open();
+    assert_eq!(app.rows()[0].kind(), RowKind::Toggle { on: true });
+    select(&mut app, Item::Member(1));
+    press(&mut app, KeyCode::Enter);
     assert_eq!(strings(&app.admin.group["members"]), vec!["alice", "bob"]);
-    app.admin_open();
+    press(&mut app, KeyCode::Enter);
     assert_eq!(strings(&app.admin.group["members"]), vec!["alice"]);
   }
 
@@ -1614,35 +1741,46 @@ mod tests {
       "groups": [{"name":"dev","gid":1000,"members":["alice"]}],
       "group_details": [{"name":"dev","gid":1000,"members":["alice"]}]
     });
-    app.navigation.current_mut().selected = 1;
-    app.admin_open();
+    select(&mut app, Item::GroupEntry(0));
+    press(&mut app, KeyCode::Enter);
     assert_eq!(app.page(), Page::Group);
     assert_eq!(text(&app.admin.group, "original"), "dev");
   }
 
   #[test]
-  /// Executes the `firewall_actions_are_buttons_outside_the_config_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn firewall_actions_are_buttons_outside_the_config_rows() {
+  fn firewall_actions_are_rows_in_their_sections() {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({"active":false,"enabled":false});
     app.admin.config = json!({});
-    let rows = app.admin.rows(Page::Firewall, Lang::for_locale("pt-BR"));
-    assert_eq!(rows.len(), 2 + FIREWALL_FIELDS.len());
+    let rows = app
+      .admin
+      .rows(Page::Firewall, Lang::for_locale("pt-BR"), "");
+    let sections = rows.iter().filter(|row| row.is_section()).count();
+    assert_eq!(sections, 3, "Service, Configuration and Rules");
+    let position = |item: Item| rows.iter().position(|row| row.id() == Some(&item)).unwrap();
     assert!(
-      rows
-        .iter()
-        .all(|row| !row.label.contains("Editar rules.fw"))
+      position(Item::FirewallField(FIREWALL_FIELDS.len() - 1)) < position(Item::SaveFirewall)
     );
-    let buttons = app.admin.buttons(Page::Firewall, Lang::for_locale("pt-BR"));
-    assert_eq!(buttons.len(), 4);
-    assert_eq!(buttons[0].label, "Salvar Configuração");
-    assert_eq!(buttons[3].label, "Cancelar");
-    assert_eq!(buttons[3].kind, ButtonKind::Danger);
+    assert_eq!(
+      position(Item::SaveFirewall) + 1,
+      position(Item::DiscardFirewall)
+    );
+    assert!(position(Item::DiscardFirewall) < position(Item::AddRules));
+    assert_eq!(position(Item::AddRules) + 1, position(Item::ApplyRules));
+    assert_eq!(
+      rows[position(Item::SaveFirewall)].label(),
+      "Salvar Configuração"
+    );
+    assert_eq!(
+      rows[position(Item::FirewallBoot)].kind(),
+      RowKind::Toggle { on: false }
+    );
+    assert!(rows.iter().all(|row| !row.label().contains("[ ")));
   }
 
   #[test]
   /// Executes the `firewall_buttons_route_to_confirm_editor_reload_and_cancel_like_before` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn firewall_buttons_route_to_confirm_editor_reload_and_cancel_like_before() {
+  fn firewall_rows_route_to_confirm_editor_reload_and_cancel_like_before() {
     let mut app = app(Page::Firewall);
     app.admin.firewall = json!({
       "active":false,
@@ -1651,142 +1789,75 @@ mod tests {
       "rules":"iptables -A INPUT -j DROP"
     });
     app.admin.config = json!({"ALLOW_SSH":"n"});
-    app.admin_button(0); // Salvar Configuração
+    app.admin_activate(Item::SaveFirewall);
     assert!(app.admin.pending.is_some());
-    app.admin.pending = None;
-    app.admin_button(1); // Adicionar Regras
+    app.cancel_modal();
+    app.admin_activate(Item::AddRules);
     assert_eq!(app.admin.editor.take().unwrap().target, EditTarget::Rules);
-    app.admin_button(2); // Aplicar regras salvas
+    app.admin_activate(Item::ApplyRules);
     assert!(app.admin.pending.is_some());
-    app.admin.pending = None;
-    app.admin_button(3); // Cancelar
-    assert!(app.admin.busy());
-  }
-
-  #[test]
-  /// Executes the `user_actions_are_buttons_outside_the_field_list` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn user_actions_are_buttons_outside_the_field_list() {
-    let app = app(Page::User);
-    let rows = app.admin.rows(Page::User, Lang::for_locale("pt-BR"));
+    let Some(PendingAction::Administration(message)) = app.confirm.clone() else {
+      panic!("Apply saved rules must ask first");
+    };
     assert!(
-      rows
-        .iter()
-        .all(|row| !row.label.contains("Excluir usuário"))
+      message.contains(tr(app.lang, "control_center.apply_saved_rules_description")),
+      "the confirmation warns that the firewall restarts: {message}"
     );
-    let buttons = app.admin.buttons(Page::User, Lang::for_locale("pt-BR"));
-    assert_eq!(buttons.len(), 9);
-    assert_eq!(buttons[0].label, "Salvar alterações");
-    assert_eq!(buttons[7].label, "Excluir usuário (manter home)");
-    assert_eq!(buttons[8].label, "Excluir usuário e home");
-    assert_eq!(app.item_count(), rows.len() + buttons.len());
+    app.cancel_modal();
+    app.admin_activate(Item::FirewallService);
+    assert!(
+      app.admin.pending.is_some(),
+      "service state change is confirmed"
+    );
+    app.cancel_modal();
+    app.admin_activate(Item::DiscardFirewall);
+    assert!(
+      app.admin.busy(),
+      "Cancel changes reloads the saved configuration"
+    );
   }
 
   #[test]
   /// Applies the `save_and_delete_buttons_confirm_without_running` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn save_and_delete_buttons_confirm_without_running() {
-    let mut app = app(Page::User);
-    app.navigation.current_mut().selected = 10;
-    app.admin_open();
-    assert!(app.confirm.is_some());
-    assert!(!app.admin.busy());
+  fn save_and_delete_rows_confirm_without_running() {
+    for item in [
+      Item::SaveUser,
+      Item::LockPassword,
+      Item::UnlockPassword,
+      Item::ExpirePassword,
+      Item::RemoveAvatar,
+      Item::DeleteUser,
+      Item::DeleteUserAndHome,
+    ] {
+      let mut app = app(Page::User);
+      select(&mut app, item);
+      press(&mut app, KeyCode::Enter);
+      assert!(app.confirm.is_some(), "{item:?} asks first");
+      assert!(!app.admin.busy());
+    }
   }
 
   #[test]
-  /// Executes the `down_navigation_reaches_buttons_and_tab_cycles` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn down_navigation_reaches_buttons_and_tab_cycles() {
+  fn arrows_walk_the_single_list_and_tab_does_nothing() {
     let mut app = app(Page::User);
-    app.normalize_selection();
-    assert_eq!(app.navigation.current().selected, 2);
-    app.move_selection(1);
-    app.move_selection(1);
-    assert_eq!(app.navigation.current().selected, 4);
-    app.move_selection(1);
-    assert_eq!(app.navigation.current().selected, 6);
-    app.move_selection(1);
-    assert_eq!(app.navigation.current().selected, 6);
-    assert!(!app.row_selectable(9));
-    assert!(app.row_selectable(10));
-
-    app.cycle_selection(1);
-    assert_eq!(app.navigation.current().selected, 10);
-    assert!(app.on_buttons());
-    app.cycle_selection(1);
-    assert_eq!(app.navigation.current().selected, 6);
-    assert!(!app.on_buttons());
-
-    app.cycle_selection(1);
-    assert_eq!(app.navigation.current().selected, 10);
-    app.move_button(1);
-    app.move_button(1);
-    assert_eq!(app.navigation.current().selected, 12);
-    app.move_button(1);
-    app.move_button(1);
-    app.move_button(1);
-    app.move_button(1);
-    app.move_button(1);
-    assert_eq!(app.navigation.current().selected, 17);
-    app.move_button(1);
-    assert_eq!(app.navigation.current().selected, 18);
-    app.move_button(1);
-    assert_eq!(app.navigation.current().selected, 10);
-    app.move_button(-1);
-    assert_eq!(app.navigation.current().selected, 18);
-
-    let before = app.navigation.current().selected;
-    app.move_selection(1);
-    app.move_selection(-1);
-    assert_eq!(app.navigation.current().selected, before);
-
-    app.cycle_selection(-1);
-    assert_eq!(app.navigation.current().selected, 6);
-    app.cycle_selection(-1);
-    assert_eq!(app.navigation.current().selected, 18);
-  }
-
-  #[test]
-  /// Executes the `tab_cycles_action_buttons_through_key_events` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn tab_cycles_action_buttons_through_key_events() {
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-
-    let mut app = app(Page::User);
-    app.normalize_selection();
-    assert_eq!(app.navigation.current().selected, 2);
-    let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
-    let shift_tab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE);
-    let right = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
-    let up = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
-    let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
-
-    crate::event::handle(&mut app, Event::Key(tab));
-    assert_eq!(app.navigation.current().selected, 10);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 11);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 12);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 13);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 14);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 15);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 16);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 17);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 18);
-    crate::event::handle(&mut app, Event::Key(right));
-    assert_eq!(app.navigation.current().selected, 10);
-
-    let before = app.navigation.current().selected;
-    crate::event::handle(&mut app, Event::Key(up));
-    crate::event::handle(&mut app, Event::Key(down));
-    assert_eq!(app.navigation.current().selected, before);
-
-    crate::event::handle(&mut app, Event::Key(tab));
-    assert_eq!(app.navigation.current().selected, 2);
-    crate::event::handle(&mut app, Event::Key(shift_tab));
-    assert_eq!(app.navigation.current().selected, 18);
+    assert_eq!(app.selected_item(), Some(Item::FullName));
+    for expected in [
+      Item::Shell,
+      Item::PrimaryGroup,
+      Item::SupplementaryGroups,
+      Item::SaveUser,
+      Item::ChangePassword,
+    ] {
+      press(&mut app, KeyCode::Down);
+      assert_eq!(app.selected_item(), Some(expected));
+    }
+    press(&mut app, KeyCode::Tab);
+    press(&mut app, KeyCode::BackTab);
+    assert_eq!(app.selected_item(), Some(Item::ChangePassword));
+    press(&mut app, KeyCode::End);
+    assert_eq!(app.selected_item(), Some(Item::DeleteUserAndHome));
+    press(&mut app, KeyCode::Home);
+    assert_eq!(app.selected_item(), Some(Item::FullName));
   }
 
   #[test]
@@ -1815,24 +1886,21 @@ mod tests {
         terminal
           .draw(|frame| crate::ui::draw(&mut app, frame))
           .unwrap();
+        let rendered: String = terminal
+          .backend()
+          .buffer()
+          .content
+          .iter()
+          .map(|cell| cell.symbol())
+          .collect();
+        assert!(rendered.chars().any(|cell| cell != ' '));
         assert!(
-          terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .any(|cell| cell.symbol() != " ")
+          !rendered.replace("[ ]", "").contains("[ "),
+          "{page:?} has no button labels"
         );
-        if page == Page::User {
-          let rendered: String = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(|cell| cell.symbol())
-            .collect();
+        if page == Page::User && height == 40 {
           assert!(rendered.contains("Delete user (keep home)"));
-          assert!(!rendered.contains("-- Segurança"));
+          assert!(!rendered.contains("--"));
         }
         app.admin.editor = Some(Editor::new(
           "Password".into(),
