@@ -81,6 +81,11 @@ pub enum Item {
   Ratbag(RatbagRow),
 
   // Keyboard shortcuts.
+  /// Index into the loaded window rules.
+  WindowRuleWorkspace(usize),
+  WindowRuleClasses(usize),
+  AddWindowRule,
+  RemoveWindowRule(usize),
   /// Index into the loaded keybindings.
   Keybinding(usize),
   RestoreAllShortcuts,

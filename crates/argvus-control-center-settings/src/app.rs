@@ -20,6 +20,7 @@ use crate::i18n::{Lang, tr};
 use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
 use crate::system::keybindings;
+use crate::system::window_rules;
 use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
 use argvus_control_center_core::{
@@ -71,6 +72,7 @@ pub enum PendingAction {
   ResetFont(FontTarget),
   ResetFontSetting(SettingKind),
   ResetKeybindings,
+  RemoveWindowRule(String),
   /// The `r` shortcut on one shortcut; `leave` also closes the edit page.
   RestoreKeybinding {
     id: String,
@@ -116,6 +118,7 @@ pub struct App {
   console_keymaps: Vec<String>,
   input: input::InputSettings,
   keybindings: Vec<keybindings::Binding>,
+  pub(crate) window_rules: Vec<window_rules::WindowRule>,
   keybinding_capturing: bool,
   keybinding_editor_modifiers: [bool; 4],
   keybinding_editor_key: String,
@@ -205,6 +208,7 @@ impl App {
       console_keymaps: keyboard::console_keymaps(),
       input: input::InputSettings::default(),
       keybindings: keybindings::load(),
+      window_rules: window_rules::load(),
       keybinding_capturing: false,
       keybinding_editor_modifiers: [false; 4],
       keybinding_editor_key: String::new(),
@@ -301,6 +305,11 @@ impl App {
       Page::Keybindings => format!(
         "{root} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts")
+      ),
+      Page::WindowRules => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.keyboard_shortcuts"),
+        tr(self.lang, "control_center.window_rules")
       ),
       Page::KeybindingEdit => format!(
         "{root} > {} > {}",
@@ -568,6 +577,13 @@ impl App {
         )),
         Err(error) => self.fail(error),
       },
+      PendingAction::RemoveWindowRule(name) => match window_rules::remove(&name) {
+        Ok(()) => {
+          self.window_rules = window_rules::load();
+          self.success(tr(self.lang, "control_center.window_rules_removed").to_string());
+        }
+        Err(error) => self.fail(error),
+      },
       PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
         Ok(()) => {
           self.keybindings = keybindings::load();
@@ -641,7 +657,8 @@ impl App {
       | PendingAction::ResetFonts
       | PendingAction::ResetFont(_)
       | PendingAction::ResetFontSetting(_)
-      | PendingAction::ResetKeybindings => (label("control_center.confirm"), true),
+      | PendingAction::ResetKeybindings
+      | PendingAction::RemoveWindowRule(_) => (label("control_center.confirm"), true),
       _ => (label("control_center.confirm"), false),
     };
     Some((title, message, confirm, danger))
@@ -1562,6 +1579,10 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
     PendingAction::ResetKeybindings => (
       tr(lang, "control_center.restore_all_shortcuts").to_string(),
       tr(lang, "control_center.restore_all_shortcuts_description").to_string(),
+    ),
+    PendingAction::RemoveWindowRule(name) => (
+      tr(lang, "control_center.window_rules_remove").to_string(),
+      name.clone(),
     ),
     PendingAction::RestoreKeybinding { .. } => (
       tr(lang, "control_center.restore_shortcut_title").to_string(),

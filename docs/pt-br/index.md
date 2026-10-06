@@ -41,7 +41,7 @@ A árvore atual de configurações inclui:
 | Aparência | Temas, modos de tema, cor de destaque, wallpapers, efeitos, espaços/bordas/posição, posição e espaços da taskbar, grupo utilitário da taskbar, telemetria e cards do Control Panel |
 | Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console, atalhos de teclado |
 | Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria |
+| Aplicativos | Aplicativos padrão e seletores por categoria, Regras de janela |
 | Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
 | Serviços e diagnósticos | Serviços, boot, pacotes, armazenamento e diagnósticos |
@@ -139,6 +139,7 @@ O suporte à restauração é específico de cada domínio:
 * **Fontes** pode restaurar todas as fontes, um alvo ou uma configuração individual.
 * **Aplicativos padrão** pode restaurar todos os padrões, uma categoria ou um seletor individual.
 * **Atalhos de teclado** pode restaurar um atalho ou todos e então recarregar os atalhos gerados da sessão.
+* **Regras de janela** ficam em **Aplicativos → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
 * **Outras páginas do sistema** exibem ações de restauração, aplicação, exclusão ou recuperação somente quando o provider responsável oferece esse recurso.
 
 Remover uma preferência do usuário pode fazer um provider retornar ao estado padrão, mas apagar arquivos manualmente não é um procedimento geral de recuperação. Prefira a ação de restauração da página ou o comando documentado para o recurso.
@@ -156,7 +157,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 

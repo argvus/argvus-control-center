@@ -20,6 +20,7 @@ use crate::config::fonts::SettingKind;
 use crate::i18n::{Lang, tr};
 use crate::item::{Item, RatbagRow};
 use crate::navigation::Page;
+use crate::system::window_rules;
 use crate::system::{keybindings, keyboard, locale, time};
 
 /// Values offered by a font rendering setting, in display order.
@@ -170,6 +171,9 @@ impl App {
       Item::RegionalLocale => self.open_system_page(Page::RegionalLocale),
       Item::SystemLocales => self.open_system_page(Page::SystemLocales),
       Item::Keyboard => self.open_system_page(Page::Keyboard),
+      Item::WindowRuleWorkspace(index) => self.adjust_window_rule_workspace(index, 1),
+      Item::WindowRuleClasses(index) => self.open_window_rule_classes(index),
+      Item::AddWindowRule => self.add_window_rule(),
       Item::Zone(index) => self.apply_timezone(index),
       Item::LocalDateTime if !self.datetime.ntp.unwrap_or(false) => {
         self.admin.editor = Some(Editor::new(
@@ -257,6 +261,7 @@ impl App {
     match item {
       Item::FontSize => self.adjust_size(delta.signum() as i16),
       Item::Input(_) | Item::Ratbag(_) => self.input_cycle(item, delta.signum() as i8),
+      Item::WindowRuleWorkspace(index) => self.adjust_window_rule_workspace(index, delta),
       _ => {}
     }
   }
@@ -270,6 +275,12 @@ impl App {
     match item {
       Item::ResetDefaults => self.reset_current(),
       Item::RestoreAllShortcuts => self.open_confirm(PendingAction::ResetKeybindings),
+      Item::RemoveWindowRule(index) => {
+        if let Some(rule) = self.window_rules.get(index) {
+          let name = rule.name.clone();
+          self.open_confirm(PendingAction::RemoveWindowRule(name));
+        }
+      }
       _ => {}
     }
   }
@@ -807,5 +818,40 @@ impl App {
     }
     self.keybindings = keybindings::load();
     self.success(tr(self.lang, "control_center.keybindings_restored").to_string());
+  }
+
+  fn adjust_window_rule_workspace(&mut self, index: usize, delta: i32) {
+    let Some(rule) = self.window_rules.get(index) else {
+      return;
+    };
+    let workspace = window_rules::cycle_workspace(rule.workspace, delta);
+    let name = rule.name.clone();
+    match window_rules::set_workspace(&name, workspace) {
+      Ok(()) => self.window_rules = window_rules::load(),
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn open_window_rule_classes(&mut self, index: usize) {
+    let Some(rule) = self.window_rules.get(index) else {
+      return;
+    };
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.window_rules_classes").into(),
+      rule.classes.join(", "),
+      EditTarget::WindowRuleClasses(rule.name.clone()),
+      false,
+    ));
+  }
+
+  fn add_window_rule(&mut self) {
+    let name = window_rules::next_rule_name(&self.window_rules);
+    match window_rules::add(&name) {
+      Ok(()) => {
+        self.window_rules = window_rules::load();
+        self.success(tr(self.lang, "control_center.window_rules_saved").to_string());
+      }
+      Err(error) => self.fail(error),
+    }
   }
 }

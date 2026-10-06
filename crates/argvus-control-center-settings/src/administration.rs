@@ -28,7 +28,7 @@ use crate::{
 };
 
 /// Defines the constant `FIREWALL_FIELDS`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-const FIREWALL_FIELDS: [(&str, &str); 15] = [
+const FIREWALL_FIELDS: [(&str, &str); 16] = [
   ("INTERFACE_WAN", "control_center.wan_interface"),
   ("INTERFACE_LAN", "control_center.lan_interface"),
   ("MASQUERADE_ENABLE", "control_center.nat_masquerading"),
@@ -40,6 +40,7 @@ const FIREWALL_FIELDS: [(&str, &str); 15] = [
   ("SAMBA_CLIENTS_IP", "control_center.samba_ipv4_networks"),
   ("ALLOW_ICMP", "control_center.allow_icmp"),
   ("OPEN_PORTS_UDP", "control_center.udp_ports"),
+  ("OPEN_PORTS_TCP", "control_center.tcp_ports"),
   (
     "SYN_FLOOD_PROTECTION",
     "control_center.syn_flood_protection",
@@ -1568,6 +1569,18 @@ impl App {
             tr(self.lang, "control_center.font_size")
           )),
         },
+        EditTarget::WindowRuleClasses(name) => {
+          let classes: Vec<String> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|class| !class.is_empty())
+            .map(str::to_owned)
+            .collect();
+          match crate::system::window_rules::set_classes(&name, &classes) {
+            Ok(()) => self.window_rules = crate::system::window_rules::load(),
+            Err(error) => self.fail(error),
+          }
+        }
         EditTarget::DateTime => match crate::system::time::set_local_time(&value) {
           Ok(()) => self.refresh_time(),
           Err(error) => self.fail(error),
@@ -1594,6 +1607,7 @@ pub(crate) enum EditTarget {
   DateTime,
   /// Size used when a font is applied on the font selector (8–32).
   FontSize,
+  WindowRuleClasses(String),
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

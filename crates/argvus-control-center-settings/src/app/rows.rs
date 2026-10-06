@@ -444,6 +444,7 @@ impl App {
       ],
       Page::MouseTouchpad => self.input_rows(),
       Page::Keybindings => self.keybinding_rows(),
+      Page::WindowRules => self.window_rules_rows(),
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::Firewall
@@ -800,6 +801,52 @@ impl App {
     )
     .icon(icons::RESTORE);
     self.danger_zone(&mut rows, vec![restore_all]);
+    rows
+  }
+
+  fn window_rules_rows(&self) -> Vec<Row<Item>> {
+    let mut rows = vec![Row::info(
+      self.label("control_center.window_rules_hint"),
+      String::new(),
+    )];
+    for (index, rule) in self.window_rules.iter().enumerate() {
+      rows.push(Row::section(rule.name.clone()));
+      rows.push(
+        Row::action(
+          Item::WindowRuleWorkspace(index),
+          self.label("control_center.window_rules_workspace"),
+        )
+        .detail(rule.workspace.to_string()),
+      );
+      rows.push(
+        Row::submenu(
+          Item::WindowRuleClasses(index),
+          self.label("control_center.window_rules_classes"),
+        )
+        .detail(rule.classes.join(", ")),
+      );
+    }
+    rows.push(Row::action(
+      Item::AddWindowRule,
+      self.label("control_center.window_rules_add"),
+    ));
+    let remove = self
+      .window_rules
+      .iter()
+      .enumerate()
+      .map(|(index, rule)| {
+        Row::destructive(
+          Item::RemoveWindowRule(index),
+          format!(
+            "{} {}",
+            self.label("control_center.window_rules_remove"),
+            rule.name
+          ),
+        )
+        .icon(icons::DELETE)
+      })
+      .collect();
+    self.danger_zone(&mut rows, remove);
     rows
   }
 

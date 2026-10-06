@@ -183,6 +183,7 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
     "session.previous_track" => ("Previous track", "Faixa anterior"),
     "session.stop_track" => ("Stop track", "Parar faixa"),
     "app.terminal" => ("Terminal", "Terminal"),
+    "app.scratchpad" => ("Terminal scratchpad", "Terminal suspenso (scratchpad)"),
     "app.file_manager" => ("File Manager", "Gerenciador de arquivos"),
     "app.removable_devices" => ("Removable devices menu", "Menu de dispositivos removíveis"),
     "app.browser" => ("Default Browser", "Navegador padrão"),

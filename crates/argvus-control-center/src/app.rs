@@ -388,6 +388,14 @@ impl App {
         "default application apps browser terminal file manager",
         "settings/default-apps",
       ),
+      #[cfg(feature = "apps")]
+      (
+        "settings.window_rules",
+        "applications",
+        "Window rules",
+        "window rules workspace class app placement regras janela area de trabalho",
+        "settings/window-rules",
+      ),
       #[cfg(feature = "about")]
       (
         "about",
@@ -1189,6 +1197,11 @@ impl App {
       label: tr(self.lang, "control_center.default_apps"),
       action: 0,
     });
+    #[cfg(feature = "apps")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.window_rules"),
+      action: 22,
+    });
     #[cfg(any(feature = "hardware", feature = "displays"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
@@ -1393,6 +1406,8 @@ impl App {
     match action {
       #[cfg(feature = "apps")]
       0 => self.open_settings(Page::DefaultApps),
+      #[cfg(feature = "apps")]
+      22 => self.open_settings(Page::WindowRules),
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
       #[cfg(feature = "locale")]
@@ -1599,6 +1614,8 @@ impl App {
     match (domain, page) {
       #[cfg(feature = "apps")]
       (_, "default-apps") => self.open_settings(Page::DefaultApps),
+      #[cfg(feature = "apps")]
+      (_, "window-rules") => self.open_settings(Page::WindowRules),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),
@@ -2128,7 +2145,7 @@ mod tests {
     let mut app = App::new(InitialRoute::Home);
     app.move_home(-1);
     assert_eq!(app.home_selected, 0);
-    app.move_home(20);
+    app.move_home(1_000);
     assert_eq!(app.home_selected, app.home_item_count().saturating_sub(1));
   }
 
