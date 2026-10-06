@@ -64,21 +64,12 @@ fn multiply_back(channel: u8, alpha: u8) -> Option<u8> {
 
 /// Executes the `find_logo_path` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn find_logo_path() -> Option<std::path::PathBuf> {
-  let mut candidates = vec![
-    std::path::PathBuf::from("/usr/share/argvus-control-center/argvus-about.svg"),
-    std::path::PathBuf::from("/usr/share/argvus-about/argvus-about.svg"),
-    std::path::PathBuf::from("/usr/share/argvus-logo/svg/logotype.svg"),
-    std::path::PathBuf::from("/usr/share/argvus-logo/svg/argvus-banner.svg"),
-    std::path::PathBuf::from("/usr/share/pixmaps/argvus.svg"),
-    std::path::PathBuf::from("../argvus-logo/svg/logotype.svg"),
-    std::path::PathBuf::from("../argvus-logo/svg/argvus-banner.svg"),
-  ];
+  let mut candidates = vec![std::path::PathBuf::from(
+    "/usr/share/argvus/svg/ARGVUS-logo.svg",
+  )];
   if let Ok(current_dir) = std::env::current_dir() {
-    candidates.extend([
-      current_dir.join("assets/argvus-about.svg"),
-      current_dir.join("argvus-control-center/assets/argvus-about.svg"),
-      current_dir.join("../../assets/argvus-about.svg"),
-    ]);
+    candidates
+      .extend([current_dir.join("../argvus-branding/src/usr/share/argvus/svg/ARGVUS-logo.svg")]);
   }
   candidates.iter().find(|&path| path.exists()).cloned()
 }

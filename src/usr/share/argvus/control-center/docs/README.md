@@ -253,10 +253,11 @@ feedback, errors, and About content all pass through that layer.
 ## Logo and terminal graphics
 
 The About system tab preserves the existing renderer. It loads and rasterizes the
-SVG once, uses Kitty/Sixel/iTerm2 when detected, then falls back to colored Unicode
-half blocks or ASCII. Resizing only rebuilds the cached target when dimensions
-change. Set `ARGVUS_ABOUT_IMAGE=graphics`, `halfblocks`, or `ascii` to force a
-backend for diagnostics.
+ARGVUS logo (`ARGVUS-logo.svg`) from `/usr/share/argvus/svg/` (provided by the
+`argvus-branding` package) once, uses Kitty/Sixel/iTerm2 when detected, then falls
+back to colored Unicode half blocks or ASCII. Resizing only rebuilds the cached
+target when dimensions change. Set `ARGVUS_ABOUT_IMAGE=graphics`, `halfblocks`, or
+`ascii` to force a backend for diagnostics.
 
 ## Screenshots
 

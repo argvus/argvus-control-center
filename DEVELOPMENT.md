@@ -72,8 +72,9 @@ make package           # build the local Arch package
 
 The `packaging/arch/` directory contains the CI and local PKGBUILDs plus the
 desktop file shipped in the Arch package. The package functions install the
-binary, compatibility symlink, desktop file, config, themes, docs, SVG, and
-license. The `backup=()` array in each PKGBUILD preserves the user's
+binary, compatibility symlink, desktop file, config, themes, and docs. The About
+tab's logo (`ARGVUS-logo.svg`) comes from the `argvus-branding` package runtime
+dependency. The `backup=()` array in each PKGBUILD preserves the user's
 `config.toml` on package upgrade.
 
 ```sh

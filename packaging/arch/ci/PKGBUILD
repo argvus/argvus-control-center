@@ -8,6 +8,7 @@ url="https://github.com/argvus/argvus-control-center"
 license=('GPL-3.0-only')
 depends=(
   'argvus-app-profiles'
+  'argvus-branding'
   'argvus-config'
   'argvus-accounts'
   'argvus-firewall'
@@ -65,8 +66,6 @@ package() {
   ln -s "${pkgname}" "${pkgdir}/usr/bin/argvus-controle-center"
   install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
-  install -Dm644 assets/argvus-about.svg \
-    "${pkgdir}/usr/share/argvus-control-center/argvus-about.svg"
   install -Dm644 packaging/arch/usr/share/applications/argvus-control-center.desktop \
     "${pkgdir}/usr/share/applications/argvus-control-center.desktop"
   install -dm755 "${pkgdir}/usr/share/argvus/control-center"
