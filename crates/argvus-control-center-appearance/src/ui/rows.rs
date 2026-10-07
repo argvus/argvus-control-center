@@ -688,7 +688,9 @@ impl AppearanceApp {
       })
       .collect(),
       SurfaceSection::Sessions => match surface {
-        EffectSurface::WidgetTelemetry => WidgetTelemetryBlock::ALL
+        EffectSurface::WidgetTelemetry => draft
+          .map(|draft| draft.widget_order.clone())
+          .unwrap_or_else(|| WidgetTelemetryBlock::ALL.to_vec())
           .into_iter()
           .map(|block| {
             self.toggle_row(
@@ -700,7 +702,10 @@ impl AppearanceApp {
           .collect(),
         EffectSurface::ControlPanel => draft
           .map(|draft| {
-            ControlPanelCard::ALL
+            self
+              .state
+              .control_panel_order
+              .clone()
               .into_iter()
               .filter(|card| draft.control_panel_cards.available(*card))
               .map(|card| {

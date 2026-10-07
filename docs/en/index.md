@@ -113,8 +113,8 @@ Open **Appearance** to see the integrated visual controls. Its pages are:
 - **Wallpapers** — choose a bundled wallpaper or select a custom file.
 - **Spaces, Borders & Position** — taskbar position, taskbar/shell spacing, window gaps, borders and edge thickness.
 - **Effects** — enable or disable the shared visual-effects state.
-- **Widget Telemetry** — enable the telemetry surface and select its available blocks.
-- **Control Panel** — enable, disable and reorder panel cards.
+- **Widget Telemetry** — enable the telemetry surface, select its available blocks and reorder them (`Shift+Up`/`Shift+Down` on a focused block).
+- **Control Panel** — enable, disable and reorder panel cards (`Shift+Up`/`Shift+Down` on a focused card, applied immediately through the same primitive the real panel's drag-and-drop uses).
 
 These actions update the logical ARGVUS state and apply the affected runtime configuration. See [Appearance](/docs/user-guide/appearance/), [Themes](/docs/argvus-themes/) and [Windows and layout](/docs/argvus-hyprland/windows-and-layout/).
 

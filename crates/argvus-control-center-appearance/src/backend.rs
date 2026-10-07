@@ -617,36 +617,51 @@ fn telemetry_state() -> bool {
   false
 }
 
+/// Maps the widget package's stable command-line identifier back to its
+/// enum variant, shared by the block-state and display-order readers.
+fn telemetry_block_from_key(key: &str) -> Option<WidgetTelemetryBlock> {
+  Some(match key {
+    "system" => WidgetTelemetryBlock::System,
+    "cpu_gpu" => WidgetTelemetryBlock::CpuGpu,
+    "memory" => WidgetTelemetryBlock::Memory,
+    "storage" => WidgetTelemetryBlock::Storage,
+    "processes" => WidgetTelemetryBlock::Processes,
+    "network" => WidgetTelemetryBlock::Network,
+    "keys" => WidgetTelemetryBlock::Shortcuts,
+    "dev_dashboard" => WidgetTelemetryBlock::DevDashboard,
+    _ => return None,
+  })
+}
+
+/// Runs `argvus-widget-telemetry-toggle blocks status` once, whose output is
+/// shared by [`telemetry_blocks`] and [`telemetry_order`].
+fn telemetry_blocks_status() -> Option<String> {
+  let output = SystemProcessRunner
+    .run(
+      &ProcessRequest::new("env")
+        .arg("ARGVUS_MACHINE_OUTPUT=1")
+        .arg("argvus-widget-telemetry-toggle")
+        .arg("blocks")
+        .arg("status")
+        .timeout(Duration::from_secs(3)),
+    )
+    .ok()?;
+  if output.status.is_some_and(|status| status != 0) {
+    return None;
+  }
+  Some(terminal_text(&String::from_utf8_lossy(&output.stdout)))
+}
+
 /// Reads the widget-owned machine format while retaining enabled defaults when
 /// an older package does not yet expose block preferences.
-fn telemetry_blocks() -> WidgetTelemetryBlocks {
+fn telemetry_blocks(status: &str) -> WidgetTelemetryBlocks {
   let mut blocks = WidgetTelemetryBlocks::default();
-  let Ok(output) = SystemProcessRunner.run(
-    &ProcessRequest::new("env")
-      .arg("ARGVUS_MACHINE_OUTPUT=1")
-      .arg("argvus-widget-telemetry-toggle")
-      .arg("blocks")
-      .arg("status")
-      .timeout(Duration::from_secs(3)),
-  ) else {
-    return blocks;
-  };
-  if output.status.is_some_and(|status| status != 0) {
-    return blocks;
-  }
-  for line in terminal_text(&String::from_utf8_lossy(&output.stdout)).lines() {
+  for line in status.lines() {
     let Some((key, value)) = line.split_once('=') else {
       continue;
     };
-    let block = match key.trim() {
-      "system" => WidgetTelemetryBlock::System,
-      "cpu_gpu" => WidgetTelemetryBlock::CpuGpu,
-      "memory" => WidgetTelemetryBlock::Memory,
-      "storage" => WidgetTelemetryBlock::Storage,
-      "processes" => WidgetTelemetryBlock::Processes,
-      "network" => WidgetTelemetryBlock::Network,
-      "keys" => WidgetTelemetryBlock::Shortcuts,
-      _ => continue,
+    let Some(block) = telemetry_block_from_key(key.trim()) else {
+      continue;
     };
     match value.trim() {
       "enabled" => blocks.set(block, true),
@@ -657,13 +672,45 @@ fn telemetry_blocks() -> WidgetTelemetryBlocks {
   blocks
 }
 
+/// Reads the persisted display order, appending any block missing from it
+/// (an older package install, before this preference existed) at the end.
+fn telemetry_order(status: &str) -> Vec<WidgetTelemetryBlock> {
+  let mut order = Vec::new();
+  if let Some(value) = status
+    .lines()
+    .find_map(|line| line.strip_prefix("__order__="))
+  {
+    for key in value.split(',') {
+      if let Some(block) = telemetry_block_from_key(key.trim())
+        && !order.contains(&block)
+      {
+        order.push(block);
+      }
+    }
+  }
+  for block in WidgetTelemetryBlock::ALL {
+    if !order.contains(&block) {
+      order.push(block);
+    }
+  }
+  order
+}
+
 /// Decodes the Control Panel helper status and keeps package defaults when an
 /// older installation does not provide the helper or returns malformed data.
-fn control_panel_cards() -> ControlPanelCards {
-  let mut cards = run_script_output(&control_panel_cards_script(), &["status"])
+/// Returns the order alongside the enabled/available flags since both come
+/// from the same status call and the order is only meaningful together with
+/// it (an unavailable card's position does not matter until it reappears).
+fn control_panel_cards() -> (ControlPanelCards, Vec<ControlPanelCard>) {
+  let status = run_script_output(&control_panel_cards_script(), &["status"]);
+  let mut cards = status
     .as_deref()
     .map(parse_control_panel_cards)
     .unwrap_or_default();
+  let order = status
+    .as_deref()
+    .map(parse_control_panel_order)
+    .unwrap_or_else(|| ControlPanelCard::ALL.to_vec());
   // Keep the Control Center list identical to the cards' own runtime checks.
   // These probes are intentionally independent: a disabled card remains disabled
   // when hardware is temporarily disconnected and becomes available again later.
@@ -685,7 +732,29 @@ fn control_panel_cards() -> ControlPanelCards {
   });
   cards.set_available(ControlPanelCard::Bluetooth, bluetooth_available);
   cards.set_available(ControlPanelCard::Brightness, brightness_available);
-  cards
+  (cards, order)
+}
+
+/// Maps the Control Panel helper's stable card ID back to its enum variant,
+/// shared by the enabled-state and display-order readers.
+fn control_panel_card_from_key(key: &str) -> Option<ControlPanelCard> {
+  Some(match key {
+    "user" => ControlPanelCard::User,
+    "notifications" => ControlPanelCard::Notifications,
+    "calendar" => ControlPanelCard::Calendar,
+    "weather" => ControlPanelCard::Weather,
+    "volume" => ControlPanelCard::Volume,
+    "brightness" => ControlPanelCard::Brightness,
+    "network" => ControlPanelCard::Network,
+    "bluetooth" => ControlPanelCard::Bluetooth,
+    "system" => ControlPanelCard::System,
+    "appearance" => ControlPanelCard::Appearance,
+    "session" => ControlPanelCard::Session,
+    "display" => ControlPanelCard::Display,
+    "spaces-borders-position" => ControlPanelCard::SpacesBordersPosition,
+    "power" => ControlPanelCard::Power,
+    _ => return None,
+  })
 }
 
 /// Parses helper JSON independently from process execution for deterministic
@@ -705,26 +774,39 @@ fn parse_control_panel_cards(output: &str) -> ControlPanelCards {
     let Some(enabled) = entry.get("enabled").and_then(Value::as_bool) else {
       continue;
     };
-    let card = match key {
-      "user" => ControlPanelCard::User,
-      "notifications" => ControlPanelCard::Notifications,
-      "calendar" => ControlPanelCard::Calendar,
-      "weather" => ControlPanelCard::Weather,
-      "volume" => ControlPanelCard::Volume,
-      "brightness" => ControlPanelCard::Brightness,
-      "network" => ControlPanelCard::Network,
-      "bluetooth" => ControlPanelCard::Bluetooth,
-      "system" => ControlPanelCard::System,
-      "appearance" => ControlPanelCard::Appearance,
-      "session" => ControlPanelCard::Session,
-      "display" => ControlPanelCard::Display,
-      "spaces-borders-position" => ControlPanelCard::SpacesBordersPosition,
-      "power" => ControlPanelCard::Power,
-      _ => continue,
+    let Some(card) = control_panel_card_from_key(key) else {
+      continue;
     };
     cards.set(card, enabled);
   }
   cards
+}
+
+/// Parses the card order from the same helper JSON (the `cards` array is
+/// already emitted in persisted order), appending any card missing from it
+/// — an older helper, before this preference existed — at the end.
+fn parse_control_panel_order(output: &str) -> Vec<ControlPanelCard> {
+  let mut order = Vec::new();
+  if let Ok(value) = serde_json::from_str::<Value>(output)
+    && let Some(entries) = value.get("cards").and_then(Value::as_array)
+  {
+    for entry in entries {
+      let Some(key) = entry.get("id").and_then(Value::as_str) else {
+        continue;
+      };
+      if let Some(card) = control_panel_card_from_key(key)
+        && !order.contains(&card)
+      {
+        order.push(card);
+      }
+    }
+  }
+  for card in ControlPanelCard::ALL {
+    if !order.contains(&card) {
+      order.push(card);
+    }
+  }
+  order
 }
 
 /// Executes the `list_wallpapers` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -905,7 +987,9 @@ pub fn load_page(
     )
   {
     state.widget_telemetry = telemetry_state();
-    state.widget_telemetry_blocks = telemetry_blocks();
+    let status = telemetry_blocks_status().unwrap_or_default();
+    state.widget_telemetry_blocks = telemetry_blocks(&status);
+    state.widget_telemetry_order = telemetry_order(&status);
   }
   if page == AppearancePage::ControlPanel
     || matches!(
@@ -916,7 +1000,9 @@ pub fn load_page(
       }
     )
   {
-    state.control_panel_cards = control_panel_cards();
+    let (cards, order) = control_panel_cards();
+    state.control_panel_cards = cards;
+    state.control_panel_order = order;
     state.control_panel_enabled = control_panel_enabled();
   }
   if matches!(
@@ -1139,7 +1225,11 @@ pub fn set_control_panel_enabled(enabled: bool) -> Result<(), String> {
   )
 }
 
-pub fn apply_widget_telemetry(enabled: bool, blocks: &WidgetTelemetryBlocks) -> Result<(), String> {
+pub fn apply_widget_telemetry(
+  enabled: bool,
+  blocks: &WidgetTelemetryBlocks,
+  order: &[WidgetTelemetryBlock],
+) -> Result<(), String> {
   let values = WidgetTelemetryBlock::ALL.map(|block| {
     if blocks.enabled(block) {
       "enabled"
@@ -1147,8 +1237,14 @@ pub fn apply_widget_telemetry(enabled: bool, blocks: &WidgetTelemetryBlocks) -> 
       "disabled"
     }
   });
+  let order = order
+    .iter()
+    .map(|block| block.key())
+    .collect::<Vec<_>>()
+    .join(",");
   let mut args = vec!["apply-state", if enabled { "enabled" } else { "disabled" }];
   args.extend(values);
+  args.push(&order);
   let mut request = ProcessRequest::new("argvus-widget-telemetry-toggle");
   for argument in args {
     request = request.arg(argument);
@@ -1453,6 +1549,15 @@ pub fn set_control_panel_cards(changes: Vec<(ControlPanelCard, bool)>) -> Result
   if changes.is_empty() {
     return Ok(());
   }
+  reload_control_panel()
+}
+
+/// Moves a Control Panel card to an absolute position in its package-owned
+/// order (0-based, the same index space as `CARD_IDS` in `cards-config.sh`),
+/// the same primitive the real panel's drag-and-drop already calls.
+pub fn move_control_panel_card(card: ControlPanelCard, index: usize) -> Result<(), String> {
+  let index = index.to_string();
+  run_script(&control_panel_cards_script(), &["move", card.key(), &index])?;
   reload_control_panel()
 }
 

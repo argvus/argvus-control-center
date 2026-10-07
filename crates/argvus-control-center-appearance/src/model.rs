@@ -263,10 +263,11 @@ pub enum WidgetTelemetryBlock {
   Processes,
   Network,
   Shortcuts,
+  DevDashboard,
 }
 
 impl WidgetTelemetryBlock {
-  pub const ALL: [Self; 7] = [
+  pub const ALL: [Self; 8] = [
     Self::System,
     Self::CpuGpu,
     Self::Memory,
@@ -274,6 +275,7 @@ impl WidgetTelemetryBlock {
     Self::Processes,
     Self::Network,
     Self::Shortcuts,
+    Self::DevDashboard,
   ];
 
   /// Returns the stable command-line identifier owned by the widget package.
@@ -286,6 +288,7 @@ impl WidgetTelemetryBlock {
       Self::Processes => "processes",
       Self::Network => "network",
       Self::Shortcuts => "keys",
+      Self::DevDashboard => "dev_dashboard",
     }
   }
 
@@ -299,6 +302,7 @@ impl WidgetTelemetryBlock {
       Self::Processes => "control_center.widget_telemetry_processes",
       Self::Network => "control_center.widget_telemetry_network",
       Self::Shortcuts => "control_center.widget_telemetry_shortcuts",
+      Self::DevDashboard => "control_center.widget_telemetry_dev_dashboard",
     }
   }
 }
@@ -313,6 +317,7 @@ pub struct WidgetTelemetryBlocks {
   pub processes: bool,
   pub network: bool,
   pub shortcuts: bool,
+  pub dev_dashboard: bool,
 }
 
 impl Default for WidgetTelemetryBlocks {
@@ -325,6 +330,7 @@ impl Default for WidgetTelemetryBlocks {
       processes: true,
       network: true,
       shortcuts: true,
+      dev_dashboard: true,
     }
   }
 }
@@ -339,6 +345,7 @@ impl WidgetTelemetryBlocks {
       WidgetTelemetryBlock::Processes => self.processes,
       WidgetTelemetryBlock::Network => self.network,
       WidgetTelemetryBlock::Shortcuts => self.shortcuts,
+      WidgetTelemetryBlock::DevDashboard => self.dev_dashboard,
     }
   }
 
@@ -351,6 +358,7 @@ impl WidgetTelemetryBlocks {
       WidgetTelemetryBlock::Processes => self.processes = enabled,
       WidgetTelemetryBlock::Network => self.network = enabled,
       WidgetTelemetryBlock::Shortcuts => self.shortcuts = enabled,
+      WidgetTelemetryBlock::DevDashboard => self.dev_dashboard = enabled,
     }
   }
 }
@@ -899,7 +907,9 @@ pub struct AppearanceState {
   pub widget_telemetry: bool,
   pub control_panel_enabled: bool,
   pub widget_telemetry_blocks: WidgetTelemetryBlocks,
+  pub widget_telemetry_order: Vec<WidgetTelemetryBlock>,
   pub control_panel_cards: ControlPanelCards,
+  pub control_panel_order: Vec<ControlPanelCard>,
   pub waybar_pos: TaskbarPosition,
   pub taskbar_utility_group: TaskbarUtilityGroupMode,
   pub taskbar_audio_player_enabled: bool,
@@ -969,7 +979,9 @@ impl Default for AppearanceState {
       widget_telemetry: true,
       control_panel_enabled: true,
       widget_telemetry_blocks: WidgetTelemetryBlocks::default(),
+      widget_telemetry_order: WidgetTelemetryBlock::ALL.to_vec(),
       control_panel_cards: ControlPanelCards::default(),
+      control_panel_order: ControlPanelCard::ALL.to_vec(),
       waybar_pos: TaskbarPosition::Top,
       taskbar_utility_group: TaskbarUtilityGroupMode::AlwaysExpanded,
       taskbar_audio_player_enabled: true,

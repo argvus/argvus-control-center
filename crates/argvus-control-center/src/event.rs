@@ -179,6 +179,18 @@ pub fn handle(app: &mut App, event: Event) {
     }
     #[cfg(feature = "appearance")]
     Route::Appearance => {
+      let shift_vertical = key.modifiers.contains(KeyModifiers::SHIFT)
+        && matches!(key.code, KeyCode::Up | KeyCode::Down);
+      let moved = shift_vertical
+        && (app
+          .appearance
+          .move_focused_telemetry_block(key.code == KeyCode::Down)
+          || app
+            .appearance
+            .move_focused_control_panel_card(key.code == KeyCode::Down));
+      if moved {
+        return;
+      }
       if app.appearance.handle(domain_key(key.code)) {
         app.route = Route::Home;
       }

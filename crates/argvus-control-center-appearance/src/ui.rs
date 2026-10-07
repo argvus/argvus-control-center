@@ -9,7 +9,8 @@ use crate::{
   model::{
     AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
     EffectSurface, HexColor, PromptGoal, SurfaceSection, TaskbarDateFormat, TaskbarTimeFormat,
-    TaskbarUtilityGroupMode, TaskbarUtilityWidgets, normalize_hex_color, theme_family_label,
+    TaskbarUtilityGroupMode, TaskbarUtilityWidgets, WidgetTelemetryBlock, normalize_hex_color,
+    theme_family_label,
   },
 };
 use argvus_theme::discovery::ThemeCategory;
@@ -67,6 +68,7 @@ struct SurfaceDraft {
   time_format: TaskbarTimeFormat,
   widget_enabled: bool,
   widget_blocks: crate::model::WidgetTelemetryBlocks,
+  widget_order: Vec<WidgetTelemetryBlock>,
   control_panel_enabled: bool,
   control_panel_cards: ControlPanelCards,
   transparency_enabled: bool,
@@ -496,6 +498,7 @@ impl AppearanceApp {
       time_format: self.state.taskbar_time_format,
       widget_enabled: self.state.widget_telemetry,
       widget_blocks: self.state.widget_telemetry_blocks.clone(),
+      widget_order: self.state.widget_telemetry_order.clone(),
       control_panel_enabled: self.state.control_panel_enabled,
       control_panel_cards: self.state.control_panel_cards.clone(),
       transparency_enabled,
@@ -545,7 +548,11 @@ impl AppearanceApp {
           )
         }
         EffectSurface::WidgetTelemetry => {
-          backend::apply_widget_telemetry(draft.widget_enabled, &draft.widget_blocks)?;
+          backend::apply_widget_telemetry(
+            draft.widget_enabled,
+            &draft.widget_blocks,
+            &draft.widget_order,
+          )?;
           backend::apply_surface_effects(
             draft.surface,
             draft.transparency_enabled,
@@ -795,6 +802,121 @@ impl AppearanceApp {
     if let Some(draft) = self.surface_draft_mut() {
       edit(draft);
     }
+  }
+
+  /// Moves the focused Widget Telemetry block one position up or down in the
+  /// draft order. Called by the router on `Shift+Up`/`Shift+Down` before
+  /// falling back to [`Self::handle`], since key modifiers are not threaded
+  /// through that generic entry point. Returns `false` when the focused row
+  /// is not a telemetry block or the move would go past either end, so the
+  /// caller can fall through to normal key handling.
+  pub fn move_focused_telemetry_block(&mut self, move_down: bool) -> bool {
+    if self.page
+      != (AppearancePage::SurfaceSection {
+        surface: EffectSurface::WidgetTelemetry,
+        section: SurfaceSection::Sessions,
+      })
+    {
+      return false;
+    }
+    let rows = self.rows();
+    let Some(Item::TelemetryBlock(block)) = self.menu.selected_id(&rows) else {
+      return false;
+    };
+    let Some(draft) = self.surface_draft_mut() else {
+      return false;
+    };
+    let Some(index) = draft
+      .widget_order
+      .iter()
+      .position(|candidate| *candidate == block)
+    else {
+      return false;
+    };
+    let target = if move_down {
+      index + 1
+    } else {
+      index.wrapping_sub(1)
+    };
+    if target >= draft.widget_order.len() {
+      return false;
+    }
+    draft.widget_order.swap(index, target);
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    self.menu.select(&rows, &Item::TelemetryBlock(block));
+    true
+  }
+
+  /// Moves the focused Control Panel card one position up or down, applied
+  /// immediately via the package's own `move` primitive — the same one its
+  /// real drag-and-drop panel already calls — rather than the draft+Apply
+  /// flow used for enable/disable. Returns `false` when the focused row is
+  /// not a panel card, a previous move is still applying, or the move would
+  /// go past either visible end, so the caller can fall through to normal
+  /// key handling.
+  pub fn move_focused_control_panel_card(&mut self, move_down: bool) -> bool {
+    if self.page
+      != (AppearancePage::SurfaceSection {
+        surface: EffectSurface::ControlPanel,
+        section: SurfaceSection::Sessions,
+      })
+      || self.action.is_some()
+    {
+      return false;
+    }
+    let rows = self.rows();
+    let Some(Item::PanelCard(card)) = self.menu.selected_id(&rows) else {
+      return false;
+    };
+    let visible = self
+      .state
+      .control_panel_order
+      .iter()
+      .copied()
+      .filter(|candidate| self.state.control_panel_cards.available(*candidate))
+      .collect::<Vec<_>>();
+    let Some(visible_index) = visible.iter().position(|candidate| *candidate == card) else {
+      return false;
+    };
+    let target_visible = if move_down {
+      visible_index + 1
+    } else {
+      visible_index.wrapping_sub(1)
+    };
+    let Some(neighbor) = visible.get(target_visible).copied() else {
+      return false;
+    };
+    let Some(current_index) = self
+      .state
+      .control_panel_order
+      .iter()
+      .position(|candidate| *candidate == card)
+    else {
+      return false;
+    };
+    let Some(target_index) = self
+      .state
+      .control_panel_order
+      .iter()
+      .position(|candidate| *candidate == neighbor)
+    else {
+      return false;
+    };
+    // Optimistic local swap so the row moves immediately; the background
+    // refresh triggered by `apply` reconciles with the script's own state.
+    self
+      .state
+      .control_panel_order
+      .swap(current_index, target_index);
+    self.apply(
+      tr(self.lang, "control_center.surface_settings_applied").into(),
+      move || backend::move_control_panel_card(card, target_index),
+    );
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    self.menu.select(&rows, &Item::PanelCard(card));
+    true
   }
 
   /// Opens a section of the current surface (Widget Telemetry or Control
@@ -1610,6 +1732,21 @@ impl AppearanceApp {
         ) {
           extra.push(("e", label("control_center.export")));
           extra.push(("i", label("control_center.import")));
+        }
+        let movable_row = matches!(
+          self.menu.selected_id(rows),
+          Some(Item::TelemetryBlock(_) | Item::PanelCard(_))
+        );
+        if movable_row
+          && matches!(
+            self.page,
+            AppearancePage::SurfaceSection {
+              surface: EffectSurface::WidgetTelemetry | EffectSurface::ControlPanel,
+              section: SurfaceSection::Sessions,
+            }
+          )
+        {
+          extra.push(("⇧↑/⇧↓", label("control_center.move_block")));
         }
         hints(
           self.lang,

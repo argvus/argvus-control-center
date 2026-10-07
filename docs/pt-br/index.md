@@ -114,8 +114,8 @@ Abra **Aparência** para ver os controles visuais integrados. Suas páginas são
 * **Wallpapers** — escolha um wallpaper incluído ou selecione um arquivo personalizado.
 * **Espaços, bordas e posição** — posição da taskbar, espaço da taskbar/shell, gaps das janelas, bordas e espessura das bordas.
 * **Efeitos** — ative ou desative o estado compartilhado de efeitos visuais.
-* **Widgets de telemetria** — ative a superfície de telemetria e selecione seus cards disponíveis.
-* **Control Panel** — ative, desative e reordene os cards do painel.
+* **Widgets de telemetria** — ative a superfície de telemetria, selecione seus blocos disponíveis e reordene-os (`Shift+↑`/`Shift+↓` com um bloco focado).
+* **Control Panel** — ative, desative e reordene os cards do painel (`Shift+↑`/`Shift+↓` com um card focado, aplicado na hora através do mesmo mecanismo que o arrastar do painel real usa).
 
 Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](/pt/docs/user-guide/appearance/), [Temas](/pt/docs/argvus-themes/) e [Janelas e layout](/pt/docs/argvus-hyprland/windows-and-layout/).
 
