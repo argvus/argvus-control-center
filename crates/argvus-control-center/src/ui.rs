@@ -626,6 +626,8 @@ fn home_icon_for_item(action: usize) -> String {
     19 => argvus_tui::icons::PALETTE,
     20 => argvus_tui::icons::MOUSE,
     21 => argvus_tui::icons::KEYBOARD,
+    22 => argvus_tui::icons::WINDOW_RULES,
+    23 => argvus_tui::icons::PROJECTS,
     _ => "",
   };
   let icon = AppConfig::icon(glyph);

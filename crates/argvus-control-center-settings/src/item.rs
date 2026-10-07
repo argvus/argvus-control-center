@@ -81,11 +81,21 @@ pub enum Item {
   Ratbag(RatbagRow),
 
   // Keyboard shortcuts.
-  /// Index into the loaded window rules.
+  /// Index into the loaded window rules. Every per-rule row edits a draft
+  /// until `ApplyWindowRule` saves it.
+  WindowRuleName(usize),
   WindowRuleWorkspace(usize),
   WindowRuleClasses(usize),
-  AddWindowRule,
+  ApplyWindowRule(usize),
   RemoveWindowRule(usize),
+  /// The name typed for the next rule, used by `AddWindowRule`.
+  NewWindowRuleName,
+  AddWindowRule,
+  /// Opens the editor for a new project path, or a new root when true.
+  AddProjectPath,
+  AddProjectRoot,
+  /// Index into the loaded project entries.
+  RemoveProject(usize),
   /// Index into the loaded keybindings.
   Keybinding(usize),
   RestoreAllShortcuts,

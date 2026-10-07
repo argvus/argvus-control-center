@@ -64,37 +64,31 @@ pub fn next_rule_name(rules: &[WindowRule]) -> String {
   format!("rule-{number}")
 }
 
-pub fn add(name: &str) -> Result<(), String> {
-  persist(
-    &format!("{POINTER_ROOT}/{name}"),
-    r#"{"workspace":1,"classes":[]}"#,
-  )
+/// A rule name becomes a config path segment, so only plain identifiers are accepted.
+pub fn is_valid_name(name: &str) -> bool {
+  !name.is_empty()
+    && name
+      .chars()
+      .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
 }
 
-pub fn set_workspace(name: &str, workspace: u64) -> Result<(), String> {
-  persist(
-    &format!("{POINTER_ROOT}/{name}/workspace"),
-    &workspace.to_string(),
-  )
-}
-
-pub fn set_classes(name: &str, classes: &[String]) -> Result<(), String> {
-  let value = serde_json::to_string(classes).map_err(|error| error.to_string())?;
-  persist(&format!("{POINTER_ROOT}/{name}/classes"), &value)
-}
-
-pub fn remove(name: &str) -> Result<(), String> {
-  let status = command("argvus-config")
-    .args(["unset", &format!("{POINTER_ROOT}/{name}")])
-    .status()
-    .map_err(|error| format!("failed to remove window rule: {error}"))?;
-  if !status.success() {
-    return Err("argvus-config rejected the window rule removal".into());
+/// Writes a rule under its name, renaming it when `original` differs, then reloads once.
+/// `None` creates a new rule.
+pub fn save(original: Option<&str>, rule: &WindowRule) -> Result<(), String> {
+  let value = serde_json::json!({ "workspace": rule.workspace, "classes": rule.classes });
+  write_value(&format!("{POINTER_ROOT}/{}", rule.name), &value.to_string())?;
+  if let Some(original) = original.filter(|original| *original != rule.name) {
+    unset_value(&format!("{POINTER_ROOT}/{original}"))?;
   }
   apply()
 }
 
-fn persist(pointer: &str, value: &str) -> Result<(), String> {
+pub fn remove(name: &str) -> Result<(), String> {
+  unset_value(&format!("{POINTER_ROOT}/{name}"))?;
+  apply()
+}
+
+fn write_value(pointer: &str, value: &str) -> Result<(), String> {
   let status = command("argvus-config")
     .args(["set", pointer, value])
     .status()
@@ -102,7 +96,18 @@ fn persist(pointer: &str, value: &str) -> Result<(), String> {
   if !status.success() {
     return Err("argvus-config rejected the window rule".into());
   }
-  apply()
+  Ok(())
+}
+
+fn unset_value(pointer: &str) -> Result<(), String> {
+  let status = command("argvus-config")
+    .args(["unset", pointer])
+    .status()
+    .map_err(|error| format!("failed to remove window rule: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the window rule removal".into());
+  }
+  Ok(())
 }
 
 fn apply() -> Result<(), String> {
@@ -128,5 +133,14 @@ mod tests {
       classes: Vec::new(),
     }];
     assert_eq!(next_rule_name(&rules), "rule-3");
+  }
+
+  #[test]
+  fn accepts_only_plain_rule_names() {
+    assert!(is_valid_name("browser"));
+    assert!(is_valid_name("ide-2_main"));
+    assert!(!is_valid_name(""));
+    assert!(!is_valid_name("has space"));
+    assert!(!is_valid_name("a/b"));
   }
 }

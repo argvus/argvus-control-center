@@ -445,6 +445,7 @@ impl App {
       Page::MouseTouchpad => self.input_rows(),
       Page::Keybindings => self.keybinding_rows(),
       Page::WindowRules => self.window_rules_rows(),
+      Page::Projects => self.projects_rows(),
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::Firewall
@@ -804,49 +805,148 @@ impl App {
     rows
   }
 
-  fn window_rules_rows(&self) -> Vec<Row<Item>> {
-    let mut rows = vec![Row::info(
-      self.label("control_center.window_rules_hint"),
-      String::new(),
-    )];
-    for (index, rule) in self.window_rules.iter().enumerate() {
-      rows.push(Row::section(rule.name.clone()));
-      rows.push(
-        Row::action(
-          Item::WindowRuleWorkspace(index),
-          self.label("control_center.window_rules_workspace"),
-        )
-        .detail(rule.workspace.to_string()),
-      );
-      rows.push(
-        Row::submenu(
-          Item::WindowRuleClasses(index),
-          self.label("control_center.window_rules_classes"),
-        )
-        .detail(rule.classes.join(", ")),
-      );
+  fn projects_rows(&self) -> Vec<Row<Item>> {
+    if !self.projects.available {
+      return vec![Row::info(
+        self.label("control_center.projects_unavailable"),
+        String::new(),
+      )];
     }
-    rows.push(Row::action(
-      Item::AddWindowRule,
-      self.label("control_center.window_rules_add"),
+    let mut rows = Vec::new();
+    rows.push(Row::section(
+      self.label("control_center.projects_entries").to_owned(),
     ));
+    if self.projects.entries.is_empty() {
+      rows.push(Row::info(
+        self.label("control_center.projects_empty"),
+        String::new(),
+      ));
+    }
+    for entry in &self.projects.entries {
+      let kind = match entry.source {
+        crate::system::projects::ProjectSource::Root => {
+          self.label("control_center.projects_kind_root")
+        }
+        crate::system::projects::ProjectSource::Path => {
+          self.label("control_center.projects_kind_path")
+        }
+      };
+      rows.push(Row::info(entry.path.clone(), kind.to_owned()));
+    }
+    rows.push(Row::section(
+      self.label("control_center.projects_add").to_owned(),
+    ));
+    rows.push(
+      Row::action(
+        Item::AddProjectPath,
+        self.label("control_center.projects_add_path"),
+      )
+      .icon(icons::ADD),
+    );
+    rows.push(
+      Row::action(
+        Item::AddProjectRoot,
+        self.label("control_center.projects_add_root"),
+      )
+      .icon(icons::FOLDER),
+    );
     let remove = self
-      .window_rules
+      .projects
+      .entries
       .iter()
       .enumerate()
-      .map(|(index, rule)| {
+      .map(|(index, entry)| {
         Row::destructive(
-          Item::RemoveWindowRule(index),
+          Item::RemoveProject(index),
           format!(
             "{} {}",
-            self.label("control_center.window_rules_remove"),
-            rule.name
+            self.label("control_center.projects_remove"),
+            entry.path
           ),
         )
         .icon(icons::DELETE)
       })
       .collect();
     self.danger_zone(&mut rows, remove);
+    rows
+  }
+
+  /// The window rules page: the form that adds a rule, then one block per
+  /// saved rule. Each block edits a draft that its Apply row saves.
+  fn window_rules_rows(&self) -> Vec<Row<Item>> {
+    let mut rows = vec![
+      Row::info(
+        self.label("control_center.window_rules_hint"),
+        String::new(),
+      ),
+      Row::section(self.label("control_center.window_rules_new")),
+      Row::value(
+        Item::NewWindowRuleName,
+        self.label("control_center.window_rules_name"),
+        self.new_window_rule_name.clone(),
+        None,
+      )
+      .icon(icons::ID_CARD),
+      Row::action(
+        Item::AddWindowRule,
+        self.label("control_center.window_rules_add"),
+      )
+      .icon(icons::ADD),
+    ];
+    if !self.window_rules.is_empty() {
+      // Two blank rows separate the new-rule form from the saved rules.
+      rows.push(Row::info(String::new(), String::new()));
+      rows.push(Row::info(String::new(), String::new()));
+      rows.push(Row::section(self.label("control_center.window_rules_list")));
+    }
+    for (index, loaded) in self.window_rules.iter().enumerate() {
+      let draft = self.window_rule_drafts.get(&loaded.name).unwrap_or(loaded);
+      rows.push(Row::section(loaded.name.clone()));
+      rows.push(
+        Row::value(
+          Item::WindowRuleName(index),
+          self.label("control_center.window_rules_name"),
+          draft.name.clone(),
+          None,
+        )
+        .icon(icons::ID_CARD),
+      );
+      rows.push(
+        Row::value(
+          Item::WindowRuleWorkspace(index),
+          self.label("control_center.window_rules_workspace"),
+          draft.workspace.to_string(),
+          Some(1),
+        )
+        .icon(icons::LAYOUT),
+      );
+      rows.push(
+        Row::value(
+          Item::WindowRuleClasses(index),
+          self.label("control_center.window_rules_classes"),
+          draft.classes.join(", "),
+          None,
+        )
+        .icon(icons::FILTER),
+      );
+      // `draft_actions` leads with a separator; the window rule block has none
+      // above Apply, so only its action row is kept.
+      let apply = draft_actions(
+        Item::ApplyWindowRule(index),
+        self.label("control_center.apply"),
+        self.window_rule_changed(loaded),
+      )
+      .pop();
+      rows.extend(apply);
+      rows.push(
+        Row::destructive(
+          Item::RemoveWindowRule(index),
+          self.label("control_center.remove"),
+        )
+        .icon(icons::DELETE),
+      );
+      rows.push(Row::separator());
+    }
     rows
   }
 

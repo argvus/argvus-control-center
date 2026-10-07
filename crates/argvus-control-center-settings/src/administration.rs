@@ -1569,6 +1569,18 @@ impl App {
             tr(self.lang, "control_center.font_size")
           )),
         },
+        // Window rule fields are drafts: Apply on the rule saves them.
+        EditTarget::WindowRuleName(name) => {
+          if let Some(loaded) = self
+            .window_rules
+            .iter()
+            .find(|rule| rule.name == name)
+            .cloned()
+          {
+            let draft = self.window_rule_drafts.entry(name).or_insert(loaded);
+            draft.name = value.trim().to_owned();
+          }
+        }
         EditTarget::WindowRuleClasses(name) => {
           let classes: Vec<String> = value
             .split(',')
@@ -1576,11 +1588,24 @@ impl App {
             .filter(|class| !class.is_empty())
             .map(str::to_owned)
             .collect();
-          match crate::system::window_rules::set_classes(&name, &classes) {
-            Ok(()) => self.window_rules = crate::system::window_rules::load(),
-            Err(error) => self.fail(error),
+          if let Some(loaded) = self
+            .window_rules
+            .iter()
+            .find(|rule| rule.name == name)
+            .cloned()
+          {
+            let draft = self.window_rule_drafts.entry(name).or_insert(loaded);
+            draft.classes = classes;
           }
         }
+        EditTarget::NewWindowRuleName => self.new_window_rule_name = value,
+        EditTarget::ProjectPath(root) => match crate::system::projects::add(&value, root) {
+          Ok(()) => {
+            self.projects = crate::system::projects::load();
+            self.success(tr(self.lang, "control_center.projects_added").to_string());
+          }
+          Err(error) => self.fail(error),
+        },
         EditTarget::DateTime => match crate::system::time::set_local_time(&value) {
           Ok(()) => self.refresh_time(),
           Err(error) => self.fail(error),
@@ -1607,7 +1632,13 @@ pub(crate) enum EditTarget {
   DateTime,
   /// Size used when a font is applied on the font selector (8–32).
   FontSize,
+  /// Draft name of a saved rule, keyed by its loaded name.
+  WindowRuleName(String),
   WindowRuleClasses(String),
+  /// The name typed for the next rule.
+  NewWindowRuleName,
+  /// A new project path, or a new root when true.
+  ProjectPath(bool),
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

@@ -396,6 +396,14 @@ impl App {
         "window rules workspace class app placement regras janela area de trabalho",
         "settings/window-rules",
       ),
+      #[cfg(feature = "apps")]
+      (
+        "settings.projects",
+        "applications",
+        "Projects",
+        "projects project folders path directory root shortcut seletor projetos pastas caminho diretorio raiz atalho",
+        "settings/projects",
+      ),
       #[cfg(feature = "about")]
       (
         "about",
@@ -1202,6 +1210,11 @@ impl App {
       label: tr(self.lang, "control_center.window_rules"),
       action: 22,
     });
+    #[cfg(feature = "apps")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.projects"),
+      action: 23,
+    });
     #[cfg(any(feature = "hardware", feature = "displays"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
@@ -1408,6 +1421,8 @@ impl App {
       0 => self.open_settings(Page::DefaultApps),
       #[cfg(feature = "apps")]
       22 => self.open_settings(Page::WindowRules),
+      #[cfg(feature = "apps")]
+      23 => self.open_settings(Page::Projects),
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
       #[cfg(feature = "locale")]
@@ -1616,6 +1631,8 @@ impl App {
       (_, "default-apps") => self.open_settings(Page::DefaultApps),
       #[cfg(feature = "apps")]
       (_, "window-rules") => self.open_settings(Page::WindowRules),
+      #[cfg(feature = "apps")]
+      (_, "projects") => self.open_settings(Page::Projects),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),

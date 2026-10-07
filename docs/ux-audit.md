@@ -893,6 +893,7 @@ Notas de projeto:
 | 3 | `diagnostics` | pendente |
 | 3 | `session` | pendente |
 | 3 | `about` | pendente |
+| 3 | `projects` (nova página em Applications, ao lado de Window rules; construída já no padrão de menu: seções Folders/Add, Danger zone; atalhos ficam no cheatsheet do Hyprland com `ConfirmDialog`, backend chama `argvus-projects list/add/remove`) | concluída, sem commit; verificação visual em 80x24 pendente |
 | 3 | Home (`argvus-control-center`) | pendente |
 | 4 | Chaves i18n órfãs (en-US e pt-BR) | pendente |
 | 4 | Código morto (páginas `Transparency`/`Blur*`, `argvus_tui::buttons`) | pendente |

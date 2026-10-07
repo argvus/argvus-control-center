@@ -65,6 +65,13 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
       format!("Move window to desktop {number}")
     });
   }
+  if let Some(number) = binding.id.strip_prefix("project.slot_") {
+    return Some(if portuguese {
+      format!("Projeto {number}")
+    } else {
+      format!("Project {number}")
+    });
+  }
   let description = match binding.id.as_str() {
     "window.toggle_floating" => (
       "Enable/Disable Floating Window",

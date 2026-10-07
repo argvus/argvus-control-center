@@ -10,6 +10,7 @@ pub mod keybindings;
 pub mod keyboard;
 pub mod locale;
 pub mod privileged;
+pub mod projects;
 pub mod ratbag;
 pub mod time;
 pub mod window_rules;

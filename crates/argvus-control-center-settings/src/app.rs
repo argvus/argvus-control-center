@@ -7,7 +7,7 @@ mod rows;
 
 pub(crate) use actions::setting_values;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use argvus_tui::confirm::{ConfirmOutcome, ConfirmState};
 use std::time::{Duration, Instant};
@@ -20,6 +20,7 @@ use crate::i18n::{Lang, tr};
 use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
 use crate::system::keybindings;
+use crate::system::projects;
 use crate::system::window_rules;
 use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
@@ -73,6 +74,7 @@ pub enum PendingAction {
   ResetFontSetting(SettingKind),
   ResetKeybindings,
   RemoveWindowRule(String),
+  RemoveProject(String),
   /// The `r` shortcut on one shortcut; `leave` also closes the edit page.
   RestoreKeybinding {
     id: String,
@@ -119,6 +121,10 @@ pub struct App {
   input: input::InputSettings,
   keybindings: Vec<keybindings::Binding>,
   pub(crate) window_rules: Vec<window_rules::WindowRule>,
+  /// Unsaved edits to loaded window rules, keyed by the loaded name.
+  pub(crate) window_rule_drafts: BTreeMap<String, window_rules::WindowRule>,
+  pub(crate) new_window_rule_name: String,
+  pub(crate) projects: projects::Projects,
   keybinding_capturing: bool,
   keybinding_editor_modifiers: [bool; 4],
   keybinding_editor_key: String,
@@ -209,6 +215,9 @@ impl App {
       input: input::InputSettings::default(),
       keybindings: keybindings::load(),
       window_rules: window_rules::load(),
+      window_rule_drafts: BTreeMap::new(),
+      new_window_rule_name: String::new(),
+      projects: projects::load(),
       keybinding_capturing: false,
       keybinding_editor_modifiers: [false; 4],
       keybinding_editor_key: String::new(),
@@ -310,6 +319,11 @@ impl App {
         "{root} > {} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts"),
         tr(self.lang, "control_center.window_rules")
+      ),
+      Page::Projects => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.projects")
       ),
       Page::KeybindingEdit => format!(
         "{root} > {} > {}",
@@ -579,8 +593,15 @@ impl App {
       },
       PendingAction::RemoveWindowRule(name) => match window_rules::remove(&name) {
         Ok(()) => {
-          self.window_rules = window_rules::load();
+          self.reload_window_rules();
           self.success(tr(self.lang, "control_center.window_rules_removed").to_string());
+        }
+        Err(error) => self.fail(error),
+      },
+      PendingAction::RemoveProject(path) => match projects::remove(&path) {
+        Ok(()) => {
+          self.projects = projects::load();
+          self.success(tr(self.lang, "control_center.projects_removed").to_string());
         }
         Err(error) => self.fail(error),
       },
@@ -658,7 +679,8 @@ impl App {
       | PendingAction::ResetFont(_)
       | PendingAction::ResetFontSetting(_)
       | PendingAction::ResetKeybindings
-      | PendingAction::RemoveWindowRule(_) => (label("control_center.confirm"), true),
+      | PendingAction::RemoveWindowRule(_)
+      | PendingAction::RemoveProject(_) => (label("control_center.confirm"), true),
       _ => (label("control_center.confirm"), false),
     };
     Some((title, message, confirm, danger))
@@ -1583,6 +1605,10 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
     PendingAction::RemoveWindowRule(name) => (
       tr(lang, "control_center.window_rules_remove").to_string(),
       name.clone(),
+    ),
+    PendingAction::RemoveProject(path) => (
+      tr(lang, "control_center.projects_remove_title").to_string(),
+      path.clone(),
     ),
     PendingAction::RestoreKeybinding { .. } => (
       tr(lang, "control_center.restore_shortcut_title").to_string(),

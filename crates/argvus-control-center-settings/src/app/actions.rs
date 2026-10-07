@@ -171,9 +171,14 @@ impl App {
       Item::RegionalLocale => self.open_system_page(Page::RegionalLocale),
       Item::SystemLocales => self.open_system_page(Page::SystemLocales),
       Item::Keyboard => self.open_system_page(Page::Keyboard),
-      Item::WindowRuleWorkspace(index) => self.adjust_window_rule_workspace(index, 1),
+      Item::WindowRuleName(index) => self.open_window_rule_name(index),
+      Item::WindowRuleWorkspace(index) => self.adjust_window_rule(index, 1),
       Item::WindowRuleClasses(index) => self.open_window_rule_classes(index),
+      Item::ApplyWindowRule(index) => self.apply_window_rule(index),
+      Item::NewWindowRuleName => self.open_new_window_rule_name(),
       Item::AddWindowRule => self.add_window_rule(),
+      Item::AddProjectPath => self.open_project_editor(false),
+      Item::AddProjectRoot => self.open_project_editor(true),
       Item::Zone(index) => self.apply_timezone(index),
       Item::LocalDateTime if !self.datetime.ntp.unwrap_or(false) => {
         self.admin.editor = Some(Editor::new(
@@ -261,7 +266,7 @@ impl App {
     match item {
       Item::FontSize => self.adjust_size(delta.signum() as i16),
       Item::Input(_) | Item::Ratbag(_) => self.input_cycle(item, delta.signum() as i8),
-      Item::WindowRuleWorkspace(index) => self.adjust_window_rule_workspace(index, delta),
+      Item::WindowRuleWorkspace(index) => self.adjust_window_rule(index, delta),
       _ => {}
     }
   }
@@ -279,6 +284,12 @@ impl App {
         if let Some(rule) = self.window_rules.get(index) {
           let name = rule.name.clone();
           self.open_confirm(PendingAction::RemoveWindowRule(name));
+        }
+      }
+      Item::RemoveProject(index) => {
+        if let Some(entry) = self.projects.entries.get(index) {
+          let path = entry.path.clone();
+          self.open_confirm(PendingAction::RemoveProject(path));
         }
       }
       _ => {}
@@ -333,6 +344,10 @@ impl App {
   fn leaving_drops_draft(&self) -> bool {
     match self.page() {
       Page::SystemLocales => self.locales_changed(),
+      Page::WindowRules => self
+        .window_rules
+        .iter()
+        .any(|rule| self.window_rule_changed(rule)),
       page => self.admin.leaving_drops_draft(page),
     }
   }
@@ -347,6 +362,10 @@ impl App {
           .filter(|entry| entry.enabled)
           .map(|entry| format!("{} {}", entry.locale, entry.encoding))
           .collect();
+      }
+      Page::WindowRules => {
+        self.window_rule_drafts.clear();
+        self.new_window_rule_name.clear();
       }
       page => self.admin.discard_draft(page),
     }
@@ -436,6 +455,12 @@ impl App {
       Page::KeybindingEdit => {
         extra.push(("e", label("control_center.change_shortcut")));
         extra.push(("r", label("control_center.restore_default")));
+      }
+      Page::WindowRules
+        if matches!(self.selected_item(), Some(Item::WindowRuleWorkspace(_))) =>
+      {
+        // `←/→` steps the workspace both ways, so the footer names it.
+        extra.push(("←/→", label("control_center.window_rules_workspace")));
       }
       Page::KeyboardLayout if row.is_some() => {
         // Enter sets the default layout and Space enables or disables it,
@@ -820,38 +845,158 @@ impl App {
     self.success(tr(self.lang, "control_center.keybindings_restored").to_string());
   }
 
-  fn adjust_window_rule_workspace(&mut self, index: usize, delta: i32) {
-    let Some(rule) = self.window_rules.get(index) else {
-      return;
-    };
-    let workspace = window_rules::cycle_workspace(rule.workspace, delta);
-    let name = rule.name.clone();
-    match window_rules::set_workspace(&name, workspace) {
-      Ok(()) => self.window_rules = window_rules::load(),
-      Err(error) => self.fail(error),
-    }
+  /// Reloads the saved rules and keeps the drafts whose rule still exists.
+  pub(crate) fn reload_window_rules(&mut self) {
+    self.window_rules = window_rules::load();
+    let rules = &self.window_rules;
+    self
+      .window_rule_drafts
+      .retain(|name, _| rules.iter().any(|rule| &rule.name == name));
   }
 
-  fn open_window_rule_classes(&mut self, index: usize) {
-    let Some(rule) = self.window_rules.get(index) else {
+  /// Whether a rule differs from its saved state. Only drafts can differ.
+  pub(crate) fn window_rule_changed(&self, rule: &window_rules::WindowRule) -> bool {
+    self
+      .window_rule_drafts
+      .get(&rule.name)
+      .is_some_and(|draft| draft != rule)
+  }
+
+  /// Changes the draft of a saved rule; nothing reaches the config until Apply.
+  fn edit_window_rule(&mut self, index: usize, edit: impl FnOnce(&mut window_rules::WindowRule)) {
+    let Some(loaded) = self.window_rules.get(index).cloned() else {
       return;
     };
+    let draft = self
+      .window_rule_drafts
+      .entry(loaded.name.clone())
+      .or_insert_with(|| loaded.clone());
+    edit(draft);
+  }
+
+  fn adjust_window_rule(&mut self, index: usize, delta: i32) {
+    self.edit_window_rule(index, |rule| {
+      rule.workspace = window_rules::cycle_workspace(rule.workspace, delta);
+    });
+  }
+
+  /// Opens the name editor of a saved rule, showing its draft name.
+  fn open_window_rule_name(&mut self, index: usize) {
+    let Some(loaded) = self.window_rules.get(index) else {
+      return;
+    };
+    let draft = self.window_rule_drafts.get(&loaded.name).unwrap_or(loaded);
     self.admin.editor = Some(Editor::new(
-      tr(self.lang, "control_center.window_rules_classes").into(),
-      rule.classes.join(", "),
-      EditTarget::WindowRuleClasses(rule.name.clone()),
+      tr(self.lang, "control_center.window_rules_name").into(),
+      draft.name.clone(),
+      EditTarget::WindowRuleName(loaded.name.clone()),
       false,
     ));
   }
 
-  fn add_window_rule(&mut self) {
-    let name = window_rules::next_rule_name(&self.window_rules);
-    match window_rules::add(&name) {
+  fn open_window_rule_classes(&mut self, index: usize) {
+    let Some(loaded) = self.window_rules.get(index) else {
+      return;
+    };
+    let draft = self.window_rule_drafts.get(&loaded.name).unwrap_or(loaded);
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.window_rules_classes").into(),
+      draft.classes.join(", "),
+      EditTarget::WindowRuleClasses(loaded.name.clone()),
+      false,
+    ));
+  }
+
+  fn open_new_window_rule_name(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.window_rules_name").into(),
+      self.new_window_rule_name.clone(),
+      EditTarget::NewWindowRuleName,
+      false,
+    ));
+  }
+
+  /// Saves the draft of one rule. A new name renames the rule.
+  fn apply_window_rule(&mut self, index: usize) {
+    let Some(loaded) = self.window_rules.get(index).cloned() else {
+      return;
+    };
+    let Some(draft) = self.window_rule_drafts.get(&loaded.name).cloned() else {
+      return;
+    };
+    if let Err(message) = self.check_window_rule_name(&draft.name, Some(loaded.name.as_str())) {
+      self.fail(message);
+      return;
+    }
+    match window_rules::save(Some(loaded.name.as_str()), &draft) {
       Ok(()) => {
-        self.window_rules = window_rules::load();
+        self.window_rule_drafts.remove(&loaded.name);
+        self.reload_window_rules();
+        self.success(tr(self.lang, "control_center.window_rules_applied").to_string());
+      }
+      Err(error) => self.fail(error),
+    }
+  }
+
+  /// Adds a rule named by the typed name, or by the next free `rule-N` when empty.
+  fn add_window_rule(&mut self) {
+    let typed = self.new_window_rule_name.trim().to_owned();
+    let name = if typed.is_empty() {
+      window_rules::next_rule_name(&self.window_rules)
+    } else {
+      typed
+    };
+    if let Err(message) = self.check_window_rule_name(&name, None) {
+      self.fail(message);
+      return;
+    }
+    let rule = window_rules::WindowRule {
+      name,
+      workspace: 1,
+      classes: Vec::new(),
+    };
+    match window_rules::save(None, &rule) {
+      Ok(()) => {
+        self.new_window_rule_name.clear();
+        self.reload_window_rules();
         self.success(tr(self.lang, "control_center.window_rules_saved").to_string());
       }
       Err(error) => self.fail(error),
     }
+  }
+
+  /// Validates a rule name. `current` is the saved name of the rule being
+  /// changed, which may keep its own name.
+  pub(crate) fn check_window_rule_name(
+    &self,
+    name: &str,
+    current: Option<&str>,
+  ) -> Result<(), String> {
+    if !window_rules::is_valid_name(name) {
+      return Err(tr(self.lang, "control_center.window_rules_invalid_name").into());
+    }
+    let taken = self
+      .window_rules
+      .iter()
+      .any(|rule| rule.name == name && Some(rule.name.as_str()) != current);
+    if taken {
+      return Err(tr(self.lang, "control_center.window_rules_name_in_use").into());
+    }
+    Ok(())
+  }
+
+  /// Opens the single-line editor for a new project path, or a new root.
+  fn open_project_editor(&mut self, root: bool) {
+    let title = if root {
+      tr(self.lang, "control_center.projects_add_root")
+    } else {
+      tr(self.lang, "control_center.projects_add_path")
+    };
+    self.admin.editor = Some(Editor::new(
+      title.into(),
+      String::new(),
+      EditTarget::ProjectPath(root),
+      false,
+    ));
   }
 }

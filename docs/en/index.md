@@ -40,7 +40,7 @@ The main settings tree currently includes:
 | Appearance | Themes, theme modes, highlight color, wallpapers, effects, spaces/borders/position, taskbar position and spacing, taskbar utility group, widget telemetry and Control Panel cards |
 | Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap, keyboard shortcuts |
 | Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
-| Applications | Default applications and per-category selectors, Window rules |
+| Applications | Default applications and per-category selectors, Window rules, Projects |
 | System | Hostname, firewall, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
 | Services and diagnostics | Services, boot, packages, storage and diagnostics |
@@ -139,6 +139,8 @@ Reset support is deliberately per domain:
 - **Default applications** can restore all defaults, a category, or an individual selector.
 - **Keyboard shortcuts** can restore one binding or all bindings and then reload the generated session bindings.
 - **Window rules** is in **Applications → Window rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus-config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
+
+- **Projects** is in **Applications → Projects** (search `projects` or run `argvus-control-center projects`). It lists the folders the project switcher uses, marked as a root (its subfolders are projects) or a single project. **Add project folder** and **Add root folder** open a text field with the path; the launcher checks that it is a directory and shows the error otherwise. **Remove** for each entry sits in the **Danger zone** and asks for confirmation. The page calls `argvus-projects`, so changes are written by the launcher and apply the next time `SUPER + O` or `SUPER + ALT + 1..9` runs. If `argvus-projects` is not installed, the page says so.
 - **Other system pages** expose reset, apply, delete or restore actions only when the underlying provider supports them.
 
 Removing a user preference can make a provider fall back to its packaged/default state, but deleting files by hand is not a general recovery procedure. Prefer the page's reset action or the documented feature-specific command.
@@ -156,7 +158,7 @@ argvus-control-center keybindings
 
 Run `argvus-control-center --help` for the routes available in the installed version. The command-line route is a shortcut into the same settings application, not a separate configuration system.
 
-Useful direct routes include `apps`, `window-rules`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
+Useful direct routes include `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
 
 ## Related
 

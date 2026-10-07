@@ -84,6 +84,8 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     "input" | "mouse" | "touchpad" if args.len() == 1 => Ok(settings_route(Page::MouseTouchpad)),
     #[cfg(feature = "apps")]
     "window-rules" | "window_rules" if args.len() == 1 => Ok(settings_route(Page::WindowRules)),
+    #[cfg(feature = "apps")]
+    "projects" if args.len() == 1 => Ok(settings_route(Page::Projects)),
     "keybindings" | "shortcuts" | "keyboard" if args.len() == 1 => {
       Ok(settings_route(Page::Keybindings))
     }
