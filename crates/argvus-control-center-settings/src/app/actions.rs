@@ -456,9 +456,7 @@ impl App {
         extra.push(("e", label("control_center.change_shortcut")));
         extra.push(("r", label("control_center.restore_default")));
       }
-      Page::WindowRules
-        if matches!(self.selected_item(), Some(Item::WindowRuleWorkspace(_))) =>
-      {
+      Page::WindowRules if matches!(self.selected_item(), Some(Item::WindowRuleWorkspace(_))) => {
         // `←/→` steps the workspace both ways, so the footer names it.
         extra.push(("←/→", label("control_center.window_rules_workspace")));
       }
