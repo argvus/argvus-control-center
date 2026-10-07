@@ -1503,144 +1503,152 @@ impl AppearanceApp {
 
   fn breadcrumb_of(&self, page: AppearancePage) -> String {
     let root = tr(self.lang, "control_center.appearance");
+    // Window Spaces, Animations, Blur and Borders are owned by the Hyprland
+    // domain: they only exist behind the Hyprland router (crate principal),
+    // even though they are implemented in this crate for reuse. Their
+    // breadcrumb reflects that ownership instead of this crate's own root.
+    let hyprland_root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.hyprland"),
+      tr(self.lang, "control_center.settings")
+    );
     match page {
       AppearancePage::Home => root.into(),
-      AppearancePage::Themes => format!("{root} › {}", tr(self.lang, "control_center.themes")),
+      AppearancePage::Themes => format!("{root} > {}", tr(self.lang, "control_center.themes")),
       AppearancePage::OfficialThemes => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_official")
       ),
       AppearancePage::ThemeImport => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_import")
       ),
       AppearancePage::ThemeFamilies { category } => format!(
-        "{root} › {} › {} › {}",
+        "{root} > {} > {} > {}",
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_official"),
         tr(self.lang, theme_category_label_key(category))
       ),
       AppearancePage::CustomThemes => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.themes"),
         tr(self.lang, "control_center.theme_profile_custom")
       ),
       AppearancePage::Mode => {
         format!(
-          "{root} › {}",
+          "{root} > {}",
           tr(self.lang, "control_center.appearance_mode")
         )
       }
       AppearancePage::Wallpapers => {
-        format!("{root} › {}", tr(self.lang, "control_center.wallpapers"))
+        format!("{root} > {}", tr(self.lang, "control_center.wallpapers"))
       }
       AppearancePage::WallpaperModes { collection } => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.wallpapers"),
         tr(self.lang, collection.label_key())
       ),
       AppearancePage::WallpaperItems { collection, mode } => format!(
-        "{root} › {} › {} › {}",
+        "{root} > {} > {} > {}",
         tr(self.lang, "control_center.wallpapers"),
         tr(self.lang, collection.label_key()),
         tr(self.lang, mode.label_key())
       ),
       AppearancePage::Accents => format!(
-        "{root} › {}",
+        "{root} > {}",
         tr(self.lang, "control_center.highlight_color")
       ),
       AppearancePage::AccentEdit => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.highlight_color"),
         tr(self.lang, "control_center.edit_highlight_color")
       ),
       // Unreachable page kept until the Phase 4 cleanup (see rows.rs); its
       // former parent ("Effects") no longer exists.
       AppearancePage::Transparency => {
-        format!("{root} › {}", tr(self.lang, "control_center.transparency"))
+        format!("{root} > {}", tr(self.lang, "control_center.transparency"))
       }
       // Entered directly from the Hyprland category (crate principal); no
       // intermediate "Effects" level in this crate anymore.
-      AppearancePage::Blur => format!("{root} › {}", tr(self.lang, "control_center.blur")),
-      AppearancePage::Terminal => format!("{root} › {}", tr(self.lang, "control_center.terminal")),
+      AppearancePage::Blur => format!("{hyprland_root} > {}", tr(self.lang, "control_center.blur")),
+      AppearancePage::Terminal => format!("{root} > {}", tr(self.lang, "control_center.terminal")),
       AppearancePage::TerminalTransparency => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.terminal"),
         tr(self.lang, "control_center.transparency")
       ),
-      AppearancePage::Launchers => format!("{root} › {}", tr(self.lang, "control_center.launcher")),
+      AppearancePage::Launchers => format!("{root} > {}", tr(self.lang, "control_center.launcher")),
       AppearancePage::TransparencySurface { surface } => format!(
-        "{root} › {} › {} › {}",
+        "{root} > {} > {} > {}",
         tr(self.lang, "control_center.effects"),
         tr(self.lang, "control_center.transparency"),
         tr(self.lang, surface.label_key())
       ),
       AppearancePage::BlurSurface { surface } => format!(
-        "{root} › {} › {} › {}",
-        tr(self.lang, "control_center.effects"),
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.blur"),
         tr(self.lang, surface.label_key())
       ),
       AppearancePage::TaskbarPosition => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.position")
       ),
       AppearancePage::TaskbarSpaces => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.spaces")
       ),
       AppearancePage::Taskbar => {
-        format!("{root} › {}", tr(self.lang, "control_center.taskbar"))
+        format!("{root} > {}", tr(self.lang, "control_center.taskbar"))
       }
       AppearancePage::TaskbarIcons => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.icons")
       ),
       AppearancePage::TaskbarDate => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.date")
       ),
       AppearancePage::TaskbarDateFormat => format!(
-        "{root} › {} › {} › {}",
+        "{root} > {} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.date"),
         tr(self.lang, "control_center.format")
       ),
       AppearancePage::TaskbarTime => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.time")
       ),
       AppearancePage::TaskbarTimeFormat => format!(
-        "{root} › {} › {} › {}",
+        "{root} > {} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.time"),
         tr(self.lang, "control_center.format")
       ),
       AppearancePage::WidgetTelemetry => format!(
-        "{root} › {}",
+        "{root} > {}",
         tr(self.lang, "control_center.widget_telemetry")
       ),
       AppearancePage::ControlPanel => {
-        format!("{root} › {}", tr(self.lang, "control_center.control_panel"))
+        format!("{root} > {}", tr(self.lang, "control_center.control_panel"))
       }
       AppearancePage::SurfaceSection {
         surface: EffectSurface::Taskbar,
         section: SurfaceSection::UtilityIcons,
       } => format!(
-        "{root} › {} › {} › {}",
+        "{root} > {} > {} > {}",
         tr(self.lang, "control_center.taskbar"),
         tr(self.lang, "control_center.icons"),
         tr(self.lang, "control_center.utilities")
       ),
       AppearancePage::SurfaceSection { surface, section } => format!(
-        "{root} › {} › {}",
+        "{root} > {} > {}",
         tr(self.lang, surface.label_key()),
         tr(
           self.lang,
@@ -1654,34 +1662,43 @@ impl AppearanceApp {
       ),
       // Entry points reached from the Hyprland category (crate principal).
       AppearancePage::WindowSpaces => {
-        format!("{root} › {}", tr(self.lang, "control_center.window_spaces"))
+        format!(
+          "{hyprland_root} > {}",
+          tr(self.lang, "control_center.window_spaces")
+        )
       }
       AppearancePage::WindowSpacesInner => format!(
-        "{root} › {} › {}",
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.window_spaces"),
         tr(self.lang, "control_center.inner")
       ),
       AppearancePage::WindowSpacesOuter => format!(
-        "{root} › {} › {}",
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.window_spaces"),
         tr(self.lang, "control_center.outer")
       ),
       AppearancePage::Animations => {
-        format!("{root} › {}", tr(self.lang, "control_center.animations"))
+        format!(
+          "{hyprland_root} > {}",
+          tr(self.lang, "control_center.animations")
+        )
       }
-      AppearancePage::Borders => format!("{root} › {}", tr(self.lang, "control_center.borders")),
+      AppearancePage::Borders => format!(
+        "{hyprland_root} > {}",
+        tr(self.lang, "control_center.borders")
+      ),
       AppearancePage::GeneralBorders => format!(
-        "{root} › {} › {}",
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.borders"),
         tr(self.lang, "control_center.rounded")
       ),
       AppearancePage::EdgeThickness => format!(
-        "{root} › {} › {}",
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.borders"),
         tr(self.lang, "control_center.thickness")
       ),
       AppearancePage::Prompt { goal } => format!(
-        "{} › {}",
+        "{} > {}",
         self.breadcrumb_for_prompt(goal),
         tr(self.lang, self.prompt_label(goal))
       ),

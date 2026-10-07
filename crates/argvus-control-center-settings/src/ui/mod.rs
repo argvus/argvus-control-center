@@ -94,7 +94,7 @@ fn draw_user_page(app: &mut App, frame: &mut Frame, area: Rect) {
     .split(inner);
 
   // Title
-  let title_text = "ARGVUS Control Center > System > Users";
+  let title_text = app.breadcrumb();
   let title = Paragraph::new(title_text)
     .style(
       Style::default()

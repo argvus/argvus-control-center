@@ -83,9 +83,14 @@ fn match_rank(query: &str, entry: &SearchEntry) -> Option<u8> {
   if title.contains(query) {
     return Some(3);
   }
+  if title.split_whitespace().any(|word| word.contains(query))
+    || category.split_whitespace().any(|word| word.contains(query))
+  {
+    return Some(4);
+  }
   let keywords = entry.keywords.iter().map(|keyword| normalize(keyword));
   if keywords.clone().any(|keyword| keyword == query) {
-    return Some(4);
+    return Some(5);
   }
   if entry
     .keywords
@@ -93,7 +98,7 @@ fn match_rank(query: &str, entry: &SearchEntry) -> Option<u8> {
     .map(|keyword| normalize(keyword))
     .any(|keyword| keyword.starts_with(query))
   {
-    return Some(5);
+    return Some(6);
   }
   if entry
     .keywords
@@ -101,10 +106,10 @@ fn match_rank(query: &str, entry: &SearchEntry) -> Option<u8> {
     .map(|keyword| normalize(keyword))
     .any(|keyword| keyword.contains(query))
   {
-    return Some(6);
+    return Some(7);
   }
   if category.contains(query) || normalize(&entry.id).contains(query) {
-    return Some(7);
+    return Some(8);
   }
   None
 }

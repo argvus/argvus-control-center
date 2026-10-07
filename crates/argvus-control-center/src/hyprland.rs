@@ -130,10 +130,14 @@ fn info_rows(app: &App) -> Vec<Row<Item>> {
 
 /// Breadcrumb of the current Hyprland view.
 pub fn breadcrumb(app: &App) -> String {
-  let root = tr(app.lang, "control_center.hyprland");
+  let root = format!(
+    "{} > {}",
+    tr(app.lang, "control_center.hyprland"),
+    tr(app.lang, "control_center.settings")
+  );
   match app.hyprland.view {
-    View::List => root.into(),
-    View::Info => format!("{root} › {}", tr(app.lang, "control_center.info")),
+    View::List => root,
+    View::Info => format!("{root} > {}", tr(app.lang, "control_center.info")),
   }
 }
 

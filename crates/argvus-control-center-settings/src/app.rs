@@ -262,6 +262,15 @@ impl App {
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.argvus_control_center");
+    // Keybindings/WindowRules (and their sub-pages) are owned by the Hyprland
+    // domain: they only exist behind the Hyprland router, even though they are
+    // implemented in this crate for reuse. Their breadcrumb reflects that
+    // ownership instead of this crate's own root.
+    let hyprland_root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.hyprland"),
+      tr(self.lang, "control_center.settings")
+    );
     match self.page() {
       Page::Main => root.to_string(),
       Page::DefaultApps => format!("{root} > {}", tr(self.lang, "control_center.default_apps")),
@@ -312,12 +321,11 @@ impl App {
         tr(self.lang, "control_center.keyboard")
       ),
       Page::Keybindings => format!(
-        "{root} > {}",
+        "{hyprland_root} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts")
       ),
       Page::WindowRules => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.keyboard_shortcuts"),
+        "{hyprland_root} > {}",
         tr(self.lang, "control_center.window_rules")
       ),
       Page::Projects => format!(
@@ -326,12 +334,12 @@ impl App {
         tr(self.lang, "control_center.projects")
       ),
       Page::KeybindingEdit => format!(
-        "{root} > {} > {}",
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts"),
         tr(self.lang, "control_center.edit_shortcut")
       ),
       Page::KeybindingCapture => format!(
-        "{root} > {} > {}",
+        "{hyprland_root} > {} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts"),
         tr(self.lang, "control_center.change_shortcut")
       ),

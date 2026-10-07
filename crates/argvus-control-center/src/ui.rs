@@ -11,7 +11,10 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Widget};
+use ratatui::widgets::{
+  Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
+  Widget,
+};
 
 use crate::app::{App, HomeRow, Route};
 
@@ -398,6 +401,26 @@ fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
     }
     y += height;
   }
+
+  let total_height: usize = row_heights.iter().map(|height| *height as usize).sum();
+  if total_height > visible_height as usize {
+    let track = Rect {
+      x: area.right().saturating_sub(1),
+      y: content.y,
+      width: 1,
+      height: content.height,
+    };
+    if track.x >= content.x && track.width > 0 {
+      let mut state = ScrollbarState::new(rows.len()).position(app.home_scroll);
+      Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(None)
+        .end_symbol(None)
+        .track_symbol(Some("│"))
+        .thumb_style(Style::new().fg(app.theme.accent))
+        .track_style(Style::new().fg(app.theme.border_active))
+        .render(track, frame.buffer_mut(), &mut state);
+    }
+  }
 }
 
 fn home_cards(app: &App) -> Vec<HomeCard> {
@@ -742,6 +765,7 @@ fn search_title(
     "smart" => "control_center.smart",
     "usage" => "control_center.disk_usage",
     "keybindings" => "control_center.keyboard_shortcuts",
+    "mode" => "control_center.resolution",
     _ => return entry.title.clone(),
   };
   let translated = tr(lang, key);
