@@ -1310,6 +1310,58 @@ As chaves novas (`unavailable_no_wifi_card`, `signal`, `security`,
 `frequency`) só aparecem traduzidas com `argvus-i18n` instalado a partir de
 `b46d99b`.
 
+### 5.2 Correções fora da migração de `RowKind` (2026-10-07)
+
+Três bugs relatados pelo usuário, sem relação com a migração de botões →
+`RowKind` das Fases 1-4; não alteram o status "pendente" da linha "Home" na
+tabela de Progresso (que é só sobre migrar o grid da Home para o menu
+compartilhado).
+
+**Breadcrumb/título duplicando "ARGVUS" e caminho errado no Hyprland.**
+`draw_header` (`argvus-tui`) já desenha "ARGVUS" em negrito; a chave i18n
+`control_center.argvus_control_center` e o `shell()` do `argvus-tui` também
+incluíam "ARGVUS Control Center" no texto, duplicando a marca em toda tela
+(`"ARGVUS ARGVUS Control Center"`). A chave passou a valer só `"Control
+Center"` (en-US e pt-BR). Além disso, Keyboard Shortcuts, Window Rules e as
+páginas de efeitos reaproveitadas do `appearance` (Window Spaces, Animations,
+Blur, Borders) só existem atrás do roteador "Hyprland" do Home, mas o
+breadcrumb delas ainda mostrava a raiz genérica da Settings/Appearance, e
+Window Rules ficava aninhado por engano sob Keyboard Shortcuts. O breadcrumb
+dessas páginas agora é `Hyprland > Settings > …`, a própria tela "Hyprland"
+ganhou o segmento "Settings" (`Hyprland > Settings`), e o separador `›` usado
+só em `hyprland.rs`/`appearance` foi trocado por `>` para bater com o resto do
+app. O título hardcoded (sem i18n) da tela de Usuários também foi trocado
+para usar `app.breadcrumb()`.
+
+Isso também torna a documentação em `docs/en/index.md` e `docs/pt-br/index.md`
+que descrevia "Window rules" como estando em "Applications" desatualizada:
+desde a reorganização da Home que introduziu a categoria "Hyprland" (commit
+`0400503`, anterior a esta correção), Window rules e Keyboard Shortcuts vivem
+em "Hyprland", não em "Applications". Os dois `index.md` foram corrigidos
+junto desta correção de breadcrumb, já que os dois descrevem o mesmo caminho.
+
+**Busca da Home imprecisa.** `SearchRegistry::match_rank`
+(`argvus-control-center-core`) só considerava `starts_with` por palavra ou
+`contains` no título inteiro; agora também casa por `contains` em qualquer
+palavra individual do título/categoria, então digitar um trecho no meio de
+uma palavra (ex.: "resolu") encontra a tela mesmo sem depender só da lista de
+`keywords`. O rótulo exibido para a entrada de resolução de Displays também
+estava errado (mostrava "Res" em vez de "Resolution"); corrigido o mapeamento
+em `search_title` (`argvus-control-center/src/ui.rs`).
+
+**Scroll lateral ausente na Home.** `draw_home_cards` não tinha nenhum
+indicador visual de que havia mais conteúdo abaixo quando o grid não cabia na
+tela (só truncava o desenho). Passou a desenhar uma `Scrollbar` do ratatui na
+borda direita, no mesmo padrão já usado em `argvus-about`, visível só quando
+o total de linhas do grid excede a altura visível.
+
+Validação: `cargo fmt --all -- --check`, `cargo check --workspace
+--all-features`, `cargo clippy --workspace --all-features -- -D warnings` e
+`cargo test` (por crate) em `argvus-control-center`,
+`argvus-control-center-settings`, `argvus-control-center-appearance`,
+`argvus-control-center-core` e `argvus-tui`, todos sem falhas. Não
+documentado como "Fase" porque não migra nenhum botão para `RowKind`.
+
 ## 6. Pontos de decisão
 
 ### 6.1 Decisões registradas (2026-10-04)

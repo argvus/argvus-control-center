@@ -24,13 +24,16 @@ A tela inicial atual do Control Center oferece estas áreas:
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
 * **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
+* **Hyprland** — atalhos de teclado, regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (espaços de janela, animações, blur, bordas), além da versão instalada do Hyprland.
 * **Displays, rede, sessão e outros domínios** — disponíveis pela busca inicial e pelas rotas de domínio quando os recursos opcionais correspondentes estão instalados.
 
 As páginas exatas dos providers podem depender dos pacotes instalados e das permissões. A ausência de um domínio opcional não significa necessariamente que o Control Center esteja quebrado.
 
+Quando a grade tem mais itens do que cabem na tela, uma barra de rolagem aparece na borda direita para indicar que há mais conteúdo abaixo.
+
 ## Encontrando uma configuração
 
-A tela inicial registra configurações por título, categoria, identificador e palavras-chave. A busca ignora acentos e aceita termos práticos como `theme`, `wallpaper`, `shortcut`, `mouse`, `monitor`, `network`, `user` e `DPI`. Correspondências exatas de título aparecem primeiro, seguidas por prefixos e palavras-chave.
+A tela inicial registra configurações por título, categoria, identificador e palavras-chave. A busca ignora acentos e aceita termos práticos como `theme`, `wallpaper`, `shortcut`, `mouse`, `monitor`, `network`, `user` e `DPI`. Correspondências exatas de título aparecem primeiro, seguidas por prefixo do título, por qualquer palavra do título ou categoria que contenha o texto digitado e, por fim, por palavras-chave — ou seja, digitar qualquer trecho de uma palavra (não só o início) ainda encontra o destino.
 
 O menu visível reconhece as capacidades disponíveis. Uma rota pode não aparecer quando seu provider não está instalado, quando o hardware não está disponível ou quando a sessão atual não oferece a capacidade necessária. Por isso, a busca também é uma forma de descobrir o que esta instalação pode configurar.
 
@@ -39,9 +42,10 @@ A árvore atual de configurações inclui:
 | Área | Destinos atuais |
 | --- | --- |
 | Aparência | Temas, modos de tema, cor de destaque, wallpapers, efeitos, espaços/bordas/posição, posição e espaços da taskbar, grupo utilitário da taskbar, telemetria e cards do Control Panel |
-| Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console, atalhos de teclado |
+| Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console |
 | Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria, Regras de janela, Projetos |
+| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos |
+| Hyprland | Atalhos de teclado, Regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (Espaços de janela, Animações, Blur, Bordas), além da versão instalada do Hyprland |
 | Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
 | Serviços e diagnósticos | Serviços, boot, pacotes, armazenamento e diagnósticos |
@@ -139,7 +143,7 @@ O suporte à restauração é específico de cada domínio:
 * **Fontes** pode restaurar todas as fontes, um alvo ou uma configuração individual.
 * **Aplicativos padrão** pode restaurar todos os padrões, uma categoria ou um seletor individual.
 * **Atalhos de teclado** pode restaurar um atalho ou todos e então recarregar os atalhos gerados da sessão.
-* **Regras de janela** ficam em **Aplicativos → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
+* **Regras de janela** ficam em **Hyprland → Configurações → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
 
 * **Projetos** ficam em **Aplicativos → Projetos** (busque por `projetos` ou execute `argvus-control-center projects`). A página lista as pastas usadas pelo seletor de projetos, marcadas como raiz (seus subdiretórios são projetos) ou projeto único. **Adicionar pasta de projeto** e **Adicionar pasta raiz** abrem um campo de texto com o caminho; o launcher confere se é um diretório e mostra o erro caso não seja. **Remover** de cada entrada fica na **Zona de perigo** e pede confirmação. A página chama o `argvus-projects`, então as alterações são gravadas pelo launcher e valem na próxima vez que `SUPER + O` ou `SUPER + ALT + 1..9` forem usados. Se o `argvus-projects` não estiver instalado, a página informa isso.
 * **Outras páginas do sistema** exibem ações de restauração, aplicação, exclusão ou recuperação somente quando o provider responsável oferece esse recurso.

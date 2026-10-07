@@ -23,13 +23,16 @@ The current Control Center home provides these areas:
 - **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
 - **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
 - **System** — host, users, groups and system administration pages available to the current installation.
+- **Hyprland** — keyboard shortcuts, window rules and the window-effects pages reused from Appearance (window spaces, animations, blur, borders), plus the installed Hyprland version.
 - **Displays, network, session and other domains** — available through the home search and domain routes when the corresponding optional capabilities are installed.
 
 The exact provider pages can depend on installed packages and permissions. Do not assume that a missing optional domain is a broken Control Center.
 
+When the grid has more entries than fit on screen, a scrollbar appears along the right edge to show there is more below.
+
 ## Finding a setting
 
-The home screen registers settings by title, category, identifier and keywords. Search is accent-insensitive and accepts practical terms such as `theme`, `wallpaper`, `shortcut`, `mouse`, `monitor`, `network`, `user` and `DPI`. Exact title matches are ranked first, followed by prefix and keyword matches.
+The home screen registers settings by title, category, identifier and keywords. Search is accent-insensitive and accepts practical terms such as `theme`, `wallpaper`, `shortcut`, `mouse`, `monitor`, `network`, `user` and `DPI`. Exact title matches are ranked first, followed by a title prefix, any word of the title or category that contains the typed text, and finally keyword matches — so typing any part of a word (not only its start) can still find the destination.
 
 The visible menu is capability-aware. A route can be absent when its provider is not installed, when the hardware is not available, or when the current session cannot provide the required capability. Search is therefore also a useful way to discover what this installation can configure.
 
@@ -38,9 +41,10 @@ The main settings tree currently includes:
 | Area | Current destinations |
 | --- | --- |
 | Appearance | Themes, theme modes, highlight color, wallpapers, effects, spaces/borders/position, taskbar position and spacing, taskbar utility group, widget telemetry and Control Panel cards |
-| Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap, keyboard shortcuts |
+| Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap |
 | Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
-| Applications | Default applications and per-category selectors, Window rules, Projects |
+| Applications | Default applications and per-category selectors, Projects |
+| Hyprland | Keyboard shortcuts, Window rules, and the window-effects pages reused from Appearance (Window spaces, Animations, Blur, Borders), plus the installed Hyprland version |
 | System | Hostname, firewall, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
 | Services and diagnostics | Services, boot, packages, storage and diagnostics |
@@ -138,7 +142,7 @@ Reset support is deliberately per domain:
 - **Fonts** can restore all font settings, a target, or an individual setting.
 - **Default applications** can restore all defaults, a category, or an individual selector.
 - **Keyboard shortcuts** can restore one binding or all bindings and then reload the generated session bindings.
-- **Window rules** is in **Applications → Window rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus-config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
+- **Window rules** is in **Hyprland → Settings → Window rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus-config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
 
 - **Projects** is in **Applications → Projects** (search `projects` or run `argvus-control-center projects`). It lists the folders the project switcher uses, marked as a root (its subfolders are projects) or a single project. **Add project folder** and **Add root folder** open a text field with the path; the launcher checks that it is a directory and shows the error otherwise. **Remove** for each entry sits in the **Danger zone** and asks for confirmation. The page calls `argvus-projects`, so changes are written by the launcher and apply the next time `SUPER + O` or `SUPER + ALT + 1..9` runs. If `argvus-projects` is not installed, the page says so.
 - **Other system pages** expose reset, apply, delete or restore actions only when the underlying provider supports them.
