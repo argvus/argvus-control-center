@@ -69,12 +69,15 @@ fn line_with<'screen>(screen: &'screen [String], needle: &str) -> &'screen str {
 
 #[test]
 fn home_has_categories_and_spacing_is_nested() {
-  assert_eq!(app(AppearancePage::Home).page_rows().len(), 11);
-  assert_eq!(
-    app(AppearancePage::SpacesBordersPosition).page_rows().len(),
-    5
-  );
-  assert_eq!(app(AppearancePage::Taskbar).page_rows().len(), 4);
+  // Taskbar/Control Panel/Widget Telemetry are entered directly from the
+  // Control Center Home now (crate principal), not from this Home anymore.
+  assert_eq!(app(AppearancePage::Home).page_rows().len(), 6);
+  // Position/Spaces (moved from the removed "Spaces, Borders & Position"
+  // hub) now live inside Taskbar, between Transparency and Icons.
+  assert_eq!(app(AppearancePage::Taskbar).page_rows().len(), 6);
+  // "Borders" is entered directly from the Hyprland category (crate
+  // principal) and just groups the two pre-existing border screens.
+  assert_eq!(app(AppearancePage::Borders).page_rows().len(), 2);
   assert_eq!(
     app(AppearancePage::TaskbarIcons).page_rows().len(),
     2 + TaskbarUtilityWidget::ALL.len() + 1
@@ -85,20 +88,34 @@ fn home_has_categories_and_spacing_is_nested() {
   assert_eq!(app(AppearancePage::TaskbarTimeFormat).page_rows().len(), 2);
   assert_eq!(app(AppearancePage::WidgetTelemetry).page_rows().len(), 3);
   assert_eq!(app(AppearancePage::ControlPanel).page_rows().len(), 3);
-  assert_eq!(app(AppearancePage::Effects).page_rows().len(), 3);
-  assert_eq!(app(AppearancePage::Blur).page_rows().len(), 1);
+  // Blur now carries its own "Enable" toggle alongside the Value row.
+  assert_eq!(app(AppearancePage::Blur).page_rows().len(), 2);
   assert_eq!(app(AppearancePage::Terminal).page_rows().len(), 2);
+}
+
+#[test]
+/// Entry points reached from the Hyprland category (crate principal):
+/// Animations is its own page with a single "Enable" toggle, and Window
+/// Spaces is a hub with "Inner"/"Outer" submenus instead of a flat list.
+fn hyprland_entry_points_match_the_approved_design() {
+  assert_eq!(app(AppearancePage::Animations).page_rows().len(), 1);
+  assert_eq!(app(AppearancePage::WindowSpaces).page_rows().len(), 2);
+  assert_eq!(app(AppearancePage::WindowSpacesInner).page_rows().len(), 1);
+  assert_eq!(app(AppearancePage::WindowSpacesOuter).page_rows().len(), 4);
+
+  let animations = app(AppearancePage::Animations).rows();
+  assert_eq!(animations[0].kind(), RowKind::Toggle { on: true });
+
+  let blur = app(AppearancePage::Blur).rows();
+  assert_eq!(blur[0].kind(), RowKind::Toggle { on: true });
+  assert_eq!(blur[1].kind(), RowKind::Value { step: Some(5) });
+  assert_eq!(blur[1].detail_text(), Some("50%"));
 }
 
 #[test]
 fn rows_have_the_kind_of_what_they_do() {
   let home = app(AppearancePage::Home).rows();
   assert!(home.iter().all(|row| row.kind() == RowKind::Submenu));
-
-  let effects = app(AppearancePage::Effects).rows();
-  assert_eq!(effects[0].kind(), RowKind::Toggle { on: true });
-  assert_eq!(effects[2].kind(), RowKind::Submenu);
-  assert_eq!(effects[2].detail_text(), Some("50%"));
 
   let position = app(AppearancePage::TaskbarPosition).rows();
   assert_eq!(position[0].kind(), RowKind::Choice { current: true });
@@ -112,7 +129,7 @@ fn rows_have_the_kind_of_what_they_do() {
   );
 
   let editor = app(AppearancePage::Blur).rows();
-  assert_eq!(editor[0].kind(), RowKind::Value { step: Some(5) });
+  assert_eq!(editor[1].kind(), RowKind::Value { step: Some(5) });
 }
 
 #[test]
@@ -121,12 +138,7 @@ fn every_navigable_row_owns_a_semantic_icon() {
   let glyphs: Vec<_> = home.iter().map(|row| row.icon_glyph()).collect();
   assert_eq!(glyphs[0], Some(icons::PALETTE));
   assert_eq!(glyphs[1], Some(icons::ACCENT));
-  assert_eq!(
-    glyphs[4],
-    Some(icons::TASKBAR),
-    "Taskbar is no longer an HDD"
-  );
-  assert_eq!(glyphs[5], Some(icons::EFFECT));
+  assert_eq!(glyphs[3], Some(icons::TERMINAL));
   let unique: std::collections::HashSet<_> = glyphs.iter().collect();
   assert_eq!(unique.len(), glyphs.len(), "Home siblings repeat an icon");
   assert!(
@@ -421,12 +433,12 @@ fn home_rows_follow_the_global_icon_setting() {
   AppConfig::set_session_icons(true);
   let screen = render(&mut app(AppearancePage::Home), 80, 24);
   assert!(line_with(&screen, "Theme").contains(icons::PALETTE));
-  assert!(line_with(&screen, "Taskbar").contains(icons::TASKBAR));
+  assert!(line_with(&screen, "Terminal").contains(icons::TERMINAL));
 
   AppConfig::set_session_icons(false);
   let screen = render(&mut app(AppearancePage::Home), 80, 24);
   assert!(!line_with(&screen, "Theme").contains(icons::PALETTE));
-  assert!(!line_with(&screen, "Taskbar").contains(icons::TASKBAR));
+  assert!(!line_with(&screen, "Terminal").contains(icons::TERMINAL));
   AppConfig::set_session_icons(true);
 }
 
@@ -447,7 +459,7 @@ fn home_renders_one_vertical_list_at_80_columns() {
 
 #[test]
 fn selection_bounds_follow_each_page() {
-  let mut application = app(AppearancePage::WindowSpaces);
+  let mut application = app(AppearancePage::WindowSpacesOuter);
   application.handle(KeyCode::End);
   assert_eq!(
     selected(&application),
@@ -486,9 +498,9 @@ fn disabled_rounding_is_skipped_and_does_not_open_prompt() {
 fn space_keeps_activating_actions_submenus_choices_and_editors() {
   // Submenu: Space opens the page, as Enter.
   let mut home = app(AppearancePage::Home);
-  select(&mut home, Item::Effects);
+  select(&mut home, Item::Terminal);
   home.handle(KeyCode::Char(' '));
-  assert_eq!(home.page, AppearancePage::Effects);
+  assert_eq!(home.page, AppearancePage::Terminal);
 
   // Choice: Space applies the option immediately, as Enter.
   let mut position = app(AppearancePage::TaskbarPosition);
@@ -528,8 +540,8 @@ fn space_keeps_activating_actions_submenus_choices_and_editors() {
 #[test]
 fn value_rows_adjust_with_arrows_and_footer_says_esc_goes_back() {
   let mut editor = app(AppearancePage::Blur);
+  select(&mut editor, Item::EffectValue);
   let rows = editor.rows();
-  editor.menu.normalize(&rows);
   let footer = editor.hints(&rows);
   assert!(footer.contains("←/→ "), "{footer}");
   assert!(footer.contains("Esc "), "{footer}");
@@ -641,6 +653,9 @@ fn draft_pages_end_with_an_apply_row_enabled_only_with_changes() {
     },
   ] {
     let mut application = app(page);
+    if page == AppearancePage::Blur {
+      select(&mut application, Item::EffectValue);
+    }
     assert!(!application.rows().last().unwrap().is_selectable());
     application.handle(KeyCode::Right);
     assert!(
@@ -693,10 +708,12 @@ fn draft_pages_render_apply_as_a_row_without_button_labels() {
 
 #[test]
 fn esc_with_a_pending_draft_asks_before_discarding() {
-  // Clean draft: Esc leaves without asking.
+  // Clean draft: Esc leaves without asking. Taskbar is an entry point
+  // reached from the Control Center Home (crate principal), so leaving
+  // signals the host instead of navigating to a parent page here.
   let mut clean = draft_app(AppearancePage::Taskbar);
-  clean.handle(KeyCode::Esc);
-  assert_eq!(clean.page, AppearancePage::Home);
+  assert!(clean.handle(KeyCode::Esc), "signals leaving the crate");
+  assert_eq!(clean.page, AppearancePage::Taskbar);
   assert!(clean.confirm.is_none());
 
   // Pending draft inside the Taskbar pages: going up keeps the draft.
@@ -724,24 +741,32 @@ fn esc_with_a_pending_draft_asks_before_discarding() {
   nested.handle(KeyCode::Char('n'));
   assert_eq!(nested.page, AppearancePage::Taskbar);
   nested.handle(KeyCode::Esc);
-  nested.handle(KeyCode::Char('y'));
-  assert_eq!(nested.page, AppearancePage::Home);
+  assert!(
+    nested.handle(KeyCode::Char('y')),
+    "discarding on an exit point signals leaving the crate"
+  );
+  assert_eq!(nested.page, AppearancePage::Taskbar);
   assert!(nested.surface_draft.is_none(), "discarded");
 
-  // Effect editors drop their value on every Esc.
+  // Effect editors drop their value on every Esc. Blur is now an entry
+  // point reached from the Hyprland category (crate principal), so
+  // confirming here signals the host to leave instead of navigating to a
+  // parent page inside this crate.
   let mut editor = app(AppearancePage::Blur);
+  select(&mut editor, Item::EffectValue);
   editor.handle(KeyCode::Right);
   editor.handle(KeyCode::Esc);
   assert!(editor.confirm.is_some());
   editor.handle(KeyCode::Up);
-  editor.handle(KeyCode::Enter);
-  assert_eq!(editor.page, AppearancePage::Effects);
+  assert!(editor.handle(KeyCode::Enter), "signals leaving the crate");
+  assert_eq!(editor.page, AppearancePage::Blur);
   assert_eq!(editor.effect_draft, None);
 }
 
 #[test]
 fn enter_on_a_draft_value_types_it_without_applying() {
   let mut editor = app(AppearancePage::Blur);
+  select(&mut editor, Item::EffectValue);
   editor.handle(KeyCode::Enter);
   assert_eq!(
     editor.page,
@@ -773,6 +798,7 @@ fn enter_on_a_draft_value_types_it_without_applying() {
 
   // Out of range keeps the prompt open with an error.
   let mut invalid = app(AppearancePage::Blur);
+  select(&mut invalid, Item::EffectValue);
   invalid.handle(KeyCode::Enter);
   for key in ['2', '0', '0'] {
     invalid.handle(KeyCode::Char(key));

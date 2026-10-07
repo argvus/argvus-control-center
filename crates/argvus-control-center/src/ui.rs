@@ -63,6 +63,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     Route::Displays => app.displays.draw(frame),
     #[cfg(feature = "appearance")]
     Route::Appearance => app.appearance.draw(frame),
+    Route::Hyprland => crate::hyprland::draw(app, frame),
   }
   if app.help {
     draw_help(
@@ -528,11 +529,23 @@ fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, col
 
 fn home_category_description(app: &App, label: &str) -> &'static str {
   let key = match label {
+    value if value == tr(app.lang, "control_center.hyprland") => {
+      "control_center.hyprland_description"
+    }
     value if value == tr(app.lang, "control_center.language_region") => {
       "control_center.language_region_description"
     }
     value if value == tr(app.lang, "control_center.appearance") => {
       "control_center.appearance_description"
+    }
+    value if value == tr(app.lang, "control_center.taskbar") => {
+      "control_center.taskbar_description"
+    }
+    value if value == tr(app.lang, "control_center.control_panel") => {
+      "control_center.control_panel_description"
+    }
+    value if value == tr(app.lang, "control_center.widget_telemetry") => {
+      "control_center.widget_telemetry_description"
     }
     value if value == tr(app.lang, "control_center.applications") => {
       "control_center.applications_description"
@@ -546,7 +559,6 @@ fn home_category_description(app: &App, label: &str) -> &'static str {
     value if value == tr(app.lang, "control_center.connectivity") => {
       "control_center.connectivity_description"
     }
-    value if value == tr(app.lang, "control_center.audio") => "control_center.audio_description",
     value if value == tr(app.lang, "control_center.system") => "control_center.system_description",
     _ => "control_center.preferences_description",
   };
@@ -628,6 +640,10 @@ fn home_icon_for_item(action: usize) -> String {
     21 => argvus_tui::icons::KEYBOARD,
     22 => argvus_tui::icons::WINDOW_RULES,
     23 => argvus_tui::icons::PROJECTS,
+    24 => argvus_tui::icons::LAYOUT,
+    25 => argvus_tui::icons::TASKBAR,
+    26 => argvus_tui::icons::CONTROL_PANEL,
+    27 => argvus_tui::icons::TELEMETRY,
     _ => "",
   };
   let icon = AppConfig::icon(glyph);
@@ -637,13 +653,22 @@ fn home_icon_for_item(action: usize) -> String {
 /// Executes the `home_icon_for_header` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn home_icon_for_header(app: &App, label: &str) -> String {
   let glyph = [
+    ("control_center.hyprland", argvus_tui::icons::LAYOUT),
     ("control_center.language_region", argvus_tui::icons::NETWORK),
     ("control_center.appearance", argvus_tui::icons::PALETTE),
+    ("control_center.taskbar", argvus_tui::icons::TASKBAR),
+    (
+      "control_center.control_panel",
+      argvus_tui::icons::CONTROL_PANEL,
+    ),
+    (
+      "control_center.widget_telemetry",
+      argvus_tui::icons::TELEMETRY,
+    ),
     ("control_center.applications", argvus_tui::icons::APPS),
     ("control_center.hardware", argvus_tui::icons::MONITOR),
     ("control_center.power_session", argvus_tui::icons::POWER),
     ("control_center.connectivity", argvus_tui::icons::NETWORK),
-    ("control_center.audio", argvus_tui::icons::AUDIO),
     ("control_center.system", argvus_tui::icons::SETTINGS),
     ("control_center.preferences", argvus_tui::icons::SETTINGS),
   ]

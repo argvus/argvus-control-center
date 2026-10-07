@@ -151,7 +151,8 @@ fn parse_appearance(args: &[String]) -> Result<AppearancePage, String> {
     Some("taskbar-date") => AppearancePage::TaskbarDate,
     Some("taskbar-time") => AppearancePage::TaskbarTime,
     Some("widget-telemetry") | Some("telemetry") => AppearancePage::WidgetTelemetry,
-    Some("spaces") => AppearancePage::SpacesBordersPosition,
+    Some("spaces") | Some("window-spaces") => AppearancePage::WindowSpaces,
+    Some("borders") => AppearancePage::Borders,
     Some(v) => return Err(format!("unknown Appearance page '{v}'")),
   })
 }

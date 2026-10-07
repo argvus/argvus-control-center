@@ -80,6 +80,10 @@ pub enum Route {
   Displays,
   #[cfg(feature = "appearance")]
   Appearance,
+  /// Shortcuts, Window rules, Window Spaces, Animations, Blur, Borders and
+  /// the readonly Hyprland version — always present, even though most of
+  /// its rows depend on the `apps`/`appearance` features individually.
+  Hyprland,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +140,11 @@ pub struct App {
   pub theme: Theme,
   /// Currently active page; rendering and events read this field.
   pub route: Route,
+  /// Route restored when leaving a page the Hyprland category opened
+  /// (Settings or Appearance); defaults back to `Route::Home` once consumed.
+  pub return_route: Route,
+  /// State of the "Hyprland" category page.
+  pub hyprland: crate::hyprland::HyprlandState,
   /// Home selection index, kept separate from the route to support returning.
   pub home_selected: usize,
   /// First visible visual row in the home grid; rendering keeps it in range.
@@ -271,6 +280,11 @@ impl App {
       _ => Tab::System,
     };
     let capabilities = Capabilities::detect();
+    let hyprland_version = capabilities
+      .has_hyprctl
+      .then(crate::hyprland::read_version)
+      .flatten()
+      .unwrap_or_default();
     #[cfg(feature = "hardware")]
     let mut hardware = HardwareApp::new(lang, theme.clone(), capabilities.clone());
     #[cfg(feature = "services")]
@@ -391,7 +405,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.window_rules",
-        "applications",
+        "hyprland",
         "Window rules",
         "window rules workspace class app placement regras janela area de trabalho",
         "settings/window-rules",
@@ -446,7 +460,7 @@ impl App {
       ),
       (
         "settings.keybindings",
-        "hardware",
+        "hyprland",
         "Keyboard Shortcuts",
         "keyboard shortcuts keybindings hotkeys bindings atalhos teclado",
         "settings/keybindings",
@@ -1123,6 +1137,8 @@ impl App {
       lang,
       theme: theme.clone(),
       route,
+      return_route: Route::Home,
+      hyprland: crate::hyprland::HyprlandState::new(hyprland_version),
       home_selected: 0,
       home_scroll: 0,
       settings: SettingsState::with_context(page, lang, theme.clone()),
@@ -1175,6 +1191,11 @@ impl App {
   /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn home_rows(&self) -> Vec<HomeRow> {
     let mut rows = Vec::new();
+    rows.push(HomeRow::Header(tr(self.lang, "control_center.hyprland")));
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.settings"),
+      action: 24,
+    });
     #[cfg(feature = "locale")]
     rows.push(HomeRow::Header(tr(
       self.lang,
@@ -1193,8 +1214,35 @@ impl App {
     });
     #[cfg(feature = "appearance")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.appearance"),
+      label: tr(self.lang, "control_center.themes_and_visuals"),
       action: 19,
+    });
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Header(tr(self.lang, "control_center.taskbar")));
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.settings"),
+      action: 25,
+    });
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Header(tr(
+      self.lang,
+      "control_center.control_panel",
+    )));
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.settings"),
+      action: 26,
+    });
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Header(tr(
+      self.lang,
+      "control_center.widget_telemetry",
+    )));
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.settings"),
+      action: 27,
     });
     rows.push(HomeRow::Header(tr(
       self.lang,
@@ -1207,19 +1255,14 @@ impl App {
     });
     #[cfg(feature = "apps")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.window_rules"),
-      action: 22,
-    });
-    #[cfg(feature = "apps")]
-    rows.push(HomeRow::Item {
       label: tr(self.lang, "control_center.projects"),
       action: 23,
     });
-    #[cfg(any(feature = "hardware", feature = "displays"))]
+    #[cfg(any(feature = "hardware", feature = "displays", feature = "audio"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.hardware"),
+      label: tr(self.lang, "control_center.overview"),
       action: 4,
     });
     #[cfg(feature = "hardware")]
@@ -1227,9 +1270,10 @@ impl App {
       label: tr(self.lang, "control_center.mouse_touchpad"),
       action: 20,
     });
+    #[cfg(feature = "audio")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.keyboard_shortcuts"),
-      action: 21,
+      label: tr(self.lang, "control_center.audio"),
+      action: 6,
     });
     #[cfg(feature = "displays")]
     if self.capabilities.has_hyprctl {
@@ -1274,14 +1318,6 @@ impl App {
         action: 7,
       });
     }
-    #[cfg(feature = "audio")]
-    {
-      rows.push(HomeRow::Header(tr(self.lang, "control_center.audio")));
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.audio"),
-        action: 6,
-      });
-    }
     #[cfg(any(
       feature = "boot",
       feature = "packages",
@@ -1318,7 +1354,7 @@ impl App {
     });
     #[cfg(feature = "system")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.system"),
+      label: tr(self.lang, "control_center.general"),
       action: 11,
     });
     #[cfg(feature = "about")]
@@ -1420,8 +1456,6 @@ impl App {
       #[cfg(feature = "apps")]
       0 => self.open_settings(Page::DefaultApps),
       #[cfg(feature = "apps")]
-      22 => self.open_settings(Page::WindowRules),
-      #[cfg(feature = "apps")]
       23 => self.open_settings(Page::Projects),
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
@@ -1497,7 +1531,25 @@ impl App {
         self.appearance.reload();
       }
       20 => self.open_settings(Page::MouseTouchpad),
-      21 => self.open_settings(Page::Keybindings),
+      24 => self.route = Route::Hyprland,
+      #[cfg(feature = "appearance")]
+      25 => {
+        self.appearance.page = AppearancePage::Taskbar;
+        self.route = Route::Appearance;
+        self.appearance.reload();
+      }
+      #[cfg(feature = "appearance")]
+      26 => {
+        self.appearance.page = AppearancePage::ControlPanel;
+        self.route = Route::Appearance;
+        self.appearance.reload();
+      }
+      #[cfg(feature = "appearance")]
+      27 => {
+        self.appearance.page = AppearancePage::WidgetTelemetry;
+        self.route = Route::Appearance;
+        self.appearance.reload();
+      }
       _ => {}
     }
   }
@@ -2011,12 +2063,17 @@ impl App {
       #[cfg(feature = "appearance")]
       Route::Appearance => {
         if self.appearance.handle(crossterm::event::KeyCode::Esc) {
-          self.route = Route::Home;
+          self.route = std::mem::replace(&mut self.return_route, Route::Home);
         }
       }
       Route::Settings => {
         self.settings.back();
         if self.settings.page() == Page::Main {
+          self.route = std::mem::replace(&mut self.return_route, Route::Home);
+        }
+      }
+      Route::Hyprland => {
+        if crate::hyprland::handle(self, crossterm::event::KeyCode::Esc) {
           self.route = Route::Home;
         }
       }
@@ -2193,13 +2250,15 @@ mod tests {
 
   #[test]
   fn home_category_navigation_moves_between_category_items() {
+    // Categories: Hyprland (1 item) › Language & Region (1 item) ›
+    // Appearance (2 items) › ...
     let mut app = App::new(InitialRoute::Home);
     app.move_home_category(1);
     assert_eq!(app.home_selected, 1);
     app.move_home(1);
     assert_eq!(app.home_selected, 2);
     app.move_home_category(-1);
-    assert_eq!(app.home_selected, 0);
+    assert_eq!(app.home_selected, 1);
   }
 
   #[cfg(feature = "hardware")]

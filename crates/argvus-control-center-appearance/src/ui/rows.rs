@@ -26,11 +26,6 @@ pub(super) enum Item {
   Themes,
   Accent,
   Wallpaper,
-  SpacesBordersPosition,
-  Taskbar,
-  Effects,
-  WidgetTelemetry,
-  ControlPanel,
   Terminal,
   Launcher,
   Mode,
@@ -57,20 +52,22 @@ pub(super) enum Item {
   // Accent
   EditAccent,
   ResetAccent,
-  // Effects, Terminal, Launcher
-  Animations,
-  BlurEnabled,
-  BlurIntensity,
+  // Terminal, Launcher
   TerminalTransparency,
   TerminalTransparencyValue,
   LauncherTransparency,
   LauncherTransparencyValue,
   /// The value row of an effect editor page.
   EffectValue,
-  // Spaces, borders and position
+  /// "Enable" on the Animations page (entry point from Hyprland).
+  Animations,
+  /// "Enable" on the Blur page (entry point from Hyprland; global blur).
+  BlurEnabled,
+  // Taskbar position/spaces, window spaces and borders
   TaskbarPosition,
   TaskbarSpaces,
-  WindowSpaces,
+  WindowSpacesInner,
+  WindowSpacesOuter,
   GeneralBorders,
   EdgeThickness,
   Position(TaskbarPosition),
@@ -116,11 +113,6 @@ impl Item {
       Self::Themes => icons::PALETTE,
       Self::Accent => icons::ACCENT,
       Self::Wallpaper => icons::WALLPAPER,
-      Self::SpacesBordersPosition => icons::LAYOUT,
-      Self::Taskbar => icons::TASKBAR,
-      Self::Effects => icons::EFFECT,
-      Self::WidgetTelemetry => icons::TELEMETRY,
-      Self::ControlPanel => icons::CONTROL_PANEL,
       Self::Terminal => icons::TERMINAL,
       Self::Launcher => icons::LAUNCHER,
       Self::Mode => icons::THEME_MODE,
@@ -135,17 +127,16 @@ impl Item {
       Self::Collection(_) | Self::WallpaperMode(_) => icons::IMAGE,
       Self::EditAccent => icons::EDIT,
       Self::ResetAccent => icons::RESTORE,
-      Self::Animations => icons::ANIMATION,
-      Self::BlurEnabled | Self::BlurIntensity => icons::BLUR,
       Self::TerminalTransparency
       | Self::TerminalTransparencyValue
       | Self::LauncherTransparency
       | Self::LauncherTransparencyValue
       | Self::TaskbarTransparency
       | Self::SurfaceTransparency => icons::OPACITY,
+      Self::Animations => icons::ANIMATION,
+      Self::BlurEnabled => icons::BLUR,
       Self::TaskbarPosition => icons::TASKBAR,
-      Self::TaskbarSpaces => icons::GAP,
-      Self::WindowSpaces => icons::WINDOW_STICKY,
+      Self::TaskbarSpaces | Self::WindowSpacesInner | Self::WindowSpacesOuter => icons::GAP,
       Self::GeneralBorders => icons::BORDER,
       Self::EdgeThickness | Self::Thickness => icons::THICKNESS,
       Self::Position(TaskbarPosition::Top) => icons::ARROW_UP,
@@ -395,17 +386,6 @@ impl AppearanceApp {
           Item::ResetAccent.icon(),
         ),
       ],
-      AppearancePage::Effects => vec![
-        self.toggle_row(
-          Item::Animations,
-          "control_center.animations",
-          self.state.animations,
-        ),
-        self.toggle_row(Item::BlurEnabled, "control_center.blur", self.state.blur),
-        self
-          .submenu(Item::BlurIntensity, "control_center.blur")
-          .detail(percent(self.state.global_blur)),
-      ],
       // Unreachable page kept until the Phase 4 cleanup; its entries never
       // had an action, so they are read-only.
       AppearancePage::Transparency => std::iter::once(Row::info(
@@ -449,14 +429,29 @@ impl AppearanceApp {
           )
           .detail(percent(self.state.launcher_transparency)),
       ],
-      AppearancePage::Blur
-      | AppearancePage::BlurSurface { .. }
+      // Entered directly from the Hyprland category (crate principal); the
+      // blur here is the global one (not a per-surface transparency/blur
+      // section). "Enable" is immediate, "Value" goes through the draft +
+      // Apply mechanism already used by every other effect editor.
+      AppearancePage::Blur => vec![
+        self.toggle_row(Item::BlurEnabled, "control_center.enable", self.state.blur),
+        self.value_row(
+          Item::EffectValue,
+          "control_center.value",
+          percent(self.effect_editor_value()),
+          Some(5),
+        ),
+      ],
+      // Entered directly from the Hyprland category.
+      AppearancePage::Animations => vec![self.toggle_row(
+        Item::Animations,
+        "control_center.enable",
+        self.state.animations,
+      )],
+      AppearancePage::BlurSurface { .. }
       | AppearancePage::TerminalTransparency
       | AppearancePage::TransparencySurface { .. } => {
-        let key = if matches!(
-          self.page,
-          AppearancePage::Blur | AppearancePage::BlurSurface { .. }
-        ) {
+        let key = if matches!(self.page, AppearancePage::BlurSurface { .. }) {
           "control_center.blur"
         } else {
           "control_center.transparency"
@@ -468,12 +463,11 @@ impl AppearanceApp {
           Some(5),
         )]
       }
-      AppearancePage::SpacesBordersPosition => vec![
-        self.submenu(Item::TaskbarPosition, "control_center.taskbar_position"),
-        self.submenu(Item::TaskbarSpaces, "control_center.taskbar_spaces"),
-        self.submenu(Item::WindowSpaces, "control_center.window_spaces"),
-        self.submenu(Item::GeneralBorders, "control_center.general_borders"),
-        self.submenu(Item::EdgeThickness, "control_center.edge_thickness"),
+      // Entered directly from the Hyprland category (crate principal);
+      // groups the two border-related screens under one parent.
+      AppearancePage::Borders => vec![
+        self.submenu(Item::EdgeThickness, "control_center.thickness"),
+        self.submenu(Item::GeneralBorders, "control_center.rounded"),
       ],
       AppearancePage::TaskbarPosition => [TaskbarPosition::Top, TaskbarPosition::Bottom]
         .into_iter()
@@ -498,8 +492,16 @@ impl AppearanceApp {
       .into_iter()
       .map(|(goal, value)| self.spacing_row(goal, value))
       .collect(),
-      AppearancePage::WindowSpaces => [
-        (PromptGoal::GapsIn, self.state.gaps_in),
+      // Entered directly from the Hyprland category; groups the inner and
+      // outer gaps under their own submenus.
+      AppearancePage::WindowSpaces => vec![
+        self.submenu(Item::WindowSpacesInner, "control_center.inner"),
+        self.submenu(Item::WindowSpacesOuter, "control_center.outer"),
+      ],
+      AppearancePage::WindowSpacesInner => {
+        vec![self.spacing_row(PromptGoal::GapsIn, self.state.gaps_in)]
+      }
+      AppearancePage::WindowSpacesOuter => [
         (PromptGoal::GapsOutTop, self.state.gaps_out_top),
         (PromptGoal::GapsOutLeft, self.state.gaps_out_left),
         (PromptGoal::GapsOutRight, self.state.gaps_out_right),
@@ -519,22 +521,24 @@ impl AppearanceApp {
           )
         };
         vec![
-          self.toggle_row(Item::Rounded, "control_center.rounded", self.state.rounded),
+          self.toggle_row(Item::Rounded, "control_center.enable", self.state.rounded),
           // Rounding has no visible effect while Rounded is off, so the row
           // is disabled and skipped instead of opening a pointless prompt.
           self
-            .value_row(Item::Rounding, "control_center.rounding", rounding, None)
+            .value_row(Item::Rounding, "control_center.value", rounding, None)
             .enabled(self.state.rounded),
         ]
       }
       AppearancePage::EdgeThickness => vec![self.value_row(
         Item::Thickness,
-        "control_center.thickness",
+        "control_center.value",
         self.state.thickness.to_string(),
         None,
       )],
       AppearancePage::Taskbar => vec![
         self.submenu(Item::TaskbarTransparency, "control_center.transparency"),
+        self.submenu(Item::TaskbarPosition, "control_center.position"),
+        self.submenu(Item::TaskbarSpaces, "control_center.spaces"),
         self.submenu(Item::TaskbarIcons, "control_center.icons"),
         self.submenu(Item::TaskbarDate, "control_center.date"),
         self.submenu(Item::TaskbarTime, "control_center.time"),
@@ -649,14 +653,6 @@ impl AppearanceApp {
       self
         .submenu(Item::Wallpaper, "control_center.wallpaper")
         .detail(wallpaper),
-      self.submenu(
-        Item::SpacesBordersPosition,
-        "control_center.spaces_borders_position",
-      ),
-      self.submenu(Item::Taskbar, "control_center.taskbar"),
-      self.submenu(Item::Effects, "control_center.effects"),
-      self.submenu(Item::WidgetTelemetry, "control_center.widget_telemetry"),
-      self.submenu(Item::ControlPanel, "control_center.control_panel"),
       self.submenu(Item::Terminal, "control_center.terminal"),
       self.submenu(Item::Launcher, "control_center.launcher"),
       self

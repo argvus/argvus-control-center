@@ -13,8 +13,9 @@ pub fn handle(app: &mut App, event: Event) {
   if let Event::Paste(text) = event {
     if app.route == Route::Settings {
       app.settings.admin_paste(&text);
-    } else if app.route == Route::Appearance {
-      #[cfg(feature = "appearance")]
+    }
+    #[cfg(feature = "appearance")]
+    if app.route == Route::Appearance {
       app.appearance.paste(&text);
     }
     return;
@@ -99,7 +100,7 @@ pub fn handle(app: &mut App, event: Event) {
         argvus_control_center_settings::event::handle(&mut app.settings, Event::Key(key));
         app.lang = app.settings.lang;
         if app.settings.page() == argvus_control_center_settings::Page::Main {
-          app.route = Route::Home;
+          app.route = std::mem::replace(&mut app.return_route, Route::Home);
         }
       }
     }
@@ -192,6 +193,11 @@ pub fn handle(app: &mut App, event: Event) {
         return;
       }
       if app.appearance.handle(domain_key(key.code)) {
+        app.route = std::mem::replace(&mut app.return_route, Route::Home);
+      }
+    }
+    Route::Hyprland => {
+      if crate::hyprland::handle(app, key.code) {
         app.route = Route::Home;
       }
     }

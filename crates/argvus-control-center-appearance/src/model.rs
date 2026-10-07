@@ -166,10 +166,13 @@ pub enum AppearancePage {
   },
   Accents,
   AccentEdit,
-  Effects,
   Terminal,
   TerminalTransparency,
   Launchers,
+  /// Entry point reached from the Hyprland category (crate principal):
+  /// a single "Enable" toggle, applied immediately like it was on the
+  /// removed Effects page.
+  Animations,
   #[allow(dead_code)]
   Transparency,
   #[allow(dead_code)]
@@ -182,7 +185,6 @@ pub enum AppearancePage {
   BlurSurface {
     surface: EffectSurface,
   },
-  SpacesBordersPosition,
   TaskbarPosition,
   TaskbarSpaces,
   Taskbar,
@@ -197,7 +199,12 @@ pub enum AppearancePage {
     surface: EffectSurface,
     section: SurfaceSection,
   },
+  /// Entry point reached from the Hyprland category: groups the "Inner"
+  /// and "Outer" gap submenus.
   WindowSpaces,
+  WindowSpacesInner,
+  WindowSpacesOuter,
+  Borders,
   GeneralBorders,
   EdgeThickness,
   Prompt {

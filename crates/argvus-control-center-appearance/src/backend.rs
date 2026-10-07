@@ -935,8 +935,8 @@ pub fn load_page(
   }
   if matches!(
     page,
-    AppearancePage::Effects
-      | AppearancePage::Blur
+    AppearancePage::Blur
+      | AppearancePage::Animations
       | AppearancePage::Taskbar
       | AppearancePage::WidgetTelemetry
       | AppearancePage::ControlPanel
@@ -1019,11 +1019,13 @@ pub fn load_page(
   }
   if matches!(
     page,
-    AppearancePage::SpacesBordersPosition
+    AppearancePage::Borders
       | AppearancePage::Taskbar
       | AppearancePage::TaskbarPosition
       | AppearancePage::TaskbarSpaces
       | AppearancePage::WindowSpaces
+      | AppearancePage::WindowSpacesInner
+      | AppearancePage::WindowSpacesOuter
       | AppearancePage::GeneralBorders
       | AppearancePage::EdgeThickness
       | AppearancePage::SurfaceSection {

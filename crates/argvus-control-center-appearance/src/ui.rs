@@ -625,11 +625,6 @@ impl AppearanceApp {
       Item::Themes => self.go(AppearancePage::Themes),
       Item::Accent => self.go(AppearancePage::Accents),
       Item::Wallpaper => self.go(AppearancePage::Wallpapers),
-      Item::SpacesBordersPosition => self.go(AppearancePage::SpacesBordersPosition),
-      Item::Taskbar => self.go(AppearancePage::Taskbar),
-      Item::Effects => self.go(AppearancePage::Effects),
-      Item::WidgetTelemetry => self.go(AppearancePage::WidgetTelemetry),
-      Item::ControlPanel => self.go(AppearancePage::ControlPanel),
       Item::Terminal => self.go(AppearancePage::Terminal),
       Item::Launcher => self.go(AppearancePage::Launchers),
       Item::Mode => self.go(AppearancePage::Mode),
@@ -683,9 +678,6 @@ impl AppearanceApp {
       Item::ResetAccent => self.apply(tr(self.lang, "control_center.accent_reset").into(), || {
         backend::set_accent("--theme-default")
       }),
-      Item::Animations => self.apply_toggle_animations(),
-      Item::BlurEnabled => self.apply_toggle_blur(),
-      Item::BlurIntensity => self.go(AppearancePage::Blur),
       Item::TerminalTransparency => self.apply_transparency_toggle(EffectSurface::Terminal),
       Item::TerminalTransparencyValue => self.go(AppearancePage::TerminalTransparency),
       Item::LauncherTransparency => self.apply_transparency_toggle(EffectSurface::Launchers),
@@ -695,9 +687,12 @@ impl AppearanceApp {
       Item::EffectValue | Item::SectionValue => self.open_prompt(PromptGoal::DraftValue),
       Item::Apply if Self::effect_spec(self.page).is_some() => self.apply_effect_changes(),
       Item::Apply => self.apply_surface_changes(),
+      Item::Animations => self.apply_toggle_animations(),
+      Item::BlurEnabled => self.apply_toggle_blur(),
       Item::TaskbarPosition => self.go(AppearancePage::TaskbarPosition),
       Item::TaskbarSpaces => self.go(AppearancePage::TaskbarSpaces),
-      Item::WindowSpaces => self.go(AppearancePage::WindowSpaces),
+      Item::WindowSpacesInner => self.go(AppearancePage::WindowSpacesInner),
+      Item::WindowSpacesOuter => self.go(AppearancePage::WindowSpacesOuter),
       Item::GeneralBorders => self.go(AppearancePage::GeneralBorders),
       Item::EdgeThickness => self.go(AppearancePage::EdgeThickness),
       Item::Position(position) => {
@@ -1309,12 +1304,7 @@ impl AppearanceApp {
       AppearancePage::Themes
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
-      | AppearancePage::Effects
       | AppearancePage::Terminal
-      | AppearancePage::SpacesBordersPosition
-      | AppearancePage::Taskbar
-      | AppearancePage::WidgetTelemetry
-      | AppearancePage::ControlPanel
       | AppearancePage::Mode => {
         self.go(AppearancePage::Home);
       }
@@ -1328,12 +1318,28 @@ impl AppearanceApp {
         self.go(AppearancePage::WallpaperModes { collection });
       }
       AppearancePage::ThemeImport => self.go(AppearancePage::Themes),
-      AppearancePage::TaskbarPosition
-      | AppearancePage::TaskbarSpaces
-      | AppearancePage::WindowSpaces
-      | AppearancePage::GeneralBorders
-      | AppearancePage::EdgeThickness => {
-        self.go(AppearancePage::SpacesBordersPosition);
+      AppearancePage::TaskbarPosition | AppearancePage::TaskbarSpaces => {
+        self.go(AppearancePage::Taskbar);
+      }
+      // Entry points reached directly from a Home (the Hyprland category or
+      // the Control Center Home itself, both in the crate principal);
+      // there is no parent page left inside this crate, so leaving goes
+      // back to whichever page opened them.
+      AppearancePage::WindowSpaces | AppearancePage::Borders | AppearancePage::Animations => {
+        return true;
+      }
+      // Same kind of entry point, but these three carry a surface draft
+      // that otherwise would never be cleared (previously `go(Home)` did
+      // that implicitly; see `back_discards_draft`).
+      AppearancePage::Taskbar | AppearancePage::WidgetTelemetry | AppearancePage::ControlPanel => {
+        self.surface_draft = None;
+        return true;
+      }
+      AppearancePage::WindowSpacesInner | AppearancePage::WindowSpacesOuter => {
+        self.go(AppearancePage::WindowSpaces);
+      }
+      AppearancePage::GeneralBorders | AppearancePage::EdgeThickness => {
+        self.go(AppearancePage::Borders);
       }
       AppearancePage::TaskbarIcons | AppearancePage::TaskbarDate | AppearancePage::TaskbarTime => {
         self.go(AppearancePage::Taskbar);
@@ -1341,11 +1347,13 @@ impl AppearanceApp {
       AppearancePage::TaskbarDateFormat => self.go(AppearancePage::TaskbarDate),
       AppearancePage::TaskbarTimeFormat => self.go(AppearancePage::TaskbarTime),
       AppearancePage::AccentEdit => self.go(AppearancePage::Accents),
-      AppearancePage::Transparency => self.go(AppearancePage::Effects),
+      // Unreachable page kept until the Phase 4 cleanup (see rows.rs).
+      AppearancePage::Transparency => self.go(AppearancePage::Home),
+      // Entry point reached from the Hyprland category (crate principal);
+      // like the other effect editors, leaving drops the unapplied value.
       AppearancePage::Blur => {
-        // Like the other effect editors, leaving drops the unapplied value.
         self.effect_draft = None;
-        self.go(AppearancePage::Effects);
+        return true;
       }
       AppearancePage::TerminalTransparency => {
         self.effect_draft = None;
@@ -1484,8 +1492,7 @@ impl AppearanceApp {
       PromptGoal::GapsOutLeft => "control_center.outer_gap_left",
       PromptGoal::GapsOutRight => "control_center.outer_gap_right",
       PromptGoal::GapsOutBottom => "control_center.outer_gap_bottom",
-      PromptGoal::Rounding => "control_center.rounding",
-      PromptGoal::Thickness => "control_center.thickness",
+      PromptGoal::Rounding | PromptGoal::Thickness => "control_center.value",
       PromptGoal::DraftValue => "control_center.value",
     }
   }
@@ -1549,19 +1556,14 @@ impl AppearanceApp {
         tr(self.lang, "control_center.highlight_color"),
         tr(self.lang, "control_center.edit_highlight_color")
       ),
-      AppearancePage::Effects => {
-        format!("{root} › {}", tr(self.lang, "control_center.effects"))
+      // Unreachable page kept until the Phase 4 cleanup (see rows.rs); its
+      // former parent ("Effects") no longer exists.
+      AppearancePage::Transparency => {
+        format!("{root} › {}", tr(self.lang, "control_center.transparency"))
       }
-      AppearancePage::Transparency => format!(
-        "{root} › {} › {}",
-        tr(self.lang, "control_center.effects"),
-        tr(self.lang, "control_center.transparency")
-      ),
-      AppearancePage::Blur => format!(
-        "{root} › {} › {}",
-        tr(self.lang, "control_center.effects"),
-        tr(self.lang, "control_center.blur")
-      ),
+      // Entered directly from the Hyprland category (crate principal); no
+      // intermediate "Effects" level in this crate anymore.
+      AppearancePage::Blur => format!("{root} › {}", tr(self.lang, "control_center.blur")),
       AppearancePage::Terminal => format!("{root} › {}", tr(self.lang, "control_center.terminal")),
       AppearancePage::TerminalTransparency => format!(
         "{root} › {} › {}",
@@ -1581,19 +1583,15 @@ impl AppearanceApp {
         tr(self.lang, "control_center.blur"),
         tr(self.lang, surface.label_key())
       ),
-      AppearancePage::SpacesBordersPosition => format!(
-        "{root} › {}",
-        tr(self.lang, "control_center.spaces_borders_position")
-      ),
       AppearancePage::TaskbarPosition => format!(
         "{root} › {} › {}",
-        tr(self.lang, "control_center.spaces_borders_position"),
-        tr(self.lang, "control_center.taskbar_position")
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.position")
       ),
       AppearancePage::TaskbarSpaces => format!(
         "{root} › {} › {}",
-        tr(self.lang, "control_center.spaces_borders_position"),
-        tr(self.lang, "control_center.taskbar_spaces")
+        tr(self.lang, "control_center.taskbar"),
+        tr(self.lang, "control_center.spaces")
       ),
       AppearancePage::Taskbar => {
         format!("{root} › {}", tr(self.lang, "control_center.taskbar"))
@@ -1654,20 +1652,33 @@ impl AppearanceApp {
           }
         )
       ),
-      AppearancePage::WindowSpaces => format!(
+      // Entry points reached from the Hyprland category (crate principal).
+      AppearancePage::WindowSpaces => {
+        format!("{root} › {}", tr(self.lang, "control_center.window_spaces"))
+      }
+      AppearancePage::WindowSpacesInner => format!(
         "{root} › {} › {}",
-        tr(self.lang, "control_center.spaces_borders_position"),
-        tr(self.lang, "control_center.window_spaces")
+        tr(self.lang, "control_center.window_spaces"),
+        tr(self.lang, "control_center.inner")
       ),
+      AppearancePage::WindowSpacesOuter => format!(
+        "{root} › {} › {}",
+        tr(self.lang, "control_center.window_spaces"),
+        tr(self.lang, "control_center.outer")
+      ),
+      AppearancePage::Animations => {
+        format!("{root} › {}", tr(self.lang, "control_center.animations"))
+      }
+      AppearancePage::Borders => format!("{root} › {}", tr(self.lang, "control_center.borders")),
       AppearancePage::GeneralBorders => format!(
         "{root} › {} › {}",
-        tr(self.lang, "control_center.spaces_borders_position"),
-        tr(self.lang, "control_center.general_borders")
+        tr(self.lang, "control_center.borders"),
+        tr(self.lang, "control_center.rounded")
       ),
       AppearancePage::EdgeThickness => format!(
         "{root} › {} › {}",
-        tr(self.lang, "control_center.spaces_borders_position"),
-        tr(self.lang, "control_center.edge_thickness")
+        tr(self.lang, "control_center.borders"),
+        tr(self.lang, "control_center.thickness")
       ),
       AppearancePage::Prompt { goal } => format!(
         "{} › {}",
@@ -1676,25 +1687,10 @@ impl AppearanceApp {
       ),
     }
   }
-  /// Executes the `breadcrumb_for_prompt` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn breadcrumb_for_prompt(&self, goal: PromptGoal) -> String {
-    if goal == PromptGoal::DraftValue
-      && let Some(page) = self.prompt_back
-    {
-      return self.breadcrumb_of(page);
-    }
-    let root = tr(self.lang, "control_center.appearance");
-    let section = match self.prompt_back.unwrap_or(AppearancePage::Home) {
-      AppearancePage::TaskbarSpaces => tr(self.lang, "control_center.taskbar_spaces"),
-      AppearancePage::WindowSpaces => tr(self.lang, "control_center.window_spaces"),
-      AppearancePage::GeneralBorders => tr(self.lang, "control_center.general_borders"),
-      AppearancePage::EdgeThickness => tr(self.lang, "control_center.edge_thickness"),
-      _ => "",
-    };
-    format!(
-      "{root} › {} › {section}",
-      tr(self.lang, "control_center.spaces_borders_position")
-    )
+  /// Breadcrumb of the page a numeric prompt was opened from; the prompt
+  /// page itself appends the field's own label (see `breadcrumb_of`).
+  fn breadcrumb_for_prompt(&self, _goal: PromptGoal) -> String {
+    self.breadcrumb_of(self.prompt_back.unwrap_or(AppearancePage::Home))
   }
   /// Footer of the current page. List pages derive it from the selected
   /// row's kind (`argvus_tui::hints`); the text editors list their own keys
