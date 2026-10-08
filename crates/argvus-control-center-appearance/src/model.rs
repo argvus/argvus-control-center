@@ -270,8 +270,8 @@ pub enum WidgetTelemetryBlock {
   Storage,
   Processes,
   Network,
-  Shortcuts,
   DevDashboard,
+  Shortcuts,
 }
 
 impl WidgetTelemetryBlock {
@@ -282,8 +282,8 @@ impl WidgetTelemetryBlock {
     Self::Storage,
     Self::Processes,
     Self::Network,
-    Self::Shortcuts,
     Self::DevDashboard,
+    Self::Shortcuts,
   ];
 
   /// Returns the stable command-line identifier owned by the widget package.
