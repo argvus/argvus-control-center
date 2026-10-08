@@ -223,6 +223,7 @@ pub enum EffectSurface {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceSection {
+  Launcher,
   UtilityIcons,
   Sessions,
   Transparency,
@@ -921,6 +922,7 @@ pub struct AppearanceState {
   pub taskbar_utility_group: TaskbarUtilityGroupMode,
   pub taskbar_audio_player_enabled: bool,
   pub taskbar_launcher_enabled: bool,
+  pub taskbar_launcher_custom_icon_path: Option<String>,
   pub taskbar_utility_widgets: TaskbarUtilityWidgets,
   pub taskbar_date_format: TaskbarDateFormat,
   pub taskbar_time_seconds_enabled: bool,
@@ -993,6 +995,7 @@ impl Default for AppearanceState {
       taskbar_utility_group: TaskbarUtilityGroupMode::AlwaysExpanded,
       taskbar_audio_player_enabled: true,
       taskbar_launcher_enabled: true,
+      taskbar_launcher_custom_icon_path: None,
       taskbar_utility_widgets: TaskbarUtilityWidgets::default(),
       taskbar_date_format: TaskbarDateFormat::WeekdayDayMonth,
       taskbar_time_seconds_enabled: false,
