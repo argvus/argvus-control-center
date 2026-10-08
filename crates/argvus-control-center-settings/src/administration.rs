@@ -641,6 +641,13 @@ impl Administration {
       )
       .icon(icons::SHIELD)
       .enabled(self.is_admin()),
+      Row::toggle(
+        Item::ToggleAutoLogin,
+        label("control_center.automatic_login"),
+        self.is_autologin_user(&text(&self.user, "user")),
+      )
+      .icon(icons::BOOT)
+      .enabled(self.is_admin()),
       Row::submenu(Item::ChangePassword, label("control_center.password"))
         .icon(icons::KEY)
         .detail("****"),
@@ -890,6 +897,12 @@ impl Administration {
   /// the backend reported it. Administrators only see and change other accounts.
   pub(crate) fn is_admin(&self) -> bool {
     self.accounts["actor_is_admin"].as_bool().unwrap_or(false)
+  }
+
+  /// Whether `user` is the account greetd starts automatically at boot,
+  /// skipping the login screen (its `initial_session`, reported by the backend).
+  pub(crate) fn is_autologin_user(&self, user: &str) -> bool {
+    !user.is_empty() && text(&self.accounts, "autologin_user") == user
   }
 
   /// Whether the user page has any draft to save: fields, avatar or a typed password.
@@ -1355,6 +1368,21 @@ impl App {
           groups.push("sudo".into());
         }
         self.admin.user["groups"] = json!(groups);
+      }
+      // Not a draft: applied immediately, like the firewall toggles, since it
+      // changes greetd's boot-time behavior rather than this account's fields.
+      Item::ToggleAutoLogin => {
+        let enabled = !self.admin.is_autologin_user(&user);
+        let key = if enabled {
+          "control_center.automatic_login_confirm_enable"
+        } else {
+          "control_center.automatic_login_confirm_disable"
+        };
+        self.admin_confirm(
+          false,
+          json!({"action":"auto-login", "user":user, "enabled":enabled}),
+          confirm_user(key),
+        );
       }
       Item::ChangePassword => {
         self.admin.creating_password = page == Page::CreateUser;
@@ -2153,6 +2181,7 @@ mod tests {
         Item::PrimaryGroup,
         Item::SupplementaryGroups,
         Item::UserAdmin,
+        Item::ToggleAutoLogin,
         Item::ChangePassword,
         Item::SaveUser,
         Item::CancelUser,
@@ -2334,6 +2363,7 @@ mod tests {
   fn save_and_delete_rows_confirm_without_running() {
     for (page, item) in [
       (Page::User, Item::SaveUser),
+      (Page::User, Item::ToggleAutoLogin),
       (Page::UserDelete, Item::DeleteUser),
       (Page::UserDelete, Item::DeleteUserAndHome),
     ] {
@@ -2346,6 +2376,32 @@ mod tests {
   }
 
   #[test]
+  fn toggle_autologin_confirms_the_opposite_of_the_current_state() {
+    let mut app = app(Page::User);
+    assert!(!app.admin.is_autologin_user("alice"));
+    app.admin_activate(Item::ToggleAutoLogin);
+    assert_eq!(
+      app.admin.pending,
+      Some((
+        false,
+        json!({"action":"auto-login", "user":"alice", "enabled":true})
+      ))
+    );
+    app.cancel_modal();
+
+    app.admin.accounts["autologin_user"] = json!("alice");
+    assert!(app.admin.is_autologin_user("alice"));
+    app.admin_activate(Item::ToggleAutoLogin);
+    assert_eq!(
+      app.admin.pending,
+      Some((
+        false,
+        json!({"action":"auto-login", "user":"alice", "enabled":false})
+      ))
+    );
+  }
+
+  #[test]
   fn up_down_walk_the_info_list_and_left_right_walk_the_buttons() {
     let mut app = app(Page::User);
     assert_eq!(app.selected_item(), Some(Item::AvatarImage));
@@ -2355,6 +2411,7 @@ mod tests {
       Item::PrimaryGroup,
       Item::SupplementaryGroups,
       Item::UserAdmin,
+      Item::ToggleAutoLogin,
       Item::ChangePassword,
     ] {
       press(&mut app, KeyCode::Down);
@@ -2391,7 +2448,7 @@ mod tests {
       None,
       "Up gives the focus back to the list"
     );
-    assert_eq!(app.selected_item(), Some(Item::UserAdmin));
+    assert_eq!(app.selected_item(), Some(Item::ToggleAutoLogin));
     press(&mut app, KeyCode::Tab);
     assert_eq!(
       app.user_button_cursor(),

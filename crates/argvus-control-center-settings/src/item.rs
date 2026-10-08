@@ -133,6 +133,9 @@ pub enum Item {
   LockPassword,
   UnlockPassword,
   ExpirePassword,
+  /// User page: starts this account automatically at the next boot, skipping
+  /// the login screen (greetd's `initial_session`). Applied immediately.
+  ToggleAutoLogin,
   AvatarImage,
   EditAvatar,
   RemoveAvatar,
