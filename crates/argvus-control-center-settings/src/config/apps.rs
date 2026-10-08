@@ -21,6 +21,16 @@ pub struct AppsBackend {
 }
 
 impl AppsBackend {
+  /// Builds a placeholder with no desktop entries, used while `load` runs on a background job so the page renders instantly.
+  pub fn empty() -> Self {
+    Self {
+      desktops: Vec::new(),
+      installed: HashMap::new(),
+      state: AppState::load(),
+      current: HashMap::new(),
+    }
+  }
+
   /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn load() -> Self {
     let desktops = detect::scan_desktop_files();

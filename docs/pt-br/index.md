@@ -19,7 +19,10 @@ O Control Panel pode oferecer controles rápidos para uma configuração permane
 
 A tela inicial atual do Control Center oferece estas áreas:
 
-* **Aparência** — temas, modos, acentos, wallpapers, efeitos, layout da taskbar e dos painéis, widgets de telemetria e cards do Control Panel.
+* **Aparência** — temas, modos, acentos e wallpapers.
+* **Taskbar** — posição, espaços, ícones, data e hora, reaproveitando as páginas de efeitos implementadas na Aparência.
+* **Control Panel** — sessões, ordem e transparência dos cards, reaproveitando as páginas de efeitos implementadas na Aparência.
+* **Widget Telemetry** — sessões e transparência do widget de telemetria, reaproveitando as páginas de efeitos implementadas na Aparência.
 * **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
@@ -41,7 +44,10 @@ A árvore atual de configurações inclui:
 
 | Área | Destinos atuais |
 | --- | --- |
-| Aparência | Temas, modos de tema, cor de destaque, wallpapers, efeitos, espaços/bordas/posição, posição e espaços da taskbar, grupo utilitário da taskbar, telemetria e cards do Control Panel |
+| Aparência | Temas, modos de tema, cor de destaque, wallpapers, efeitos, espaços/bordas/posição |
+| Taskbar | Posição, espaçamento, grupo utilitário, ícones, data e hora |
+| Control Panel | Visibilidade/ordem dos cards, sessões e transparência |
+| Widget Telemetry | Sessões e transparência |
 | Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console |
 | Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
 | Aplicativos | Aplicativos padrão e seletores por categoria, Projetos |
@@ -59,7 +65,19 @@ Alguns itens são páginas completas e outros são subpáginas alcançadas pela 
 
 ### Aparência
 
-Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque, wallpapers incluídos ou personalizados, efeitos compartilhados, espaçamento da taskbar e das janelas, bordas, espessura das bordas, blocos de telemetria e visibilidade/ordem dos cards do Control Panel. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque e wallpapers incluídos ou personalizados. Taskbar, Control Panel e Widget Telemetry são áreas próprias no nível principal (veja abaixo) que reaproveitam as páginas de efeitos compartilhadas da Aparência (transparência, blur) para suas próprias superfícies. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+
+### Taskbar
+
+A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência e blur.
+
+### Control Panel
+
+O Control Panel configura a visibilidade e a ordem dos seus cards de ação rápida, além das próprias sessões, transparência e blur.
+
+### Widget Telemetry
+
+O Widget Telemetry configura as sessões, a transparência e o blur do widget de informações do sistema.
 
 ### Fontes
 

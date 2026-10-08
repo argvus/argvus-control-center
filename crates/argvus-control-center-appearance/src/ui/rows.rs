@@ -81,7 +81,9 @@ pub(super) enum Item {
   TaskbarDate,
   TaskbarTime,
   AudioPlayer,
-  TaskbarLauncher,
+  LauncherIcon,
+  LauncherEnabled,
+  ChooseLauncherIcon,
   UtilityWidget(TaskbarUtilityWidget),
   Utilities,
   DateFormats,
@@ -147,7 +149,8 @@ impl Item {
       Self::TaskbarDate | Self::DateFormats => icons::CALENDAR,
       Self::TaskbarTime | Self::TimeFormats => icons::CLOCK,
       Self::AudioPlayer => icons::MUSIC,
-      Self::TaskbarLauncher => icons::LAUNCHER,
+      Self::LauncherIcon | Self::LauncherEnabled => icons::LAUNCHER,
+      Self::ChooseLauncherIcon => icons::FOLDER,
       Self::Utilities => icons::WIDGET,
       Self::Seconds => icons::TIMER,
       Self::Sessions => icons::LAYOUT,
@@ -551,11 +554,7 @@ impl AppearanceApp {
             "control_center.taskbar_audio_player_view",
             draft.is_some_and(|draft| draft.audio_player_enabled),
           ),
-          self.toggle_row(
-            Item::TaskbarLauncher,
-            "control_center.launcher",
-            draft.is_some_and(|draft| draft.launcher_enabled),
-          ),
+          self.submenu(Item::LauncherIcon, "control_center.launcher"),
         ];
         rows.extend(TaskbarUtilityWidget::ALL.into_iter().map(|widget| {
           self.toggle_row(
@@ -664,6 +663,27 @@ impl AppearanceApp {
   fn section_rows(&self, surface: EffectSurface, section: SurfaceSection) -> Vec<Row<Item>> {
     let draft = self.surface_draft();
     match section {
+      SurfaceSection::Launcher => vec![
+        self.toggle_row(
+          Item::LauncherEnabled,
+          "control_center.enable",
+          draft.is_some_and(|draft| draft.launcher_enabled),
+        ),
+        with_icon(
+          Row::action(
+            Item::ChooseLauncherIcon,
+            self.label("control_center.custom"),
+          ),
+          Item::ChooseLauncherIcon.icon(),
+        )
+        .detail(
+          self
+            .state
+            .taskbar_launcher_custom_icon_path
+            .clone()
+            .unwrap_or_else(|| self.label("control_center.none").to_string()),
+        ),
+      ],
       SurfaceSection::UtilityIcons => [
         (
           TaskbarUtilityGroupMode::AlwaysExpanded,

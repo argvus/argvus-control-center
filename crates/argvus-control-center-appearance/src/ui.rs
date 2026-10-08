@@ -717,9 +717,17 @@ impl AppearanceApp {
       Item::AudioPlayer => self.edit_draft(|draft| {
         draft.audio_player_enabled = !draft.audio_player_enabled;
       }),
-      Item::TaskbarLauncher => self.edit_draft(|draft| {
+      Item::LauncherIcon => self.go(AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: SurfaceSection::Launcher,
+      }),
+      Item::LauncherEnabled => self.edit_draft(|draft| {
         draft.launcher_enabled = !draft.launcher_enabled;
       }),
+      Item::ChooseLauncherIcon => self.apply(
+        tr(self.lang, "control_center.taskbar_launcher_icon_chosen").into(),
+        backend::choose_launcher_icon,
+      ),
       Item::UtilityWidget(widget) => self.edit_draft(|draft| {
         let enabled = !draft.utility_widgets.enabled(widget);
         draft.utility_widgets.set(widget, enabled);
@@ -1512,6 +1520,25 @@ impl AppearanceApp {
       tr(self.lang, "control_center.hyprland"),
       tr(self.lang, "control_center.settings")
     );
+    // Taskbar, Control Panel and Widget Telemetry were promoted from
+    // Appearance subsections to their own top-level Home categories (see
+    // `home_rows()` in the principal crate); their breadcrumb follows the
+    // same pattern as `hyprland_root` instead of the Appearance root.
+    let taskbar_root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.taskbar"),
+      tr(self.lang, "control_center.settings")
+    );
+    let control_panel_root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.control_panel"),
+      tr(self.lang, "control_center.settings")
+    );
+    let widget_telemetry_root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.widget_telemetry"),
+      tr(self.lang, "control_center.settings")
+    );
     match page {
       AppearancePage::Home => root.into(),
       AppearancePage::Themes => format!("{root} > {}", tr(self.lang, "control_center.themes")),
@@ -1592,74 +1619,77 @@ impl AppearanceApp {
         tr(self.lang, surface.label_key())
       ),
       AppearancePage::TaskbarPosition => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
+        "{taskbar_root} > {}",
         tr(self.lang, "control_center.position")
       ),
       AppearancePage::TaskbarSpaces => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
+        "{taskbar_root} > {}",
         tr(self.lang, "control_center.spaces")
       ),
-      AppearancePage::Taskbar => {
-        format!("{root} > {}", tr(self.lang, "control_center.taskbar"))
+      AppearancePage::Taskbar => taskbar_root.clone(),
+      AppearancePage::TaskbarIcons => {
+        format!("{taskbar_root} > {}", tr(self.lang, "control_center.icons"))
       }
-      AppearancePage::TaskbarIcons => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
-        tr(self.lang, "control_center.icons")
-      ),
-      AppearancePage::TaskbarDate => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
-        tr(self.lang, "control_center.date")
-      ),
+      AppearancePage::TaskbarDate => {
+        format!("{taskbar_root} > {}", tr(self.lang, "control_center.date"))
+      }
       AppearancePage::TaskbarDateFormat => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
+        "{taskbar_root} > {} > {}",
         tr(self.lang, "control_center.date"),
         tr(self.lang, "control_center.format")
       ),
-      AppearancePage::TaskbarTime => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
-        tr(self.lang, "control_center.time")
-      ),
+      AppearancePage::TaskbarTime => {
+        format!("{taskbar_root} > {}", tr(self.lang, "control_center.time"))
+      }
       AppearancePage::TaskbarTimeFormat => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
+        "{taskbar_root} > {} > {}",
         tr(self.lang, "control_center.time"),
         tr(self.lang, "control_center.format")
       ),
-      AppearancePage::WidgetTelemetry => format!(
-        "{root} > {}",
-        tr(self.lang, "control_center.widget_telemetry")
-      ),
-      AppearancePage::ControlPanel => {
-        format!("{root} > {}", tr(self.lang, "control_center.control_panel"))
-      }
+      AppearancePage::WidgetTelemetry => widget_telemetry_root.clone(),
+      AppearancePage::ControlPanel => control_panel_root.clone(),
       AppearancePage::SurfaceSection {
         surface: EffectSurface::Taskbar,
         section: SurfaceSection::UtilityIcons,
       } => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.taskbar"),
+        "{taskbar_root} > {} > {}",
         tr(self.lang, "control_center.icons"),
         tr(self.lang, "control_center.utilities")
       ),
-      AppearancePage::SurfaceSection { surface, section } => format!(
-        "{root} > {} > {}",
-        tr(self.lang, surface.label_key()),
-        tr(
-          self.lang,
-          match section {
-            SurfaceSection::UtilityIcons => "control_center.taskbar_utility_group",
-            SurfaceSection::Sessions => "control_center.sessions",
-            SurfaceSection::Transparency => "control_center.transparency",
-            SurfaceSection::Blur => "control_center.blur",
-          }
-        )
+      AppearancePage::SurfaceSection {
+        surface: EffectSurface::Taskbar,
+        section: SurfaceSection::Launcher,
+      } => format!(
+        "{taskbar_root} > {} > {}",
+        tr(self.lang, "control_center.icons"),
+        tr(self.lang, "control_center.launcher")
       ),
+      // `surface` is always Taskbar/ControlPanel/WidgetTelemetry here:
+      // `surface_for_page()` only maps those three pages to a surface, and
+      // `open_section()` requires the current page to already resolve to one
+      // before constructing `SurfaceSection`, so Terminal/Launchers never
+      // reach this arm.
+      AppearancePage::SurfaceSection { surface, section } => {
+        let surface_root = match surface {
+          EffectSurface::Taskbar => taskbar_root.as_str(),
+          EffectSurface::ControlPanel => control_panel_root.as_str(),
+          EffectSurface::WidgetTelemetry => widget_telemetry_root.as_str(),
+          EffectSurface::Terminal | EffectSurface::Launchers => root,
+        };
+        format!(
+          "{surface_root} > {}",
+          tr(
+            self.lang,
+            match section {
+              SurfaceSection::Launcher => "control_center.launcher",
+              SurfaceSection::UtilityIcons => "control_center.taskbar_utility_group",
+              SurfaceSection::Sessions => "control_center.sessions",
+              SurfaceSection::Transparency => "control_center.transparency",
+              SurfaceSection::Blur => "control_center.blur",
+            }
+          )
+        )
+      }
       // Entry points reached from the Hyprland category (crate principal).
       AppearancePage::WindowSpaces => {
         format!(

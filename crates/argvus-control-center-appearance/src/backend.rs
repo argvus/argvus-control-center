@@ -254,6 +254,36 @@ fn focus_wallpaper_picker(child_id: u32) {
   }
 }
 
+/// Terminal-backed launcher-icon chooser: opens as a floating, centered
+/// window in the standard 1024x768 File Manager proportion, on top of the
+/// Control Center. Mirrors `focus_wallpaper_picker`.
+fn focus_launcher_icon_picker(child_id: u32) {
+  for _ in 0..80 {
+    thread::sleep(Duration::from_millis(100));
+    let Some(address) = client_address_for_pid(child_id) else {
+      continue;
+    };
+    if hyprctl_lua_dispatch(&format!("hl.dsp.focus({{ window = 'address:{address}' }})")) {
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.float({ action = 'enable' })");
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.resize({ x = 1024, y = 768 })");
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.center({})");
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
+    }
+    return;
+  }
+  // Fallback for wrappers that fork instead of exec: match the known class.
+  for _ in 0..40 {
+    thread::sleep(Duration::from_millis(100));
+    if hyprctl_lua_dispatch("hl.dsp.focus({ window = 'class:argvus-launcher-icon-picker' })") {
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.float({ action = 'enable' })");
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.resize({ x = 1024, y = 768 })");
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.center({})");
+      let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
+      break;
+    }
+  }
+}
+
 /// Best-effort Wayland class (`class:`) used by the GUI File Managers Argvus
 /// knows about. TUI managers are matched by their own `argvus-wallpaper-picker`
 /// terminal window instead.
@@ -518,6 +548,10 @@ fn apply_canonical_taskbar(state: &mut AppearanceState) {
   if let Some(value) = boolean(icons, "launcher_enabled") {
     state.taskbar_launcher_enabled = value;
   }
+  state.taskbar_launcher_custom_icon_path = icons
+    .and_then(|values| values.get("launcher_custom_icon_path"))
+    .and_then(Value::as_str)
+    .map(str::to_owned);
   for widget in TaskbarUtilityWidget::ALL {
     if let Some(value) = boolean(icons, &format!("{}_enabled", widget.key())) {
       state.taskbar_utility_widgets.set(widget, value);
@@ -1366,6 +1400,105 @@ pub fn choose_wallpaper() -> Result<(), String> {
     return Err("o arquivo selecionado não existe".into());
   }
   persist_wallpaper_canonical(selected)?;
+  let _ = fs::remove_file(selection);
+  Ok(())
+}
+
+/// Persists the taskbar launcher's custom icon path to the canonical
+/// document and re-derives the generated Waybar config from it, restarting
+/// the taskbar so the new icon appears immediately. Unlike the Enable
+/// toggle (see `apply_taskbar_icons_and_format`), picking a custom icon is
+/// an immediate action, not part of the Taskbar > Icons draft/Apply cycle —
+/// the same way `persist_wallpaper_canonical` applies outside the draft.
+fn persist_launcher_icon_canonical(path: &Path) -> Result<(), String> {
+  let patch = serde_json::json!({
+    "/taskbar/icons/launcher_custom_icon_path": path.to_string_lossy(),
+  });
+  let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+  let status = argvus_control_center_core::process::command("argvus-config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist launcher icon settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the launcher icon settings".into());
+  }
+  run_script(&script("taskbar-widgets-mode.sh"), &["apply"])?;
+  reload_taskbar()
+}
+
+/// Opens the configured File Manager so the user can pick a custom launcher
+/// icon (PNG/SVG) for the taskbar, in a window focused on top of the Control
+/// Center. Mirrors `choose_wallpaper`'s GUI/TUI flow.
+pub fn choose_launcher_icon() -> Result<(), String> {
+  let file_manager =
+    default_app("file_manager").ok_or_else(|| "file manager padrão não encontrado".to_string())?;
+  let home = argvus_control_center_core::paths::home();
+
+  if !is_tui_file_manager(&file_manager) {
+    let binary = &file_manager[0];
+    let class = gui_file_manager_class(binary);
+    let child = argvus_control_center_core::process::command(binary)
+      .args(file_manager.iter().skip(1))
+      .arg(home)
+      .stdin(Stdio::null())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .map_err(|error| format!("não foi possível abrir o File Manager padrão: {error}"))?;
+    raise_file_manager_window(child.id(), class);
+    return Ok(());
+  }
+
+  let selection = cache_home()
+    .join("argvus")
+    .join(format!("launcher-icon-selection-{}", std::process::id()));
+  if let Some(parent) = selection.parent() {
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+  }
+  let _ = fs::remove_file(&selection);
+
+  let mut terminal_command = argvus_control_center_core::process::command("argvus-tui-terminal");
+  let mut terminal_args = vec![
+    "--class".to_string(),
+    "argvus-launcher-icon-picker".to_string(),
+    "--term".to_string(),
+    "kitty".to_string(),
+    "--".to_string(),
+  ];
+  for argument in &file_manager {
+    terminal_args.push(argument.clone());
+  }
+  terminal_args.push(format!("--chooser-file={}", selection.display()));
+  terminal_args.push(home.to_string_lossy().to_string());
+
+  let mut child = terminal_command
+    .args(terminal_args)
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .map_err(|error| format!("não foi possível abrir o File Manager padrão: {error}"))?;
+  focus_launcher_icon_picker(child.id());
+  if child
+    .wait()
+    .map_err(|error| format!("File Manager padrão falhou: {error}"))?
+    .code()
+    .is_some_and(|status| status != 0)
+  {
+    return Err("File Manager padrão falhou".into());
+  }
+
+  let selected =
+    fs::read_to_string(&selection).map_err(|_| "nenhuma imagem foi selecionada".to_string())?;
+  let selected = selected.trim();
+  if selected.is_empty() {
+    return Err("nenhuma imagem foi selecionada".into());
+  }
+  let selected = Path::new(selected);
+  if !selected.is_file() {
+    return Err("o arquivo selecionado não existe".into());
+  }
+  persist_launcher_icon_canonical(selected)?;
   let _ = fs::remove_file(selection);
   Ok(())
 }

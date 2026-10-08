@@ -18,7 +18,10 @@ The Control Panel can expose quick controls for a setting that is configured per
 
 The current Control Center home provides these areas:
 
-- **Appearance** — themes, modes, accents, wallpapers, effects, taskbar and panel layout, widget telemetry and Control Panel cards.
+- **Appearance** — themes, modes, accents and wallpapers.
+- **Taskbar** — position, spaces, icons, date and time, reusing the effects pages implemented in Appearance.
+- **Control Panel** — card sessions, order and transparency, reusing the effects pages implemented in Appearance.
+- **Widget Telemetry** — sessions and transparency for the telemetry widget, reusing the effects pages implemented in Appearance.
 - **Default applications** — select installed applications for supported roles.
 - **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
 - **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
@@ -40,7 +43,10 @@ The main settings tree currently includes:
 
 | Area | Current destinations |
 | --- | --- |
-| Appearance | Themes, theme modes, highlight color, wallpapers, effects, spaces/borders/position, taskbar position and spacing, taskbar utility group, widget telemetry and Control Panel cards |
+| Appearance | Themes, theme modes, highlight color, wallpapers, effects, spaces/borders/position |
+| Taskbar | Position, spacing, utility group, icons, date and time |
+| Control Panel | Card visibility/order, sessions and transparency |
+| Widget Telemetry | Sessions and transparency |
 | Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap |
 | Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
 | Applications | Default applications and per-category selectors, Projects |
@@ -58,7 +64,19 @@ Some of these are full pages and some are subpages reached through search or a d
 
 ### Appearance
 
-Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors, bundled or custom wallpapers, shared effects, taskbar and window spacing, borders, edge thickness, telemetry blocks and the visibility/order of Control Panel cards. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors and bundled or custom wallpapers. Taskbar, Control Panel and Widget Telemetry are separate top-level areas (see below) that reuse Appearance's shared effects pages (transparency, blur) for their own surfaces. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+
+### Taskbar
+
+Taskbar configures the panel's position, the spacing around it and its windows, the utility icon group, and the date/time blocks, plus its own transparency and blur.
+
+### Control Panel
+
+Control Panel configures the visibility and order of its quick-action cards, plus its own sessions, transparency and blur.
+
+### Widget Telemetry
+
+Widget Telemetry configures the system-information widget's sessions, transparency and blur.
 
 ### Fonts
 

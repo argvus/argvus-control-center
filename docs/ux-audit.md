@@ -148,8 +148,11 @@ perguntar**.
 | Espessura | Espessura · valor | Prompt (imediato) | Value | `Enter` | migrado |
 | Taskbar | Transparência ›, Ícones ›, Data ›, Hora › | Abre páginas | Submenu ×4 | `Enter` | migrado |
 | Taskbar e subpáginas | **`[ Apply ]`** | Aplica rascunho da taskbar | Action `Apply` no fim da lista | `Enter` na linha | migrado |
-| Ícones da taskbar | `[x]` player de áudio, launcher, widgets utilitários | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Ícones da taskbar | `[x]` player de áudio, widgets utilitários | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Ícones da taskbar | Launcher › | Abre página (Enable + Custom, ver "Seção: launcher") | Submenu | `Enter` | migrado |
 | Ícones da taskbar | Utilitários › | Abre agrupamento | Submenu | `Enter` | migrado |
+| Seção: launcher | `[x] Ligar` | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |
+| Seção: launcher | Personalizar... · caminho atual (ou "Nenhum") | Abre o File Manager padrão para escolher um ícone PNG/SVG (imediato, fora do rascunho) | Action com detalhe (caminho) | `Enter` | migrado |
 | Data | Formato › | Abre formatos | Submenu | `Enter` | migrado |
 | Formato de data/hora | Formato (· atual) | Seleciona no rascunho | Choice (rascunho) | `Enter` | migrado |
 | Hora | `[x] Segundos` | Alterna no rascunho | Toggle (rascunho) | `Enter`/`Space` | migrado |

@@ -1078,7 +1078,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.taskbar",
-        "appearance",
+        "taskbar",
         "Taskbar",
         "taskbar barra grupo utility group hover expandido expanded sempre always",
         "appearance/taskbar",
@@ -1086,7 +1086,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.taskbar_position",
-        "appearance",
+        "taskbar",
         "Taskbar position",
         "taskbar barra posicao position gaps espacamento margin margem",
         "appearance/taskbar-position",
@@ -1094,7 +1094,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.taskbar_icons",
-        "appearance",
+        "taskbar",
         "Taskbar icons",
         "taskbar barra icones icons audio player spotify launcher search utilities network power profile keyboard layout memory cpu temperature gpu usage",
         "appearance/taskbar-icons",
@@ -1102,7 +1102,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.taskbar_date",
-        "appearance",
+        "taskbar",
         "Taskbar date",
         "taskbar barra data date format weekday dia mes month year ano",
         "appearance/taskbar-date",
@@ -1110,7 +1110,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.taskbar_time",
-        "appearance",
+        "taskbar",
         "Taskbar time",
         "taskbar barra hora time clock relogio seconds segundos 24h am pm",
         "appearance/taskbar-time",
@@ -1118,10 +1118,18 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.widget_telemetry",
-        "appearance",
+        "widget_telemetry",
         "Widget Telemetry",
         "widget telemetry system cpu gpu memory storage processes network shortcuts",
         "appearance/widget-telemetry",
+      ),
+      #[cfg(feature = "appearance")]
+      (
+        "appearance.control_panel",
+        "control_panel",
+        "Control Panel",
+        "control panel painel de controle cards sessions sessoes transparency transparencia",
+        "appearance/control-panel",
       ),
     ];
     for (id, category, title, keywords, route) in entries {
@@ -1526,10 +1534,7 @@ impl App {
         self.displays.reload();
       }
       #[cfg(feature = "appearance")]
-      19 => {
-        self.route = Route::Appearance;
-        self.appearance.reload();
-      }
+      19 => self.open_appearance_page(AppearancePage::Home),
       20 => self.open_settings(Page::MouseTouchpad),
       24 => self.route = Route::Hyprland,
       #[cfg(feature = "appearance")]
@@ -1859,6 +1864,8 @@ impl App {
       ("appearance", "widget-telemetry") => {
         self.open_appearance_page(AppearancePage::WidgetTelemetry)
       }
+      #[cfg(feature = "appearance")]
+      ("appearance", "control-panel") => self.open_appearance_page(AppearancePage::ControlPanel),
       #[cfg(feature = "power")]
       ("power", "summary") => {
         self.route = Route::Power;

@@ -133,6 +133,9 @@ pub struct App {
   keybinding_super_required: bool,
   keybinding_conflict: Option<(String, String, Vec<String>)>,
   keybinding_edit_id: Option<String>,
+  apps_loading: bool,
+  apps_job: Option<JobHandle<AppsBackend>>,
+  fonts_job: Option<JobHandle<Vec<FontEntry>>>,
   input_loading: bool,
   input_load_job: Option<JobHandle<input::InputSettings>>,
   input_device_job: Option<JobHandle<(input::Devices, Vec<crate::system::ratbag::Device>)>>,
@@ -169,10 +172,6 @@ impl App {
 
   /// Constructs `with_context` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn with_context(initial: Page, lang: Lang, theme: Theme) -> Self {
-    let (system_fonts, error_modal) = match fonts::list() {
-      Ok(fonts) => (fonts, None),
-      Err(error) => (Vec::new(), Some(error.to_string())),
-    };
     let locale_gen_entries =
       locale::locale_gen_entries(std::path::Path::new("/etc/locale.gen")).unwrap_or_default();
     let selected_locales = locale_gen_entries
@@ -187,14 +186,14 @@ impl App {
       lang,
       theme,
       navigation: Navigation::new(initial),
-      apps: AppsBackend::load(),
+      apps: AppsBackend::empty(),
       fonts: FontSettings::load(),
-      system_fonts,
+      system_fonts: Vec::new(),
       search: String::new(),
       searching: false,
       pending_size: 13,
       status: None,
-      error_modal,
+      error_modal: None,
       confirm: None,
       confirm_focus: ConfirmState::new(),
       hostname_editing: false,
@@ -226,6 +225,9 @@ impl App {
       keybinding_super_required: false,
       keybinding_conflict: None,
       keybinding_edit_id: None,
+      apps_loading: true,
+      apps_job: None,
+      fonts_job: None,
       input_loading: true,
       input_load_job: None,
       input_device_job: None,
@@ -248,6 +250,12 @@ impl App {
       task_follow: false,
     };
     app.input_load_job = Some(app.jobs.spawn(|_| Ok(input::load())));
+    app.apps_job = Some(app.jobs.spawn(|_| Ok(AppsBackend::load())));
+    app.fonts_job = Some(
+      app
+        .jobs
+        .spawn(|_| fonts::list().map_err(|error| error.to_string())),
+    );
     if initial != Page::Main {
       app.select_current();
     }
@@ -805,6 +813,36 @@ impl App {
             "{}: {error}",
             tr(self.lang, "control_center.notification_state_error")
           ));
+          changed = true;
+        }
+      }
+    }
+    if let Some(job) = self.apps_job.take() {
+      match job.try_state() {
+        JobState::Running => self.apps_job = Some(job),
+        JobState::Finished(Ok(apps)) => {
+          self.apps = apps;
+          self.apps_loading = false;
+          self.select_current();
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          self.apps_loading = false;
+          self.error_modal = Some(error);
+          changed = true;
+        }
+      }
+    }
+    if let Some(job) = self.fonts_job.take() {
+      match job.try_state() {
+        JobState::Running => self.fonts_job = Some(job),
+        JobState::Finished(Ok(fonts)) => {
+          self.system_fonts = fonts;
+          self.select_current();
+          changed = true;
+        }
+        JobState::Finished(Err(error)) => {
+          self.error_modal = Some(error);
           changed = true;
         }
       }
