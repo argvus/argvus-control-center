@@ -1634,6 +1634,15 @@ impl App {
           }
           Err(error) => self.fail(error),
         },
+        EditTarget::NewSnippetName => self.new_snippet_name = value,
+        EditTarget::NewSnippetContent => self.new_snippet_content = value,
+        EditTarget::SnippetContent(name) => match crate::system::snippets::add(&name, &value) {
+          Ok(()) => {
+            self.snippets = crate::system::snippets::load();
+            self.success(tr(self.lang, "control_center.snippets_saved").to_string());
+          }
+          Err(error) => self.fail(error),
+        },
         EditTarget::DateTime => match crate::system::time::set_local_time(&value) {
           Ok(()) => self.refresh_time(),
           Err(error) => self.fail(error),
@@ -1667,6 +1676,11 @@ pub(crate) enum EditTarget {
   NewWindowRuleName,
   /// A new project path, or a new root when true.
   ProjectPath(bool),
+  /// The name and content typed for the next snippet.
+  NewSnippetName,
+  NewSnippetContent,
+  /// Replacement content of a saved snippet, keyed by its name.
+  SnippetContent(String),
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

@@ -27,6 +27,7 @@ pub enum Page {
   KeybindingCapture,
   WindowRules,
   Projects,
+  Snippets,
   MouseTouchpad,
   KeyboardLayout,
   KeyboardVariant,

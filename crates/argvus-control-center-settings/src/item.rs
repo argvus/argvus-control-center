@@ -96,6 +96,22 @@ pub enum Item {
   AddProjectRoot,
   /// Index into the loaded project entries.
   RemoveProject(usize),
+
+  // Snippets.
+  /// Name field of the new-snippet form.
+  NewSnippetName,
+  /// Content field of the new-snippet form.
+  NewSnippetContent,
+  /// Saves the new-snippet form.
+  AddSnippet,
+  /// Opens the picker, typed after a short delay.
+  OpenSnippetPicker,
+  /// Index into the loaded snippets; Enter edits the content.
+  SnippetContent(usize),
+  /// Types the snippet at this index after a short delay.
+  TypeSnippet(usize),
+  /// Index into the loaded snippets.
+  RemoveSnippet(usize),
   /// Index into the loaded keybindings.
   Keybinding(usize),
   RestoreAllShortcuts,

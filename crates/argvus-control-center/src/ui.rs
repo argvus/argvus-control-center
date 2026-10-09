@@ -665,6 +665,7 @@ fn home_icon_for_item(action: usize) -> String {
     21 => argvus_tui::icons::KEYBOARD,
     22 => argvus_tui::icons::WINDOW_RULES,
     23 => argvus_tui::icons::PROJECTS,
+    29 => argvus_tui::icons::SCRIPT,
     24 => argvus_tui::icons::LAYOUT,
     25 => argvus_tui::icons::TASKBAR,
     26 => argvus_tui::icons::CONTROL_PANEL,

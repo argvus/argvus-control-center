@@ -24,6 +24,7 @@ A tela inicial atual do Control Center oferece estas áreas:
 * **Control Panel** — sessões, ordem e transparência dos cards, reaproveitando as páginas de efeitos implementadas na Aparência.
 * **Widget Telemetry** — sessões e transparência do widget de telemetria, reaproveitando as páginas de efeitos implementadas na Aparência.
 * **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
+* **Snippets** — textos salvos para o `argvus-snippets`, digitados com `SUPER + ALT + N`.
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
 * **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
@@ -50,7 +51,7 @@ A árvore atual de configurações inclui:
 | Widget Telemetry | Sessões e transparência |
 | Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console |
 | Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos |
+| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets |
 | Hyprland | Atalhos de teclado, Regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (Espaços de janela, Animações, Blur, Bordas), além da versão instalada do Hyprland |
 | Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
@@ -86,6 +87,18 @@ Fontes permite selecionar família e tamanho para taskbar, telemetria/informaç�
 ### Aplicativos padrão
 
 Aplicativos padrão seleciona programas instalados para funções como terminal, gerenciador de arquivos, editor de texto, editor do terminal, navegador, visualizador de imagens, visualizador de PDF, reprodutor de vídeo, reprodutor de áudio, ferramenta de arquivos compactados e launcher. A seleção é salva pelo ARGVUS e pode atualizar associações XDG padrão.
+
+### Snippets
+
+Snippets é a página dos textos que o `argvus-snippets` digita com `SUPER + ALT + N`. Ela fica em **Aplicativos → Snippets** (busque por `snippets` ou execute `argvus-control-center snippets`).
+
+* **Novo snippet** — digite um **Nome** e um **Conteúdo** e depois **Salvar snippet**. Um nome que já existe substitui o conteúdo desse snippet.
+* **Snippets salvos** — listados com a posição (`1  email`) e o conteúdo em uma linha. `Enter` sobre o conteúdo o edita. **Digitar** digita o snippet, e **Remover** pede confirmação.
+* **Abrir seletor** — abre o mesmo seletor de `SUPER + ALT + N`.
+
+A digitação começa 3 segundos depois de você pressionar Enter, porque neste momento o foco está no próprio Control Center. Clique no campo que deve receber o texto dentro desse tempo. A página edita apenas conteúdo de uma linha; um snippet com várias linhas pode ser criado no terminal com `argvus-snippets add`.
+
+A página lê os snippets do `argvus-config` e grava por meio do `argvus-snippets`, então a validação continua com o launcher. Quando o `argvus-snippets` não está instalado, a página informa isso.
 
 ### Localidade e região
 
@@ -185,7 +198,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 

@@ -434,6 +434,14 @@ impl App {
         "projects project folders path directory root shortcut seletor projetos pastas caminho diretorio raiz atalho",
         "settings/projects",
       ),
+      #[cfg(feature = "apps")]
+      (
+        "settings.snippets",
+        "applications",
+        "Snippets",
+        "snippets snippet text type typing shortcut picker trechos texto digitar atalho seletor",
+        "settings/snippets",
+      ),
       #[cfg(feature = "about")]
       (
         "about",
@@ -1292,6 +1300,11 @@ impl App {
       label: tr(self.lang, "control_center.projects"),
       action: 23,
     });
+    #[cfg(feature = "apps")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.snippets"),
+      action: 29,
+    });
     #[cfg(any(feature = "hardware", feature = "displays", feature = "audio"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
@@ -1500,6 +1513,8 @@ impl App {
       0 => self.open_settings(Page::DefaultApps),
       #[cfg(feature = "apps")]
       23 => self.open_settings(Page::Projects),
+      #[cfg(feature = "apps")]
+      29 => self.open_settings(Page::Snippets),
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
       #[cfg(feature = "locale")]
@@ -1732,6 +1747,7 @@ impl App {
       (_, "window-rules") => self.open_settings(Page::WindowRules),
       #[cfg(feature = "apps")]
       (_, "projects") => self.open_settings(Page::Projects),
+      (_, "snippets") => self.open_settings(Page::Snippets),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),

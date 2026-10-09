@@ -21,6 +21,7 @@ use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
 use crate::system::keybindings;
 use crate::system::projects;
+use crate::system::snippets;
 use crate::system::window_rules;
 use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
@@ -75,6 +76,7 @@ pub enum PendingAction {
   ResetKeybindings,
   RemoveWindowRule(String),
   RemoveProject(String),
+  RemoveSnippet(String),
   /// The `r` shortcut on one shortcut; `leave` also closes the edit page.
   RestoreKeybinding {
     id: String,
@@ -125,6 +127,9 @@ pub struct App {
   pub(crate) window_rule_drafts: BTreeMap<String, window_rules::WindowRule>,
   pub(crate) new_window_rule_name: String,
   pub(crate) projects: projects::Projects,
+  pub(crate) snippets: snippets::Snippets,
+  pub(crate) new_snippet_name: String,
+  pub(crate) new_snippet_content: String,
   keybinding_capturing: bool,
   keybinding_editor_modifiers: [bool; 4],
   keybinding_editor_key: String,
@@ -217,6 +222,9 @@ impl App {
       window_rule_drafts: BTreeMap::new(),
       new_window_rule_name: String::new(),
       projects: projects::load(),
+      snippets: snippets::load(),
+      new_snippet_name: String::new(),
+      new_snippet_content: String::new(),
       keybinding_capturing: false,
       keybinding_editor_modifiers: [false; 4],
       keybinding_editor_key: String::new(),
@@ -340,6 +348,11 @@ impl App {
         "{root} > {} > {}",
         tr(self.lang, "control_center.applications"),
         tr(self.lang, "control_center.projects")
+      ),
+      Page::Snippets => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.snippets")
       ),
       Page::KeybindingEdit => format!(
         "{hyprland_root} > {} > {}",
@@ -621,6 +634,13 @@ impl App {
         }
         Err(error) => self.fail(error),
       },
+      PendingAction::RemoveSnippet(name) => match snippets::remove(&name) {
+        Ok(()) => {
+          self.snippets = snippets::load();
+          self.success(tr(self.lang, "control_center.snippets_removed").to_string());
+        }
+        Err(error) => self.fail(error),
+      },
       PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
         Ok(()) => {
           self.keybindings = keybindings::load();
@@ -696,7 +716,8 @@ impl App {
       | PendingAction::ResetFontSetting(_)
       | PendingAction::ResetKeybindings
       | PendingAction::RemoveWindowRule(_)
-      | PendingAction::RemoveProject(_) => (label("control_center.confirm"), true),
+      | PendingAction::RemoveProject(_)
+      | PendingAction::RemoveSnippet(_) => (label("control_center.confirm"), true),
       _ => (label("control_center.confirm"), false),
     };
     Some((title, message, confirm, danger))
@@ -1655,6 +1676,10 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
     PendingAction::RemoveProject(path) => (
       tr(lang, "control_center.projects_remove_title").to_string(),
       path.clone(),
+    ),
+    PendingAction::RemoveSnippet(name) => (
+      tr(lang, "control_center.snippets_remove_title").to_string(),
+      name.clone(),
     ),
     PendingAction::RestoreKeybinding { .. } => (
       tr(lang, "control_center.restore_shortcut_title").to_string(),

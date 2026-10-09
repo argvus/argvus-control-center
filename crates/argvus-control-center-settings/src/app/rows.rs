@@ -446,6 +446,7 @@ impl App {
       Page::Keybindings => self.keybinding_rows(),
       Page::WindowRules => self.window_rules_rows(),
       Page::Projects => self.projects_rows(),
+      Page::Snippets => self.snippets_rows(),
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::Firewall
@@ -857,6 +858,81 @@ impl App {
     rows
   }
 
+  /// The snippets page: the form that saves a snippet, then one block per
+  /// saved snippet. Each block shows its position, which is the number
+  /// `argvus-snippets open` takes, and its own Type and Remove rows.
+  fn snippets_rows(&self) -> Vec<Row<Item>> {
+    if !self.snippets.available {
+      return vec![Row::info(
+        self.label("control_center.snippets_unavailable"),
+        String::new(),
+      )];
+    }
+    let mut rows = vec![
+      Row::info(self.label("control_center.snippets_hint"), String::new()),
+      Row::section(self.label("control_center.snippets_new")),
+      Row::value(
+        Item::NewSnippetName,
+        self.label("control_center.snippets_name"),
+        self.new_snippet_name.clone(),
+        None,
+      )
+      .icon(icons::ID_CARD),
+      Row::value(
+        Item::NewSnippetContent,
+        self.label("control_center.snippets_content"),
+        snippet_preview(&self.new_snippet_content),
+        None,
+      )
+      .icon(icons::SCRIPT),
+      Row::action(Item::AddSnippet, self.label("control_center.snippets_save")).icon(icons::ADD),
+      Row::action(
+        Item::OpenSnippetPicker,
+        self.label("control_center.snippets_open_picker"),
+      )
+      .icon(icons::SCRIPT),
+    ];
+    if self.snippets.entries.is_empty() {
+      rows.push(Row::info(
+        self.label("control_center.snippets_empty"),
+        String::new(),
+      ));
+      return rows;
+    }
+    // Two blank rows separate the form from the saved snippets.
+    rows.push(Row::info(String::new(), String::new()));
+    rows.push(Row::info(String::new(), String::new()));
+    rows.push(Row::section(self.label("control_center.snippets_list")));
+    for (index, entry) in self.snippets.entries.iter().enumerate() {
+      rows.push(Row::section(format!("{}  {}", index + 1, entry.name)));
+      rows.push(
+        Row::value(
+          Item::SnippetContent(index),
+          self.label("control_center.snippets_content"),
+          snippet_preview(&entry.content),
+          None,
+        )
+        .icon(icons::SCRIPT),
+      );
+      rows.push(
+        Row::action(
+          Item::TypeSnippet(index),
+          self.label("control_center.snippets_type"),
+        )
+        .icon(icons::SCRIPT),
+      );
+      rows.push(
+        Row::destructive(
+          Item::RemoveSnippet(index),
+          self.label("control_center.snippets_remove"),
+        )
+        .icon(icons::DELETE),
+      );
+      rows.push(Row::separator());
+    }
+    rows
+  }
+
   /// The window rules page: the form that adds a rule, then one block per
   /// saved rule. Each block edits a draft that its Apply row saves.
   fn window_rules_rows(&self) -> Vec<Row<Item>> {
@@ -999,4 +1075,9 @@ fn binding_keys(lang: Lang, binding: &keybindings::Binding) -> String {
   } else {
     tr(lang, "control_center.disabled").to_string()
   }
+}
+
+/// One line for the list: the content with its line breaks shown inline.
+fn snippet_preview(content: &str) -> String {
+  content.lines().collect::<Vec<_>>().join(" / ")
 }

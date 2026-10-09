@@ -86,6 +86,8 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     "window-rules" | "window_rules" if args.len() == 1 => Ok(settings_route(Page::WindowRules)),
     #[cfg(feature = "apps")]
     "projects" if args.len() == 1 => Ok(settings_route(Page::Projects)),
+    #[cfg(feature = "apps")]
+    "snippets" if args.len() == 1 => Ok(settings_route(Page::Snippets)),
     "keybindings" | "shortcuts" | "keyboard" if args.len() == 1 => {
       Ok(settings_route(Page::Keybindings))
     }

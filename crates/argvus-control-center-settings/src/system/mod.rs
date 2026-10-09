@@ -12,5 +12,6 @@ pub mod locale;
 pub mod privileged;
 pub mod projects;
 pub mod ratbag;
+pub mod snippets;
 pub mod time;
 pub mod window_rules;

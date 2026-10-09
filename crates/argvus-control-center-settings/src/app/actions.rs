@@ -20,6 +20,7 @@ use crate::config::fonts::SettingKind;
 use crate::i18n::{Lang, tr};
 use crate::item::{Item, RatbagRow};
 use crate::navigation::Page;
+use crate::system::snippets;
 use crate::system::window_rules;
 use crate::system::{keybindings, keyboard, locale, time};
 
@@ -179,6 +180,12 @@ impl App {
       Item::AddWindowRule => self.add_window_rule(),
       Item::AddProjectPath => self.open_project_editor(false),
       Item::AddProjectRoot => self.open_project_editor(true),
+      Item::NewSnippetName => self.open_new_snippet_name(),
+      Item::NewSnippetContent => self.open_new_snippet_content(),
+      Item::AddSnippet => self.add_snippet(),
+      Item::OpenSnippetPicker => self.open_snippet_picker(),
+      Item::SnippetContent(index) => self.open_snippet_content(index),
+      Item::TypeSnippet(index) => self.type_snippet(index),
       Item::Zone(index) => self.apply_timezone(index),
       Item::LocalDateTime if !self.datetime.ntp.unwrap_or(false) => {
         self.admin.editor = Some(Editor::new(
@@ -290,6 +297,12 @@ impl App {
         if let Some(entry) = self.projects.entries.get(index) {
           let path = entry.path.clone();
           self.open_confirm(PendingAction::RemoveProject(path));
+        }
+      }
+      Item::RemoveSnippet(index) => {
+        if let Some(entry) = self.snippets.entries.get(index) {
+          let name = entry.name.clone();
+          self.open_confirm(PendingAction::RemoveSnippet(name));
         }
       }
       _ => {}
@@ -996,5 +1009,67 @@ impl App {
       EditTarget::ProjectPath(root),
       false,
     ));
+  }
+
+  fn open_new_snippet_name(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.snippets_name").into(),
+      self.new_snippet_name.clone(),
+      EditTarget::NewSnippetName,
+      false,
+    ));
+  }
+
+  fn open_new_snippet_content(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.snippets_content").into(),
+      self.new_snippet_content.clone(),
+      EditTarget::NewSnippetContent,
+      false,
+    ));
+  }
+
+  /// Opens the editor with a saved snippet's content; saving replaces it.
+  fn open_snippet_content(&mut self, index: usize) {
+    let Some(entry) = self.snippets.entries.get(index) else {
+      return;
+    };
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.snippets_content").into(),
+      entry.content.clone(),
+      EditTarget::SnippetContent(entry.name.clone()),
+      false,
+    ));
+  }
+
+  fn add_snippet(&mut self) {
+    let name = self.new_snippet_name.trim().to_owned();
+    if name.is_empty() {
+      self.fail(tr(self.lang, "control_center.snippets_name_required").to_string());
+      return;
+    }
+    match snippets::add(&name, &self.new_snippet_content) {
+      Ok(()) => {
+        self.new_snippet_name.clear();
+        self.new_snippet_content.clear();
+        self.snippets = snippets::load();
+        self.success(tr(self.lang, "control_center.snippets_saved").to_string());
+      }
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn open_snippet_picker(&mut self) {
+    match snippets::open_picker() {
+      Ok(()) => self.success(tr(self.lang, "control_center.snippets_picker_opening").to_string()),
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn type_snippet(&mut self, index: usize) {
+    match snippets::type_position(index + 1) {
+      Ok(()) => self.success(tr(self.lang, "control_center.snippets_typing").to_string()),
+      Err(error) => self.fail(error),
+    }
   }
 }

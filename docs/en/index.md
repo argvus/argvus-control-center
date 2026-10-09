@@ -23,6 +23,7 @@ The current Control Center home provides these areas:
 - **Control Panel** — card sessions, order and transparency, reusing the effects pages implemented in Appearance.
 - **Widget Telemetry** — sessions and transparency for the telemetry widget, reusing the effects pages implemented in Appearance.
 - **Default applications** — select installed applications for supported roles.
+- **Snippets** — text saved for `argvus-snippets`, typed with `SUPER + ALT + N`.
 - **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
 - **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
 - **System** — host, users, groups and system administration pages available to the current installation.
@@ -49,7 +50,7 @@ The main settings tree currently includes:
 | Widget Telemetry | Sessions and transparency |
 | Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap |
 | Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
-| Applications | Default applications and per-category selectors, Projects |
+| Applications | Default applications and per-category selectors, Projects, Snippets |
 | Hyprland | Keyboard shortcuts, Window rules, and the window-effects pages reused from Appearance (Window spaces, Animations, Blur, Borders), plus the installed Hyprland version |
 | System | Hostname, firewall, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
@@ -85,6 +86,18 @@ Fonts lets you select a family and size for the taskbar, telemetry/system inform
 ### Default applications
 
 Default applications selects installed programs for roles such as terminal, file manager, text editor, terminal editor, browser, image viewer, PDF viewer, video player, audio player, archive tool and launcher. The selection is saved by ARGVUS and may update standard XDG associations.
+
+### Snippets
+
+Snippets is the page for the text that `argvus-snippets` types with `SUPER + ALT + N`. It is in **Applications → Snippets** (search `snippets` or run `argvus-control-center snippets`).
+
+- **New snippet** — type a **Name** and a **Content**, then **Save snippet**. A name that already exists replaces that snippet's content.
+- **Saved snippets** — listed with their position (`1  email`) and the content on one line. Enter on the content edits it. **Type** types the snippet, and **Remove** asks for confirmation.
+- **Open picker** — opens the same picker as `SUPER + ALT + N`.
+
+Typing starts 3 seconds after you press Enter, because the Control Center itself has the focus at that moment. Click the field that should receive the text within that time. The page only edits one-line content; a multi-line snippet can be created in a terminal with `argvus-snippets add`.
+
+The page reads the entries from `argvus-config` and writes them through `argvus-snippets`, so the launcher keeps the validation. When `argvus-snippets` is not installed, the page says so.
 
 ### Locale & Region
 
@@ -184,7 +197,7 @@ argvus-control-center keybindings
 
 Run `argvus-control-center --help` for the routes available in the installed version. The command-line route is a shortcut into the same settings application, not a separate configuration system.
 
-Useful direct routes include `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
+Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
 
 ## Related
 
