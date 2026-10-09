@@ -805,6 +805,9 @@ impl App {
     rows
   }
 
+  /// The projects page: the form that adds a folder, then one block per
+  /// configured entry. Each block holds its own Remove, mirroring the
+  /// window rules page's per-item layout.
   fn projects_rows(&self) -> Vec<Row<Item>> {
     if !self.projects.available {
       return vec![Row::info(
@@ -812,17 +815,26 @@ impl App {
         String::new(),
       )];
     }
-    let mut rows = Vec::new();
-    rows.push(Row::section(
-      self.label("control_center.projects_entries").to_owned(),
-    ));
-    if self.projects.entries.is_empty() {
-      rows.push(Row::info(
-        self.label("control_center.projects_empty"),
-        String::new(),
-      ));
+    let mut rows = vec![
+      Row::section(self.label("control_center.projects_add")),
+      Row::action(
+        Item::AddProjectPath,
+        self.label("control_center.projects_add_path"),
+      )
+      .icon(icons::ADD),
+      Row::action(
+        Item::AddProjectRoot,
+        self.label("control_center.projects_add_root"),
+      )
+      .icon(icons::FOLDER),
+    ];
+    if !self.projects.entries.is_empty() {
+      // Two blank rows separate the add form from the configured entries.
+      rows.push(Row::info(String::new(), String::new()));
+      rows.push(Row::info(String::new(), String::new()));
+      rows.push(Row::section(self.label("control_center.projects_entries")));
     }
-    for entry in &self.projects.entries {
+    for (index, entry) in self.projects.entries.iter().enumerate() {
       let kind = match entry.source {
         crate::system::projects::ProjectSource::Root => {
           self.label("control_center.projects_kind_root")
@@ -831,43 +843,17 @@ impl App {
           self.label("control_center.projects_kind_path")
         }
       };
-      rows.push(Row::info(entry.path.clone(), kind.to_owned()));
-    }
-    rows.push(Row::section(
-      self.label("control_center.projects_add").to_owned(),
-    ));
-    rows.push(
-      Row::action(
-        Item::AddProjectPath,
-        self.label("control_center.projects_add_path"),
-      )
-      .icon(icons::ADD),
-    );
-    rows.push(
-      Row::action(
-        Item::AddProjectRoot,
-        self.label("control_center.projects_add_root"),
-      )
-      .icon(icons::FOLDER),
-    );
-    let remove = self
-      .projects
-      .entries
-      .iter()
-      .enumerate()
-      .map(|(index, entry)| {
+      rows.push(Row::section(entry.path.clone()));
+      rows.push(Row::info(kind.to_owned(), String::new()));
+      rows.push(
         Row::destructive(
           Item::RemoveProject(index),
-          format!(
-            "{} {}",
-            self.label("control_center.projects_remove"),
-            entry.path
-          ),
+          self.label("control_center.projects_remove"),
         )
-        .icon(icons::DELETE)
-      })
-      .collect();
-    self.danger_zone(&mut rows, remove);
+        .icon(icons::DELETE),
+      );
+      rows.push(Row::separator());
+    }
     rows
   }
 
