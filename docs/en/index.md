@@ -53,7 +53,7 @@ The main settings tree currently includes:
 | Hyprland | Keyboard shortcuts, Window rules, and the window-effects pages reused from Appearance (Window spaces, Animations, Blur, Borders), plus the installed Hyprland version |
 | System | Hostname, firewall, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
-| Services and diagnostics | Services, boot, packages, storage and diagnostics |
+| Services and diagnostics | Services, Dev Services, boot, packages, storage and diagnostics |
 | Connectivity | Network, audio and Bluetooth |
 | Session | Components, autostart, diagnostics and logs |
 | Displays | Resolution, refresh rate, scale, position, orientation, primary display, VRR and HDR when supported |
@@ -105,6 +105,8 @@ Power provides the system power controls and policy pages available to the insta
 ### System tools
 
 The system section can expose boot information, packages, services, storage, diagnostics, user/group administration and system information. These are administrative or diagnostic tools; a page may be read-only or require authorization depending on the operation.
+
+**Dev Services** reports three development-facing sources in one read-only page: the current user's systemd services, the TCP ports currently listening (`ss`), and the running containers from any installed container runtime (Podman, Docker). It only appears on the Home grid when at least one of these is available on the system — a machine with no systemd user session, no Podman and no Docker does not show the entry. `r` refreshes the three sources independently, so a slow or failing one (for example a container runtime that stopped responding) does not block the others from showing their data.
 
 On the **Packages** lists that filter while typing (Search, AUR, Installed, Orphans and Updates), letters go to the filter; use the arrow keys to move and `/` to type a new search. `Enter` on a package opens its page, with **Install** (or **Reinstall**) and, in its **Danger zone**, **Remove**. On **Orphans**, `Space` marks packages (`[x]`) and **Remove marked** removes them together. **Upgrade all** and **Refresh database** are rows of the Updates page, the cache cleanups are in the Danger zone of the Cache page, and **Mirrors → Configure mirrors** sets the reflector options before **Generate preview**. Every package operation shows its plan and asks for confirmation (`y` confirms, `n` or `Esc` cancels) before it runs, and its output is shown while it runs.
 
@@ -182,7 +184,7 @@ argvus-control-center keybindings
 
 Run `argvus-control-center --help` for the routes available in the installed version. The command-line route is a shortcut into the same settings application, not a separate configuration system.
 
-Useful direct routes include `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
+Useful direct routes include `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
 
 ## Related
 

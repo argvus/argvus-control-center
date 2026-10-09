@@ -23,6 +23,8 @@ use argvus_control_center_core::{
   jobs::JobManager,
   search::{SearchEntry, SearchRegistry},
 };
+#[cfg(feature = "dev-services")]
+use argvus_control_center_dev_services::DevServicesApp;
 #[cfg(feature = "diagnostics")]
 use argvus_control_center_diagnostics::{DiagnosticPage, DiagnosticsApp};
 #[cfg(feature = "displays")]
@@ -58,6 +60,8 @@ pub enum Route {
   Hardware,
   #[cfg(feature = "services")]
   Services,
+  #[cfg(feature = "dev-services")]
+  DevServices,
   #[cfg(feature = "network")]
   Network,
   #[cfg(feature = "audio")]
@@ -108,6 +112,8 @@ pub enum InitialRoute {
   Hardware(HardwarePage),
   #[cfg(feature = "services")]
   Services(ServicePage),
+  #[cfg(feature = "dev-services")]
+  DevServices,
   #[cfg(feature = "network")]
   Network(NetworkPage),
   #[cfg(feature = "audio")]
@@ -165,6 +171,8 @@ pub struct App {
   pub hardware: HardwareApp,
   #[cfg(feature = "services")]
   pub services: ServicesApp,
+  #[cfg(feature = "dev-services")]
+  pub dev_services: DevServicesApp,
   #[cfg(feature = "network")]
   pub network: NetworkApp,
   #[cfg(feature = "audio")]
@@ -237,6 +245,8 @@ impl App {
       InitialRoute::Hardware(_) => Route::Hardware,
       #[cfg(feature = "services")]
       InitialRoute::Services(_) => Route::Services,
+      #[cfg(feature = "dev-services")]
+      InitialRoute::DevServices => Route::DevServices,
       #[cfg(feature = "network")]
       InitialRoute::Network(_) => Route::Network,
       #[cfg(feature = "audio")]
@@ -289,6 +299,8 @@ impl App {
     let mut hardware = HardwareApp::new(lang, theme.clone(), capabilities.clone());
     #[cfg(feature = "services")]
     let mut services = ServicesApp::new(lang, theme.clone());
+    #[cfg(feature = "dev-services")]
+    let mut dev_services = DevServicesApp::new(lang, theme.clone(), capabilities.clone());
     #[cfg(feature = "network")]
     let network = NetworkApp::new(lang, theme.clone(), capabilities.clone());
     #[cfg(feature = "audio")]
@@ -319,6 +331,10 @@ impl App {
     if let InitialRoute::Services(page) = initial {
       services.page = page;
       services.reload();
+    }
+    #[cfg(feature = "dev-services")]
+    if matches!(initial, InitialRoute::DevServices) {
+      dev_services.reload();
     }
     #[cfg(feature = "network")]
     let mut network = network;
@@ -472,6 +488,14 @@ impl App {
         "Services",
         "services systemd daemon",
         "services/home",
+      ),
+      #[cfg(feature = "dev-services")]
+      (
+        "dev-services",
+        "dev-services",
+        "Dev Services",
+        "dev services systemd ports containers podman docker desenvolvimento portas",
+        "dev-services/home",
       ),
       #[cfg(feature = "boot")]
       ("boot", "boot", "Boot", "boot startup", "boot/home"),
@@ -1161,6 +1185,8 @@ impl App {
       hardware,
       #[cfg(feature = "services")]
       services,
+      #[cfg(feature = "dev-services")]
+      dev_services,
       #[cfg(feature = "network")]
       network,
       #[cfg(feature = "audio")]
@@ -1330,6 +1356,7 @@ impl App {
       feature = "boot",
       feature = "packages",
       feature = "services",
+      feature = "dev-services",
       feature = "storage",
       feature = "diagnostics",
       feature = "system"
@@ -1350,6 +1377,14 @@ impl App {
       label: tr(self.lang, "control_center.services"),
       action: 10,
     });
+    #[cfg(feature = "dev-services")]
+    if self.capabilities.has_systemd || self.capabilities.has_podman || self.capabilities.has_docker
+    {
+      rows.push(HomeRow::Item {
+        label: tr(self.lang, "control_center.dev_services"),
+        action: 28,
+      });
+    }
     #[cfg(feature = "storage")]
     rows.push(HomeRow::Item {
       label: tr(self.lang, "control_center.storage"),
@@ -1555,6 +1590,11 @@ impl App {
         self.route = Route::Appearance;
         self.appearance.reload();
       }
+      #[cfg(feature = "dev-services")]
+      28 => {
+        self.route = Route::DevServices;
+        self.dev_services.reload();
+      }
       _ => {}
     }
   }
@@ -1582,6 +1622,8 @@ impl App {
     self.hardware.set_theme(&theme);
     #[cfg(feature = "services")]
     self.services.set_theme(&theme);
+    #[cfg(feature = "dev-services")]
+    self.dev_services.set_theme(&theme);
     #[cfg(feature = "network")]
     self.network.set_theme(&theme);
     #[cfg(feature = "audio")]
@@ -1722,6 +1764,11 @@ impl App {
       ("services", "failed") => self.open_services_page(ServicePage::Failed),
       #[cfg(feature = "services")]
       ("services", "logs") => self.open_services_page(ServicePage::Logs),
+      #[cfg(feature = "dev-services")]
+      ("dev-services", "home") => {
+        self.route = Route::DevServices;
+        self.dev_services.reload();
+      }
       #[cfg(feature = "network")]
       ("network", "status") => self.open_network_page(NetworkPage::Status),
       #[cfg(feature = "network")]
@@ -1973,6 +2020,8 @@ impl App {
       Route::Packages => self.packages.captures_text(),
       #[cfg(feature = "services")]
       Route::Services => self.services.captures_text(),
+      #[cfg(feature = "dev-services")]
+      Route::DevServices => self.dev_services.captures_text(),
       #[cfg(feature = "audio")]
       Route::Audio => self.audio.captures_text(),
       #[cfg(feature = "boot")]
@@ -2004,6 +2053,12 @@ impl App {
       #[cfg(feature = "services")]
       Route::Services => {
         if self.services.handle(crossterm::event::KeyCode::Esc) {
+          self.route = Route::Home;
+        }
+      }
+      #[cfg(feature = "dev-services")]
+      Route::DevServices => {
+        if self.dev_services.handle(crossterm::event::KeyCode::Esc) {
           self.route = Route::Home;
         }
       }
@@ -2142,6 +2197,7 @@ impl App {
     #[cfg(any(
       feature = "hardware",
       feature = "services",
+      feature = "dev-services",
       feature = "network",
       feature = "audio",
       feature = "bluetooth",
@@ -2162,6 +2218,10 @@ impl App {
       #[cfg(feature = "services")]
       {
         domain |= self.route == Route::Services;
+      }
+      #[cfg(feature = "dev-services")]
+      {
+        domain |= self.route == Route::DevServices;
       }
       #[cfg(feature = "network")]
       {

@@ -134,6 +134,7 @@ dependencies = [
  "argvus-control-center-bluetooth",
  "argvus-control-center-boot",
  "argvus-control-center-core",
+ "argvus-control-center-dev-services",
  "argvus-control-center-diagnostics",
  "argvus-control-center-displays",
  "argvus-control-center-hardware",
@@ -243,6 +244,22 @@ dependencies = [
  "libc",
  "serde",
  "toml",
+]
+
+[[package]]
+name = "argvus-control-center-dev-services"
+version = "0.1.0"
+dependencies = [
+ "argvus-control-center-core",
+ "argvus-control-center-services",
+ "argvus-i18n-core",
+ "argvus-theme",
+ "argvus-tui",
+ "crossterm",
+ "ratatui",
+ "rayon",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

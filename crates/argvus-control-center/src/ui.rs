@@ -44,6 +44,8 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     Route::Hardware => app.hardware.draw(frame),
     #[cfg(feature = "services")]
     Route::Services => app.services.draw(frame),
+    #[cfg(feature = "dev-services")]
+    Route::DevServices => app.dev_services.draw(frame),
     #[cfg(feature = "network")]
     Route::Network => app.network.draw(frame),
     #[cfg(feature = "audio")]

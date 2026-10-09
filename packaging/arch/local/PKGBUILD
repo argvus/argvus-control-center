@@ -25,7 +25,11 @@ depends=(
   'xkeyboard-config'
   'xdg-utils'
 )
-optdepends=('argvus-language-pt-br: Brazilian Portuguese translations')
+optdepends=(
+  'argvus-language-pt-br: Brazilian Portuguese translations'
+  'podman: container count in Dev Services'
+  'docker: container count in Dev Services'
+)
 makedepends=('cargo')
 options=('!debug')
 backup=('etc/argvus/control-center/config.toml')

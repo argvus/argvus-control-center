@@ -29,6 +29,7 @@ full = [
   "boot",
   "packages",
   "services",
+  "dev-services",
   "system",
   "storage",
   "diagnostics",
@@ -50,6 +51,7 @@ stable = [
 about = ["dep:argvus-control-center-about"]
 hardware = ["dep:argvus-control-center-hardware"]
 services = ["dep:argvus-control-center-services"]
+dev-services = ["dep:argvus-control-center-dev-services"]
 network = ["dep:argvus-control-center-network"]
 audio = ["dep:argvus-control-center-audio"]
 bluetooth = ["dep:argvus-control-center-bluetooth"]
@@ -73,6 +75,7 @@ argvus-control-center-about = { path = "../argvus-about", optional = true }
 argvus-control-center-settings = { path = "../argvus-control-center-settings" }
 argvus-control-center-hardware = { path = "../argvus-control-center-hardware", optional = true }
 argvus-control-center-services = { path = "../argvus-control-center-services", optional = true }
+argvus-control-center-dev-services = { path = "../argvus-control-center-dev-services", optional = true }
 argvus-control-center-network = { path = "../argvus-control-center-network", optional = true }
 argvus-control-center-audio = { path = "../argvus-control-center-audio", optional = true }
 argvus-control-center-bluetooth = { path = "../argvus-control-center-bluetooth", optional = true }

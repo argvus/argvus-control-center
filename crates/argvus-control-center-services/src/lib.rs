@@ -7,5 +7,6 @@ mod journal;
 mod model;
 mod ui;
 
+pub use backend::list as list_units;
 pub use model::{ServicePage, Unit};
 pub use ui::ServicesApp;

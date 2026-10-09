@@ -118,6 +118,12 @@ pub fn handle(app: &mut App, event: Event) {
         app.route = Route::Home;
       }
     }
+    #[cfg(feature = "dev-services")]
+    Route::DevServices => {
+      if app.dev_services.handle(domain_key(key.code)) {
+        app.route = Route::Home;
+      }
+    }
     #[cfg(feature = "network")]
     Route::Network => {
       if app.network.handle(domain_key(key.code)) {

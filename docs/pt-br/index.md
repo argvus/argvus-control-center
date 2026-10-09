@@ -54,7 +54,7 @@ A árvore atual de configurações inclui:
 | Hyprland | Atalhos de teclado, Regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (Espaços de janela, Animações, Blur, Bordas), além da versão instalada do Hyprland |
 | Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
-| Serviços e diagnósticos | Serviços, boot, pacotes, armazenamento e diagnósticos |
+| Serviços e diagnósticos | Serviços, Serviços de Dev, boot, pacotes, armazenamento e diagnósticos |
 | Conectividade | Rede, áudio e Bluetooth |
 | Sessão | Componentes, autostart, diagnósticos e logs |
 | Displays | Resolução, taxa de atualização, escala, posição, orientação, display principal, VRR e HDR quando suportados |
@@ -106,6 +106,8 @@ Energia oferece os controles de energia do sistema e as páginas de política di
 ### Ferramentas do sistema
 
 A seção de sistema pode expor informações de boot, pacotes, serviços, armazenamento, diagnósticos, administração de usuários/grupos e informações do sistema. São ferramentas administrativas ou de diagnóstico; uma página pode ser somente leitura ou exigir autorização dependendo da operação.
+
+**Serviços de Dev** reúne três fontes voltadas a desenvolvimento em uma única página de leitura: os serviços systemd do usuário atual, as portas TCP em escuta (via `ss`) e os containers em execução de qualquer runtime instalado (Podman, Docker). A página só aparece na grade inicial quando pelo menos uma dessas fontes está disponível no sistema — uma máquina sem sessão systemd de usuário, sem Podman e sem Docker não mostra a entrada. `r` atualiza as três fontes de forma independente, então uma fonte lenta ou com falha (por exemplo, um runtime de containers que parou de responder) não impede as outras de mostrar seus dados.
 
 Nas listas de **Pacotes** que filtram ao digitar (Buscar, AUR, Instalados, Órfãos e Atualizações), as letras vão para o filtro; use as setas para navegar e `/` para digitar uma nova busca. `Enter` num pacote abre a página dele, com **Instalar** (ou **Reinstalar**) e, na **Zona de perigo**, **Remover**. Em **Órfãos**, `Space` marca pacotes (`[x]`) e **Remover marcados** remove todos juntos. **Atualizar tudo** e **Atualizar banco** são linhas da página Atualizações, as limpezas de cache ficam na Zona de perigo da página Cache, e **Mirrors → Configurar mirrors** define as opções do reflector antes de **Gerar preview**. Toda operação de pacotes mostra o plano e pede confirmação (`y` confirma, `n` ou `Esc` cancela) antes de rodar, e a saída aparece enquanto ela roda.
 
@@ -183,7 +185,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 

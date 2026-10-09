@@ -52,6 +52,8 @@ pub struct Capabilities {
   pub is_uefi: bool,
   pub has_battery: bool,
   pub is_virtual_machine: bool,
+  pub has_podman: bool,
+  pub has_docker: bool,
 }
 
 impl Capabilities {
@@ -103,6 +105,8 @@ impl Capabilities {
       is_uefi: path_exists("/sys/firmware/efi"),
       has_battery: battery_present(),
       is_virtual_machine: virtual_machine(),
+      has_podman: executable("podman"),
+      has_docker: executable("docker"),
     }
   }
 }

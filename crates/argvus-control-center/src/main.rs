@@ -54,6 +54,7 @@ fn main() -> Result<()> {
     #[cfg(any(
       feature = "hardware",
       feature = "services",
+      feature = "dev-services",
       feature = "network",
       feature = "audio",
       feature = "bluetooth",
@@ -75,6 +76,10 @@ fn main() -> Result<()> {
       #[cfg(feature = "services")]
       {
         domain_dirty |= app.services.poll();
+      }
+      #[cfg(feature = "dev-services")]
+      {
+        domain_dirty |= app.dev_services.poll();
       }
       #[cfg(feature = "network")]
       {

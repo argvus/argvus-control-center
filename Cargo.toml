@@ -11,6 +11,7 @@ members = [
   "crates/argvus-control-center-core",
   "crates/argvus-control-center-hardware",
   "crates/argvus-control-center-services",
+  "crates/argvus-control-center-dev-services",
   "crates/argvus-control-center-network",
   "crates/argvus-control-center-audio",
   "crates/argvus-control-center-bluetooth",

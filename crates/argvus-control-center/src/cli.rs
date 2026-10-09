@@ -98,6 +98,8 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     "hardware" => Ok(Some(InitialRoute::Hardware(parse_hardware(&args[1..])?))),
     #[cfg(feature = "services")]
     "services" | "systemd" => Ok(Some(InitialRoute::Services(parse_services(&args[1..])?))),
+    #[cfg(feature = "dev-services")]
+    "dev-services" | "dev_services" => Ok(Some(InitialRoute::DevServices)),
     #[cfg(feature = "network")]
     "network" => Ok(Some(InitialRoute::Network(parse_network(&args[1..])?))),
     #[cfg(feature = "audio")]
