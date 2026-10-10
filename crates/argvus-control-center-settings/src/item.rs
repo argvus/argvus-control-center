@@ -62,6 +62,8 @@ pub enum Item {
   ConsoleKeymap,
   /// Index into the XKB layouts.
   Layout(usize),
+  /// Writes the Keyboard > Layout draft to the Hyprland configuration.
+  ApplyKeyboardLayout,
   /// Index into the variants of the current layout.
   Variant(usize),
   /// Index into the console keymaps.

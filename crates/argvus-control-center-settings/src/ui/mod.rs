@@ -9,8 +9,10 @@ pub mod popup;
 pub mod search;
 
 use argvus_control_center_core::config::AppConfig;
-use argvus_tui::action_buttons::{ActionButton, draw_aligned as draw_action_buttons};
-use argvus_tui::menu::{MenuStyle, draw_menu};
+use argvus_tui::action_buttons::{
+  ActionButton, draw_aligned as draw_action_buttons, draw_aligned_transparent,
+};
+use argvus_tui::menu::{MenuStyle, Row, draw_menu};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -47,12 +49,51 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
 
   let areas = layout::areas(area);
   let rows = app.rows();
-  app.set_viewport(areas.body.height as usize);
+  let actions = app.action_rows();
+  // Pages with a top search reserve a box above the list; the bottom line
+  // then only shows status messages.
+  let (search_area, body) = if app.search_on_top() {
+    let split = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints([Constraint::Length(3), Constraint::Min(0)])
+      .split(areas.body);
+    (Some(split[0]), split[1])
+  } else {
+    (None, areas.body)
+  };
   frame.render_widget(Clear, areas.body);
   header::draw(frame, areas.header, app);
+  if let Some(search_area) = search_area {
+    search::draw_box(frame, search_area, app);
+  }
+  // A page with an action bar keeps it fixed under the list, so its buttons
+  // are visible without scrolling; the list gets the space above it.
+  let (list_area, action_area) = if actions.is_empty() {
+    (body, None)
+  } else {
+    let split = Layout::default()
+      .direction(Direction::Vertical)
+      .constraints([Constraint::Min(3), Constraint::Length(3)])
+      .split(body);
+    (split[0], Some(split[1]))
+  };
+  let list_area = match action_area {
+    Some(_) => {
+      let list_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Plain)
+        .border_style(Style::new().fg(app.theme.border_active))
+        .title(tr(app.lang, "control_center.layout"));
+      let inner = list_block.inner(list_area);
+      frame.render_widget(list_block, list_area);
+      inner
+    }
+    None => list_area,
+  };
+  app.set_viewport(list_area.height as usize);
   draw_menu(
     frame,
-    areas.body,
+    list_area,
     &app.theme,
     &rows,
     &mut app.navigation.current_mut().menu,
@@ -60,6 +101,9 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
       icons: AppConfig::icons_enabled(),
     },
   );
+  if let Some(action_area) = action_area {
+    draw_action_bar(app, frame, action_area, &actions);
+  }
   search::draw(frame, areas.message, app);
   footer::draw(frame, areas.footer, app);
   if app.hostname_editing {
@@ -73,6 +117,49 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   }
   popup::draw_confirmation(frame, area, app);
   draw_task_window(app, frame, area);
+}
+
+/// The page's action bar: a bordered block titled like the user page's
+/// `Actions` block, holding one button per action row. Disabled buttons are
+/// drawn muted, and only the focused button is highlighted.
+fn draw_action_bar(app: &App, frame: &mut Frame, area: Rect, actions: &[Row<Item>]) {
+  let block = Block::default()
+    .borders(Borders::ALL)
+    .border_type(ratatui::widgets::BorderType::Plain)
+    .border_style(Style::new().fg(app.theme.border_active))
+    .title(format!(
+      "{} · {}",
+      tr(app.lang, "control_center.actions"),
+      tr(app.lang, "control_center.actions_hint")
+    ));
+  let inner = block.inner(area);
+  frame.render_widget(block, area);
+
+  let buttons: Vec<ActionButton> = actions
+    .iter()
+    .filter(|row| row.id().is_some())
+    .map(|row| {
+      let icon = if AppConfig::icons_enabled() {
+        row.icon_glyph().unwrap_or("")
+      } else {
+        ""
+      };
+      if row.is_selectable() {
+        ActionButton::primary(icon, row.label(), "")
+      } else {
+        ActionButton::secondary(icon, row.label(), "")
+      }
+    })
+    .collect();
+  let selected = app.action_cursor().unwrap_or(usize::MAX);
+  draw_aligned_transparent(
+    frame,
+    inner,
+    &buttons,
+    selected,
+    &app.theme,
+    Alignment::Left,
+  );
 }
 
 /// Renderiza a tela de usuário igual à demo.

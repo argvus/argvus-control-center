@@ -9,6 +9,7 @@ use argvus_control_center_apps::catalog::Category;
 use argvus_tui::hints::{HintContext, confirm_hints, hints};
 use argvus_tui::menu::{MenuEvent, MenuState, Row, RowKind};
 
+use super::keyboard_draft;
 use super::rows::LANGUAGES;
 use super::{App, PendingAction, Status, StatusKind, keybinding_is_cheatsheet_entry};
 use super::{
@@ -201,6 +202,7 @@ impl App {
       Item::KeyboardVariant => self.open_system_page(Page::KeyboardVariant),
       Item::ConsoleKeymap => self.open_system_page(Page::ConsoleKeymap),
       Item::Layout(index) => self.apply_keyboard_layout(index),
+      Item::ApplyKeyboardLayout => self.apply_keyboard_layout_draft(),
       Item::Variant(index) => self.apply_keyboard_variant(index),
       Item::Keymap(index) => self.apply_console_keymap(index),
       Item::Language(index) => self.apply_language(index),
@@ -336,6 +338,71 @@ impl App {
     }
   }
 
+  /// Whether the page's search is a box above the list, as on the home
+  /// screen, instead of the bottom line.
+  pub(crate) fn search_on_top(&self) -> bool {
+    self.page() == Page::KeyboardLayout
+  }
+
+  /// The action bar of the current page; empty for pages without one.
+  pub(crate) fn action_rows(&self) -> Vec<Row<Item>> {
+    match self.page() {
+      Page::KeyboardLayout => self.keyboard_action_rows(),
+      _ => Vec::new(),
+    }
+  }
+
+  /// Index of the focused action button, or `None` while the list has the focus.
+  pub(crate) fn action_cursor(&self) -> Option<usize> {
+    self.navigation.current().actions.cursor()
+  }
+
+  /// Indexes of the enabled buttons of the current page's action bar.
+  fn enabled_action_indexes(&self) -> Vec<usize> {
+    self
+      .action_rows()
+      .iter()
+      .enumerate()
+      .filter(|(_, row)| row.is_selectable())
+      .map(|(index, _)| index)
+      .collect()
+  }
+
+  /// `Tab`: moves the focus between the list and the action bar.
+  pub(crate) fn toggle_action_focus(&mut self) {
+    let enabled = self.enabled_action_indexes();
+    self.navigation.current_mut().actions.toggle(&enabled);
+  }
+
+  /// `←/→` on the action bar: steps through its enabled buttons.
+  pub(crate) fn move_action(&mut self, backwards: bool) {
+    let enabled = self.enabled_action_indexes();
+    self
+      .navigation
+      .current_mut()
+      .actions
+      .move_by(backwards, &enabled);
+  }
+
+  /// Gives the focus back to the list, as `↑/↓` do.
+  pub(crate) fn focus_list(&mut self) {
+    self.navigation.current_mut().actions.focus_list();
+  }
+
+  /// Enter/Space on the focused button: runs its row, as Enter on the row would.
+  pub(crate) fn activate_action(&mut self) {
+    let rows = self.action_rows();
+    let Some(row) = self.action_cursor().and_then(|index| rows.get(index)) else {
+      return;
+    };
+    if !row.is_selectable() {
+      return;
+    }
+    if let Some(item) = row.id().copied() {
+      self.activate(item);
+    }
+  }
+
   /// Leaves the search, or goes back one page.
   pub fn back(&mut self) {
     if self.searching || !self.search.is_empty() {
@@ -357,6 +424,7 @@ impl App {
   fn leaving_drops_draft(&self) -> bool {
     match self.page() {
       Page::SystemLocales => self.locales_changed(),
+      Page::KeyboardLayout => self.keyboard_layout_changed(),
       Page::WindowRules => self
         .window_rules
         .iter()
@@ -375,6 +443,9 @@ impl App {
           .filter(|entry| entry.enabled)
           .map(|entry| format!("{} {}", entry.locale, entry.encoding))
           .collect();
+      }
+      Page::KeyboardLayout => {
+        self.keyboard_draft = keyboard_draft::LayoutDraft::loaded(&self.keyboard_info);
       }
       Page::WindowRules => {
         self.window_rule_drafts.clear();
@@ -413,7 +484,7 @@ impl App {
   pub fn select_current(&mut self) {
     let rows = self.rows();
     let current = if self.page() == Page::KeyboardLayout {
-      let default_layout = self.default_keyboard_layout().to_string();
+      let default_layout = self.keyboard_draft.default.clone();
       self
         .keyboard_layouts
         .iter()
@@ -441,6 +512,18 @@ impl App {
         "{}   r {}",
         confirm_hints(self.lang),
         tr(self.lang, "control_center.replace")
+      );
+    }
+    if self.action_cursor().is_some() {
+      // The bar's title already names `←/→`, `Enter` and `Tab`; the footer
+      // shows what the focused button does and how to go back.
+      return hints(
+        self.lang,
+        &HintContext {
+          row: Some(RowKind::Action),
+          can_go_back: true,
+          ..HintContext::default()
+        },
       );
     }
     if self.searching {
@@ -473,7 +556,7 @@ impl App {
         // `←/→` steps the workspace both ways, so the footer names it.
         extra.push(("←/→", label("control_center.window_rules_workspace")));
       }
-      Page::KeyboardLayout if row.is_some() => {
+      Page::KeyboardLayout if matches!(self.selected_item(), Some(Item::Layout(_))) => {
         // Enter sets the default layout and Space enables or disables it,
         // so the generic Toggle hint of the row does not apply here.
         row = Some(RowKind::Info);
@@ -581,6 +664,7 @@ impl App {
     }
   }
 
+  /// Enter on a layout: makes it the default in the draft. `Apply` writes it.
   fn apply_keyboard_layout(&mut self, index: usize) {
     let Some(code) = self
       .keyboard_layouts
@@ -589,19 +673,10 @@ impl App {
     else {
       return;
     };
-    match keyboard::set_x11_layout(&code, &self.keyboard_layouts) {
-      Ok(()) => {
-        self.refresh_keyboard();
-        self.success(format!(
-          "{}: {code}",
-          tr(self.lang, "control_center.keyboard_layout_changed")
-        ));
-      }
-      Err(error) => self.fail(error),
-    }
+    self.keyboard_draft.set_default(&code);
   }
 
-  /// Adds or removes a layout from the Hyprland layout list.
+  /// Space on a layout: enables or disables it in the draft. `Apply` writes it.
   fn toggle_keyboard_layout(&mut self, index: usize) {
     let Some(code) = self
       .keyboard_layouts
@@ -610,34 +685,19 @@ impl App {
     else {
       return;
     };
-    let mut selected: Vec<String> = self
-      .keyboard_info
-      .hypr_layout
-      .split(',')
-      .map(str::trim)
-      .filter(|layout| !layout.is_empty())
-      .map(str::to_string)
-      .collect();
-    if let Some(position) = selected.iter().position(|value| *value == code) {
-      if selected.len() == 1 {
-        self.fail("at least one keyboard layout must remain selected");
-        return;
-      }
-      selected.remove(position);
-    } else {
-      selected.push(code);
+    if let Err(message) = self.keyboard_draft.toggle(&code) {
+      self.fail(message);
     }
-    let default_layout = if selected
-      .iter()
-      .any(|value| value == &self.keyboard_info.x11_layout)
-    {
-      self.keyboard_info.x11_layout.clone()
-    } else {
-      selected.first().cloned().unwrap_or_default()
-    };
-    match keyboard::set_x11_layouts(&default_layout, &selected, &self.keyboard_layouts) {
+  }
+
+  /// `Apply` of Keyboard > Layout: writes the draft in one backend call, then
+  /// reloads the state so the draft matches what was written.
+  fn apply_keyboard_layout_draft(&mut self) {
+    let draft = self.keyboard_draft.clone();
+    match keyboard::set_x11_layouts(&draft.default, &draft.selected, &self.keyboard_layouts) {
       Ok(()) => {
         self.refresh_keyboard();
+        self.keyboard_draft = keyboard_draft::LayoutDraft::loaded(&self.keyboard_info);
         self.success(tr(self.lang, "control_center.keyboard_layouts_updated").to_string());
       }
       Err(error) => self.fail(error),

@@ -4,7 +4,7 @@
 //! decides focus and the activation event, and the icon belongs to the item.
 use argvus_control_center_apps::catalog::Category;
 use argvus_tui::icons;
-use argvus_tui::menu::{Row, draft_actions};
+use argvus_tui::menu::{Emphasis, Row, draft_actions};
 
 use super::{
   App, keybinding_category, keybinding_label, keybinding_section, non_empty, search_matches,
@@ -354,30 +354,22 @@ impl App {
         ),
       ],
       Page::KeyboardLayout => {
-        let default_layout = self.default_keyboard_layout();
+        let draft = &self.keyboard_draft;
         let mut rows: Vec<Row<Item>> = self
           .keyboard_layouts
           .iter()
           .enumerate()
           .filter(|(_, layout)| search_matches(&self.search, &[&layout.code, &layout.description]))
           .map(|(index, layout)| {
-            let enabled = self
-              .keyboard_info
-              .hypr_layout
-              .split(',')
-              .any(|selected| selected.trim() == layout.code);
-            // The configured default is the first entry of the Hyprland
-            // layout list, not the layout hyprctl reports as active.
-            let detail = if layout.code == default_layout {
-              format!(
-                "{} · {}",
-                layout.description,
-                self.label("control_center.default")
-              )
-            } else {
-              layout.description.clone()
-            };
-            Row::toggle(Item::Layout(index), layout.code.clone(), enabled).detail(detail)
+            // `●` marks the default, the first layout Hyprland uses; `[x]`
+            // marks the enabled layouts. Both come from the draft.
+            Row::toggle(
+              Item::Layout(index),
+              layout.code.clone(),
+              draft.is_enabled(&layout.code),
+            )
+            .marked(draft.is_default(&layout.code))
+            .detail(layout.description.clone())
           })
           .collect();
         if rows.is_empty() {
@@ -474,12 +466,28 @@ impl App {
 
   /// `Apply` of the System Locales selection.
   fn locales_apply_rows(&self) -> Vec<Row<Item>> {
-    let changed = self.locales_changed();
-    let mut rows = draft_actions(
-      Item::ApplyLocales,
-      self.label("control_center.apply"),
-      changed,
-    );
+    self.draft_apply_rows(Item::ApplyLocales, self.locales_changed())
+  }
+
+  /// The action bar under Keyboard > Layout: its `Apply` button, enabled only
+  /// while the draft differs from the system. It stays out of `rows`, so the
+  /// list cursor never walks into it; `Tab` reaches it instead.
+  pub(super) fn keyboard_action_rows(&self) -> Vec<Row<Item>> {
+    vec![
+      Row::action(
+        Item::ApplyKeyboardLayout,
+        self.label("control_center.apply"),
+      )
+      .icon(icons::APPLY)
+      .emphasis(Emphasis::Primary)
+      .enabled(self.keyboard_layout_changed()),
+    ]
+  }
+
+  /// The trailing `Apply` group of a draft page: disabled while `changed` is
+  /// false, and flagged as changed when it is true.
+  fn draft_apply_rows(&self, apply: Item, changed: bool) -> Vec<Row<Item>> {
+    let mut rows = draft_actions(apply, self.label("control_center.apply"), changed);
     if changed && let Some(apply) = rows.pop() {
       rows.push(apply.detail(self.label("control_center.draft_changed")));
     }
@@ -500,17 +508,6 @@ impl App {
         .iter()
         .filter(|entry| entry.enabled)
         .count()
-  }
-
-  /// First layout of the Hyprland layout list: the configured default.
-  pub(super) fn default_keyboard_layout(&self) -> &str {
-    self
-      .keyboard_info
-      .hypr_layout
-      .split(',')
-      .map(str::trim)
-      .find(|layout| !layout.is_empty())
-      .unwrap_or_default()
   }
 
   fn system_rows(&self) -> Vec<Row<Item>> {

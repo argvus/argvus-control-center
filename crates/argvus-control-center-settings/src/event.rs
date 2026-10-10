@@ -147,6 +147,42 @@ fn handle_key(app: &mut App, key: KeyEvent) {
 /// Page shortcuts first, then the single menu list.
 fn handle_regular_key(app: &mut App, key: KeyEvent) {
   let page = app.page();
+  // Keyboard > Layout's action bar, while it has the focus: `←/→` step
+  // through its buttons and Enter/Space run the focused one. A list key gives
+  // the list the focus back and is then handled as usual below.
+  if page == Page::KeyboardLayout {
+    let focused = app.action_cursor().is_some();
+    match key.code {
+      // `←/→` belong to the action bar only. On the list they do nothing:
+      // the menu would otherwise toggle the layout under the cursor on Right.
+      KeyCode::Left | KeyCode::Char('h') => {
+        if focused {
+          app.move_action(true);
+        }
+        return;
+      }
+      KeyCode::Right | KeyCode::Char('l') => {
+        if focused {
+          app.move_action(false);
+        }
+        return;
+      }
+      KeyCode::Enter | KeyCode::Char(' ') if focused => return app.activate_action(),
+      KeyCode::Up
+      | KeyCode::Down
+      | KeyCode::Char('j')
+      | KeyCode::Char('k')
+      | KeyCode::PageUp
+      | KeyCode::PageDown
+      | KeyCode::Home
+      | KeyCode::End
+        if focused =>
+      {
+        app.focus_list()
+      }
+      _ => {}
+    }
+  }
   match key.code {
     KeyCode::Char('/') => return app.begin_search(),
     KeyCode::Char('r') => {
@@ -163,6 +199,9 @@ fn handle_regular_key(app: &mut App, key: KeyEvent) {
     KeyCode::Char('-') => return app.adjust_size(-1),
     // Tab moves focus between the info list and the action buttons.
     KeyCode::Tab | KeyCode::BackTab if is_user_form(page) => return app.toggle_user_focus(),
+    KeyCode::Tab | KeyCode::BackTab if page == Page::KeyboardLayout => {
+      return app.toggle_action_focus();
+    }
     // Tab only switches tabs or panes; Settings has none.
     KeyCode::Tab | KeyCode::BackTab => return,
     // Enter sets the default layout; Space (a Toggle) enables or disables it.

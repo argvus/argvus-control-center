@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 mod actions;
+mod keyboard_draft;
 mod rows;
 
 pub(crate) use actions::setting_values;
@@ -119,6 +120,8 @@ pub struct App {
   keyboard_info: keyboard::KeyboardInfo,
   keyboard_layouts: Vec<keyboard::Layout>,
   keyboard_variants: Vec<keyboard::Variant>,
+  /// Pending edits of Keyboard > Layout, written only by its `Apply` row.
+  keyboard_draft: keyboard_draft::LayoutDraft,
   console_keymaps: Vec<String>,
   input: input::InputSettings,
   keybindings: Vec<keybindings::Binding>,
@@ -213,6 +216,7 @@ impl App {
       locale_gen_entries,
       selected_locales,
       keyboard_variants: keyboard::variants(&keyboard_info.x11_layout),
+      keyboard_draft: keyboard_draft::LayoutDraft::loaded(&keyboard_info),
       keyboard_info,
       keyboard_layouts: keyboard::layouts(),
       console_keymaps: keyboard::console_keymaps(),
@@ -1094,8 +1098,21 @@ impl App {
 
   /// Executes the `refresh_keyboard` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh_keyboard(&mut self) {
+    // A draft with pending edits survives the refresh; an untouched draft
+    // follows the system, so it never shows a stale layout list.
+    let dirty = self.keyboard_layout_changed();
     self.keyboard_info = keyboard::info();
     self.keyboard_variants = keyboard::variants(&self.keyboard_info.x11_layout);
+    if !dirty {
+      self.keyboard_draft = keyboard_draft::LayoutDraft::loaded(&self.keyboard_info);
+    }
+  }
+
+  /// Whether Keyboard > Layout has edits that `Apply` has not written yet.
+  pub(super) fn keyboard_layout_changed(&self) -> bool {
+    self
+      .keyboard_draft
+      .changed_from(&keyboard_draft::LayoutDraft::loaded(&self.keyboard_info))
   }
 
   /// Executes the `edited_binding` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use argvus_control_center_apps::catalog::Category;
+use argvus_tui::action_buttons::ActionFocus;
 use argvus_tui::menu::MenuState;
 
 use crate::config::fonts::{FontTarget, SettingKind};
@@ -63,6 +64,8 @@ pub struct Location {
   pub page: Page,
   /// Cursor and scroll of the page's menu list, restored when going back.
   pub menu: MenuState,
+  /// Whether the page's action bar has the focus, and on which button.
+  pub actions: ActionFocus,
 }
 
 impl Location {
@@ -71,6 +74,7 @@ impl Location {
     Self {
       page,
       menu: MenuState::default(),
+      actions: ActionFocus::default(),
     }
   }
 }
