@@ -224,17 +224,8 @@ impl AppearanceApp {
     match (item, self.page) {
       (Item::SurfaceEnabled, AppearancePage::WidgetTelemetry) => Some(icons::TELEMETRY),
       (Item::SurfaceEnabled, AppearancePage::ControlPanel) => Some(icons::CONTROL_PANEL),
-      (
-        Item::SectionEnabled | Item::SectionValue,
-        AppearancePage::SurfaceSection {
-          section: SurfaceSection::Blur,
-          ..
-        },
-      ) => Some(icons::BLUR),
       (Item::SectionEnabled | Item::SectionValue, _) => Some(icons::OPACITY),
-      (Item::EffectValue, AppearancePage::Blur | AppearancePage::BlurSurface { .. }) => {
-        Some(icons::BLUR)
-      }
+      (Item::EffectValue, AppearancePage::Blur) => Some(icons::BLUR),
       (Item::EffectValue, _) => Some(icons::OPACITY),
       _ => item.icon(),
     }
@@ -451,17 +442,10 @@ impl AppearanceApp {
         "control_center.enable",
         self.state.animations,
       )],
-      AppearancePage::BlurSurface { .. }
-      | AppearancePage::TerminalTransparency
-      | AppearancePage::TransparencySurface { .. } => {
-        let key = if matches!(self.page, AppearancePage::BlurSurface { .. }) {
-          "control_center.blur"
-        } else {
-          "control_center.transparency"
-        };
+      AppearancePage::TerminalTransparency | AppearancePage::TransparencySurface { .. } => {
         vec![self.value_row(
           Item::EffectValue,
-          key,
+          "control_center.transparency",
           percent(self.effect_editor_value()),
           Some(5),
         )]
@@ -736,13 +720,10 @@ impl AppearanceApp {
           .unwrap_or_default(),
         EffectSurface::Taskbar | EffectSurface::Terminal | EffectSurface::Launchers => Vec::new(),
       },
-      SurfaceSection::Transparency | SurfaceSection::Blur => {
-        let (enabled, value) = match (section, draft) {
-          (SurfaceSection::Transparency, Some(draft)) => {
-            (draft.transparency_enabled, draft.transparency)
-          }
-          (_, Some(draft)) => (draft.blur_enabled, draft.blur),
-          (_, None) => (false, 50),
+      SurfaceSection::Transparency => {
+        let (enabled, value) = match draft {
+          Some(draft) => (draft.transparency_enabled, draft.transparency),
+          None => (false, 50),
         };
         vec![
           self.toggle_row(Item::SectionEnabled, "control_center.enable", enabled),

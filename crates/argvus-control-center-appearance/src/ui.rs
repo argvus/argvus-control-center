@@ -764,11 +764,8 @@ impl AppearanceApp {
         draft.control_panel_cards.set(card, enabled);
       }),
       Item::SectionEnabled => {
-        if let AppearancePage::SurfaceSection { section, .. } = self.page {
-          self.edit_draft(|draft| match section {
-            SurfaceSection::Blur => draft.blur_enabled = !draft.blur_enabled,
-            _ => draft.transparency_enabled = !draft.transparency_enabled,
-          });
+        if matches!(self.page, AppearancePage::SurfaceSection { .. }) {
+          self.edit_draft(|draft| draft.transparency_enabled = !draft.transparency_enabled);
         }
       }
     }
@@ -788,16 +785,10 @@ impl AppearanceApp {
     }
   }
 
-  /// Edits the percentage of the open transparency/blur section draft.
+  /// Edits the percentage of the open transparency section draft.
   fn adjust_section_value(&mut self, edit: impl FnOnce(&mut i32)) {
-    if let AppearancePage::SurfaceSection { section, .. } = self.page {
-      self.edit_draft(|draft| {
-        edit(if section == SurfaceSection::Blur {
-          &mut draft.blur
-        } else {
-          &mut draft.transparency
-        })
-      });
+    if matches!(self.page, AppearancePage::SurfaceSection { .. }) {
+      self.edit_draft(|draft| edit(&mut draft.transparency));
     }
   }
 
@@ -1378,10 +1369,6 @@ impl AppearanceApp {
         self.effect_draft = None;
         self.go(AppearancePage::Transparency);
       }
-      AppearancePage::BlurSurface { .. } => {
-        self.effect_draft = None;
-        self.go(AppearancePage::Blur);
-      }
       AppearancePage::SurfaceSection { surface, section } => {
         self.go(match (surface, section) {
           (EffectSurface::Taskbar, SurfaceSection::UtilityIcons) => AppearancePage::TaskbarIcons,
@@ -1419,7 +1406,6 @@ impl AppearanceApp {
         surface: EffectSurface::Launchers,
       } => Some(("transparency", EffectSurface::Launchers)),
       AppearancePage::TransparencySurface { surface } => Some(("transparency", surface)),
-      AppearancePage::BlurSurface { surface } => Some(("blur", surface)),
       _ => None,
     }
   }
@@ -1613,11 +1599,6 @@ impl AppearanceApp {
         tr(self.lang, "control_center.transparency"),
         tr(self.lang, surface.label_key())
       ),
-      AppearancePage::BlurSurface { surface } => format!(
-        "{hyprland_root} > {} > {}",
-        tr(self.lang, "control_center.blur"),
-        tr(self.lang, surface.label_key())
-      ),
       AppearancePage::TaskbarPosition => format!(
         "{taskbar_root} > {}",
         tr(self.lang, "control_center.position")
@@ -1685,7 +1666,6 @@ impl AppearanceApp {
               SurfaceSection::UtilityIcons => "control_center.taskbar_utility_group",
               SurfaceSection::Sessions => "control_center.sessions",
               SurfaceSection::Transparency => "control_center.transparency",
-              SurfaceSection::Blur => "control_center.blur",
             }
           )
         )

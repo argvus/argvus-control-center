@@ -786,13 +786,13 @@ fn enter_on_a_draft_value_types_it_without_applying() {
 
   let mut section = draft_app(AppearancePage::SurfaceSection {
     surface: EffectSurface::Taskbar,
-    section: SurfaceSection::Blur,
+    section: SurfaceSection::Transparency,
   });
   select(&mut section, Item::SectionValue);
   section.handle(KeyCode::Enter);
   section.handle(KeyCode::Char('0'));
   section.handle(KeyCode::Enter);
-  assert_eq!(section.surface_draft().unwrap().blur, 0);
+  assert_eq!(section.surface_draft().unwrap().transparency, 0);
   assert_eq!(selected(&section), Some(Item::SectionValue));
   assert!(section.action.is_none());
 
@@ -833,33 +833,27 @@ fn reload_keeps_a_changed_draft_and_rebuilds_a_clean_one() {
 #[test]
 fn surface_value_navigation_keeps_vertical_focus_and_ends_with_apply() {
   for surface in EffectSurface::ALL {
-    for section in [SurfaceSection::Transparency, SurfaceSection::Blur] {
-      let mut application = draft_app(AppearancePage::SurfaceSection { surface, section });
+    let mut application = draft_app(AppearancePage::SurfaceSection {
+      surface,
+      section: SurfaceSection::Transparency,
+    });
 
-      application.handle(KeyCode::Down);
-      assert_eq!(selected(&application), Some(Item::SectionValue));
-      application.handle(KeyCode::Up);
-      assert_eq!(selected(&application), Some(Item::SectionEnabled));
+    application.handle(KeyCode::Down);
+    assert_eq!(selected(&application), Some(Item::SectionValue));
+    application.handle(KeyCode::Up);
+    assert_eq!(selected(&application), Some(Item::SectionEnabled));
 
-      select(&mut application, Item::SectionValue);
-      let value = |application: &AppearanceApp| {
-        let draft = application.surface_draft().unwrap();
-        if section == SurfaceSection::Transparency {
-          draft.transparency
-        } else {
-          draft.blur
-        }
-      };
-      let initial = value(&application);
-      application.handle(KeyCode::Char('+'));
-      assert_eq!(selected(&application), Some(Item::SectionValue));
-      assert_eq!(value(&application), (initial + 5).min(100));
+    select(&mut application, Item::SectionValue);
+    let value = |application: &AppearanceApp| application.surface_draft().unwrap().transparency;
+    let initial = value(&application);
+    application.handle(KeyCode::Char('+'));
+    assert_eq!(selected(&application), Some(Item::SectionValue));
+    assert_eq!(value(&application), (initial + 5).min(100));
 
-      application.handle(KeyCode::End);
-      assert_eq!(selected(&application), Some(Item::Apply));
-      application.handle(KeyCode::Enter);
-      assert!(application.action.is_some());
-    }
+    application.handle(KeyCode::End);
+    assert_eq!(selected(&application), Some(Item::Apply));
+    application.handle(KeyCode::Enter);
+    assert!(application.action.is_some());
   }
 }
 

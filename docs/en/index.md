@@ -65,19 +65,19 @@ Some of these are full pages and some are subpages reached through search or a d
 
 ### Appearance
 
-Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors and bundled or custom wallpapers. Taskbar, Control Panel and Widget Telemetry are separate top-level areas (see below) that reuse Appearance's shared effects pages (transparency, blur) for their own surfaces. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors and bundled or custom wallpapers. Taskbar, Control Panel and Widget Telemetry are separate top-level areas (see below) that reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
 
 ### Taskbar
 
-Taskbar configures the panel's position, the spacing around it and its windows, the utility icon group, and the date/time blocks, plus its own transparency and blur.
+Taskbar configures the panel's position, the spacing around it and its windows, the utility icon group, and the date/time blocks, plus its own transparency.
 
 ### Control Panel
 
-Control Panel configures the visibility and order of its quick-action cards, plus its own sessions, transparency and blur.
+Control Panel configures the visibility and order of its quick-action cards, plus its own sessions and transparency.
 
 ### Widget Telemetry
 
-Widget Telemetry configures the system-information widget's sessions, transparency and blur.
+Widget Telemetry configures the system-information widget's sessions and transparency.
 
 ### Fonts
 

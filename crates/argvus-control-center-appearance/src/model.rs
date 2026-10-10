@@ -181,10 +181,6 @@ pub enum AppearancePage {
   },
   #[allow(dead_code)]
   Blur,
-  #[allow(dead_code)]
-  BlurSurface {
-    surface: EffectSurface,
-  },
   TaskbarPosition,
   TaskbarSpaces,
   Taskbar,
@@ -227,7 +223,6 @@ pub enum SurfaceSection {
   UtilityIcons,
   Sessions,
   Transparency,
-  Blur,
 }
 
 impl EffectSurface {

@@ -66,19 +66,19 @@ Alguns itens são páginas completas e outros são subpáginas alcançadas pela 
 
 ### Aparência
 
-Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque e wallpapers incluídos ou personalizados. Taskbar, Control Panel e Widget Telemetry são áreas próprias no nível principal (veja abaixo) que reaproveitam as páginas de efeitos compartilhadas da Aparência (transparência, blur) para suas próprias superfícies. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque e wallpapers incluídos ou personalizados. Taskbar, Control Panel e Widget Telemetry são áreas próprias no nível principal (veja abaixo) que reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
 
 ### Taskbar
 
-A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência e blur.
+A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência.
 
 ### Control Panel
 
-O Control Panel configura a visibilidade e a ordem dos seus cards de ação rápida, além das próprias sessões, transparência e blur.
+O Control Panel configura a visibilidade e a ordem dos seus cards de ação rápida, além das próprias sessões e transparência.
 
 ### Widget Telemetry
 
-O Widget Telemetry configura as sessões, a transparência e o blur do widget de informações do sistema.
+O Widget Telemetry configura as sessões e a transparência do widget de informações do sistema.
 
 ### Fontes
 
