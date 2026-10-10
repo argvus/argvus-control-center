@@ -88,8 +88,8 @@ fn home_has_categories_and_spacing_is_nested() {
   assert_eq!(app(AppearancePage::TaskbarTimeFormat).page_rows().len(), 2);
   assert_eq!(app(AppearancePage::WidgetTelemetry).page_rows().len(), 3);
   assert_eq!(app(AppearancePage::ControlPanel).page_rows().len(), 3);
-  // Blur now carries its own "Enable" toggle alongside the Value row.
-  assert_eq!(app(AppearancePage::Blur).page_rows().len(), 2);
+  // Blur: the "Enable" switch, the "Values" heading and the seven parameters.
+  assert_eq!(app(AppearancePage::Blur).page_rows().len(), 9);
   assert_eq!(app(AppearancePage::Terminal).page_rows().len(), 2);
 }
 
@@ -108,8 +108,13 @@ fn hyprland_entry_points_match_the_approved_design() {
 
   let blur = app(AppearancePage::Blur).rows();
   assert_eq!(blur[0].kind(), RowKind::Toggle { on: true });
-  assert_eq!(blur[1].kind(), RowKind::Value { step: Some(5) });
-  assert_eq!(blur[1].detail_text(), Some("50%"));
+  assert_eq!(blur[1].kind(), RowKind::Separator, "Values heading");
+  assert_eq!(blur[2].kind(), RowKind::Value { step: Some(1) });
+  assert_eq!(blur[2].label(), "Size");
+  assert_eq!(blur[2].detail_text(), Some("6"));
+  assert_eq!(blur[5].detail_text(), Some("0.00"), "noise");
+  assert_eq!(blur[6].detail_text(), Some("0.900000"), "contrast");
+  assert_eq!(blur[7].detail_text(), Some("0.100000"), "vibrancy");
 }
 
 #[test]
@@ -129,7 +134,7 @@ fn rows_have_the_kind_of_what_they_do() {
   );
 
   let editor = app(AppearancePage::Blur).rows();
-  assert_eq!(editor[1].kind(), RowKind::Value { step: Some(5) });
+  assert_eq!(editor[2].kind(), RowKind::Value { step: Some(1) });
 }
 
 #[test]
@@ -540,7 +545,7 @@ fn space_keeps_activating_actions_submenus_choices_and_editors() {
 #[test]
 fn value_rows_adjust_with_arrows_and_footer_says_esc_goes_back() {
   let mut editor = app(AppearancePage::Blur);
-  select(&mut editor, Item::EffectValue);
+  select(&mut editor, Item::BlurField(BlurField::Size));
   let rows = editor.rows();
   let footer = editor.hints(&rows);
   assert!(footer.contains("←/→ "), "{footer}");
@@ -548,10 +553,10 @@ fn value_rows_adjust_with_arrows_and_footer_says_esc_goes_back() {
   assert!(!footer.contains("←/Esc"), "← adjusts here: {footer}");
 
   editor.handle(KeyCode::Right);
-  assert_eq!(editor.effect_draft, Some(55));
+  assert_eq!(blur_value(&editor, BlurField::Size), 7.0);
   editor.handle(KeyCode::Left);
   editor.handle(KeyCode::Left);
-  assert_eq!(editor.effect_draft, Some(45));
+  assert_eq!(blur_value(&editor, BlurField::Size), 5.0);
   assert_eq!(
     editor.page,
     AppearancePage::Blur,
@@ -560,7 +565,36 @@ fn value_rows_adjust_with_arrows_and_footer_says_esc_goes_back() {
   editor.handle(KeyCode::Char('h'));
   editor.handle(KeyCode::Char('l'));
   editor.handle(KeyCode::Char('l'));
-  assert_eq!(editor.effect_draft, Some(50));
+  assert_eq!(blur_value(&editor, BlurField::Size), 6.0);
+  assert!(!editor.blur_draft_has_changes(), "back to the stored value");
+}
+
+/// Blur value as the page currently shows it (draft first, then stored).
+fn blur_value(application: &AppearanceApp, field: BlurField) -> f64 {
+  application.blur_editor().values.get(field)
+}
+
+#[test]
+fn blur_switch_and_values_stay_in_the_draft_until_apply() {
+  let mut blur = app(AppearancePage::Blur);
+  select(&mut blur, Item::BlurEnabled);
+  blur.handle(KeyCode::Enter);
+  assert_eq!(
+    blur.blur_draft.map(|draft| draft.enabled),
+    Some(!blur.state.blur)
+  );
+  assert!(blur.has_pending_changes(), "Apply is enabled");
+  assert!(blur.action.is_none(), "the switch is not written yet");
+
+  select(&mut blur, Item::BlurField(BlurField::Passes));
+  blur.handle(KeyCode::Right);
+  assert_eq!(blur_value(&blur, BlurField::Passes), 3.0);
+  assert_eq!(
+    blur.state.blur_values.get(BlurField::Passes),
+    2.0,
+    "stored value unchanged"
+  );
+  assert!(blur.action.is_none(), "nothing applied");
 }
 
 #[test]
@@ -654,7 +688,7 @@ fn draft_pages_end_with_an_apply_row_enabled_only_with_changes() {
   ] {
     let mut application = app(page);
     if page == AppearancePage::Blur {
-      select(&mut application, Item::EffectValue);
+      select(&mut application, Item::BlurField(BlurField::Size));
     }
     assert!(!application.rows().last().unwrap().is_selectable());
     application.handle(KeyCode::Right);
@@ -753,35 +787,38 @@ fn esc_with_a_pending_draft_asks_before_discarding() {
   // confirming here signals the host to leave instead of navigating to a
   // parent page inside this crate.
   let mut editor = app(AppearancePage::Blur);
-  select(&mut editor, Item::EffectValue);
+  select(&mut editor, Item::BlurField(BlurField::Size));
   editor.handle(KeyCode::Right);
   editor.handle(KeyCode::Esc);
   assert!(editor.confirm.is_some());
   editor.handle(KeyCode::Up);
   assert!(editor.handle(KeyCode::Enter), "signals leaving the crate");
   assert_eq!(editor.page, AppearancePage::Blur);
-  assert_eq!(editor.effect_draft, None);
+  assert_eq!(editor.blur_draft, None);
 }
 
 #[test]
 fn enter_on_a_draft_value_types_it_without_applying() {
   let mut editor = app(AppearancePage::Blur);
-  select(&mut editor, Item::EffectValue);
+  select(&mut editor, Item::BlurField(BlurField::Contrast));
   editor.handle(KeyCode::Enter);
   assert_eq!(
     editor.page,
     AppearancePage::Prompt {
-      goal: PromptGoal::DraftValue
+      goal: PromptGoal::BlurValue(BlurField::Contrast)
     }
   );
   assert!(editor.captures_text());
-  for key in ['1', '0', '0'] {
+  for key in ['0', '.', '5'] {
     editor.handle(KeyCode::Char(key));
   }
   editor.handle(KeyCode::Enter);
   assert_eq!(editor.page, AppearancePage::Blur);
-  assert_eq!(editor.effect_draft, Some(100));
-  assert_eq!(selected(&editor), Some(Item::EffectValue));
+  assert_eq!(blur_value(&editor, BlurField::Contrast), 0.5);
+  assert_eq!(
+    selected(&editor),
+    Some(Item::BlurField(BlurField::Contrast))
+  );
   assert!(editor.action.is_none(), "nothing applied");
 
   let mut section = draft_app(AppearancePage::SurfaceSection {
@@ -797,15 +834,16 @@ fn enter_on_a_draft_value_types_it_without_applying() {
   assert!(section.action.is_none());
 
   // Out of range keeps the prompt open with an error.
+  // Size accepts 1–64: 200 keeps the prompt open and leaves the draft alone.
   let mut invalid = app(AppearancePage::Blur);
-  select(&mut invalid, Item::EffectValue);
+  select(&mut invalid, Item::BlurField(BlurField::Size));
   invalid.handle(KeyCode::Enter);
   for key in ['2', '0', '0'] {
     invalid.handle(KeyCode::Char(key));
   }
   invalid.handle(KeyCode::Enter);
   assert!(invalid.prompt_error.is_some());
-  assert_eq!(invalid.effect_draft, None);
+  assert_eq!(invalid.blur_draft, None);
 }
 
 #[test]

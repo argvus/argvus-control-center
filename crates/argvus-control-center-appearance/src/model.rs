@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 
+use crate::blur::{BlurField, BlurValues};
 use argvus_theme::discovery::ThemeCategory;
 use std::str::FromStr;
 
@@ -735,9 +736,12 @@ pub enum PromptGoal {
   Rounding,
   Thickness,
   /// A percentage typed into the open draft (effect editors and the
-  /// transparency/blur sections). It only edits the draft; `Apply` still
+  /// transparency sections). It only edits the draft; `Apply` still
   /// writes it.
   DraftValue,
+  /// A Blur parameter typed into the Blur page draft. Like `DraftValue`, it
+  /// only edits the draft.
+  BlurValue(BlurField),
 }
 impl PromptGoal {
   /// Executes the `key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -757,6 +761,7 @@ impl PromptGoal {
       Self::Rounding => "rounding",
       Self::Thickness => "thickness",
       Self::DraftValue => "draft_value",
+      Self::BlurValue(field) => field.name(),
     }
   }
   /// Executes the const function documented in this module. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -890,7 +895,7 @@ pub struct AppearanceState {
   pub animations: bool,
   pub transparency: bool,
   pub blur: bool,
-  pub global_blur: i32,
+  pub blur_values: BlurValues,
   pub taskbar_transparency_enabled: bool,
   pub control_panel_transparency_enabled: bool,
   pub widget_telemetry_transparency_enabled: bool,
@@ -963,7 +968,7 @@ impl Default for AppearanceState {
       animations: true,
       transparency: true,
       blur: true,
-      global_blur: 50,
+      blur_values: BlurValues::default(),
       taskbar_transparency_enabled: true,
       control_panel_transparency_enabled: true,
       widget_telemetry_transparency_enabled: true,

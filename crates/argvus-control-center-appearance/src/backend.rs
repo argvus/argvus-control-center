@@ -2,6 +2,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+use crate::blur::BlurValues;
 use crate::model::{
   AppearanceState, ControlPanelCard, ControlPanelCards, EffectSurface, TaskbarDateFormat,
   TaskbarPosition, TaskbarTimeFormat, TaskbarUtilityGroupMode, TaskbarUtilityWidget,
@@ -599,11 +600,12 @@ fn effect_value(kind: &str, surface: EffectSurface) -> i32 {
   .unwrap_or(50)
 }
 
-fn global_effect_value(key: &str) -> i32 {
-  run_script_output(&script("effects-toggle.sh"), &["global-value", key, "get"])
-    .and_then(|value| value.trim().parse::<i32>().ok())
-    .filter(|value| (0..=100).contains(value))
-    .unwrap_or(50)
+/// Reads the Hyprland blur parameters from the session script. A missing
+/// script or config falls back to the defaults.
+fn blur_values() -> BlurValues {
+  run_script_output(&script("effects-toggle.sh"), &["blur-settings", "get"])
+    .map(|output| BlurValues::from_script_output(&output))
+    .unwrap_or_default()
 }
 
 fn effect_enabled(kind: &str, surface: EffectSurface) -> bool {
@@ -979,7 +981,7 @@ pub fn load_page(
     state.animations = effect_state("animations");
     state.transparency = effect_state("transparency");
     state.blur = effect_state("blur");
-    state.global_blur = global_effect_value("blur_global_value");
+    state.blur_values = blur_values();
   }
   if matches!(
     page,
@@ -1212,15 +1214,13 @@ pub fn set_effect_value(kind: &str, surface: EffectSurface, value: i32) -> Resul
   )
 }
 
-pub fn set_global_blur_value(value: i32) -> Result<(), String> {
-  if !(0..=100).contains(&value) {
-    return Err("invalid blur value".into());
-  }
-  let value = value.to_string();
-  run_script(
-    &script("effects-toggle.sh"),
-    &["global-value", "blur_global_value", "set", &value],
-  )
+/// Writes every Blur parameter in one call, so `Apply` triggers a single
+/// compositor reload. The script validates each value again.
+pub fn set_blur_values(values: BlurValues) -> Result<(), String> {
+  let arguments = values.script_arguments();
+  let mut request = vec!["blur-settings", "set"];
+  request.extend(arguments.iter().map(String::as_str));
+  run_script(&script("effects-toggle.sh"), &request)
 }
 
 pub fn apply_surface_effects(

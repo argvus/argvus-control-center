@@ -65,7 +65,7 @@ Some of these are full pages and some are subpages reached through search or a d
 
 ### Appearance
 
-Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors and bundled or custom wallpapers. Taskbar, Control Panel and Widget Telemetry are separate top-level areas (see below) that reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors and bundled or custom wallpapers. Taskbar, Control Panel and Widget Telemetry are separate top-level areas (see below) that reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
 
 ### Taskbar
 

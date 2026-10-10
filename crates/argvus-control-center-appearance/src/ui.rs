@@ -6,6 +6,7 @@ mod rows;
 
 use crate::{
   backend,
+  blur::{BlurField, BlurSettings},
   model::{
     AppearancePage, AppearanceState, ControlPanelCard, ControlPanelCards, CustomTheme,
     EffectSurface, HexColor, PromptGoal, SurfaceSection, TaskbarDateFormat, TaskbarTimeFormat,
@@ -147,6 +148,8 @@ pub struct AppearanceApp {
   reload_requested: bool,
   control_panel_draft: Option<ControlPanelCards>,
   effect_draft: Option<i32>,
+  /// Unapplied Blur page edits: the enable switch and the parameters.
+  blur_draft: Option<BlurSettings>,
   surface_draft: Option<SurfaceDraft>,
   theme_dirty: bool,
   /// Open confirmation dialog, drawn over the page.
@@ -221,6 +224,7 @@ impl AppearanceApp {
       reload_requested: false,
       control_panel_draft: None,
       effect_draft: None,
+      blur_draft: None,
       surface_draft: None,
       theme_dirty: false,
       confirm: None,
@@ -362,9 +366,38 @@ impl AppearanceApp {
     }
   }
 
+  /// The Blur page as stored, before any unapplied edit.
+  fn blur_saved(&self) -> BlurSettings {
+    BlurSettings {
+      enabled: self.state.blur,
+      values: self.state.blur_values,
+    }
+  }
+
+  /// The Blur page as shown: the draft when there is one, otherwise the stored state.
+  fn blur_editor(&self) -> BlurSettings {
+    self.blur_draft.unwrap_or_else(|| self.blur_saved())
+  }
+
+  /// Whether the Blur draft differs from the stored settings.
+  fn blur_draft_has_changes(&self) -> bool {
+    self
+      .blur_draft
+      .is_some_and(|draft| draft != self.blur_saved())
+  }
+
+  /// Changes the Blur draft; nothing is written until `Apply`.
+  fn edit_blur(&mut self, edit: impl FnOnce(&mut BlurSettings)) {
+    let mut draft = self.blur_editor();
+    edit(&mut draft);
+    self.blur_draft = Some(draft);
+  }
+
   /// Whether the current page has an unapplied draft, which enables `Apply`.
   fn has_pending_changes(&self) -> bool {
-    if Self::effect_spec(self.page).is_some() {
+    if self.page == AppearancePage::Blur {
+      self.blur_draft_has_changes()
+    } else if Self::effect_spec(self.page).is_some() {
       self.effect_draft_has_changes()
     } else {
       Self::surface_for_page(self.page).is_some() && self.surface_draft_has_changes()
@@ -373,7 +406,9 @@ impl AppearanceApp {
 
   /// Whether this page edits a draft that is applied with the `Apply` row.
   fn is_draft_page(page: AppearancePage) -> bool {
-    Self::surface_for_page(page).is_some() || Self::effect_spec(page).is_some()
+    page == AppearancePage::Blur
+      || Self::surface_for_page(page).is_some()
+      || Self::effect_spec(page).is_some()
   }
 
   fn start_pending_import(&mut self) {
@@ -685,10 +720,12 @@ impl AppearanceApp {
         surface: EffectSurface::Launchers,
       }),
       Item::EffectValue | Item::SectionValue => self.open_prompt(PromptGoal::DraftValue),
+      Item::BlurField(field) => self.open_prompt(PromptGoal::BlurValue(field)),
+      Item::Apply if self.page == AppearancePage::Blur => self.apply_blur_changes(),
       Item::Apply if Self::effect_spec(self.page).is_some() => self.apply_effect_changes(),
       Item::Apply => self.apply_surface_changes(),
       Item::Animations => self.apply_toggle_animations(),
-      Item::BlurEnabled => self.apply_toggle_blur(),
+      Item::BlurEnabled => self.edit_blur(|draft| draft.enabled = !draft.enabled),
       Item::TaskbarPosition => self.go(AppearancePage::TaskbarPosition),
       Item::TaskbarSpaces => self.go(AppearancePage::TaskbarSpaces),
       Item::WindowSpacesInner => self.go(AppearancePage::WindowSpacesInner),
@@ -775,6 +812,9 @@ impl AppearanceApp {
   /// value by `delta`, bounded to 0–100.
   fn adjust(&mut self, item: Item, delta: i32) {
     match (item, self.page) {
+      (Item::BlurField(field), AppearancePage::Blur) => {
+        self.edit_blur(|draft| draft.values.adjust(field, delta));
+      }
       (Item::EffectValue, _) => {
         self.effect_draft = Some((self.effect_editor_value() + delta).clamp(0, 100));
       }
@@ -1029,6 +1069,10 @@ impl AppearanceApp {
           return false;
         };
         let value = self.prompt_buffer.trim().to_string();
+        if let PromptGoal::BlurValue(field) = goal {
+          self.commit_blur_value(field, &value);
+          return false;
+        }
         if goal == PromptGoal::ExportProfile {
           let back = self.prompt_back.take().unwrap_or(AppearancePage::Themes);
           if value.is_empty() {
@@ -1098,8 +1142,16 @@ impl AppearanceApp {
         self.prompt_buffer.push(c);
         false
       }
-      KeyCode::Char(c) if c.is_ascii_digit() && self.prompt_buffer.len() < 3 => {
+      KeyCode::Char(c)
+        if c.is_ascii_digit() && self.prompt_buffer.len() < self.prompt_digit_limit() =>
+      {
         self.prompt_buffer.push(c);
+        false
+      }
+      KeyCode::Char('.')
+        if self.blur_prompt_field().is_some() && !self.prompt_buffer.contains('.') =>
+      {
+        self.prompt_buffer.push('.');
         false
       }
       KeyCode::Backspace => {
@@ -1109,6 +1161,76 @@ impl AppearanceApp {
       _ => false,
     }
   }
+  /// The Blur field whose value the open prompt is typing, if any.
+  fn blur_prompt_field(&self) -> Option<BlurField> {
+    match self.page {
+      AppearancePage::Prompt {
+        goal: PromptGoal::BlurValue(field),
+      } => Some(field),
+      _ => None,
+    }
+  }
+
+  /// Longest text a numeric prompt accepts. Blur values need room for a
+  /// decimal such as `0.900000`.
+  fn prompt_digit_limit(&self) -> usize {
+    if self.blur_prompt_field().is_some() {
+      8
+    } else {
+      3
+    }
+  }
+
+  /// Writes a typed Blur parameter into the Blur draft and returns to the page
+  /// with its row selected. Nothing is applied; an out-of-range value keeps
+  /// the prompt open with the accepted bounds.
+  fn commit_blur_value(&mut self, field: BlurField, text: &str) {
+    let Some(value) = field.parse(text) else {
+      let (minimum, maximum) = field.bounds();
+      self.prompt_error = Some(format!(
+        "{} ({}–{})",
+        tr(self.lang, "control_center.enter_a_valid_number"),
+        field.format(minimum),
+        field.format(maximum)
+      ));
+      return;
+    };
+    self.prompt_back = None;
+    self.go(AppearancePage::Blur);
+    self.edit_blur(|draft| draft.values.set(field, value));
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    self.menu.select(&rows, &Item::BlurField(field));
+  }
+
+  /// Writes the Blur draft. The switch and the parameters go to the session
+  /// script, which reloads the compositor. The page stays open.
+  fn apply_blur_changes(&mut self) {
+    if self.action.is_some() {
+      return;
+    }
+    let Some(draft) = self.blur_draft.take() else {
+      return;
+    };
+    let enabled_changed = draft.enabled != self.state.blur;
+    let values_changed = draft.values != self.state.blur_values;
+    if !enabled_changed && !values_changed {
+      return;
+    }
+    self.apply(
+      tr(self.lang, "control_center.blur_applied").into(),
+      move || {
+        if enabled_changed {
+          backend::set_blur(draft.enabled)?;
+        }
+        if values_changed {
+          backend::set_blur_values(draft.values)?;
+        }
+        Ok(())
+      },
+    );
+  }
+
   /// Writes a typed percentage into the draft of `page` and returns to it
   /// with the value row selected. Nothing is applied.
   fn set_draft_value(&mut self, page: AppearancePage, value: i32) {
@@ -1245,6 +1367,9 @@ impl AppearanceApp {
     if self.action.is_some() {
       return false;
     }
+    if self.page == AppearancePage::Blur {
+      return self.blur_draft_has_changes();
+    }
     if Self::effect_spec(self.page).is_some() {
       return self.effect_draft_has_changes();
     }
@@ -1351,7 +1476,7 @@ impl AppearanceApp {
       // Entry point reached from the Hyprland category (crate principal);
       // like the other effect editors, leaving drops the unapplied value.
       AppearancePage::Blur => {
-        self.effect_draft = None;
+        self.blur_draft = None;
         return true;
       }
       AppearancePage::TerminalTransparency => {
@@ -1391,16 +1516,8 @@ impl AppearanceApp {
       move || backend::set_animations(value),
     );
   }
-  fn apply_toggle_blur(&mut self) {
-    let value = !self.state.blur;
-    self.apply(
-      tr(self.lang, "control_center.blur_applied").into(),
-      move || backend::set_blur(value),
-    );
-  }
   fn effect_spec(page: AppearancePage) -> Option<(&'static str, EffectSurface)> {
     match page {
-      AppearancePage::Blur => Some(("global-blur", EffectSurface::Taskbar)),
       AppearancePage::TerminalTransparency => Some(("transparency", EffectSurface::Terminal)),
       AppearancePage::TransparencySurface {
         surface: EffectSurface::Launchers,
@@ -1420,7 +1537,6 @@ impl AppearanceApp {
       ("blur", EffectSurface::WidgetTelemetry) => self.state.widget_telemetry_blur,
       ("transparency", EffectSurface::Terminal) => self.state.terminal_transparency,
       ("transparency", EffectSurface::Launchers) => self.state.launcher_transparency,
-      ("global-blur", EffectSurface::Taskbar) => self.state.global_blur,
       _ => 0,
     }
   }
@@ -1443,17 +1559,11 @@ impl AppearanceApp {
     let terminal_transparency_enabled = self.state.terminal_transparency_enabled;
     let launcher_transparency_enabled = self.state.launcher_transparency_enabled;
     self.effect_draft = None;
-    let back = if kind == "transparency" {
-      AppearancePage::Transparency
-    } else {
-      AppearancePage::Blur
-    };
+    let back = AppearancePage::Transparency;
     self.apply(
       tr(self.lang, "control_center.effect_value_applied").into(),
       move || {
-        if kind == "global-blur" {
-          backend::set_global_blur_value(value)
-        } else if kind == "transparency" && surface == EffectSurface::Terminal {
+        if kind == "transparency" && surface == EffectSurface::Terminal {
           backend::apply_surface_effects(surface, terminal_transparency_enabled, value, true, 0)
         } else if kind == "transparency" && surface == EffectSurface::Launchers {
           backend::apply_surface_effects(surface, launcher_transparency_enabled, value, true, 0)
@@ -1488,6 +1598,7 @@ impl AppearanceApp {
       PromptGoal::GapsOutBottom => "control_center.outer_gap_bottom",
       PromptGoal::Rounding | PromptGoal::Thickness => "control_center.value",
       PromptGoal::DraftValue => "control_center.value",
+      PromptGoal::BlurValue(field) => field.label_key(),
     }
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

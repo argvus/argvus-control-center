@@ -66,7 +66,7 @@ Alguns itens são páginas completas e outros são subpáginas alcançadas pela 
 
 ### Aparência
 
-Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque e wallpapers incluídos ou personalizados. Taskbar, Control Panel e Widget Telemetry são áreas próprias no nível principal (veja abaixo) que reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque e wallpapers incluídos ou personalizados. Taskbar, Control Panel e Widget Telemetry são áreas próprias no nível principal (veja abaixo) que reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
 
 ### Taskbar
 

@@ -4,6 +4,7 @@
 //! screen, and the item carries its own icon, so pages never pick glyphs by
 //! index or splice them into labels.
 use super::{AppearanceApp, THEME_CATEGORIES, current_family_label, family_indices};
+use crate::blur::BlurField;
 use crate::model::{
   AppearancePage, ControlPanelCard, EffectSurface, PromptGoal, SurfaceSection, TaskbarDateFormat,
   TaskbarPosition, TaskbarTimeFormat, TaskbarUtilityGroupMode, TaskbarUtilityWidget,
@@ -61,8 +62,11 @@ pub(super) enum Item {
   EffectValue,
   /// "Enable" on the Animations page (entry point from Hyprland).
   Animations,
-  /// "Enable" on the Blur page (entry point from Hyprland; global blur).
+  /// "Enable" on the Blur page (entry point from Hyprland; global blur). It
+  /// edits the draft, like every Blur value, until `Apply`.
   BlurEnabled,
+  /// One Blur parameter row (size, passes, brightness, ...).
+  BlurField(BlurField),
   // Taskbar position/spaces, window spaces and borders
   TaskbarPosition,
   TaskbarSpaces,
@@ -136,7 +140,7 @@ impl Item {
       | Self::TaskbarTransparency
       | Self::SurfaceTransparency => icons::OPACITY,
       Self::Animations => icons::ANIMATION,
-      Self::BlurEnabled => icons::BLUR,
+      Self::BlurEnabled | Self::BlurField(_) => icons::BLUR,
       Self::TaskbarPosition => icons::TASKBAR,
       Self::TaskbarSpaces | Self::WindowSpacesInner | Self::WindowSpacesOuter => icons::GAP,
       Self::GeneralBorders => icons::BORDER,
@@ -186,7 +190,10 @@ fn spacing_icon(goal: PromptGoal) -> Option<&'static str> {
     PromptGoal::GapsIn => Some(icons::GAP),
     PromptGoal::Rounding => Some(icons::ROUNDED),
     PromptGoal::Thickness => Some(icons::THICKNESS),
-    PromptGoal::ExportProfile | PromptGoal::ImportProfile | PromptGoal::DraftValue => None,
+    PromptGoal::ExportProfile
+    | PromptGoal::ImportProfile
+    | PromptGoal::DraftValue
+    | PromptGoal::BlurValue(_) => None,
   }
 }
 
@@ -225,7 +232,6 @@ impl AppearanceApp {
       (Item::SurfaceEnabled, AppearancePage::WidgetTelemetry) => Some(icons::TELEMETRY),
       (Item::SurfaceEnabled, AppearancePage::ControlPanel) => Some(icons::CONTROL_PANEL),
       (Item::SectionEnabled | Item::SectionValue, _) => Some(icons::OPACITY),
-      (Item::EffectValue, AppearancePage::Blur) => Some(icons::BLUR),
       (Item::EffectValue, _) => Some(icons::OPACITY),
       _ => item.icon(),
     }
@@ -423,19 +429,26 @@ impl AppearanceApp {
           )
           .detail(percent(self.state.launcher_transparency)),
       ],
-      // Entered directly from the Hyprland category (crate principal); the
-      // blur here is the global one (not a per-surface transparency/blur
-      // section). "Enable" is immediate, "Value" goes through the draft +
-      // Apply mechanism already used by every other effect editor.
-      AppearancePage::Blur => vec![
-        self.toggle_row(Item::BlurEnabled, "control_center.enable", self.state.blur),
-        self.value_row(
-          Item::EffectValue,
-          "control_center.value",
-          percent(self.effect_editor_value()),
-          Some(5),
-        ),
-      ],
+      // Entered directly from the Hyprland category (crate principal). The
+      // switch and every Hyprland blur parameter edit the draft; `Apply`
+      // (added by `rows`) writes them in one step.
+      AppearancePage::Blur => {
+        let draft = self.blur_editor();
+        let enable = self.toggle_row(Item::BlurEnabled, "control_center.enable", draft.enabled);
+        let mut rows = vec![
+          enable,
+          Row::section(self.label("control_center.blur_values")),
+        ];
+        rows.extend(BlurField::ALL.map(|field| {
+          self.value_row(
+            Item::BlurField(field),
+            field.label_key(),
+            field.format(draft.values.get(field)),
+            Some(1),
+          )
+        }));
+        rows
+      }
       // Entered directly from the Hyprland category.
       AppearancePage::Animations => vec![self.toggle_row(
         Item::Animations,
