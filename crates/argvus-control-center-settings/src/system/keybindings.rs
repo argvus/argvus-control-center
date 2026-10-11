@@ -164,8 +164,8 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
     ),
     "appearance.brightness" => ("Open brightness selector", "Abre o seletor de brilho"),
     "appearance.mode" => (
-      "Toggle GTK Dark and Light themes",
-      "Altera entre tema Dark e Light do GTK",
+      "Toggle between the ARGVUS Dark and ARGVUS Light themes",
+      "Alterna entre os temas ARGVUS Dark e ARGVUS Light",
     ),
     "appearance.animations" => ("Toggle animations", "Ativa/Desativa animações"),
     "system.about" => ("Open About ARGVUS", "Abrir Sobre o ARGVUS"),
