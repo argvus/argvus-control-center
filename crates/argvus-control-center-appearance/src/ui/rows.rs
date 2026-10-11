@@ -4,6 +4,9 @@
 //! screen, and the item carries its own icon, so pages never pick glyphs by
 //! index or splice them into labels.
 use super::{AppearanceApp, THEME_CATEGORIES, current_family_label, family_indices};
+use crate::animations::{
+  AnimationCurve, AnimationField, AnimationGroup, AnimationLeaf, CurveParam,
+};
 use crate::blur::BlurField;
 use crate::model::{
   AppearancePage, ControlPanelCard, EffectSurface, PromptGoal, SurfaceSection, TaskbarDateFormat,
@@ -60,8 +63,25 @@ pub(super) enum Item {
   LauncherTransparencyValue,
   /// The value row of an effect editor page.
   EffectValue,
-  /// "Enable" on the Animations page (entry point from Hyprland).
+  /// "Enable" on the Animations page (entry point from Hyprland). Like every
+  /// Animations value, it edits the draft until `Apply`.
   Animations,
+  /// "Custom curves" on the Animations page.
+  AnimationsCustomCurves,
+  /// One animation category on the Animations page.
+  AnimationsGroup(AnimationGroup),
+  /// One curve under "Custom curves".
+  AnimationsCurve(AnimationCurve),
+  /// One animation leaf under a category.
+  AnimationsLeaf(AnimationLeaf),
+  /// "Enable" of an animation leaf that has one.
+  AnimationLeafEnabled(AnimationLeaf),
+  /// The style row of an animation leaf (`←/→` or Enter cycles it).
+  AnimationLeafStyle(AnimationLeaf),
+  /// The curve row of an animation leaf (`←/→` or Enter cycles it).
+  AnimationLeafCurve(AnimationLeaf),
+  /// A numeric animation row: speed, pop-in percentage or a curve parameter.
+  AnimationField(AnimationField),
   /// "Enable" on the Blur page (entry point from Hyprland; global blur). It
   /// edits the draft, like every Blur value, until `Apply`.
   BlurEnabled,
@@ -139,7 +159,21 @@ impl Item {
       | Self::LauncherTransparencyValue
       | Self::TaskbarTransparency
       | Self::SurfaceTransparency => icons::OPACITY,
-      Self::Animations => icons::ANIMATION,
+      Self::Animations
+      | Self::AnimationsCustomCurves
+      | Self::AnimationsCurve(_)
+      | Self::AnimationsLeaf(_)
+      | Self::AnimationLeafEnabled(_)
+      | Self::AnimationLeafStyle(_)
+      | Self::AnimationLeafCurve(_)
+      | Self::AnimationField(_) => icons::ANIMATION,
+      Self::AnimationsGroup(group) => match group {
+        AnimationGroup::Windows => icons::WINDOW_RULES,
+        AnimationGroup::Workspaces => icons::GAP,
+        AnimationGroup::LayersPopups => icons::LAYOUT,
+        AnimationGroup::BordersEffects => icons::BORDER,
+        AnimationGroup::OtherAnimations => icons::EFFECT,
+      },
       Self::BlurEnabled | Self::BlurField(_) => icons::BLUR,
       Self::TaskbarPosition => icons::TASKBAR,
       Self::TaskbarSpaces | Self::WindowSpacesInner | Self::WindowSpacesOuter => icons::GAP,
@@ -193,7 +227,8 @@ fn spacing_icon(goal: PromptGoal) -> Option<&'static str> {
     PromptGoal::ExportProfile
     | PromptGoal::ImportProfile
     | PromptGoal::DraftValue
-    | PromptGoal::BlurValue(_) => None,
+    | PromptGoal::BlurValue(_)
+    | PromptGoal::AnimationValue(_) => None,
   }
 }
 
@@ -449,12 +484,35 @@ impl AppearanceApp {
         }));
         rows
       }
-      // Entered directly from the Hyprland category.
-      AppearancePage::Animations => vec![self.toggle_row(
-        Item::Animations,
-        "control_center.enable",
-        self.state.animations,
-      )],
+      // Entered directly from the Hyprland category (crate principal). The
+      // switch, the custom curves and every leaf edit the shared Animations
+      // draft; `Apply` (added by `rows`) writes it in one step.
+      AppearancePage::Animations => {
+        let draft = self.animations_editor();
+        let mut rows = vec![
+          self.toggle_row(Item::Animations, "control_center.enable", draft.enabled),
+          Row::section(self.label("control_center.animations_options")),
+          self.submenu(
+            Item::AnimationsCustomCurves,
+            "control_center.animations_custom_curves",
+          ),
+        ];
+        rows.extend(
+          AnimationGroup::ALL
+            .map(|group| self.submenu(Item::AnimationsGroup(group), group.label_key())),
+        );
+        rows
+      }
+      AppearancePage::AnimationsCustomCurves => AnimationCurve::CUSTOM
+        .into_iter()
+        .map(|curve| self.submenu(Item::AnimationsCurve(curve), curve.label_key()))
+        .collect(),
+      AppearancePage::AnimationsCurve { curve } => self.animation_curve_rows(curve),
+      AppearancePage::AnimationsGroup { group } => group
+        .leaves()
+        .map(|leaf| self.submenu(Item::AnimationsLeaf(leaf), leaf.label_key()))
+        .collect(),
+      AppearancePage::AnimationsLeaf { leaf } => self.animation_leaf_rows(leaf),
       AppearancePage::TerminalTransparency | AppearancePage::TransparencySurface { .. } => {
         vec![self.value_row(
           Item::EffectValue,
@@ -762,6 +820,95 @@ impl AppearanceApp {
       Row::value(item, self.label(key), text, step),
       self.item_icon(item),
     )
+  }
+
+  /// Rows of one custom curve. Bézier and Spring list their parameters;
+  /// Linear and Ease-out are fixed curves, so they only show their points.
+  fn animation_curve_rows(&self, curve: AnimationCurve) -> Vec<Row<Item>> {
+    let draft = self.animations_editor();
+    let params: &[CurveParam] = match curve {
+      AnimationCurve::Bezier => &[
+        CurveParam::BezierX1,
+        CurveParam::BezierY1,
+        CurveParam::BezierX2,
+        CurveParam::BezierY2,
+      ],
+      AnimationCurve::Spring => &[
+        CurveParam::SpringMass,
+        CurveParam::SpringStiffness,
+        CurveParam::SpringDampening,
+      ],
+      AnimationCurve::Default | AnimationCurve::Linear | AnimationCurve::EaseOut => &[],
+    };
+    let fixed_points = match curve {
+      AnimationCurve::Linear => Some("(0, 0) (1, 1)"),
+      AnimationCurve::EaseOut => Some("(0, 0) (0.58, 1)"),
+      _ => None,
+    };
+    if let Some(points) = fixed_points {
+      return vec![Row::info(
+        self.label("control_center.animation_points"),
+        points,
+      )];
+    }
+    params
+      .iter()
+      .map(|param| {
+        let field = AnimationField::Param(*param);
+        self.value_row(
+          Item::AnimationField(field),
+          field.label_key(),
+          field.format(draft.values.get(field)),
+          Some(1),
+        )
+      })
+      .collect()
+  }
+
+  /// Rows of one animation leaf, in the order of the approved layout: Enable
+  /// (when the leaf has one), Style, Speed, Curve and Pop-in percentage.
+  fn animation_leaf_rows(&self, leaf: AnimationLeaf) -> Vec<Row<Item>> {
+    let draft = self.animations_editor();
+    let values = draft.values.leaf(leaf);
+    let mut rows = Vec::new();
+    if leaf.has_enabled() {
+      rows.push(self.toggle_row(
+        Item::AnimationLeafEnabled(leaf),
+        "control_center.enable",
+        values.enabled,
+      ));
+    }
+    if leaf.has_style() {
+      rows.push(self.value_row(
+        Item::AnimationLeafStyle(leaf),
+        "control_center.animation_style",
+        self.label(values.style.label_key()),
+        Some(1),
+      ));
+    }
+    let speed = AnimationField::Speed(leaf);
+    rows.push(self.value_row(
+      Item::AnimationField(speed),
+      speed.label_key(),
+      speed.format(draft.values.get(speed)),
+      Some(1),
+    ));
+    rows.push(self.value_row(
+      Item::AnimationLeafCurve(leaf),
+      "control_center.animation_curve",
+      self.label(values.curve.label_key()),
+      Some(1),
+    ));
+    if leaf.has_popin() {
+      let popin = AnimationField::Popin(leaf);
+      rows.push(self.value_row(
+        Item::AnimationField(popin),
+        popin.label_key(),
+        format!("{}%", popin.format(draft.values.get(popin))),
+        Some(1),
+      ));
+    }
+    rows
   }
 
   fn spacing_row(&self, goal: PromptGoal, value: i32) -> Row<Item> {

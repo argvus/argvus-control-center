@@ -2,6 +2,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+use crate::animations::AnimationValues;
 use crate::blur::BlurValues;
 use crate::model::{
   AppearanceState, ControlPanelCard, ControlPanelCards, EffectSurface, TaskbarDateFormat,
@@ -600,6 +601,17 @@ fn effect_value(kind: &str, surface: EffectSurface) -> i32 {
   .unwrap_or(50)
 }
 
+/// Reads the Hyprland animation values from the session script. A missing
+/// script or config falls back to the defaults.
+fn animation_values() -> AnimationValues {
+  run_script_output(
+    &script("effects-toggle.sh"),
+    &["animations-settings", "get"],
+  )
+  .map(|output| AnimationValues::from_script_output(&output))
+  .unwrap_or_default()
+}
+
 /// Reads the Hyprland blur parameters from the session script. A missing
 /// script or config falls back to the defaults.
 fn blur_values() -> BlurValues {
@@ -983,6 +995,10 @@ pub fn load_page(
     state.blur = effect_state("blur");
     state.blur_values = blur_values();
   }
+  if page.is_animations() {
+    state.animations = effect_state("animations");
+    state.animation_values = animation_values();
+  }
   if matches!(
     page,
     AppearancePage::Taskbar
@@ -1191,6 +1207,16 @@ pub fn set_animations(enabled: bool) -> Result<(), String> {
     &script("effects-toggle.sh"),
     &["animations", if enabled { "enable" } else { "disable" }],
   )
+}
+
+/// Writes every animation value except the global switch in one call, so
+/// `Apply` triggers a single compositor reload. The script validates each
+/// value again.
+pub fn set_animation_values(values: AnimationValues) -> Result<(), String> {
+  let arguments = values.script_arguments();
+  let mut request = vec!["animations-settings", "set"];
+  request.extend(arguments.iter().map(String::as_str));
+  run_script(&script("effects-toggle.sh"), &request)
 }
 
 pub fn set_blur(enabled: bool) -> Result<(), String> {

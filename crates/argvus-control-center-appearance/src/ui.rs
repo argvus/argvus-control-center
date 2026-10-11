@@ -5,6 +5,7 @@
 mod rows;
 
 use crate::{
+  animations::{AnimationCurve, AnimationField, AnimationSettings, cycle},
   backend,
   blur::{BlurField, BlurSettings},
   model::{
@@ -150,6 +151,8 @@ pub struct AppearanceApp {
   effect_draft: Option<i32>,
   /// Unapplied Blur page edits: the enable switch and the parameters.
   blur_draft: Option<BlurSettings>,
+  /// Unapplied Animations edits, shared by every Animations page.
+  animations_draft: Option<AnimationSettings>,
   surface_draft: Option<SurfaceDraft>,
   theme_dirty: bool,
   /// Open confirmation dialog, drawn over the page.
@@ -225,6 +228,7 @@ impl AppearanceApp {
       control_panel_draft: None,
       effect_draft: None,
       blur_draft: None,
+      animations_draft: None,
       surface_draft: None,
       theme_dirty: false,
       confirm: None,
@@ -395,7 +399,9 @@ impl AppearanceApp {
 
   /// Whether the current page has an unapplied draft, which enables `Apply`.
   fn has_pending_changes(&self) -> bool {
-    if self.page == AppearancePage::Blur {
+    if self.page.is_animations() {
+      self.animations_draft_has_changes()
+    } else if self.page == AppearancePage::Blur {
       self.blur_draft_has_changes()
     } else if Self::effect_spec(self.page).is_some() {
       self.effect_draft_has_changes()
@@ -407,6 +413,7 @@ impl AppearanceApp {
   /// Whether this page edits a draft that is applied with the `Apply` row.
   fn is_draft_page(page: AppearancePage) -> bool {
     page == AppearancePage::Blur
+      || page.is_animations()
       || Self::surface_for_page(page).is_some()
       || Self::effect_spec(page).is_some()
   }
@@ -722,9 +729,22 @@ impl AppearanceApp {
       Item::EffectValue | Item::SectionValue => self.open_prompt(PromptGoal::DraftValue),
       Item::BlurField(field) => self.open_prompt(PromptGoal::BlurValue(field)),
       Item::Apply if self.page == AppearancePage::Blur => self.apply_blur_changes(),
+      Item::Apply if self.page.is_animations() => self.apply_animations_changes(),
       Item::Apply if Self::effect_spec(self.page).is_some() => self.apply_effect_changes(),
       Item::Apply => self.apply_surface_changes(),
-      Item::Animations => self.apply_toggle_animations(),
+      Item::Animations => self.edit_animations(|draft| draft.enabled = !draft.enabled),
+      Item::AnimationsCustomCurves => self.go(AppearancePage::AnimationsCustomCurves),
+      Item::AnimationsGroup(group) => self.go(AppearancePage::AnimationsGroup { group }),
+      Item::AnimationsCurve(curve) => self.go(AppearancePage::AnimationsCurve { curve }),
+      Item::AnimationsLeaf(leaf) => self.go(AppearancePage::AnimationsLeaf { leaf }),
+      Item::AnimationLeafEnabled(leaf) => self.edit_animations(|draft| {
+        let values = draft.values.leaf_mut(leaf);
+        values.enabled = !values.enabled;
+      }),
+      Item::AnimationLeafStyle(_) | Item::AnimationLeafCurve(_) => {
+        self.step_animation_choice(item, 1);
+      }
+      Item::AnimationField(field) => self.open_prompt(PromptGoal::AnimationValue(field)),
       Item::BlurEnabled => self.edit_blur(|draft| draft.enabled = !draft.enabled),
       Item::TaskbarPosition => self.go(AppearancePage::TaskbarPosition),
       Item::TaskbarSpaces => self.go(AppearancePage::TaskbarSpaces),
@@ -814,6 +834,12 @@ impl AppearanceApp {
     match (item, self.page) {
       (Item::BlurField(field), AppearancePage::Blur) => {
         self.edit_blur(|draft| draft.values.adjust(field, delta));
+      }
+      (Item::AnimationField(field), _) => {
+        self.edit_animations(|draft| draft.values.adjust(field, delta));
+      }
+      (Item::AnimationLeafStyle(_) | Item::AnimationLeafCurve(_), _) => {
+        self.step_animation_choice(item, delta);
       }
       (Item::EffectValue, _) => {
         self.effect_draft = Some((self.effect_editor_value() + delta).clamp(0, 100));
@@ -1073,6 +1099,10 @@ impl AppearanceApp {
           self.commit_blur_value(field, &value);
           return false;
         }
+        if let PromptGoal::AnimationValue(field) = goal {
+          self.commit_animation_value(field, &value);
+          return false;
+        }
         if goal == PromptGoal::ExportProfile {
           let back = self.prompt_back.take().unwrap_or(AppearancePage::Themes);
           if value.is_empty() {
@@ -1148,10 +1178,17 @@ impl AppearanceApp {
         self.prompt_buffer.push(c);
         false
       }
-      KeyCode::Char('.')
-        if self.blur_prompt_field().is_some() && !self.prompt_buffer.contains('.') =>
-      {
+      KeyCode::Char('.') if self.decimal_prompt() && !self.prompt_buffer.contains('.') => {
         self.prompt_buffer.push('.');
+        false
+      }
+      KeyCode::Char('-')
+        if self
+          .animation_prompt_field()
+          .is_some_and(AnimationField::allows_negative)
+          && self.prompt_buffer.is_empty() =>
+      {
+        self.prompt_buffer.push('-');
         false
       }
       KeyCode::Backspace => {
@@ -1171,14 +1208,29 @@ impl AppearanceApp {
     }
   }
 
-  /// Longest text a numeric prompt accepts. Blur values need room for a
-  /// decimal such as `0.900000`.
-  fn prompt_digit_limit(&self) -> usize {
-    if self.blur_prompt_field().is_some() {
-      8
-    } else {
-      3
+  /// The Animations field whose value the open prompt is typing, if any.
+  fn animation_prompt_field(&self) -> Option<AnimationField> {
+    match self.page {
+      AppearancePage::Prompt {
+        goal: PromptGoal::AnimationValue(field),
+      } => Some(field),
+      _ => None,
     }
+  }
+
+  /// Whether the open prompt types a decimal value: Blur parameters and the
+  /// Animations curve parameters.
+  fn decimal_prompt(&self) -> bool {
+    self.blur_prompt_field().is_some()
+      || self
+        .animation_prompt_field()
+        .is_some_and(|field| !field.is_integer())
+  }
+
+  /// Longest text a numeric prompt accepts. Decimal values need room for a
+  /// value such as `0.900000`.
+  fn prompt_digit_limit(&self) -> usize {
+    if self.decimal_prompt() { 8 } else { 3 }
   }
 
   /// Writes a typed Blur parameter into the Blur draft and returns to the page
@@ -1367,6 +1419,13 @@ impl AppearanceApp {
     if self.action.is_some() {
       return false;
     }
+    if self.page == AppearancePage::Animations {
+      return self.animations_draft_has_changes();
+    }
+    // Sub-pages of Animations keep the draft; only leaving its root drops it.
+    if self.page.is_animations() {
+      return false;
+    }
     if self.page == AppearancePage::Blur {
       return self.blur_draft_has_changes();
     }
@@ -1449,8 +1508,23 @@ impl AppearanceApp {
       // the Control Center Home itself, both in the crate principal);
       // there is no parent page left inside this crate, so leaving goes
       // back to whichever page opened them.
-      AppearancePage::WindowSpaces | AppearancePage::Borders | AppearancePage::Animations => {
+      AppearancePage::WindowSpaces | AppearancePage::Borders => {
         return true;
+      }
+      AppearancePage::Animations => {
+        self.animations_draft = None;
+        return true;
+      }
+      AppearancePage::AnimationsCustomCurves | AppearancePage::AnimationsGroup { .. } => {
+        self.go(AppearancePage::Animations);
+      }
+      AppearancePage::AnimationsCurve { .. } => {
+        self.go(AppearancePage::AnimationsCustomCurves);
+      }
+      AppearancePage::AnimationsLeaf { leaf } => {
+        self.go(AppearancePage::AnimationsGroup {
+          group: leaf.group(),
+        });
       }
       // Same kind of entry point, but these three carry a surface draft
       // that otherwise would never be cleared (previously `go(Home)` did
@@ -1508,12 +1582,101 @@ impl AppearanceApp {
     }
     false
   }
-  /// Applies the `apply_toggle_animations` operation while preserving the persistence and local-update contract.
-  fn apply_toggle_animations(&mut self) {
-    let value = !self.state.animations;
+  /// The Animations settings as stored, before any unapplied edit.
+  fn animations_saved(&self) -> AnimationSettings {
+    AnimationSettings {
+      enabled: self.state.animations,
+      values: self.state.animation_values,
+    }
+  }
+
+  /// The Animations settings as shown: the draft when there is one, otherwise
+  /// the stored state. Every Animations page reads the same draft.
+  fn animations_editor(&self) -> AnimationSettings {
+    self
+      .animations_draft
+      .unwrap_or_else(|| self.animations_saved())
+  }
+
+  /// Whether the Animations draft differs from the stored settings.
+  fn animations_draft_has_changes(&self) -> bool {
+    self
+      .animations_draft
+      .is_some_and(|draft| draft != self.animations_saved())
+  }
+
+  /// Changes the Animations draft; nothing is written until `Apply`.
+  fn edit_animations(&mut self, edit: impl FnOnce(&mut AnimationSettings)) {
+    let mut draft = self.animations_editor();
+    edit(&mut draft);
+    self.animations_draft = Some(draft);
+  }
+
+  /// Moves the style or the curve of a leaf by `delta` choices, wrapping around.
+  fn step_animation_choice(&mut self, item: Item, delta: i32) {
+    match item {
+      Item::AnimationLeafStyle(leaf) => self.edit_animations(|draft| {
+        let values = draft.values.leaf_mut(leaf);
+        values.style = cycle(leaf.styles(), values.style, delta);
+      }),
+      Item::AnimationLeafCurve(leaf) => self.edit_animations(|draft| {
+        let values = draft.values.leaf_mut(leaf);
+        values.curve = cycle(&AnimationCurve::ALL, values.curve, delta);
+      }),
+      _ => {}
+    }
+  }
+
+  /// Writes a typed animation value into the Animations draft and returns to
+  /// the page it was opened from, with its row selected. Nothing is applied;
+  /// an out-of-range value keeps the prompt open with the accepted bounds.
+  fn commit_animation_value(&mut self, field: AnimationField, text: &str) {
+    let Some(value) = field.parse(text) else {
+      let (minimum, maximum) = field.bounds();
+      self.prompt_error = Some(format!(
+        "{} ({}–{})",
+        tr(self.lang, "control_center.enter_a_valid_number"),
+        field.format(minimum),
+        field.format(maximum)
+      ));
+      return;
+    };
+    let back = self
+      .prompt_back
+      .take()
+      .unwrap_or(AppearancePage::Animations);
+    self.go(back);
+    self.edit_animations(|draft| draft.values.set(field, value));
+    let rows = self.rows();
+    self.menu.normalize(&rows);
+    self.menu.select(&rows, &Item::AnimationField(field));
+  }
+
+  /// Writes the Animations draft. The global switch and the values go to the
+  /// session script, which reloads the compositor. The page stays open.
+  fn apply_animations_changes(&mut self) {
+    if self.action.is_some() {
+      return;
+    }
+    let Some(draft) = self.animations_draft.take() else {
+      return;
+    };
+    let enabled_changed = draft.enabled != self.state.animations;
+    let values_changed = draft.values != self.state.animation_values;
+    if !enabled_changed && !values_changed {
+      return;
+    }
     self.apply(
       tr(self.lang, "control_center.animations_applied").into(),
-      move || backend::set_animations(value),
+      move || {
+        if enabled_changed {
+          backend::set_animations(draft.enabled)?;
+        }
+        if values_changed {
+          backend::set_animation_values(draft.values)?;
+        }
+        Ok(())
+      },
     );
   }
   fn effect_spec(page: AppearancePage) -> Option<(&'static str, EffectSurface)> {
@@ -1599,6 +1762,7 @@ impl AppearanceApp {
       PromptGoal::Rounding | PromptGoal::Thickness => "control_center.value",
       PromptGoal::DraftValue => "control_center.value",
       PromptGoal::BlurValue(field) => field.label_key(),
+      PromptGoal::AnimationValue(field) => field.label_key(),
     }
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1804,6 +1968,28 @@ impl AppearanceApp {
           tr(self.lang, "control_center.animations")
         )
       }
+      AppearancePage::AnimationsCustomCurves => format!(
+        "{hyprland_root} > {} > {}",
+        tr(self.lang, "control_center.animations"),
+        tr(self.lang, "control_center.animations_custom_curves")
+      ),
+      AppearancePage::AnimationsCurve { curve } => format!(
+        "{hyprland_root} > {} > {} > {}",
+        tr(self.lang, "control_center.animations"),
+        tr(self.lang, "control_center.animations_custom_curves"),
+        tr(self.lang, curve.label_key())
+      ),
+      AppearancePage::AnimationsGroup { group } => format!(
+        "{hyprland_root} > {} > {}",
+        tr(self.lang, "control_center.animations"),
+        tr(self.lang, group.label_key())
+      ),
+      AppearancePage::AnimationsLeaf { leaf } => format!(
+        "{hyprland_root} > {} > {} > {}",
+        tr(self.lang, "control_center.animations"),
+        tr(self.lang, leaf.group().label_key()),
+        tr(self.lang, leaf.label_key())
+      ),
       AppearancePage::Borders => format!(
         "{hyprland_root} > {}",
         tr(self.lang, "control_center.borders")

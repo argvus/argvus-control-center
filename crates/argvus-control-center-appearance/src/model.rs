@@ -3,6 +3,9 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 
+use crate::animations::{
+  AnimationCurve, AnimationField, AnimationGroup, AnimationLeaf, AnimationValues,
+};
 use crate::blur::{BlurField, BlurValues};
 use argvus_theme::discovery::ThemeCategory;
 use std::str::FromStr;
@@ -174,6 +177,20 @@ pub enum AppearancePage {
   /// a single "Enable" toggle, applied immediately like it was on the
   /// removed Effects page.
   Animations,
+  /// "Custom curves" under Animations: one editor per curve type.
+  AnimationsCustomCurves,
+  /// One curve of "Custom curves" (Bézier, Spring, Linear or Ease-out).
+  AnimationsCurve {
+    curve: AnimationCurve,
+  },
+  /// One animation category under Animations (Windows, Workspaces, ...).
+  AnimationsGroup {
+    group: AnimationGroup,
+  },
+  /// One animation leaf: its Enabled, Style, Speed, Curve and Pop-in rows.
+  AnimationsLeaf {
+    leaf: AnimationLeaf,
+  },
   #[allow(dead_code)]
   Transparency,
   #[allow(dead_code)]
@@ -207,6 +224,21 @@ pub enum AppearancePage {
   Prompt {
     goal: PromptGoal,
   },
+}
+
+impl AppearancePage {
+  /// Whether the page belongs to the Animations tree, whose pages share one
+  /// draft and are applied together with its `Apply` row.
+  pub fn is_animations(self) -> bool {
+    matches!(
+      self,
+      Self::Animations
+        | Self::AnimationsCustomCurves
+        | Self::AnimationsCurve { .. }
+        | Self::AnimationsGroup { .. }
+        | Self::AnimationsLeaf { .. }
+    )
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -742,6 +774,9 @@ pub enum PromptGoal {
   /// A Blur parameter typed into the Blur page draft. Like `DraftValue`, it
   /// only edits the draft.
   BlurValue(BlurField),
+  /// A speed, pop-in percentage or curve parameter typed into the Animations
+  /// draft. Like `BlurValue`, it only edits the draft.
+  AnimationValue(AnimationField),
 }
 impl PromptGoal {
   /// Executes the `key` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -762,6 +797,7 @@ impl PromptGoal {
       Self::Thickness => "thickness",
       Self::DraftValue => "draft_value",
       Self::BlurValue(field) => field.name(),
+      Self::AnimationValue(_) => "animation_value",
     }
   }
   /// Executes the const function documented in this module. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -896,6 +932,8 @@ pub struct AppearanceState {
   pub transparency: bool,
   pub blur: bool,
   pub blur_values: BlurValues,
+  /// Animation values other than the global switch, which is `animations`.
+  pub animation_values: AnimationValues,
   pub taskbar_transparency_enabled: bool,
   pub control_panel_transparency_enabled: bool,
   pub widget_telemetry_transparency_enabled: bool,
@@ -969,6 +1007,7 @@ impl Default for AppearanceState {
       transparency: true,
       blur: true,
       blur_values: BlurValues::default(),
+      animation_values: AnimationValues::default(),
       taskbar_transparency_enabled: true,
       control_panel_transparency_enabled: true,
       widget_telemetry_transparency_enabled: true,

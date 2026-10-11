@@ -2,6 +2,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+mod animations;
 mod backend;
 mod blur;
 mod model;
