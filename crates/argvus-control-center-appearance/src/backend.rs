@@ -410,7 +410,7 @@ fn theme_default_accent(theme: &str) -> Option<&'static str> {
     "tokyo-night" | "tokyo-night-float" => Some("#7AA2F7"),
     "solitude" | "solitude-float" => Some("#798186"),
     "sunset" | "sunset-float" => Some("#E2BE8A"),
-    "hackerman" | "hackerman-float" => Some("#82FB9C"),
+    "matrix" | "matrix-float" => Some("#82FB9C"),
     "monokai-dark" | "monokai-dark-float" => Some("#78DCE8"),
     _ => None,
   }

@@ -1573,7 +1573,7 @@ mod tests {
   fn rejects_bad_values() {
     assert!(validate_content(FileId::Accent, b"#GGGGGG\n").is_err());
     assert!(validate_content(FileId::Effects, b"maybe\n").is_err());
-    // 16-key theme effects set for hackerman-float (5 transparency surfaces + 3 blur surfaces)
+    // 16-key theme effects set for matrix-float (5 transparency surfaces + 3 blur surfaces)
     assert!(validate_content(
       FileId::ThemeEffects,
       b"taskbar.transparency=100\ntaskbar.transparency.enabled=enabled\ncontrol-panel.transparency=100\ncontrol-panel.transparency.enabled=enabled\nwidget-telemetry.transparency=100\nwidget-telemetry.transparency.enabled=enabled\nterminal.transparency=100\nterminal.transparency.enabled=enabled\nlaunchers.transparency=100\nlaunchers.transparency.enabled=enabled\ntaskbar.blur=100\ntaskbar.blur.enabled=enabled\ncontrol-panel.blur=100\ncontrol-panel.blur.enabled=enabled\nwidget-telemetry.blur=100\nwidget-telemetry.blur.enabled=enabled\n"
