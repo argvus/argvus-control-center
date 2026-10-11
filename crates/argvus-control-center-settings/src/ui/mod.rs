@@ -22,6 +22,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 use crate::app::{App, MIN_HEIGHT, MIN_WIDTH};
 use crate::i18n::tr;
 use crate::item::Item;
+use crate::navigation::Page;
 
 /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(app: &mut App, frame: &mut Frame) {
@@ -83,7 +84,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
         .borders(Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Plain)
         .border_style(Style::new().fg(app.theme.border_active))
-        .title(tr(app.lang, "control_center.layout"));
+        .title(tr(app.lang, list_title_key(app.page())));
       let inner = list_block.inner(list_area);
       frame.render_widget(list_block, list_area);
       inner
@@ -117,6 +118,15 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   }
   popup::draw_confirmation(frame, area, app);
   draw_task_window(app, frame, area);
+}
+
+/// Translation key of the title of the bordered list block on the pages that
+/// have an action bar: the list is named after what it chooses.
+fn list_title_key(page: Page) -> &'static str {
+  match page {
+    Page::TimeZone => "control_center.time_zone",
+    _ => "control_center.layout",
+  }
 }
 
 /// The page's action bar: a bordered block titled like the user page's

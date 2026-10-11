@@ -235,10 +235,11 @@ impl App {
           .enumerate()
           .filter(|(_, zone)| search_matches(&self.search, &[zone]))
           .map(|(index, zone)| {
+            // `●` marks the draft; the system zone changes only through `Apply`.
             Row::choice(
               Item::Zone(index),
               zone.clone(),
-              *zone == self.datetime.time_zone,
+              *zone == self.timezone_draft,
             )
           })
           .collect();
@@ -481,6 +482,18 @@ impl App {
       .icon(icons::APPLY)
       .emphasis(Emphasis::Primary)
       .enabled(self.keyboard_layout_changed()),
+    ]
+  }
+
+  /// The action bar under Time Zone: its `Apply` button, enabled only while the
+  /// draft differs from the system zone. Like Keyboard > Layout, it stays out
+  /// of `rows`, so the list cursor never walks into it.
+  pub(super) fn timezone_action_rows(&self) -> Vec<Row<Item>> {
+    vec![
+      Row::action(Item::ApplyTimezone, self.label("control_center.apply"))
+        .icon(icons::APPLY)
+        .emphasis(Emphasis::Primary)
+        .enabled(self.timezone_changed()),
     ]
   }
 

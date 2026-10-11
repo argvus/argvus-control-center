@@ -113,6 +113,8 @@ pub struct App {
   pub viewport: usize,
   distro: locale::Distro,
   timezones: Vec<String>,
+  /// Zone picked on Time Zone, written only by its `Apply` row.
+  timezone_draft: String,
   datetime: time::DateTimeInfo,
   generated_locales: Vec<String>,
   locale_gen_entries: Vec<locale::LocaleEntry>,
@@ -187,6 +189,7 @@ impl App {
       .filter(|entry| entry.enabled)
       .map(|entry| format!("{} {}", entry.locale, entry.encoding))
       .collect();
+    let datetime = time::datetime_info();
     let keyboard_info = keyboard::info();
     let hostname = host::current();
     let mut app = Self {
@@ -211,7 +214,8 @@ impl App {
       viewport: 1,
       distro: locale::distro(),
       timezones: time::list_timezones(),
-      datetime: time::datetime_info(),
+      timezone_draft: datetime.time_zone.clone(),
+      datetime,
       generated_locales: locale::generated_locales(),
       locale_gen_entries,
       selected_locales,
@@ -1106,6 +1110,16 @@ impl App {
     if !dirty {
       self.keyboard_draft = keyboard_draft::LayoutDraft::loaded(&self.keyboard_info);
     }
+  }
+
+  /// Whether Time Zone has a pick that `Apply` has not written yet.
+  pub(super) fn timezone_changed(&self) -> bool {
+    self.timezone_draft != self.datetime.time_zone
+  }
+
+  /// Puts the Time Zone draft back on the zone the system uses.
+  pub(super) fn load_timezone_draft(&mut self) {
+    self.timezone_draft = self.datetime.time_zone.clone();
   }
 
   /// Whether Keyboard > Layout has edits that `Apply` has not written yet.

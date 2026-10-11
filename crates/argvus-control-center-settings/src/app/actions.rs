@@ -168,7 +168,11 @@ impl App {
           self.apply_font_setting(setting, index);
         }
       }
-      Item::TimeZone => self.open_system_page(Page::TimeZone),
+      Item::TimeZone => {
+        // The draft starts on the system zone before the cursor is placed on it.
+        self.load_timezone_draft();
+        self.open_system_page(Page::TimeZone);
+      }
       Item::DateTime => self.open_system_page(Page::DateTime),
       Item::RegionalLocale => self.open_system_page(Page::RegionalLocale),
       Item::SystemLocales => self.open_system_page(Page::SystemLocales),
@@ -187,7 +191,8 @@ impl App {
       Item::OpenSnippetPicker => self.open_snippet_picker(),
       Item::SnippetContent(index) => self.open_snippet_content(index),
       Item::TypeSnippet(index) => self.type_snippet(index),
-      Item::Zone(index) => self.apply_timezone(index),
+      Item::Zone(index) => self.select_timezone(index),
+      Item::ApplyTimezone => self.apply_timezone(),
       Item::LocalDateTime if !self.datetime.ntp.unwrap_or(false) => {
         self.admin.editor = Some(Editor::new(
           tr(self.lang, "control_center.local_date_time").into(),
@@ -338,16 +343,23 @@ impl App {
     }
   }
 
+  /// Whether the current page has an action bar under its list, with `Apply`.
+  /// Such pages also keep their search box above the list.
+  pub(crate) fn has_action_bar(&self) -> bool {
+    matches!(self.page(), Page::KeyboardLayout | Page::TimeZone)
+  }
+
   /// Whether the page's search is a box above the list, as on the home
   /// screen, instead of the bottom line.
   pub(crate) fn search_on_top(&self) -> bool {
-    self.page() == Page::KeyboardLayout
+    self.has_action_bar()
   }
 
   /// The action bar of the current page; empty for pages without one.
   pub(crate) fn action_rows(&self) -> Vec<Row<Item>> {
     match self.page() {
       Page::KeyboardLayout => self.keyboard_action_rows(),
+      Page::TimeZone => self.timezone_action_rows(),
       _ => Vec::new(),
     }
   }
@@ -425,6 +437,7 @@ impl App {
     match self.page() {
       Page::SystemLocales => self.locales_changed(),
       Page::KeyboardLayout => self.keyboard_layout_changed(),
+      Page::TimeZone => self.timezone_changed(),
       Page::WindowRules => self
         .window_rules
         .iter()
@@ -447,6 +460,7 @@ impl App {
       Page::KeyboardLayout => {
         self.keyboard_draft = keyboard_draft::LayoutDraft::loaded(&self.keyboard_info);
       }
+      Page::TimeZone => self.load_timezone_draft(),
       Page::WindowRules => {
         self.window_rule_drafts.clear();
         self.new_window_rule_name.clear();
@@ -565,6 +579,10 @@ impl App {
       }
       _ => {}
     }
+    // `←/→` reach the action bar only while one of its buttons is enabled.
+    if self.has_action_bar() && !self.enabled_action_indexes().is_empty() {
+      extra.push(("←/→", label("control_center.actions")));
+    }
     hints(
       self.lang,
       &HintContext {
@@ -624,13 +642,21 @@ impl App {
     }
   }
 
-  fn apply_timezone(&mut self, index: usize) {
-    let Some(zone) = self.timezones.get(index).cloned() else {
-      return;
-    };
+  /// Enter on a zone: makes it the draft. `Apply` writes it.
+  fn select_timezone(&mut self, index: usize) {
+    if let Some(zone) = self.timezones.get(index) {
+      self.timezone_draft = zone.clone();
+    }
+  }
+
+  /// `Apply` of Time Zone: writes the draft with `timedatectl`, then reloads
+  /// the system zone so the draft matches what was written.
+  fn apply_timezone(&mut self) {
+    let zone = self.timezone_draft.clone();
     match time::set_timezone(&zone, &self.timezones) {
       Ok(()) => {
         self.refresh_time();
+        self.load_timezone_draft();
         self.success(format!(
           "{}: {zone}",
           tr(self.lang, "control_center.time_zone_changed")

@@ -48,8 +48,10 @@ pub enum Item {
   RegionalLocale,
   SystemLocales,
   Keyboard,
-  /// Index into the time zone list.
+  /// Index into the time zone list. Enter only changes the draft.
   Zone(usize),
+  /// Writes the Time Zone draft to the system with `timedatectl`.
+  ApplyTimezone,
   LocalDateTime,
   Ntp,
   /// Index into the generated locales.
