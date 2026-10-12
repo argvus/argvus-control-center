@@ -6,9 +6,11 @@
 //!   2. `command -v <binary>` (a direct `$PATH` scan, no subprocess needed);
 //!   3. the bundled catalog of known binaries per category.
 //!
-//! A catalog app counts as *installed* when its binary is on `$PATH` (most
-//! reliable for TUI/scripts) or when a `.desktop` file references it (covers
-//! flatpak/snap-style launchers whose wrapper isn't on `$PATH`).
+//! A catalog app counts as *installed* when its binary is on `$PATH` or in the
+//! private ARGVUS commands directory (`/usr/lib/argvus/commands`, where
+//! ARGVUS-owned entries such as `argvus-terminal` are installed), or when a
+//! `.desktop` file references it (covers flatpak/snap-style launchers whose
+//! wrapper isn't on `$PATH`).
 
 use std::fs;
 use std::path::Path;
@@ -43,8 +45,10 @@ impl InstalledApp {
   }
 }
 
-/// `command -v binary`: true when `binary` resolves inside `$PATH` (or is an
-/// absolute path to an existing executable).
+/// `command -v binary`: true when `binary` resolves inside `$PATH`, inside the
+/// private ARGVUS commands directory, or is an absolute path to an existing
+/// executable. ARGVUS-owned commands are not always on `$PATH`, so the private
+/// directory is checked as a fallback.
 pub fn command_exists(binary: &str) -> bool {
   if binary.is_empty() {
     return false;
@@ -52,15 +56,24 @@ pub fn command_exists(binary: &str) -> bool {
   if binary.contains('/') {
     return is_executable(Path::new(binary));
   }
-  let Ok(path_var) = std::env::var("PATH") else {
-    return false;
-  };
-  std::env::split_paths(&path_var).any(|dir| {
-    if dir.as_os_str().is_empty() {
-      return false;
-    }
-    is_executable(&dir.join(binary))
-  })
+  let on_path = std::env::var("PATH").is_ok_and(|path_var| {
+    std::env::split_paths(&path_var).any(|dir| {
+      if dir.as_os_str().is_empty() {
+        return false;
+      }
+      is_executable(&dir.join(binary))
+    })
+  });
+  on_path || is_executable(&private_commands_dir().join(binary))
+}
+
+/// Directory holding the private ARGVUS executables. `ARGVUS_COMMANDS_DIR`
+/// overrides it, matching the `argvus` dispatcher and the launcher scripts.
+fn private_commands_dir() -> std::path::PathBuf {
+  std::env::var_os("ARGVUS_COMMANDS_DIR")
+    .filter(|dir| !dir.is_empty())
+    .map(std::path::PathBuf::from)
+    .unwrap_or_else(|| std::path::PathBuf::from("/usr/lib/argvus/commands"))
 }
 
 /// Checks the condition represented by `is_executable` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -350,6 +363,32 @@ mod tests {
   fn command_exists_truthy_for_env() {
     assert!(command_exists("sh"));
     assert!(!command_exists("argvus-definitely-not-a-command-xyz"));
+  }
+
+  #[test]
+  /// Executes the `command_exists_finds_private_commands` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  fn command_exists_finds_private_commands() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+      "argvus-apps-private-commands-{}",
+      std::process::id()
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    let binary = dir.join("argvus-detect-test-private");
+    fs::write(&binary, "#!/bin/sh\n").unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+
+    unsafe {
+      std::env::set_var("ARGVUS_COMMANDS_DIR", &dir);
+    }
+    assert!(command_exists("argvus-detect-test-private"));
+    assert!(!command_exists("argvus-detect-test-missing"));
+    unsafe {
+      std::env::remove_var("ARGVUS_COMMANDS_DIR");
+    }
+
+    let _ = fs::remove_dir_all(&dir);
   }
 
   #[test]
