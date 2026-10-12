@@ -25,6 +25,7 @@ A tela inicial atual do Control Center oferece estas áreas:
 * **Widget Telemetry** — sessões e transparência do widget de telemetria, reaproveitando as páginas de efeitos implementadas na Aparência.
 * **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
 * **Snippets** — textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
+* **Chaves SSH** — pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`: gerar, carregar no agente, descarregar e apagar.
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
 * **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
@@ -51,7 +52,7 @@ A árvore atual de configurações inclui:
 | Widget Telemetry | Sessões e transparência |
 | Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console |
 | Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets |
+| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets, Chaves SSH |
 | Hyprland | Atalhos de teclado, Regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (Espaços de janela, Animações, Blur, Bordas), além da versão instalada do Hyprland |
 | Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
@@ -99,6 +100,41 @@ Snippets é a página dos textos que o `argvus snippets` digita com `SUPER + ALT
 A digitação começa 3 segundos depois de você pressionar Enter, porque neste momento o foco está no próprio Control Center. Clique no campo que deve receber o texto dentro desse tempo. A página edita apenas conteúdo de uma linha; um snippet com várias linhas pode ser criado no terminal com `argvus snippets add`.
 
 A página lê os snippets do `argvus-config` e grava por meio do `argvus snippets`, então a validação continua com o launcher. Quando o `argvus snippets` não está instalado, a página informa isso.
+
+### Chaves SSH
+
+Chaves SSH é a página dos pares de chaves que o `argvus keys` gerencia. Ela fica em **Aplicativos → Chaves SSH** (busque por `chaves ssh` ou execute `argvus-control-center ssh-keys`).
+
+A página tem quatro partes, de cima para baixo:
+
+```
+Busca         filtra os pares de chaves pelo nome ou comentário
+Gerar         nome, tipo e a ação Gerar par de chaves
+Chaves        um bloco por par; aparece uma barra de rolagem quando não cabem
+Ações         Atualizar e Descarregar todas as chaves do agente
+```
+
+#### Como usar
+
+1. Abra **Control Center → Aplicativos → Chaves SSH**. Pela Home, você também pode buscar por `chaves ssh`.
+2. **Encontrar uma chave:** pressione `/` e digite para mostrar só os pares cujo nome ou comentário combina. `Enter` encerra a busca e executa a linha destacada, como nas outras listas, então confira a linha antes de apertar; `Esc` limpa a busca.
+3. **Criar um par:** em **Gerar**, selecione **Nome**, pressione `Enter`, digite o nome e pressione `Enter` de novo. Selecione **Tipo** e pressione `Enter` para alternar entre `ed25519` e `rsa`. Selecione **Gerar par de chaves** e pressione `Enter`. O novo par aparece em **Chaves** imediatamente, sem senha.
+4. **Carregar um par no agente:** no bloco do par, selecione **Carregar no agente** e pressione `Enter`. Uma chave sem senha é carregada na hora, sem janela. Uma chave com senha abre um terminal ARGVUS, onde o OpenSSH a pede; feche o terminal com `Enter` quando ele indicar que a chave foi carregada. Enquanto a página estiver aberta, ela consulta o agente a cada poucos segundos, então a linha muda sozinha para **Descarregar do agente**. Para atualizar na hora, use **Atualizar** em **Ações**.
+5. **Remover uma chave do agente:** no bloco do par, selecione **Descarregar do agente**. Para remover todas, use **Descarregar todas as chaves do agente** em **Ações**. Os arquivos das chaves continuam no disco.
+6. **Apagar um par:** no bloco do par, selecione **Apagar** e pressione `Enter`. A confirmação começa com o foco em **Cancelar**, então um `Enter` acidental não faz nada. Pressione `y` para confirmar, ou `n`/`Esc` para cancelar. Uma chave carregada no agente não pode ser apagada; descarregue-a antes.
+
+Para se mover: `↑`/`↓` ou `j`/`k` percorrem a lista, `Enter` ativa a linha, `Esc` volta e `?` mostra a ajuda. `Tab` leva o foco para **Ações**, onde `←`/`→` escolhem um botão e `Enter` o executa. `↑`/`↓` devolvem o foco à lista.
+
+As senhas nunca são digitadas no Control Center nem passadas como argumentos de comando. A página lê a lista com `argvus keys list` e grava somente por meio do `argvus keys`. Quando o `argvus-keys` não está instalado, a página informa isso.
+
+#### Solução de problemas
+
+| Sintoma | Causa e correção |
+| --- | --- |
+| `Could not open a connection to your authentication agent` após **Carregar no agente** | O terminal não recebeu o socket do agente. O Hyprland mantém o ambiente com que foi iniciado, e o agente pode ter começado depois. Atualize o `argvus-launcher`, que passa a usar `$XDG_RUNTIME_DIR/ssh-agent.socket`, e verifique `systemctl --user status argvus-ssh-agent.service`. |
+| **Agente** mostra `Agente indisponível` | O launcher não consegue alcançar o agente. Verifique o serviço como acima. |
+| A página diz que o `argvus-keys` não está instalado | Instale ou atualize o pacote `argvus-launcher`. |
+| **Apagar** mostra um erro | A chave está carregada no agente e foi mantida. Descarregue-a primeiro e apague de novo. |
 
 ### Localidade e região
 
@@ -198,7 +234,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 

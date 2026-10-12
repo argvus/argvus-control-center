@@ -24,6 +24,7 @@ The current Control Center home provides these areas:
 - **Widget Telemetry** — sessions and transparency for the telemetry widget, reusing the effects pages implemented in Appearance.
 - **Default applications** — select installed applications for supported roles.
 - **Snippets** — text saved for `argvus snippets`, typed with `SUPER + ALT + N`.
+- **SSH keys** — key pairs in `~/.ssh` managed by `argvus keys`: generate, load into the agent, unload and delete.
 - **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
 - **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
 - **System** — host, users, groups and system administration pages available to the current installation.
@@ -50,7 +51,7 @@ The main settings tree currently includes:
 | Widget Telemetry | Sessions and transparency |
 | Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap |
 | Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
-| Applications | Default applications and per-category selectors, Projects, Snippets |
+| Applications | Default applications and per-category selectors, Projects, Snippets, SSH keys |
 | Hyprland | Keyboard shortcuts, Window rules, and the window-effects pages reused from Appearance (Window spaces, Animations, Blur, Borders), plus the installed Hyprland version |
 | System | Hostname, firewall, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
@@ -98,6 +99,41 @@ Snippets is the page for the text that `argvus snippets` types with `SUPER + ALT
 Typing starts 3 seconds after you press Enter, because the Control Center itself has the focus at that moment. Click the field that should receive the text within that time. The page only edits one-line content; a multi-line snippet can be created in a terminal with `argvus snippets add`.
 
 The page reads the entries from `argvus-config` and writes them through `argvus snippets`, so the launcher keeps the validation. When `argvus snippets` is not installed, the page says so.
+
+### SSH keys
+
+SSH keys is the page for the key pairs that `argvus keys` manages. It is in **Applications → SSH keys** (search `ssh keys` or run `argvus-control-center ssh-keys`).
+
+The page has four parts, from top to bottom:
+
+```
+Search        filters the key pairs by name or comment
+Generate      name, type and the Generate key pair action
+Keys          one block per key pair; a scrollbar appears when they do not fit
+Actions       Refresh and Unload all keys from agent
+```
+
+#### How to use it
+
+1. Open **Control Center → Applications → SSH keys**. From the Home, you can also search for `ssh keys`.
+2. **Find a key:** press `/`, then type to show only the pairs whose name or comment matches. `Enter` ends the search and runs the highlighted row, as in the other lists, so check the row before pressing it; `Esc` clears the search.
+3. **Create a pair:** in **Generate**, select **Name**, press `Enter`, type the name and press `Enter` again. Select **Type** and press `Enter` to switch between `ed25519` and `rsa`. Select **Generate key pair** and press `Enter`. The new pair appears under **Keys** at once, without a passphrase.
+4. **Load a pair into the agent:** in the pair's block, select **Load into agent** and press `Enter`. A key without a passphrase is loaded at once, with no window. A key with a passphrase opens an ARGVUS terminal, where OpenSSH asks for it; close the terminal with `Enter` when it says the key is loaded. The page checks the agent every few seconds while it is open, so the row changes to **Unload from agent** by itself. To update at once, use **Refresh** in **Actions**.
+5. **Remove a key from the agent:** in the pair's block, select **Unload from agent**. To remove every key, use **Unload all keys from agent** in **Actions**. The key files stay on disk.
+6. **Delete a pair:** in the pair's block, select **Delete** and press `Enter`. The confirmation focuses **Cancel**, so a stray `Enter` does nothing. Press `y` to confirm, or `n`/`Esc` to cancel. A key that is loaded in the agent cannot be deleted; unload it first.
+
+Moving around: `↑`/`↓` or `j`/`k` move through the list, `Enter` activates a row, `Esc` goes back and `?` shows help. `Tab` moves the focus into **Actions**, where `←`/`→` choose a button and `Enter` runs it. `↑`/`↓` bring the focus back to the list.
+
+Passphrases are never typed into the Control Center and never passed as command arguments. The page reads the list with `argvus keys list` and writes only through `argvus keys`. When `argvus-keys` is not installed, the page says so.
+
+#### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `Could not open a connection to your authentication agent` after **Load into agent** | The terminal did not receive the agent socket. Hyprland keeps the environment it started with, and the agent may have started later. Update `argvus-launcher`, which falls back to `$XDG_RUNTIME_DIR/ssh-agent.socket`, and check `systemctl --user status argvus-ssh-agent.service`. |
+| **Agent** shows `Agent unavailable` | The launcher cannot reach the agent. Check the service as above. |
+| The page says `argvus-keys is not installed` | Install or update the `argvus-launcher` package. |
+| **Delete** shows an error | The key is loaded in the agent, and it is kept. Unload it first, then delete it again. |
 
 ### Locale & Region
 
@@ -197,7 +233,7 @@ argvus-control-center keybindings
 
 Run `argvus-control-center --help` for the routes available in the installed version. The command-line route is a shortcut into the same settings application, not a separate configuration system.
 
-Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
+Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
 
 ## Related
 
