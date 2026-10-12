@@ -26,14 +26,15 @@ pub struct Snippets {
 
 /// Loads the entries from `argvus-config`, after checking that the launcher is installed.
 pub fn load() -> Snippets {
-  let installed = command("argvus-snippets")
-    .arg("list")
+  let installed = command("argvus")
+    .args(["snippets", "list"])
     .output()
     .is_ok_and(|output| output.status.success());
   if !installed {
     return Snippets::default();
   }
-  let entries = command("argvus-config")
+  let entries = command("argvus")
+    .arg("config")
     .args(["get", "/snippets/items", "--effective", "--raw"])
     .output()
     .ok()
@@ -99,7 +100,8 @@ fn type_later(args: &[String]) -> Result<(), String> {
   let status = command("sh")
     .arg("-c")
     .arg(script)
-    .arg("argvus-snippets")
+    .arg("argvus")
+    .arg("snippets")
     .args(args)
     .status()
     .map_err(|error| format!("failed to run argvus-snippets: {error}"))?;
@@ -111,7 +113,8 @@ fn type_later(args: &[String]) -> Result<(), String> {
 }
 
 fn run(args: &[&str]) -> Result<(), String> {
-  let output = command("argvus-snippets")
+  let output = command("argvus")
+    .arg("snippets")
     .args(args)
     .output()
     .map_err(|error| format!("failed to run argvus-snippets: {error}"))?;

@@ -54,7 +54,8 @@ impl<R: ProcessRunner> AudioBackend<R> {
   }
 
   fn persist_default_output(&self, pointer: &str, value: &str) -> Result<(), AudioError> {
-    let request = ProcessRequest::new("argvus-config")
+    let request = ProcessRequest::new("argvus")
+      .arg("config")
       .arg("set")
       .arg(pointer)
       .arg(value)

@@ -349,7 +349,8 @@ pub fn load_config() -> PersistedConfig {
 }
 
 fn load_canonical_config() -> Option<PersistedConfig> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", "/displays", "--effective"])
     .output()
     .ok()?;
@@ -648,7 +649,8 @@ pub fn save_config(config: &PersistedConfig) -> Result<(), String> {
     "workspaces": workspaces,
   });
   let value = serde_json::to_string(&value).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["set", "/displays", &value])
     .status()
     .map_err(|error| format!("failed to persist display configuration: {error}"))?;

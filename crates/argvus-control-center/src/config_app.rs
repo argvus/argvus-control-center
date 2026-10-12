@@ -390,7 +390,8 @@ fn load_effects(runner: &Arc<dyn ProcessRunner + Send + Sync>) -> (bool, i32, bo
 /// Executes `argvus-config get` for a single effects key and returns the raw
 /// effective value when the process succeeds.
 fn read_effect(runner: &Arc<dyn ProcessRunner + Send + Sync>, key: &str) -> Option<String> {
-  let request = ProcessRequest::new("argvus-config")
+  let request = ProcessRequest::new("argvus")
+    .arg("config")
     .arg("get")
     .arg(format!("/effects/{key}"))
     .arg("--effective")

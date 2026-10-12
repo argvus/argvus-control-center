@@ -1311,7 +1311,8 @@ fn source_paths(root: &Path) -> Vec<(FileId, PathBuf)> {
 /// process inherits the environment, so it resolves the same ARGVUS root as
 /// this process.
 fn export_canonical_appearance(destination: &Path) -> Result<bool, String> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["export", "--scope", "appearance", "--output"])
     .arg(destination)
     .output();
@@ -1352,7 +1353,8 @@ fn project_canonical_config() -> Result<(), String> {
 }
 
 fn run_canonical_config_command(arguments: &[&str]) -> Result<(), String> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(arguments)
     .output()
     .map_err(|error| format!("could not run argvus-config: {error}"))?;

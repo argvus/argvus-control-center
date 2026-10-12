@@ -394,7 +394,8 @@ pub fn restart_component(id: &str) -> Result<(), String> {
   if let Some(component) = manifest().into_iter().find(|component| component.id == id) {
     for command in [
       Some(vec![
-        "argvus-sessionctl".to_string(),
+        "argvus".to_string(),
+        "sessionctl".into(),
         "restart".into(),
         id.into(),
       ]),

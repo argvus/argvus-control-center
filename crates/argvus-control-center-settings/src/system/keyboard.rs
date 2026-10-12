@@ -381,7 +381,8 @@ fn write_generated_hypr_input(
   });
   let patch =
     serde_json::to_string(&patch).map_err(|error| SettingsError::System(error.to_string()))?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| SettingsError::System(error.to_string()))?;
@@ -480,8 +481,8 @@ fn switch_active_layout(layout: &str, layouts: &str) {
 fn reload_taskbar() {
   // Keep this identical to SUPER+SHIFT+R, which is the supported ARGVUS
   // session reload and is required for the managed Waybar configuration.
-  let _ = argvus_control_center_core::process::command("argvus-sessionctl")
-    .args(["reload"])
+  let _ = argvus_control_center_core::process::command("argvus")
+    .args(["sessionctl", "reload"])
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null())

@@ -72,8 +72,7 @@ check() {
 
 package() {
   cd "$(_source_dir)"
-  install -Dm755 "$(_cargo_target_dir)/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
-  ln -s "${pkgname}" "${pkgdir}/usr/bin/argvus-controle-center"
+  install -Dm755 "$(_cargo_target_dir)/release/${pkgname}" "${pkgdir}/usr/lib/argvus/commands/${pkgname}"
   install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 packaging/arch/usr/share/applications/argvus-control-center.desktop \

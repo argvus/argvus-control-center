@@ -85,7 +85,8 @@ pub fn path() -> PathBuf {
 /// the tool is unavailable or the value is missing/empty, which forces the
 /// caller to fall back to the local replica.
 fn read_config(pointer: &str) -> Option<String> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", pointer, "--effective", "--raw"])
     .output()
     .ok()?;
@@ -177,7 +178,8 @@ fn sync_to_config(settings: &InputSettings) -> Result<(), String> {
     "/hyprland/input/touchpad": settings.touchpad,
   });
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist input settings: {error}"))?;

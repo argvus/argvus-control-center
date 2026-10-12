@@ -69,7 +69,7 @@ impl Capabilities {
       has_loginctl: executable("loginctl"),
       has_hypridle: executable("hypridle"),
       has_hyprctl: executable("hyprctl"),
-      has_sessionctl: executable("argvus-sessionctl"),
+      has_sessionctl: executable("argvus"),
       has_networkmanager: executable("nmcli"),
       has_nmcli: executable("nmcli"),
       has_iwd: executable("iwctl"),

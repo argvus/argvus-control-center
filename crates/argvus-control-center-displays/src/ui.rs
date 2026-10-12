@@ -1829,7 +1829,6 @@ impl DisplaysApp {
       });
       return;
     };
-    let apply_wallpapers = profile.apply_wallpapers;
     self.config = profile.config.clone();
     self.state.primary_monitor = profile.config.primary_monitor.clone();
     self.state.active_profile = Some(profile.name.clone());
@@ -1855,9 +1854,6 @@ impl DisplaysApp {
       }
       for (workspace, monitor) in &workspaces {
         backend::apply_workspace(*workspace, Some(monitor))?;
-      }
-      if apply_wallpapers {
-        apply_wallpapers_hook()?;
       }
       backend::save_config(&config)?;
       backend::save_state(&state)?;
@@ -2299,15 +2295,6 @@ fn rule_from_persisted(name: &str, persisted: &PersistedMonitor) -> String {
     body = format!("{name}, disabled");
   }
   body
-}
-
-/// Applies the `apply_wallpapers_hook` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn apply_wallpapers_hook() -> Result<(), String> {
-  let script = "/usr/bin/argvus-wallpapers-apply";
-  if std::path::Path::new(script).exists() {
-    let _ = argvus_control_center_core::process::command(script).status();
-  }
-  Ok(())
 }
 
 /// Executes the `fingerprint` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

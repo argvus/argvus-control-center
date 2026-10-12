@@ -24,7 +24,7 @@ A tela inicial atual do Control Center oferece estas áreas:
 * **Control Panel** — sessões, ordem e transparência dos cards, reaproveitando as páginas de efeitos implementadas na Aparência.
 * **Widget Telemetry** — sessões e transparência do widget de telemetria, reaproveitando as páginas de efeitos implementadas na Aparência.
 * **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
-* **Snippets** — textos salvos para o `argvus-snippets`, digitados com `SUPER + ALT + N`.
+* **Snippets** — textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
 * **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
@@ -90,15 +90,15 @@ Aplicativos padrão seleciona programas instalados para funções como terminal,
 
 ### Snippets
 
-Snippets é a página dos textos que o `argvus-snippets` digita com `SUPER + ALT + N`. Ela fica em **Aplicativos → Snippets** (busque por `snippets` ou execute `argvus-control-center snippets`).
+Snippets é a página dos textos que o `argvus snippets` digita com `SUPER + ALT + N`. Ela fica em **Aplicativos → Snippets** (busque por `snippets` ou execute `argvus-control-center snippets`).
 
 * **Novo snippet** — digite um **Nome** e um **Conteúdo** e depois **Salvar snippet**. Um nome que já existe substitui o conteúdo desse snippet.
 * **Snippets salvos** — listados com a posição (`1  email`) e o conteúdo em uma linha. `Enter` sobre o conteúdo o edita. **Digitar** digita o snippet, e **Remover** pede confirmação.
 * **Abrir seletor** — abre o mesmo seletor de `SUPER + ALT + N`.
 
-A digitação começa 3 segundos depois de você pressionar Enter, porque neste momento o foco está no próprio Control Center. Clique no campo que deve receber o texto dentro desse tempo. A página edita apenas conteúdo de uma linha; um snippet com várias linhas pode ser criado no terminal com `argvus-snippets add`.
+A digitação começa 3 segundos depois de você pressionar Enter, porque neste momento o foco está no próprio Control Center. Clique no campo que deve receber o texto dentro desse tempo. A página edita apenas conteúdo de uma linha; um snippet com várias linhas pode ser criado no terminal com `argvus snippets add`.
 
-A página lê os snippets do `argvus-config` e grava por meio do `argvus-snippets`, então a validação continua com o launcher. Quando o `argvus-snippets` não está instalado, a página informa isso.
+A página lê os snippets do `argvus-config` e grava por meio do `argvus snippets`, então a validação continua com o launcher. Quando o `argvus snippets` não está instalado, a página informa isso.
 
 ### Localidade e região
 
@@ -180,7 +180,7 @@ O suporte à restauração é específico de cada domínio:
 * **Atalhos de teclado** pode restaurar um atalho ou todos e então recarregar os atalhos gerados da sessão.
 * **Regras de janela** ficam em **Hyprland → Configurações → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
 
-* **Projetos** ficam em **Aplicativos → Projetos** (busque por `projetos` ou execute `argvus-control-center projects`). **Adicionar pasta de projeto** e **Adicionar pasta raiz** ficam no topo da página e abrem um campo de texto com o caminho; o launcher confere se é um diretório e mostra o erro caso não seja, inclusive quando a pasta levaria o total efetivo de projetos além de 9 (o `SUPER + ALT + 1..9` não consegue endereçar mais que isso). Cada pasta configurada, marcada como raiz (seus subdiretórios são projetos) ou projeto único, ganha seu próprio bloco abaixo do formulário com uma linha **Remover** que pede confirmação. A página chama o `argvus-projects`, então as alterações são gravadas pelo launcher e valem na próxima vez que `SUPER + O` ou `SUPER + ALT + 1..9` forem usados. Se o `argvus-projects` não estiver instalado, a página informa isso.
+* **Projetos** ficam em **Aplicativos → Projetos** (busque por `projetos` ou execute `argvus control-center projects`). **Adicionar pasta de projeto** e **Adicionar pasta raiz** ficam no topo da página e abrem um campo de texto com o caminho; o launcher confere se é um diretório e mostra o erro caso não seja, inclusive quando a pasta levaria o total efetivo de projetos além de 9 (o `SUPER + ALT + 1..9` não consegue endereçar mais que isso). Cada pasta configurada, marcada como raiz (seus subdiretórios são projetos) ou projeto único, ganha seu próprio bloco abaixo do formulário com uma linha **Remover** que pede confirmação. A página chama o `argvus-projects`, então as alterações são gravadas pelo launcher e valem na próxima vez que `SUPER + O` ou `SUPER + ALT + 1..9` forem usados. Se o `argvus-projects` não estiver instalado, a página informa isso.
 * **Outras páginas do sistema** exibem ações de restauração, aplicação, exclusão ou recuperação somente quando o provider responsável oferece esse recurso.
 
 Remover uma preferência do usuário pode fazer um provider retornar ao estado padrão, mas apagar arquivos manualmente não é um procedimento geral de recuperação. Prefira a ação de restauração da página ou o comando documentado para o recurso.

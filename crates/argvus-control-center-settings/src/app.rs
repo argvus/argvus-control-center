@@ -482,7 +482,8 @@ impl App {
     }
     self.dnd_job = Some(self.jobs.spawn(|_| {
       Self::read_dnd_command(
-        &ProcessRequest::new("argvus-notifications")
+        &ProcessRequest::new("argvus")
+          .arg("notifications")
           .arg("dnd")
           .arg("status"),
       )
@@ -498,7 +499,8 @@ impl App {
     }
     self.dnd_job = Some(self.jobs.spawn(|_| {
       Self::read_dnd_command(
-        &ProcessRequest::new("argvus-notifications")
+        &ProcessRequest::new("argvus")
+          .arg("notifications")
           .arg("dnd")
           .arg("toggle"),
       )
@@ -1798,7 +1800,8 @@ pub(crate) fn task_bottom_offset(output: &str) -> u16 {
 
 /// Executes the `language_from_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn canonical_language() -> Option<Lang> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", "/session/language", "--effective", "--raw"])
     .output()
     .ok()?;

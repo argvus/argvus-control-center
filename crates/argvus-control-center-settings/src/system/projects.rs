@@ -28,7 +28,7 @@ pub struct Projects {
 
 /// Loads the entries from `argvus-projects list`.
 pub fn load() -> Projects {
-  let Ok(output) = command("argvus-projects").arg("list").output() else {
+  let Ok(output) = command("argvus").args(["projects", "list"]).output() else {
     return Projects::default();
   };
   if !output.status.success() {
@@ -81,7 +81,8 @@ pub fn remove(path: &str) -> Result<(), String> {
 }
 
 fn run(args: &[&str]) -> Result<(), String> {
-  let output = command("argvus-projects")
+  let output = command("argvus")
+    .arg("projects")
     .args(args)
     .output()
     .map_err(|error| format!("failed to run argvus-projects: {error}"))?;

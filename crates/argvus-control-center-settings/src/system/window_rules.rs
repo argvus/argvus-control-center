@@ -12,7 +12,8 @@ pub struct WindowRule {
 
 /// Loads the effective window placement rules from argvus-config.
 pub fn load() -> Vec<WindowRule> {
-  let Ok(output) = command("argvus-config")
+  let Ok(output) = command("argvus")
+    .arg("config")
     .args(["get", POINTER_ROOT, "--effective"])
     .output()
   else {
@@ -89,7 +90,8 @@ pub fn remove(name: &str) -> Result<(), String> {
 }
 
 fn write_value(pointer: &str, value: &str) -> Result<(), String> {
-  let status = command("argvus-config")
+  let status = command("argvus")
+    .arg("config")
     .args(["set", pointer, value])
     .status()
     .map_err(|error| format!("failed to save window rule: {error}"))?;
@@ -100,7 +102,8 @@ fn write_value(pointer: &str, value: &str) -> Result<(), String> {
 }
 
 fn unset_value(pointer: &str) -> Result<(), String> {
-  let status = command("argvus-config")
+  let status = command("argvus")
+    .arg("config")
     .args(["unset", pointer])
     .status()
     .map_err(|error| format!("failed to remove window rule: {error}"))?;

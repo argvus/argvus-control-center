@@ -309,7 +309,8 @@ impl AppState {
     let Ok(patch) = serde_json::to_string(&patch) else {
       return;
     };
-    let persisted = argvus_control_center_core::process::command("argvus-config")
+    let persisted = argvus_control_center_core::process::command("argvus")
+      .arg("config")
       .args(["patch", &patch])
       .status()
       .is_ok_and(|status| status.success());

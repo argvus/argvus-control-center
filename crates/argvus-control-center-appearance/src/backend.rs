@@ -114,7 +114,7 @@ pub(crate) fn run_profile_script_with_env(
   environment: &[(&str, &str)],
 ) -> Result<(), String> {
   if name == "argvus-widget-telemetry-toggle" {
-    let mut request = ProcessRequest::new(name);
+    let mut request = ProcessRequest::new("argvus").arg("widget-telemetry-toggle");
     for argument in args {
       request = request.arg(*argument);
     }
@@ -457,7 +457,8 @@ fn parse_borders_status(output: &str, state: &mut AppearanceState) {
 }
 
 pub(crate) fn canonical_layout() -> Option<Value> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", "/layout", "--effective"])
     .output()
     .ok()?;
@@ -522,7 +523,8 @@ fn apply_canonical_layout(state: &mut AppearanceState) {
 }
 
 pub(crate) fn canonical_taskbar() -> Option<Value> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", "/taskbar", "--effective"])
     .output()
     .ok()?;
@@ -638,7 +640,8 @@ fn telemetry_state() -> bool {
   if let Ok(output) = SystemProcessRunner.run(
     &ProcessRequest::new("env")
       .arg("ARGVUS_MACHINE_OUTPUT=1")
-      .arg("argvus-widget-telemetry-toggle")
+      .arg("argvus")
+      .arg("widget-telemetry-toggle")
       .arg("status")
       .timeout(Duration::from_secs(3)),
   ) && output.status.is_none_or(|status| status == 0)
@@ -688,7 +691,8 @@ fn telemetry_blocks_status() -> Option<String> {
     .run(
       &ProcessRequest::new("env")
         .arg("ARGVUS_MACHINE_OUTPUT=1")
-        .arg("argvus-widget-telemetry-toggle")
+        .arg("argvus")
+        .arg("widget-telemetry-toggle")
         .arg("blocks")
         .arg("status")
         .timeout(Duration::from_secs(3)),
@@ -926,7 +930,8 @@ fn persist_wallpaper_canonical(wallpaper: &Path) -> Result<(), String> {
     "/appearance/wallpaper_custom": true,
   });
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist wallpaper settings: {error}"))?;
@@ -1191,7 +1196,8 @@ pub(crate) fn persist_accent_canonical(accent: &str, is_custom: bool) -> Result<
     Value::Bool(is_custom),
   );
   let patch = serde_json::to_string(&Value::Object(patch)).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist accent settings: {error}"))?;
@@ -1307,7 +1313,7 @@ pub fn apply_widget_telemetry(
   let mut args = vec!["apply-state", if enabled { "enabled" } else { "disabled" }];
   args.extend(values);
   args.push(&order);
-  let mut request = ProcessRequest::new("argvus-widget-telemetry-toggle");
+  let mut request = ProcessRequest::new("argvus").arg("widget-telemetry-toggle");
   for argument in args {
     request = request.arg(argument);
   }
@@ -1384,8 +1390,9 @@ pub fn choose_wallpaper() -> Result<(), String> {
   }
   let _ = fs::remove_file(&selection);
 
-  let mut terminal_command = argvus_control_center_core::process::command("argvus-tui-terminal");
+  let mut terminal_command = argvus_control_center_core::process::command("argvus");
   let mut terminal_args = vec![
+    "tui-terminal".to_string(),
     "--class".to_string(),
     "argvus-wallpaper-picker".to_string(),
     "--term".to_string(),
@@ -1441,7 +1448,8 @@ fn persist_launcher_icon_canonical(path: &Path) -> Result<(), String> {
     "/taskbar/icons/launcher_custom_icon_path": path.to_string_lossy(),
   });
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist launcher icon settings: {error}"))?;
@@ -1483,8 +1491,9 @@ pub fn choose_launcher_icon() -> Result<(), String> {
   }
   let _ = fs::remove_file(&selection);
 
-  let mut terminal_command = argvus_control_center_core::process::command("argvus-tui-terminal");
+  let mut terminal_command = argvus_control_center_core::process::command("argvus");
   let mut terminal_args = vec![
+    "tui-terminal".to_string(),
     "--class".to_string(),
     "argvus-launcher-icon-picker".to_string(),
     "--term".to_string(),
@@ -1664,7 +1673,8 @@ pub fn apply_taskbar_icons_and_format(
 fn reload_taskbar() -> Result<(), String> {
   let output = SystemProcessRunner
     .run(
-      &ProcessRequest::new("argvus-sessionctl")
+      &ProcessRequest::new("argvus")
+        .arg("sessionctl")
         .arg("restart")
         .arg("taskbar"),
     )
@@ -1684,7 +1694,8 @@ fn reload_taskbar() -> Result<(), String> {
 
 fn persist_taskbar_patch(patch: serde_json::Map<String, Value>) -> Result<(), String> {
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist taskbar settings: {error}"))?;
@@ -1728,7 +1739,8 @@ pub fn move_control_panel_card(card: ControlPanelCard, index: usize) -> Result<(
 fn reload_control_panel() -> Result<(), String> {
   let output = SystemProcessRunner
     .run(
-      &ProcessRequest::new("argvus-sessionctl")
+      &ProcessRequest::new("argvus")
+        .arg("sessionctl")
         .arg("restart")
         .arg("control-panel"),
     )
@@ -1748,7 +1760,11 @@ fn reload_control_panel() -> Result<(), String> {
 
 fn reload_session() -> Result<(), String> {
   let output = SystemProcessRunner
-    .run(&ProcessRequest::new("argvus-sessionctl").arg("reload"))
+    .run(
+      &ProcessRequest::new("argvus")
+        .arg("sessionctl")
+        .arg("reload"),
+    )
     .map_err(|error| error.to_string())?;
   if output.status.is_none_or(|status| status != 0) {
     let stderr = terminal_text(&String::from_utf8_lossy(&output.stderr))
@@ -1802,7 +1818,8 @@ pub fn set_border(key: &str, value: &str) -> Result<(), String> {
 
 fn persist_layout_patch(patch: serde_json::Map<String, Value>) -> Result<(), String> {
   let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["patch", &patch])
     .status()
     .map_err(|error| format!("failed to persist layout settings: {error}"))?;

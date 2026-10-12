@@ -258,7 +258,8 @@ fn config_key_for_binding(id: &str) -> String {
 }
 
 fn load_canonical_shortcuts() -> Option<serde_json::Map<String, serde_json::Value>> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", "/keyboard_shortcuts", "--effective"])
     .output()
     .ok()?;
@@ -277,7 +278,8 @@ fn persist_canonical_shortcut(id: &str, shortcut: Option<&str>) -> Result<(), St
     .map(|keys| serde_json::to_string(keys).map_err(|error| error.to_string()))
     .transpose()?
     .unwrap_or_else(|| "null".into());
-  let status = argvus_control_center_core::process::command("argvus-config")
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["set", &pointer, &value])
     .status()
     .map_err(|error| format!("failed to persist shortcut: {error}"))?;

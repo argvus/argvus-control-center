@@ -441,7 +441,7 @@ impl FontSettings {
       "/fonts/legacy": output,
     });
     let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
-    run_checked("argvus-config", &["patch", &patch])?;
+    run_checked("argvus", &["config", "patch", &patch])?;
     argvus_control_center_core::config::reload_argvus_config_service()
   }
 
@@ -539,7 +539,7 @@ impl FontSettings {
     // The terminal family and size were already written to fonts.conf by
     // write_state; argvus-terminal --apply folds them into the Kitty profiles
     // consumed by the ARGVUS terminal windows.
-    spawn_if_available("argvus-terminal", &["--apply"]);
+    spawn_if_available("argvus", &["terminal", "--apply"]);
     Ok(())
   }
 
@@ -576,7 +576,7 @@ impl FontSettings {
   /// Executes the `refresh_runtime` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh_runtime(&self) {
     spawn_if_available("hyprctl", &["reload"]);
-    spawn_if_available("argvus-sessionctl", &["restart", "waybar", "shell"]);
+    spawn_if_available("argvus", &["sessionctl", "restart", "waybar", "shell"]);
     let script = paths::system_config_root().join("lock/sh/hyprlock-theme.sh");
     if script.is_file() {
       let script = script.to_string_lossy();
@@ -587,7 +587,8 @@ impl FontSettings {
 
 /// Converts input data into `parse_state` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn canonical_fonts() -> Option<serde_json::Value> {
-  let output = argvus_control_center_core::process::command("argvus-config")
+  let output = argvus_control_center_core::process::command("argvus")
+    .arg("config")
     .args(["get", "/fonts", "--effective"])
     .output()
     .ok()?;

@@ -770,7 +770,8 @@ impl App {
     };
     self.lang = Lang::for_locale(locale);
     let value = serde_json::to_string(&self.lang.locale()).unwrap_or_else(|_| "\"en-US\"".into());
-    let persisted = argvus_control_center_core::process::command("argvus-config")
+    let persisted = argvus_control_center_core::process::command("argvus")
+      .arg("config")
       .args(["set", "/session/language", &value])
       .status()
       .is_ok_and(|status| status.success());
