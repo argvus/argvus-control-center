@@ -23,6 +23,7 @@ use crate::system::fonts::{self, FontEntry};
 use crate::system::keybindings;
 use crate::system::projects;
 use crate::system::snippets;
+use crate::system::ssh_keys;
 use crate::system::window_rules;
 use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
@@ -78,6 +79,8 @@ pub enum PendingAction {
   RemoveWindowRule(String),
   RemoveProject(String),
   RemoveSnippet(String),
+  /// Deletes both files of a key pair, by the name it was listed with.
+  DeleteSshKey(String),
   /// The `r` shortcut on one shortcut; `leave` also closes the edit page.
   RestoreKeybinding {
     id: String,
@@ -135,6 +138,10 @@ pub struct App {
   pub(crate) snippets: snippets::Snippets,
   pub(crate) new_snippet_name: String,
   pub(crate) new_snippet_content: String,
+  /// Key pairs in `~/.ssh` and their agent state, as last listed.
+  pub(crate) ssh_keys: ssh_keys::SshKeys,
+  pub(crate) new_ssh_key_name: String,
+  pub(crate) new_ssh_key_type: ssh_keys::KeyType,
   keybinding_capturing: bool,
   keybinding_editor_modifiers: [bool; 4],
   keybinding_editor_key: String,
@@ -161,6 +168,10 @@ pub struct App {
   dnd_enabled: bool,
   dnd_job: Option<JobHandle<(bool, bool)>>,
   dnd_last_refresh: Instant,
+  /// Background listing of the SSH key pairs, run while the SSH keys page is open
+  /// so the agent state follows a load done in a terminal.
+  ssh_keys_job: Option<JobHandle<ssh_keys::SshKeys>>,
+  ssh_keys_last_refresh: Instant,
   task_job: Option<JobHandle<Result<String, String>>>,
   pub task_live: Option<LiveProcess>,
   pub task_open: bool,
@@ -233,6 +244,9 @@ impl App {
       snippets: snippets::load(),
       new_snippet_name: String::new(),
       new_snippet_content: String::new(),
+      ssh_keys: ssh_keys::load(),
+      new_ssh_key_name: String::new(),
+      new_ssh_key_type: ssh_keys::KeyType::default(),
       keybinding_capturing: false,
       keybinding_editor_modifiers: [false; 4],
       keybinding_editor_key: String::new(),
@@ -259,6 +273,8 @@ impl App {
       dnd_enabled: false,
       dnd_job: None,
       dnd_last_refresh: Instant::now() - Duration::from_secs(2),
+      ssh_keys_job: None,
+      ssh_keys_last_refresh: Instant::now() - Duration::from_secs(3),
       task_job: None,
       task_live: None,
       task_open: false,
@@ -361,6 +377,11 @@ impl App {
         "{root} > {} > {}",
         tr(self.lang, "control_center.applications"),
         tr(self.lang, "control_center.snippets")
+      ),
+      Page::SshKeys => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.ssh_keys")
       ),
       Page::KeybindingEdit => format!(
         "{hyprland_root} > {} > {}",
@@ -473,6 +494,16 @@ impl App {
     self.hostname = host::current();
     self.admin.load(false);
     self.success(tr(self.lang, "control_center.data_updated").to_string());
+  }
+
+  /// Lists the key pairs on a worker thread. `argvus-keys list` runs one
+  /// ssh-keygen per key, so doing it in the draw loop would stall the screen.
+  fn refresh_ssh_keys_in_background(&mut self) {
+    if self.ssh_keys_job.is_some() {
+      return;
+    }
+    self.ssh_keys_job = Some(self.jobs.spawn(|_| Ok(ssh_keys::load())));
+    self.ssh_keys_last_refresh = Instant::now();
   }
 
   /// Executes the `refresh_dnd` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -651,6 +682,13 @@ impl App {
         }
         Err(error) => self.fail(error),
       },
+      PendingAction::DeleteSshKey(name) => match ssh_keys::delete(&name) {
+        Ok(()) => {
+          self.ssh_keys = ssh_keys::load();
+          self.success(tr(self.lang, "control_center.ssh_keys_deleted").to_string());
+        }
+        Err(error) => self.fail(error),
+      },
       PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
         Ok(()) => {
           self.keybindings = keybindings::load();
@@ -727,7 +765,8 @@ impl App {
       | PendingAction::ResetKeybindings
       | PendingAction::RemoveWindowRule(_)
       | PendingAction::RemoveProject(_)
-      | PendingAction::RemoveSnippet(_) => (label("control_center.confirm"), true),
+      | PendingAction::RemoveSnippet(_)
+      | PendingAction::DeleteSshKey(_) => (label("control_center.confirm"), true),
       _ => (label("control_center.confirm"), false),
     };
     Some((title, message, confirm, danger))
@@ -824,6 +863,23 @@ impl App {
       && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2)
     {
       self.refresh_dnd();
+    }
+    if self.ssh_keys_job.is_none()
+      && self.page() == Page::SshKeys
+      && self.ssh_keys_last_refresh.elapsed() >= Duration::from_secs(3)
+    {
+      self.refresh_ssh_keys_in_background();
+    }
+    if let Some(job) = self.ssh_keys_job.take() {
+      match job.try_state() {
+        JobState::Running => self.ssh_keys_job = Some(job),
+        JobState::Finished(Ok(keys)) => {
+          self.ssh_keys = keys;
+          changed = true;
+        }
+        // The listing itself never fails; the next tick simply tries again.
+        JobState::Finished(Err(_)) => changed = true,
+      }
     }
     if let Some(job) = self.dnd_job.take() {
       match job.try_state() {
@@ -1713,6 +1769,13 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
     PendingAction::RemoveSnippet(name) => (
       tr(lang, "control_center.snippets_remove_title").to_string(),
       name.clone(),
+    ),
+    PendingAction::DeleteSshKey(name) => (
+      tr(lang, "control_center.ssh_keys_delete_title").to_string(),
+      format!(
+        "{name}. {}",
+        tr(lang, "control_center.ssh_keys_delete_description")
+      ),
     ),
     PendingAction::RestoreKeybinding { .. } => (
       tr(lang, "control_center.restore_shortcut_title").to_string(),

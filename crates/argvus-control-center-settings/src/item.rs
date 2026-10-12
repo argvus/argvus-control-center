@@ -116,6 +116,24 @@ pub enum Item {
   TypeSnippet(usize),
   /// Index into the loaded snippets.
   RemoveSnippet(usize),
+
+  // SSH keys.
+  /// Name field of the generate form.
+  NewSshKeyName,
+  /// Cycles the algorithm of the generate form between ed25519 and rsa.
+  SshKeyType,
+  /// Generates a pair with the name and algorithm of the form.
+  GenerateSshKey,
+  /// Index into the loaded key pairs. Opens a terminal for the passphrase.
+  LoadSshKey(usize),
+  /// Index into the loaded key pairs.
+  UnloadSshKey(usize),
+  /// Removes every key from the agent. The key files stay on disk.
+  UnloadAllSshKeys,
+  /// Lists the key pairs and the agent state again, after a terminal load.
+  RefreshSshKeys,
+  /// Index into the loaded key pairs. Asks for confirmation first.
+  DeleteSshKey(usize),
   /// Index into the loaded keybindings.
   Keybinding(usize),
   RestoreAllShortcuts,

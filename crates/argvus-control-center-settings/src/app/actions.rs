@@ -22,6 +22,7 @@ use crate::i18n::{Lang, tr};
 use crate::item::{Item, RatbagRow};
 use crate::navigation::Page;
 use crate::system::snippets;
+use crate::system::ssh_keys;
 use crate::system::window_rules;
 use crate::system::{keybindings, keyboard, locale, time};
 
@@ -63,6 +64,7 @@ fn is_searchable(page: Page) -> bool {
       | Page::SystemUsers
       | Page::GroupList
       | Page::SystemGroups
+      | Page::SshKeys
   )
 }
 
@@ -191,6 +193,16 @@ impl App {
       Item::OpenSnippetPicker => self.open_snippet_picker(),
       Item::SnippetContent(index) => self.open_snippet_content(index),
       Item::TypeSnippet(index) => self.type_snippet(index),
+      Item::NewSshKeyName => self.open_new_ssh_key_name(),
+      Item::SshKeyType => self.toggle_ssh_key_type(),
+      Item::GenerateSshKey => self.generate_ssh_key(),
+      Item::LoadSshKey(index) => self.load_ssh_key(index),
+      Item::UnloadSshKey(index) => self.unload_ssh_key(index),
+      Item::UnloadAllSshKeys => self.unload_all_ssh_keys(),
+      Item::RefreshSshKeys => {
+        self.ssh_keys = ssh_keys::load();
+        self.success(tr(self.lang, "control_center.ssh_keys_refreshed").to_string());
+      }
       Item::Zone(index) => self.select_timezone(index),
       Item::ApplyTimezone => self.apply_timezone(),
       Item::LocalDateTime if !self.datetime.ntp.unwrap_or(false) => {
@@ -312,6 +324,12 @@ impl App {
           self.open_confirm(PendingAction::RemoveSnippet(name));
         }
       }
+      Item::DeleteSshKey(index) => {
+        if let Some(entry) = self.ssh_keys.entries.get(index) {
+          let name = entry.name.clone();
+          self.open_confirm(PendingAction::DeleteSshKey(name));
+        }
+      }
       _ => {}
     }
   }
@@ -346,7 +364,10 @@ impl App {
   /// Whether the current page has an action bar under its list, with `Apply`.
   /// Such pages also keep their search box above the list.
   pub(crate) fn has_action_bar(&self) -> bool {
-    matches!(self.page(), Page::KeyboardLayout | Page::TimeZone)
+    matches!(
+      self.page(),
+      Page::KeyboardLayout | Page::TimeZone | Page::SshKeys
+    )
   }
 
   /// Whether the page's search is a box above the list, as on the home
@@ -360,6 +381,7 @@ impl App {
     match self.page() {
       Page::KeyboardLayout => self.keyboard_action_rows(),
       Page::TimeZone => self.timezone_action_rows(),
+      Page::SshKeys => self.ssh_keys_action_rows(),
       _ => Vec::new(),
     }
   }
@@ -1156,6 +1178,81 @@ impl App {
   fn type_snippet(&mut self, index: usize) {
     match snippets::type_position(index + 1) {
       Ok(()) => self.success(tr(self.lang, "control_center.snippets_typing").to_string()),
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn open_new_ssh_key_name(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.ssh_keys_name").into(),
+      self.new_ssh_key_name.clone(),
+      EditTarget::NewSshKeyName,
+      false,
+    ));
+  }
+
+  /// Changes only the form's algorithm; nothing is written until Generate runs.
+  fn toggle_ssh_key_type(&mut self) {
+    self.new_ssh_key_type = self.new_ssh_key_type.toggled();
+  }
+
+  fn generate_ssh_key(&mut self) {
+    let name = self.new_ssh_key_name.trim().to_owned();
+    if name.is_empty() {
+      self.fail(tr(self.lang, "control_center.ssh_keys_name_required").to_string());
+      return;
+    }
+    match ssh_keys::generate(&name, self.new_ssh_key_type) {
+      Ok(()) => {
+        self.new_ssh_key_name.clear();
+        self.ssh_keys = ssh_keys::load();
+        self.success(tr(self.lang, "control_center.ssh_keys_generated").to_string());
+      }
+      Err(error) => self.fail(error),
+    }
+  }
+
+  /// Opens a terminal for ssh-add, which asks for the passphrase there.
+  /// The key is not in the agent yet when this returns.
+  fn load_ssh_key(&mut self, index: usize) {
+    let Some(name) = self
+      .ssh_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.name.clone())
+    else {
+      return;
+    };
+    match ssh_keys::load_key(&name) {
+      Ok(()) => self.success(tr(self.lang, "control_center.ssh_keys_loading").to_string()),
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn unload_ssh_key(&mut self, index: usize) {
+    let Some(name) = self
+      .ssh_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.name.clone())
+    else {
+      return;
+    };
+    match ssh_keys::unload(&name) {
+      Ok(()) => {
+        self.ssh_keys = ssh_keys::load();
+        self.success(tr(self.lang, "control_center.ssh_keys_unloaded").to_string());
+      }
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn unload_all_ssh_keys(&mut self) {
+    match ssh_keys::unload_all() {
+      Ok(()) => {
+        self.ssh_keys = ssh_keys::load();
+        self.success(tr(self.lang, "control_center.ssh_keys_unloaded_all").to_string());
+      }
       Err(error) => self.fail(error),
     }
   }

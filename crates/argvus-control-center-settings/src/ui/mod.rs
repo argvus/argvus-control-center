@@ -17,7 +17,9 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
+use ratatui::widgets::{
+  Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, Wrap,
+};
 
 use crate::app::{App, MIN_HEIGHT, MIN_WIDTH};
 use crate::i18n::tr;
@@ -92,9 +94,22 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     None => list_area,
   };
   app.set_viewport(list_area.height as usize);
+  // SSH keys is the only list with a scrollbar: a key block is several rows
+  // tall, so the end of the list is easy to miss. The bar takes one column
+  // of the list only when the rows do not fit.
+  let scrollable = app.page() == Page::SshKeys && rows.len() > list_area.height as usize;
+  let (menu_area, scrollbar_area) = if scrollable {
+    let split = Layout::default()
+      .direction(Direction::Horizontal)
+      .constraints([Constraint::Min(0), Constraint::Length(1)])
+      .split(list_area);
+    (split[0], Some(split[1]))
+  } else {
+    (list_area, None)
+  };
   draw_menu(
     frame,
-    list_area,
+    menu_area,
     &app.theme,
     &rows,
     &mut app.navigation.current_mut().menu,
@@ -102,6 +117,22 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
       icons: AppConfig::icons_enabled(),
     },
   );
+  if let Some(scrollbar_area) = scrollbar_area {
+    // The widget reaches the bottom of its track only at position
+    // `content_length - 1`, while the list's last scroll offset is
+    // `rows - viewport`. Map the offset onto the widget's range, so the thumb
+    // ends at the bottom exactly when the list shows its last row.
+    let viewport = menu_area.height as usize;
+    let position = scrollbar_position(app.navigation.current().menu.offset(), rows.len(), viewport);
+    let mut scrollbar_state = ScrollbarState::new(rows.len())
+      .viewport_content_length(viewport)
+      .position(position);
+    frame.render_stateful_widget(
+      Scrollbar::new(ScrollbarOrientation::VerticalRight),
+      scrollbar_area,
+      &mut scrollbar_state,
+    );
+  }
   if let Some(action_area) = action_area {
     draw_action_bar(app, frame, action_area, &actions);
   }
@@ -122,9 +153,24 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
 
 /// Translation key of the title of the bordered list block on the pages that
 /// have an action bar: the list is named after what it chooses.
+/// Maps a list's scroll offset onto the scrollbar's position range.
+///
+/// `ScrollbarState` draws the thumb at its end only when its position is
+/// `content_length - 1`, but a list's last scroll offset is
+/// `rows - viewport`. Scaling the offset by that ratio puts the thumb at the
+/// bottom exactly when the list shows its last row.
+fn scrollbar_position(offset: usize, rows: usize, viewport: usize) -> usize {
+  let max_offset = rows.saturating_sub(viewport);
+  if max_offset == 0 {
+    return 0;
+  }
+  offset.min(max_offset) * rows.saturating_sub(1) / max_offset
+}
+
 fn list_title_key(page: Page) -> &'static str {
   match page {
     Page::TimeZone => "control_center.time_zone",
+    Page::SshKeys => "control_center.ssh_keys",
     _ => "control_center.layout",
   }
 }
@@ -406,6 +452,49 @@ mod tests {
   use crossterm::event::{Event, KeyCode, KeyEvent};
   use ratatui::{Terminal, backend::TestBackend};
   use serde_json::json;
+
+  #[test]
+  fn scrollbar_thumb_reaches_the_bottom_on_the_last_row() {
+    // 30 rows in a 10-row viewport: offsets run 0..=20, the thumb spans 0..=29.
+    assert_eq!(scrollbar_position(0, 30, 10), 0);
+    assert_eq!(scrollbar_position(20, 30, 10), 29);
+    assert!(scrollbar_position(10, 30, 10) < 29);
+  }
+
+  #[test]
+  fn scrollbar_stays_at_the_top_when_rows_fit() {
+    assert_eq!(scrollbar_position(0, 5, 10), 0);
+  }
+
+  #[test]
+  fn ssh_keys_search_opens_on_slash_and_filters_rows() {
+    let mut app = App::with_context(
+      Page::SshKeys,
+      crate::i18n::Lang::for_locale("en-US"),
+      crate::theme::Theme::load(),
+    );
+    app.ssh_keys = crate::system::ssh_keys::SshKeys {
+      available: true,
+      entries: vec![crate::system::ssh_keys::SshKeyEntry {
+        name: "alpha".into(),
+        key_type: "ed25519".into(),
+        fingerprint: "SHA256:alpha".into(),
+        comment: "alpha@host".into(),
+        has_passphrase: false,
+        agent: crate::system::ssh_keys::AgentState::NotLoaded,
+      }],
+    };
+    app.begin_search();
+    assert!(app.searching, "/ must open the search on the SSH keys page");
+    app.push_search('z');
+    assert!(
+      app
+        .rows()
+        .iter()
+        .all(|row| row.id() != Some(&Item::LoadSshKey(0))),
+      "a query matching no key hides its block"
+    );
+  }
 
   /// Executes the `user_app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn user_app() -> App {

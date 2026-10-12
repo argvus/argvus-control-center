@@ -29,6 +29,7 @@ pub enum Page {
   WindowRules,
   Projects,
   Snippets,
+  SshKeys,
   MouseTouchpad,
   KeyboardLayout,
   KeyboardVariant,

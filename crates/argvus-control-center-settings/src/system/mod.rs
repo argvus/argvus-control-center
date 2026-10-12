@@ -13,5 +13,6 @@ pub mod privileged;
 pub mod projects;
 pub mod ratbag;
 pub mod snippets;
+pub mod ssh_keys;
 pub mod time;
 pub mod window_rules;

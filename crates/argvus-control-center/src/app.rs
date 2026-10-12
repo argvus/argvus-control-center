@@ -442,6 +442,14 @@ impl App {
         "snippets snippet text type typing shortcut picker trechos texto digitar atalho seletor",
         "settings/snippets",
       ),
+      #[cfg(feature = "apps")]
+      (
+        "settings.ssh_keys",
+        "applications",
+        "SSH keys",
+        "ssh keys key pair generate load unload agent passphrase chaves ssh gerar carregar descarregar agente senha par",
+        "settings/ssh-keys",
+      ),
       #[cfg(feature = "about")]
       (
         "about",
@@ -1305,6 +1313,11 @@ impl App {
       label: tr(self.lang, "control_center.snippets"),
       action: 29,
     });
+    #[cfg(feature = "apps")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.ssh_keys"),
+      action: 30,
+    });
     #[cfg(any(feature = "hardware", feature = "displays", feature = "audio"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
@@ -1515,6 +1528,8 @@ impl App {
       23 => self.open_settings(Page::Projects),
       #[cfg(feature = "apps")]
       29 => self.open_settings(Page::Snippets),
+      #[cfg(feature = "apps")]
+      30 => self.open_settings(Page::SshKeys),
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
       #[cfg(feature = "locale")]
@@ -1748,6 +1763,8 @@ impl App {
       #[cfg(feature = "apps")]
       (_, "projects") => self.open_settings(Page::Projects),
       (_, "snippets") => self.open_settings(Page::Snippets),
+      #[cfg(feature = "apps")]
+      (_, "ssh-keys") => self.open_settings(Page::SshKeys),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),

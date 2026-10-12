@@ -1636,6 +1636,7 @@ impl App {
         },
         EditTarget::NewSnippetName => self.new_snippet_name = value,
         EditTarget::NewSnippetContent => self.new_snippet_content = value,
+        EditTarget::NewSshKeyName => self.new_ssh_key_name = value,
         EditTarget::SnippetContent(name) => match crate::system::snippets::add(&name, &value) {
           Ok(()) => {
             self.snippets = crate::system::snippets::load();
@@ -1681,6 +1682,8 @@ pub(crate) enum EditTarget {
   NewSnippetContent,
   /// Replacement content of a saved snippet, keyed by its name.
   SnippetContent(String),
+  /// The name typed for the next SSH key pair.
+  NewSshKeyName,
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

@@ -88,6 +88,8 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     "projects" if args.len() == 1 => Ok(settings_route(Page::Projects)),
     #[cfg(feature = "apps")]
     "snippets" if args.len() == 1 => Ok(settings_route(Page::Snippets)),
+    #[cfg(feature = "apps")]
+    "ssh-keys" | "ssh_keys" if args.len() == 1 => Ok(settings_route(Page::SshKeys)),
     "keybindings" | "shortcuts" | "keyboard" if args.len() == 1 => {
       Ok(settings_route(Page::Keybindings))
     }

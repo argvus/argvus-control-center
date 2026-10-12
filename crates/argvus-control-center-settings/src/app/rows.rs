@@ -440,6 +440,7 @@ impl App {
       Page::WindowRules => self.window_rules_rows(),
       Page::Projects => self.projects_rows(),
       Page::Snippets => self.snippets_rows(),
+      Page::SshKeys => self.ssh_keys_rows(),
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::Firewall
@@ -866,6 +867,148 @@ impl App {
       rows.push(Row::separator());
     }
     rows
+  }
+
+  /// The SSH keys list: the generate form, then one block per key pair that
+  /// matches the search by name or comment. Each block holds the pair's details,
+  /// its load/unload row and its own Delete row. The agent-wide actions live in
+  /// the action bar (`ssh_keys_action_rows`), not in this list.
+  fn ssh_keys_rows(&self) -> Vec<Row<Item>> {
+    if !self.ssh_keys.available {
+      return vec![Row::info(
+        self.label("control_center.ssh_keys_unavailable"),
+        String::new(),
+      )];
+    }
+    let mut rows = vec![
+      Row::section(self.label("control_center.ssh_keys_generate")),
+      Row::action(
+        Item::NewSshKeyName,
+        self.label("control_center.ssh_keys_name"),
+      )
+      .icon(icons::KEY)
+      .detail(self.new_ssh_key_name.clone()),
+      Row::action(Item::SshKeyType, self.label("control_center.ssh_keys_type"))
+        .icon(icons::SHIELD)
+        .detail(self.new_ssh_key_type.as_arg()),
+      Row::action(
+        Item::GenerateSshKey,
+        self.label("control_center.ssh_keys_generate_action"),
+      )
+      .icon(icons::ADD),
+      Row::section(self.label("control_center.ssh_keys_list")),
+    ];
+    if self.ssh_keys.entries.is_empty() {
+      rows.push(Row::info(
+        self.label("control_center.ssh_keys_empty"),
+        String::new(),
+      ));
+      return rows;
+    }
+    let mut shown = 0;
+    // Items keep the index into the full listing, so a filtered block still
+    // acts on the right pair.
+    for (index, entry) in self.ssh_keys.entries.iter().enumerate() {
+      if !search_matches(&self.search, &[&entry.name, &entry.comment]) {
+        continue;
+      }
+      shown += 1;
+      self.push_ssh_key_block(&mut rows, index, entry);
+    }
+    if shown == 0 {
+      rows.push(Row::info(
+        self.label("control_center.no_matching_items"),
+        String::new(),
+      ));
+    }
+    rows
+  }
+
+  /// One key pair: its details, then the load/unload row and its Delete row.
+  fn push_ssh_key_block(
+    &self,
+    rows: &mut Vec<Row<Item>>,
+    index: usize,
+    entry: &crate::system::ssh_keys::SshKeyEntry,
+  ) {
+    use crate::system::ssh_keys::AgentState;
+
+    let agent_text = match entry.agent {
+      AgentState::Loaded => self.label("control_center.ssh_keys_loaded"),
+      AgentState::NotLoaded => self.label("control_center.ssh_keys_not_loaded"),
+      AgentState::Unknown => self.label("control_center.ssh_keys_agent_unknown"),
+    };
+    let passphrase_text = if entry.has_passphrase {
+      self.label("control_center.ssh_keys_yes")
+    } else {
+      self.label("control_center.ssh_keys_no")
+    };
+    rows.push(Row::info(
+      self.label("control_center.ssh_keys_name"),
+      entry.name.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.ssh_keys_type"),
+      entry.key_type.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.ssh_keys_fingerprint"),
+      entry.fingerprint.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.ssh_keys_comment"),
+      entry.comment.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.ssh_keys_passphrase"),
+      passphrase_text,
+    ));
+    rows.push(Row::info(
+      self.label("control_center.ssh_keys_agent"),
+      agent_text,
+    ));
+    // With an unknown agent state the key is offered as loadable: the
+    // launcher reports the failure if the agent is really unreachable.
+    rows.push(match entry.agent {
+      AgentState::Loaded => Row::action(
+        Item::UnloadSshKey(index),
+        self.label("control_center.ssh_keys_unload"),
+      )
+      .icon(icons::STOP),
+      AgentState::NotLoaded | AgentState::Unknown => Row::action(
+        Item::LoadSshKey(index),
+        self.label("control_center.ssh_keys_load"),
+      )
+      .icon(icons::PLAY),
+    });
+    rows.push(
+      Row::destructive(
+        Item::DeleteSshKey(index),
+        self.label("control_center.ssh_keys_delete"),
+      )
+      .icon(icons::DELETE),
+    );
+    rows.push(Row::separator());
+  }
+
+  /// The SSH keys action bar: Refresh and Unload all. Like the other action
+  /// bars, these are not list rows, so the list cursor never walks into them.
+  pub(super) fn ssh_keys_action_rows(&self) -> Vec<Row<Item>> {
+    if !self.ssh_keys.available {
+      return Vec::new();
+    }
+    vec![
+      Row::action(
+        Item::RefreshSshKeys,
+        self.label("control_center.ssh_keys_refresh"),
+      )
+      .icon(icons::SYNC),
+      Row::action(
+        Item::UnloadAllSshKeys,
+        self.label("control_center.ssh_keys_unload_all"),
+      )
+      .icon(icons::STOP),
+    ]
   }
 
   /// The snippets page: the form that saves a snippet, then one block per
