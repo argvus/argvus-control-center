@@ -196,6 +196,22 @@ pub fn cheatsheet_description(lang: Lang, binding: &Binding) -> Option<String> {
     "app.browser" => ("Default Browser", "Navegador padrão"),
     "app.launcher" => ("Program Launcher", "Lançador de programas"),
     "app.calculator" => ("Calculator", "Calculadora"),
+    "app.projects" => (
+      "Project list (argvus projects)",
+      "Lista de projetos (argvus projects)",
+    ),
+    "app.ssh" => (
+      "SSH host picker (argvus ssh)",
+      "Seletor de hosts SSH (argvus ssh)",
+    ),
+    "app.snippets" => (
+      "Snippet picker (argvus snippets)",
+      "Seletor de snippets (argvus snippets)",
+    ),
+    "app.git" => (
+      "Project picker, then git TUI (argvus git)",
+      "Seletor de projetos e TUI de git (argvus git)",
+    ),
     "system.kitty_cheatsheet" => ("Kitty Cheatsheets", "Cheatsheets do Kitty"),
     "system.hyprland_cheatsheet" => ("Hyprland Cheatsheets", "Cheatsheets do Hyprland"),
     "system.clipboard" => ("Clipboard History", "Histórico no Clipboard"),
@@ -598,5 +614,41 @@ mod tests {
     );
     assert_eq!(display_keys("SUPER + F1"), "SUPER + F1");
     assert_eq!(display_keys("XF86AudioMute"), "Mute");
+  }
+}
+
+#[cfg(test)]
+mod launcher_shortcut_tests {
+  use super::*;
+
+  fn binding(id: &str) -> Binding {
+    Binding {
+      id: id.into(),
+      category: "applications".into(),
+      description_key: String::new(),
+      keys: "SUPER + ALT + G".into(),
+      action: String::new(),
+      context: String::new(),
+      input: String::new(),
+      configurable: true,
+      flags: Vec::new(),
+      enabled: true,
+    }
+  }
+
+  #[test]
+  fn launcher_shortcuts_have_readable_descriptions_in_both_languages() {
+    for id in ["app.projects", "app.ssh", "app.snippets", "app.git"] {
+      let en = cheatsheet_description(Lang::for_locale("en-US"), &binding(id));
+      let pt = cheatsheet_description(Lang::for_locale("pt-BR"), &binding(id));
+      assert!(
+        en.as_deref().is_some_and(|text| text.contains("argvus")),
+        "{id}"
+      );
+      assert!(
+        pt.as_deref().is_some_and(|text| text.contains("argvus")),
+        "{id}"
+      );
+    }
   }
 }
