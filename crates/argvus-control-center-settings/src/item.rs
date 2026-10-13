@@ -124,6 +124,8 @@ pub enum Item {
   SshKeyType,
   /// Generates a pair with the name and algorithm of the form.
   GenerateSshKey,
+  /// Index into the loaded key pairs. Copies its `.pub` file to the clipboard.
+  CopySshPublicKey(usize),
   /// Index into the loaded key pairs. Opens a terminal for the passphrase.
   LoadSshKey(usize),
   /// Index into the loaded key pairs.

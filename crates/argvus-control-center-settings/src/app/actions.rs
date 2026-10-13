@@ -211,6 +211,7 @@ impl App {
           self.datetime.local_time.clone(),
           EditTarget::DateTime,
           false,
+      Item::CopySshPublicKey(index) => self.copy_ssh_public_key(index),
         ));
       }
       Item::Locale(index) => self.apply_regional_locale(index),
@@ -1231,6 +1232,28 @@ impl App {
 
   fn unload_ssh_key(&mut self, index: usize) {
     let Some(name) = self
+  fn copy_ssh_public_key(&mut self, index: usize) {
+    let Some(name) = self
+      .ssh_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.name.clone())
+    else {
+      return;
+    };
+    match ssh_keys::copy_public_key(&name) {
+      Ok(()) => {
+        self.success(tr(self.lang, "control_center.ssh_keys_public_key_copied").to_string())
+      }
+      Err(ssh_keys::CopyError::Unreadable) => {
+        self.fail(tr(self.lang, "control_center.ssh_keys_public_key_unreadable").to_string());
+      }
+      Err(ssh_keys::CopyError::Clipboard) => {
+        self.fail(tr(self.lang, "control_center.ssh_keys_clipboard_unavailable").to_string());
+      }
+    }
+  }
+
       .ssh_keys
       .entries
       .get(index)

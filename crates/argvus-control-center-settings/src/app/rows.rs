@@ -1133,6 +1133,13 @@ impl App {
           draft.workspace.to_string(),
           Some(1),
         )
+    rows.push(
+      Row::action(
+        Item::CopySshPublicKey(index),
+        self.label("control_center.ssh_keys_copy_public_key"),
+      )
+      .icon(icons::COPY),
+    );
         .icon(icons::LAYOUT),
       );
       rows.push(

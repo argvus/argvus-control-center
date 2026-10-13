@@ -6,6 +6,10 @@
 //! passphrase-protected generation open an ARGVUS terminal where the tool
 //! prompts for the secret, so it is never a process argument.
 use argvus_control_center_core::process::command;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Stdio;
 
 /// Key algorithm offered by the generate form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -143,6 +147,53 @@ pub fn unload_all() -> Result<(), String> {
   run(&["unload-all"])
 }
 
+/// Why a public key could not be copied, so the page can name the cause in the
+/// user's language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyError {
+  /// The `.pub` file is missing, unreadable or the name is not a valid pair.
+  Unreadable,
+  /// `wl-copy` is not installed or did not take the text.
+  Clipboard,
+}
+
+/// Copies the public key of a pair to the Wayland clipboard. The public file is
+/// read here rather than through the launcher, which has no read command: it
+/// holds no secret, and the copy changes nothing under `~/.ssh`.
+pub fn copy_public_key(name: &str) -> Result<(), CopyError> {
+  if !is_valid_name(name) {
+    return Err(CopyError::Unreadable);
+  }
+  let path = ssh_dir()
+    .ok_or(CopyError::Unreadable)?
+    .join(format!("{name}.pub"));
+  let public_key = fs::read_to_string(path).map_err(|_| CopyError::Unreadable)?;
+  let mut child = command("wl-copy")
+    .stdin(Stdio::piped())
+    .spawn()
+    .map_err(|_| CopyError::Clipboard)?;
+  // The pipe is taken and dropped at the end of the closure, so wl-copy sees
+  // end of input before it is awaited.
+  let written = child
+    .stdin
+    .take()
+    .is_some_and(|mut stdin| stdin.write_all(public_key.trim_end().as_bytes()).is_ok());
+  let status = child.wait().map_err(|_| CopyError::Clipboard)?;
+  if written && status.success() {
+    Ok(())
+  } else {
+    Err(CopyError::Clipboard)
+  }
+}
+
+/// The directory the launcher reads: `ARGVUS_SSH_DIR` when set, else `~/.ssh`.
+fn ssh_dir() -> Option<PathBuf> {
+  std::env::var_os("ARGVUS_SSH_DIR")
+    .filter(|dir| !dir.is_empty())
+    .map(PathBuf::from)
+    .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".ssh")))
+}
+
 /// Deletes the pair from `~/.ssh`. The launcher refuses while the key is
 /// loaded in the agent, so the agent never keeps a key whose file is gone.
 pub fn delete(name: &str) -> Result<(), String> {
@@ -234,6 +285,7 @@ mod tests {
     // Validation happens before any process starts, so this stays a pure check.
     assert!(generate("../escape", KeyType::Ed25519).is_err());
     assert!(delete("work.pub").is_err());
+    assert_eq!(copy_public_key("../escape"), Err(CopyError::Unreadable));
   }
 
   #[test]

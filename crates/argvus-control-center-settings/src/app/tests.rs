@@ -524,6 +524,25 @@ fn ssh_keys_delete_is_a_destructive_row_that_only_asks_for_confirmation() {
 }
 
 #[test]
+fn ssh_keys_block_copies_the_public_key_before_load_and_both_rows_have_icons() {
+  let mut app = app(Page::SshKeys);
+  app.ssh_keys = SshKeys {
+    available: true,
+    entries: vec![ssh_key_entry("alpha", AgentState::NotLoaded)],
+  };
+  let rows = app.rows();
+  let copy = row_of(&rows, Item::CopySshPublicKey(0));
+  assert_eq!(copy.kind(), RowKind::Action);
+  assert_eq!(copy.icon_glyph(), Some(argvus_tui::icons::COPY));
+  assert_eq!(
+    row_of(&rows, Item::DeleteSshKey(0)).icon_glyph(),
+    Some(argvus_tui::icons::DELETE)
+  );
+  let position = |item: Item| rows.iter().position(|row| row.id() == Some(&item));
+  assert!(position(Item::CopySshPublicKey(0)) < position(Item::LoadSshKey(0)));
+}
+
+#[test]
 fn ssh_keys_form_rows_respond_to_enter() {
   let mut app = app(Page::SshKeys);
   app.ssh_keys = SshKeys {
