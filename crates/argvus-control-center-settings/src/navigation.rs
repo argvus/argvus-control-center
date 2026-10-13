@@ -30,6 +30,7 @@ pub enum Page {
   Projects,
   Snippets,
   SshKeys,
+  GpgKeys,
   MouseTouchpad,
   KeyboardLayout,
   KeyboardVariant,

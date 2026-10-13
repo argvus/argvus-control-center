@@ -1637,6 +1637,27 @@ impl App {
         EditTarget::NewSnippetName => self.new_snippet_name = value,
         EditTarget::NewSnippetContent => self.new_snippet_content = value,
         EditTarget::NewSshKeyName => self.new_ssh_key_name = value,
+        EditTarget::GpgIdentity => self.gpg_form.identity = value,
+        EditTarget::GpgExpire => self.gpg_form.expire = value.trim().to_owned(),
+        EditTarget::GpgExportPath(fingerprint) => {
+          let home = std::env::var("HOME").unwrap_or_default();
+          let path = crate::system::gpg_keys::expand_home(value.trim(), &home);
+          match crate::system::gpg_keys::export_public(&fingerprint, &path) {
+            Ok(()) => self.success(tr(self.lang, "control_center.gpg_keys_exported").to_string()),
+            Err(error) => self.fail(error),
+          }
+        }
+        EditTarget::GpgImportPath => {
+          let home = std::env::var("HOME").unwrap_or_default();
+          let path = crate::system::gpg_keys::expand_home(value.trim(), &home);
+          match crate::system::gpg_keys::import(&path) {
+            Ok(()) => {
+              self.gpg_keys = crate::system::gpg_keys::load();
+              self.success(tr(self.lang, "control_center.gpg_keys_imported").to_string());
+            }
+            Err(error) => self.fail(error),
+          }
+        }
         EditTarget::SnippetContent(name) => match crate::system::snippets::add(&name, &value) {
           Ok(()) => {
             self.snippets = crate::system::snippets::load();
@@ -1684,6 +1705,14 @@ pub(crate) enum EditTarget {
   SnippetContent(String),
   /// The name typed for the next SSH key pair.
   NewSshKeyName,
+  /// The identity typed for the next GPG key.
+  GpgIdentity,
+  /// The expiry typed for the next GPG key.
+  GpgExpire,
+  /// Export path of one key, keyed by its fingerprint.
+  GpgExportPath(String),
+  /// File to import public keys from.
+  GpgImportPath,
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.

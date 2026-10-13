@@ -4,6 +4,7 @@
 //! the UI consumes normalized models and results.
 pub mod command;
 pub mod fonts;
+pub mod gpg_keys;
 pub mod host;
 pub mod input;
 pub mod keybindings;

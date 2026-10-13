@@ -94,10 +94,11 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     None => list_area,
   };
   app.set_viewport(list_area.height as usize);
-  // SSH keys is the only list with a scrollbar: a key block is several rows
-  // tall, so the end of the list is easy to miss. The bar takes one column
-  // of the list only when the rows do not fit.
-  let scrollable = app.page() == Page::SshKeys && rows.len() > list_area.height as usize;
+  // The key lists have a scrollbar: a key block is several rows tall, so the
+  // end of the list is easy to miss. The bar takes one column of the list only
+  // when the rows do not fit.
+  let scrollable =
+    matches!(app.page(), Page::SshKeys | Page::GpgKeys) && rows.len() > list_area.height as usize;
   let (menu_area, scrollbar_area) = if scrollable {
     let split = Layout::default()
       .direction(Direction::Horizontal)
@@ -171,6 +172,7 @@ fn list_title_key(page: Page) -> &'static str {
   match page {
     Page::TimeZone => "control_center.time_zone",
     Page::SshKeys => "control_center.ssh_keys",
+    Page::GpgKeys => "control_center.gpg_keys",
     _ => "control_center.layout",
   }
 }

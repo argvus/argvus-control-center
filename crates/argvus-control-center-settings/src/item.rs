@@ -136,6 +136,27 @@ pub enum Item {
   RefreshSshKeys,
   /// Index into the loaded key pairs. Asks for confirmation first.
   DeleteSshKey(usize),
+
+  // GPG keys.
+  /// Identity field of the generate form.
+  GpgIdentity,
+  /// Cycles the algorithm of the generate form between ed25519 and rsa4096.
+  GpgAlgorithm,
+  /// Expiry field of the generate form: `0`, or a number of days, weeks,
+  /// months or years.
+  GpgExpire,
+  /// Whether the pinentry asks for a passphrase when a key is generated.
+  GpgPassphrase,
+  /// Generates a key from the form. Without a passphrase it asks first.
+  GenerateGpgKey,
+  /// Opens the editor for the file to import public keys from.
+  ImportGpgKey,
+  /// Index into the listed keys. Opens the editor for the export path.
+  ExportGpgKey(usize),
+  /// Lists the keyring and the pinentry again.
+  RefreshGpgKeys,
+  /// A pinentry choice (`qt`, `gtk` or `curses`). Asks for confirmation first.
+  GpgPinentry(&'static str),
   /// Index into the loaded keybindings.
   Keybinding(usize),
   RestoreAllShortcuts,

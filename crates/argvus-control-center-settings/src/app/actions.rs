@@ -21,6 +21,7 @@ use crate::config::fonts::SettingKind;
 use crate::i18n::{Lang, tr};
 use crate::item::{Item, RatbagRow};
 use crate::navigation::Page;
+use crate::system::gpg_keys;
 use crate::system::snippets;
 use crate::system::ssh_keys;
 use crate::system::window_rules;
@@ -65,6 +66,7 @@ fn is_searchable(page: Page) -> bool {
       | Page::GroupList
       | Page::SystemGroups
       | Page::SshKeys
+      | Page::GpgKeys
   )
 }
 
@@ -193,9 +195,23 @@ impl App {
       Item::OpenSnippetPicker => self.open_snippet_picker(),
       Item::SnippetContent(index) => self.open_snippet_content(index),
       Item::TypeSnippet(index) => self.type_snippet(index),
+      Item::GpgIdentity => self.open_gpg_identity(),
+      Item::GpgAlgorithm => self.gpg_form.algorithm = self.gpg_form.algorithm.toggled(),
+      Item::GpgExpire => self.open_gpg_expire(),
+      Item::GenerateGpgKey => self.generate_gpg_key(),
+      Item::ImportGpgKey => self.open_gpg_import(),
+      Item::ExportGpgKey(index) => self.open_gpg_export(index),
+      Item::RefreshGpgKeys => {
+        self.gpg_keys = gpg_keys::load();
+        self.success(tr(self.lang, "control_center.gpg_keys_refreshed").to_string());
+      }
+      Item::GpgPinentry(choice) => {
+        self.open_confirm(PendingAction::SetGpgPinentry(choice.to_owned()));
+      }
       Item::NewSshKeyName => self.open_new_ssh_key_name(),
       Item::SshKeyType => self.toggle_ssh_key_type(),
       Item::GenerateSshKey => self.generate_ssh_key(),
+      Item::CopySshPublicKey(index) => self.copy_ssh_public_key(index),
       Item::LoadSshKey(index) => self.load_ssh_key(index),
       Item::UnloadSshKey(index) => self.unload_ssh_key(index),
       Item::UnloadAllSshKeys => self.unload_all_ssh_keys(),
@@ -211,7 +227,6 @@ impl App {
           self.datetime.local_time.clone(),
           EditTarget::DateTime,
           false,
-      Item::CopySshPublicKey(index) => self.copy_ssh_public_key(index),
         ));
       }
       Item::Locale(index) => self.apply_regional_locale(index),
@@ -280,6 +295,8 @@ impl App {
       Item::LocaleGen(index) => self.toggle_system_locale(index),
       Item::Layout(index) => self.toggle_keyboard_layout(index),
       Item::Input(_) => self.apply_input(item),
+      // A form field, not a setting: it changes only the draft form.
+      Item::GpgPassphrase => self.gpg_form.passphrase = !self.gpg_form.passphrase,
       _ => {}
     }
   }
@@ -1215,23 +1232,6 @@ impl App {
 
   /// Opens a terminal for ssh-add, which asks for the passphrase there.
   /// The key is not in the agent yet when this returns.
-  fn load_ssh_key(&mut self, index: usize) {
-    let Some(name) = self
-      .ssh_keys
-      .entries
-      .get(index)
-      .map(|entry| entry.name.clone())
-    else {
-      return;
-    };
-    match ssh_keys::load_key(&name) {
-      Ok(()) => self.success(tr(self.lang, "control_center.ssh_keys_loading").to_string()),
-      Err(error) => self.fail(error),
-    }
-  }
-
-  fn unload_ssh_key(&mut self, index: usize) {
-    let Some(name) = self
   fn copy_ssh_public_key(&mut self, index: usize) {
     let Some(name) = self
       .ssh_keys
@@ -1254,6 +1254,23 @@ impl App {
     }
   }
 
+  fn load_ssh_key(&mut self, index: usize) {
+    let Some(name) = self
+      .ssh_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.name.clone())
+    else {
+      return;
+    };
+    match ssh_keys::load_key(&name) {
+      Ok(()) => self.success(tr(self.lang, "control_center.ssh_keys_loading").to_string()),
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn unload_ssh_key(&mut self, index: usize) {
+    let Some(name) = self
       .ssh_keys
       .entries
       .get(index)
@@ -1268,6 +1285,68 @@ impl App {
       }
       Err(error) => self.fail(error),
     }
+  }
+
+  fn open_gpg_identity(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.gpg_keys_identity").into(),
+      self.gpg_form.identity.clone(),
+      EditTarget::GpgIdentity,
+      false,
+    ));
+  }
+
+  fn open_gpg_expire(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.gpg_keys_expire").into(),
+      self.gpg_form.expire.clone(),
+      EditTarget::GpgExpire,
+      false,
+    ));
+  }
+
+  fn open_gpg_import(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.gpg_keys_import_title").into(),
+      String::new(),
+      EditTarget::GpgImportPath,
+      false,
+    ));
+  }
+
+  /// Proposes `~/argvus-<key id>.asc`, which the user can change before the
+  /// export runs. The launcher never overwrites an existing file.
+  fn open_gpg_export(&mut self, index: usize) {
+    let Some(entry) = self.gpg_keys.entries.get(index) else {
+      return;
+    };
+    let home = std::env::var("HOME").unwrap_or_default();
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.gpg_keys_export_title").into(),
+      format!("{home}/argvus-{}.asc", entry.key_id),
+      EditTarget::GpgExportPath(entry.fingerprint.clone()),
+      false,
+    ));
+  }
+
+  /// Without a passphrase the page asks first. With one, the launcher opens
+  /// the pinentry window from the worker thread.
+  fn generate_gpg_key(&mut self) {
+    if self.gpg_form.identity.trim().is_empty() {
+      self.fail(tr(self.lang, "control_center.gpg_keys_identity_required").to_string());
+      return;
+    }
+    if self.gpg_form.passphrase {
+      self.start_gpg_generation();
+    } else {
+      self.open_confirm(PendingAction::GenerateGpgNoPassphrase);
+    }
+  }
+
+  pub(super) fn start_gpg_generation(&mut self) {
+    let form = self.gpg_form.clone();
+    self.gpg_job = Some(self.jobs.spawn(move |_| Ok(gpg_keys::generate(&form))));
+    self.success(tr(self.lang, "control_center.gpg_keys_waiting_pinentry").to_string());
   }
 
   fn unload_all_ssh_keys(&mut self) {

@@ -450,6 +450,14 @@ impl App {
         "ssh keys key pair generate load unload agent passphrase chaves ssh gerar carregar descarregar agente senha par",
         "settings/ssh-keys",
       ),
+      #[cfg(feature = "apps")]
+      (
+        "settings.gpg_keys",
+        "applications",
+        "GPG keys",
+        "gpg keys key pair generate export import pinentry passphrase chaves gpg gerar exportar importar senha pinentry",
+        "settings/gpg-keys",
+      ),
       #[cfg(feature = "about")]
       (
         "about",
@@ -1318,6 +1326,11 @@ impl App {
       label: tr(self.lang, "control_center.ssh_keys"),
       action: 30,
     });
+    #[cfg(feature = "apps")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.gpg_keys"),
+      action: 31,
+    });
     #[cfg(any(feature = "hardware", feature = "displays", feature = "audio"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
     #[cfg(feature = "hardware")]
@@ -1530,6 +1543,8 @@ impl App {
       29 => self.open_settings(Page::Snippets),
       #[cfg(feature = "apps")]
       30 => self.open_settings(Page::SshKeys),
+      #[cfg(feature = "apps")]
+      31 => self.open_settings(Page::GpgKeys),
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
       #[cfg(feature = "locale")]
@@ -1765,6 +1780,8 @@ impl App {
       (_, "snippets") => self.open_settings(Page::Snippets),
       #[cfg(feature = "apps")]
       (_, "ssh-keys") => self.open_settings(Page::SshKeys),
+      #[cfg(feature = "apps")]
+      (_, "gpg-keys") => self.open_settings(Page::GpgKeys),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),

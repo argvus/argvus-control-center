@@ -919,3 +919,183 @@ fn list_footer_names_the_arrows_only_when_apply_is_enabled() {
     "Keyboard > Layout shows ←/→ Actions too"
   );
 }
+
+fn gpg_key_entry(user_id: &str, fingerprint: &str) -> crate::system::gpg_keys::GpgKeyEntry {
+  crate::system::gpg_keys::GpgKeyEntry {
+    fingerprint: fingerprint.into(),
+    key_id: fingerprint.chars().take(16).collect(),
+    key_type: "ed25519".into(),
+    expires: "never".into(),
+    secret: true,
+    validity: "u".into(),
+    user_id: user_id.into(),
+  }
+}
+
+/// Moves the cursor to `item` from the top of the page.
+fn select_gpg(app: &mut App, item: Item) {
+  press(app, KeyCode::Home);
+  for _ in 0..200 {
+    if app.selected_item() == Some(item) {
+      return;
+    }
+    press(app, KeyCode::Down);
+  }
+  panic!("could not select {item:?}");
+}
+
+#[test]
+fn gpg_keys_page_marks_the_pinentry_in_use_and_offers_the_others() {
+  use crate::system::gpg_keys::{GpgKeys, Pinentry, PinentryOrigin};
+
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = GpgKeys {
+    available: true,
+    entries: Vec::new(),
+    pinentry: Pinentry {
+      program: Some("/usr/bin/pinentry-qt".into()),
+      origin: PinentryOrigin::Argvus,
+    },
+  };
+  let rows = app.rows();
+  assert_eq!(
+    row_of(&rows, Item::GpgPinentry("qt")).kind(),
+    RowKind::Choice { current: true }
+  );
+  assert_eq!(
+    row_of(&rows, Item::GpgPinentry("gtk")).kind(),
+    RowKind::Choice { current: false }
+  );
+}
+
+#[test]
+fn gpg_keys_pinentry_change_asks_for_confirmation_before_writing() {
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = crate::system::gpg_keys::GpgKeys {
+    available: true,
+    ..Default::default()
+  };
+  select_gpg(&mut app, Item::GpgPinentry("gtk"));
+  press(&mut app, KeyCode::Enter);
+  assert!(matches!(
+    app.confirm,
+    Some(PendingAction::SetGpgPinentry(ref choice)) if choice == "gtk"
+  ));
+}
+
+#[test]
+fn gpg_keys_generate_stays_disabled_until_an_identity_is_typed() {
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = crate::system::gpg_keys::GpgKeys {
+    available: true,
+    ..Default::default()
+  };
+  let rows = app.rows();
+  assert!(!row_of(&rows, Item::GenerateGpgKey).is_selectable());
+  app.gpg_form.identity = "Alice <alice@example.com>".into();
+  let rows = app.rows();
+  assert!(row_of(&rows, Item::GenerateGpgKey).is_selectable());
+}
+
+#[test]
+fn gpg_keys_generate_without_passphrase_asks_before_running() {
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = crate::system::gpg_keys::GpgKeys {
+    available: true,
+    ..Default::default()
+  };
+  app.gpg_form.identity = "Alice".into();
+  select_gpg(&mut app, Item::GpgPassphrase);
+  press(&mut app, KeyCode::Enter);
+  assert!(
+    !app.gpg_form.passphrase,
+    "Enter flips the passphrase toggle"
+  );
+  select_gpg(&mut app, Item::GenerateGpgKey);
+  press(&mut app, KeyCode::Enter);
+  assert!(matches!(
+    app.confirm,
+    Some(PendingAction::GenerateGpgNoPassphrase)
+  ));
+  assert!(
+    app.gpg_job.is_none(),
+    "nothing runs before the confirmation"
+  );
+}
+
+#[test]
+fn gpg_keys_export_opens_the_path_editor_for_the_selected_key() {
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = crate::system::gpg_keys::GpgKeys {
+    available: true,
+    entries: vec![gpg_key_entry(
+      "Alice",
+      "AAAA111122223333AAAA111122223333AAAAAAAA",
+    )],
+    ..Default::default()
+  };
+  select_gpg(&mut app, Item::ExportGpgKey(0));
+  press(&mut app, KeyCode::Enter);
+  assert!(
+    app.admin.editor.is_some(),
+    "Enter on Export opens the path editor"
+  );
+}
+
+#[test]
+fn gpg_keys_list_shows_only_information_without_focus() {
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = crate::system::gpg_keys::GpgKeys {
+    available: true,
+    entries: vec![gpg_key_entry(
+      "Alice",
+      "AAAA111122223333AAAA111122223333AAAAAAAA",
+    )],
+    ..Default::default()
+  };
+  let rows = app.rows();
+  let info: Vec<_> = rows
+    .iter()
+    .filter(|row| row.kind() == RowKind::Info)
+    .collect();
+  assert!(!info.is_empty());
+  assert!(info.iter().all(|row| !row.is_selectable()));
+}
+
+#[test]
+fn gpg_keys_search_matches_the_identity_and_keeps_the_listing_index() {
+  let mut app = app(Page::GpgKeys);
+  app.gpg_keys = crate::system::gpg_keys::GpgKeys {
+    available: true,
+    entries: vec![
+      gpg_key_entry(
+        "Alice <alice@example.com>",
+        "AAAA111122223333AAAA111122223333AAAAAAAA",
+      ),
+      gpg_key_entry(
+        "Bob <bob@example.com>",
+        "CCCC111122223333CCCC111122223333CCCCCCCC",
+      ),
+    ],
+    ..Default::default()
+  };
+  app.search = "bob".into();
+  let rows = app.rows();
+  assert!(
+    rows
+      .iter()
+      .any(|row| row.id() == Some(&Item::ExportGpgKey(1)))
+  );
+  assert!(
+    rows
+      .iter()
+      .all(|row| row.id() != Some(&Item::ExportGpgKey(0)))
+  );
+}
+
+#[test]
+fn gpg_keys_without_the_launcher_only_informs() {
+  let app = app(Page::GpgKeys);
+  let rows = app.rows();
+  assert!(rows.iter().all(|row| row.id().is_none()));
+}

@@ -90,6 +90,7 @@ pub fn parse(args: &[String]) -> Result<Option<InitialRoute>, String> {
     "snippets" if args.len() == 1 => Ok(settings_route(Page::Snippets)),
     #[cfg(feature = "apps")]
     "ssh-keys" | "ssh_keys" if args.len() == 1 => Ok(settings_route(Page::SshKeys)),
+    "gpg-keys" | "gpg_keys" if args.len() == 1 => Ok(settings_route(Page::GpgKeys)),
     "keybindings" | "shortcuts" | "keyboard" if args.len() == 1 => {
       Ok(settings_route(Page::Keybindings))
     }

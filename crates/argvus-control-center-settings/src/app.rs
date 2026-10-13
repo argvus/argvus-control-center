@@ -20,6 +20,7 @@ use crate::config::fonts::{FontSettings, FontTarget, SettingKind};
 use crate::i18n::{Lang, tr};
 use crate::navigation::{Navigation, Page};
 use crate::system::fonts::{self, FontEntry};
+use crate::system::gpg_keys;
 use crate::system::keybindings;
 use crate::system::projects;
 use crate::system::snippets;
@@ -81,6 +82,11 @@ pub enum PendingAction {
   RemoveSnippet(String),
   /// Deletes both files of a key pair, by the name it was listed with.
   DeleteSshKey(String),
+  /// Generates a key without a passphrase, which the launcher only accepts
+  /// with `--yes`. Confirmed before the form is sent.
+  GenerateGpgNoPassphrase,
+  /// Writes the pinentry choice to `gpg-agent.conf`.
+  SetGpgPinentry(String),
   /// The `r` shortcut on one shortcut; `leave` also closes the edit page.
   RestoreKeybinding {
     id: String,
@@ -142,6 +148,12 @@ pub struct App {
   pub(crate) ssh_keys: ssh_keys::SshKeys,
   pub(crate) new_ssh_key_name: String,
   pub(crate) new_ssh_key_type: ssh_keys::KeyType,
+  /// The keyring and the pinentry, as last listed.
+  pub(crate) gpg_keys: gpg_keys::GpgKeys,
+  pub(crate) gpg_form: gpg_keys::GpgForm,
+  /// Key generation runs on a worker thread: with a passphrase, the pinentry
+  /// window keeps the call open until the user answers it.
+  gpg_job: Option<JobHandle<Result<(), String>>>,
   keybinding_capturing: bool,
   keybinding_editor_modifiers: [bool; 4],
   keybinding_editor_key: String,
@@ -247,6 +259,9 @@ impl App {
       ssh_keys: ssh_keys::load(),
       new_ssh_key_name: String::new(),
       new_ssh_key_type: ssh_keys::KeyType::default(),
+      gpg_keys: gpg_keys::load(),
+      gpg_form: gpg_keys::GpgForm::default(),
+      gpg_job: None,
       keybinding_capturing: false,
       keybinding_editor_modifiers: [false; 4],
       keybinding_editor_key: String::new(),
@@ -382,6 +397,11 @@ impl App {
         "{root} > {} > {}",
         tr(self.lang, "control_center.applications"),
         tr(self.lang, "control_center.ssh_keys")
+      ),
+      Page::GpgKeys => format!(
+        "{root} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys")
       ),
       Page::KeybindingEdit => format!(
         "{hyprland_root} > {} > {}",
@@ -689,6 +709,14 @@ impl App {
         }
         Err(error) => self.fail(error),
       },
+      PendingAction::GenerateGpgNoPassphrase => self.start_gpg_generation(),
+      PendingAction::SetGpgPinentry(choice) => match gpg_keys::set_pinentry(&choice) {
+        Ok(()) => {
+          self.gpg_keys = gpg_keys::load();
+          self.success(tr(self.lang, "control_center.gpg_keys_pinentry_set").to_string());
+        }
+        Err(error) => self.fail(error),
+      },
       PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
         Ok(()) => {
           self.keybindings = keybindings::load();
@@ -766,7 +794,8 @@ impl App {
       | PendingAction::RemoveWindowRule(_)
       | PendingAction::RemoveProject(_)
       | PendingAction::RemoveSnippet(_)
-      | PendingAction::DeleteSshKey(_) => (label("control_center.confirm"), true),
+      | PendingAction::DeleteSshKey(_)
+      | PendingAction::GenerateGpgNoPassphrase => (label("control_center.confirm"), true),
       _ => (label("control_center.confirm"), false),
     };
     Some((title, message, confirm, danger))
@@ -879,6 +908,21 @@ impl App {
         }
         // The listing itself never fails; the next tick simply tries again.
         JobState::Finished(Err(_)) => changed = true,
+      }
+    }
+    if let Some(job) = self.gpg_job.take() {
+      match job.try_state() {
+        JobState::Running => self.gpg_job = Some(job),
+        JobState::Finished(Ok(Ok(()))) => {
+          self.gpg_form.identity.clear();
+          self.gpg_keys = gpg_keys::load();
+          self.success(tr(self.lang, "control_center.gpg_keys_generated").to_string());
+          changed = true;
+        }
+        JobState::Finished(Ok(Err(error))) | JobState::Finished(Err(error)) => {
+          self.fail(error);
+          changed = true;
+        }
       }
     }
     if let Some(job) = self.dnd_job.take() {
@@ -1775,6 +1819,17 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
       format!(
         "{name}. {}",
         tr(lang, "control_center.ssh_keys_delete_description")
+      ),
+    ),
+    PendingAction::GenerateGpgNoPassphrase => (
+      tr(lang, "control_center.gpg_keys_no_passphrase_title").to_string(),
+      tr(lang, "control_center.gpg_keys_no_passphrase_description").to_string(),
+    ),
+    PendingAction::SetGpgPinentry(choice) => (
+      tr(lang, "control_center.gpg_keys_pinentry_title").to_string(),
+      format!(
+        "{choice}. {}",
+        tr(lang, "control_center.gpg_keys_pinentry_description")
       ),
     ),
     PendingAction::RestoreKeybinding { .. } => (

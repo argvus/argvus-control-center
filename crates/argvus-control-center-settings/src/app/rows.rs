@@ -441,6 +441,7 @@ impl App {
       Page::Projects => self.projects_rows(),
       Page::Snippets => self.snippets_rows(),
       Page::SshKeys => self.ssh_keys_rows(),
+      Page::GpgKeys => self.gpg_keys_rows(),
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::Firewall
@@ -869,6 +870,171 @@ impl App {
     rows
   }
 
+  /// The GPG keys list: the pinentry choice, the generate form, the import
+  /// action, then one block per key that matches the search. Refresh closes
+  /// the list. Every action is a row, so there is no action bar.
+  fn gpg_keys_rows(&self) -> Vec<Row<Item>> {
+    if !self.gpg_keys.available {
+      return vec![Row::info(
+        self.label("control_center.gpg_keys_unavailable"),
+        String::new(),
+      )];
+    }
+    let current = crate::system::gpg_keys::pinentry_choice(&self.gpg_keys.pinentry);
+    let mut rows = vec![
+      Row::section(self.label("control_center.gpg_keys_pinentry")),
+      Row::info(
+        self.label("control_center.gpg_keys_pinentry_current"),
+        self.pinentry_text(),
+      ),
+    ];
+    for (choice, program) in crate::system::gpg_keys::PINENTRY_CHOICES {
+      rows.push(Row::choice(
+        Item::GpgPinentry(choice),
+        program,
+        current == Some(choice),
+      ));
+    }
+    let identity_missing = self.gpg_form.identity.trim().is_empty();
+    let generating = self.gpg_job.is_some();
+    rows.extend([
+      Row::section(self.label("control_center.gpg_keys_generate")),
+      Row::action(
+        Item::GpgIdentity,
+        self.label("control_center.gpg_keys_identity"),
+      )
+      .icon(icons::USER)
+      .detail(self.gpg_form.identity.clone()),
+      Row::action(
+        Item::GpgAlgorithm,
+        self.label("control_center.gpg_keys_algorithm"),
+      )
+      .icon(icons::SHIELD)
+      .detail(self.gpg_form.algorithm.as_arg()),
+      Row::action(
+        Item::GpgExpire,
+        self.label("control_center.gpg_keys_expire"),
+      )
+      .icon(icons::TIMER)
+      .detail(self.gpg_form.expire.clone()),
+      Row::toggle(
+        Item::GpgPassphrase,
+        self.label("control_center.gpg_keys_passphrase"),
+        self.gpg_form.passphrase,
+      ),
+      Row::action(
+        Item::GenerateGpgKey,
+        self.label("control_center.gpg_keys_generate_action"),
+      )
+      .icon(icons::ADD)
+      .enabled(!identity_missing && !generating),
+      Row::section(self.label("control_center.gpg_keys_import")),
+      Row::action(
+        Item::ImportGpgKey,
+        self.label("control_center.gpg_keys_import_action"),
+      )
+      .icon(icons::IMPORT),
+      Row::section(self.label("control_center.gpg_keys_list")),
+    ]);
+    if self.gpg_keys.entries.is_empty() {
+      rows.push(Row::info(
+        self.label("control_center.gpg_keys_empty"),
+        String::new(),
+      ));
+    } else {
+      let mut shown = 0;
+      // Items keep the index into the full listing, so a filtered block still
+      // exports the right key.
+      for (index, entry) in self.gpg_keys.entries.iter().enumerate() {
+        if !search_matches(&self.search, &[&entry.user_id, &entry.fingerprint]) {
+          continue;
+        }
+        shown += 1;
+        self.push_gpg_key_block(&mut rows, index, entry);
+      }
+      if shown == 0 {
+        rows.push(Row::info(
+          self.label("control_center.no_matching_items"),
+          String::new(),
+        ));
+      }
+    }
+    rows.push(
+      Row::action(
+        Item::RefreshGpgKeys,
+        self.label("control_center.gpg_keys_refresh"),
+      )
+      .icon(icons::SYNC),
+    );
+    rows
+  }
+
+  /// The pinentry in use, with where its setting comes from: `pinentry-qt (ARGVUS)`.
+  fn pinentry_text(&self) -> String {
+    use crate::system::gpg_keys::PinentryOrigin;
+
+    let Some(program) = self.gpg_keys.pinentry.program.as_deref() else {
+      return self
+        .label("control_center.gpg_keys_pinentry_none")
+        .to_owned();
+    };
+    let origin = match self.gpg_keys.pinentry.origin {
+      PinentryOrigin::Argvus => self.label("control_center.gpg_keys_origin_argvus"),
+      PinentryOrigin::User => self.label("control_center.gpg_keys_origin_user"),
+      PinentryOrigin::Default => self.label("control_center.gpg_keys_origin_default"),
+    };
+    let name = program.rsplit('/').next().unwrap_or(program);
+    format!("{name} ({origin})")
+  }
+
+  /// One key: its identity, fingerprint, type, expiry and whether the secret
+  /// key is present, then its export row and a separator.
+  fn push_gpg_key_block(
+    &self,
+    rows: &mut Vec<Row<Item>>,
+    index: usize,
+    entry: &crate::system::gpg_keys::GpgKeyEntry,
+  ) {
+    let expires = if entry.expires == "never" {
+      self.label("control_center.gpg_keys_never").to_owned()
+    } else {
+      entry.expires.clone()
+    };
+    let secret = if entry.secret {
+      self.label("control_center.gpg_keys_secret_yes")
+    } else {
+      self.label("control_center.gpg_keys_secret_no")
+    };
+    rows.push(Row::info(
+      self.label("control_center.gpg_keys_identity"),
+      entry.user_id.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.gpg_keys_fingerprint"),
+      entry.fingerprint.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.gpg_keys_type"),
+      entry.key_type.clone(),
+    ));
+    rows.push(Row::info(
+      self.label("control_center.gpg_keys_expires"),
+      expires,
+    ));
+    rows.push(Row::info(
+      self.label("control_center.gpg_keys_secret"),
+      secret,
+    ));
+    rows.push(
+      Row::action(
+        Item::ExportGpgKey(index),
+        self.label("control_center.gpg_keys_export"),
+      )
+      .icon(icons::EXPORT),
+    );
+    rows.push(Row::separator());
+  }
+
   /// The SSH keys list: the generate form, then one block per key pair that
   /// matches the search by name or comment. Each block holds the pair's details,
   /// its load/unload row and its own Delete row. The agent-wide actions live in
@@ -967,6 +1133,13 @@ impl App {
       self.label("control_center.ssh_keys_agent"),
       agent_text,
     ));
+    rows.push(
+      Row::action(
+        Item::CopySshPublicKey(index),
+        self.label("control_center.ssh_keys_copy_public_key"),
+      )
+      .icon(icons::COPY),
+    );
     // With an unknown agent state the key is offered as loadable: the
     // launcher reports the failure if the agent is really unreachable.
     rows.push(match entry.agent {
@@ -1133,13 +1306,6 @@ impl App {
           draft.workspace.to_string(),
           Some(1),
         )
-    rows.push(
-      Row::action(
-        Item::CopySshPublicKey(index),
-        self.label("control_center.ssh_keys_copy_public_key"),
-      )
-      .icon(icons::COPY),
-    );
         .icon(icons::LAYOUT),
       );
       rows.push(
