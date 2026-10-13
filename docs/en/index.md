@@ -25,6 +25,7 @@ The current Control Center home provides these areas:
 - **Default applications** — select installed applications for supported roles.
 - **Snippets** — text saved for `argvus snippets`, typed with `SUPER + ALT + N`.
 - **SSH keys** — key pairs in `~/.ssh` managed by `argvus keys`: generate, load into the agent, unload and delete.
+- **GPG keys** — the keyring managed by `argvus gpg`: list, generate, export and import public keys, and choose the pinentry.
 - **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
 - **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
 - **System** — host, users, groups and system administration pages available to the current installation.
@@ -51,7 +52,7 @@ The main settings tree currently includes:
 | Widget Telemetry | Sessions and transparency |
 | Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap |
 | Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
-| Applications | Default applications and per-category selectors, Projects, Snippets, SSH keys |
+| Applications | Default applications and per-category selectors, Projects, Snippets, SSH keys, GPG keys |
 | Hyprland | Keyboard shortcuts, Window rules, and the window-effects pages reused from Appearance (Window spaces, Animations, Blur, Borders), plus the installed Hyprland version |
 | System | Hostname, firewall, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
@@ -135,6 +136,45 @@ Passphrases are never typed into the Control Center and never passed as command 
 | **Agent** shows `Agent unavailable` | The launcher cannot reach the agent. Check the service as above. |
 | The page says `argvus-keys is not installed` | Install or update the `argvus-launcher` package. |
 | **Delete** shows an error | The key is loaded in the agent, and it is kept. Unload it first, then delete it again. |
+
+### GPG keys
+
+GPG keys is the page for the keyring that `argvus gpg` manages. It is in **Applications → GPG keys** (search `gpg keys` or run `argvus-control-center gpg-keys`).
+
+The page has these sections, from top to bottom:
+
+```
+Pinentry        the pinentry in use, and the choices: pinentry-qt, pinentry-gtk-2, pinentry-curses
+Generate key    identity, algorithm, expiry, the passphrase toggle and the Generate key action
+Import          the Import public key action
+Keys            one block per key: identity, fingerprint, type, expiry, private key, Export public key
+Refresh         reloads the keyring and the pinentry
+```
+
+#### How to use it
+
+1. Open **Control Center → Applications → GPG keys**. From the Home, you can also search for `gpg keys`.
+2. **Choose the pinentry:** in **Pinentry**, select a choice and press `Enter`. The current one is marked with `●`. The confirmation focuses **Cancel**; press `y` to change the pinentry, or `n`/`Esc` to keep the current one. The page writes only the pinentry line of `gpg-agent.conf` and restarts `gpg-agent`.
+3. **Create a key:** in **Generate key**, select **Identity**, press `Enter`, type `Name <you@example.com>` and press `Enter`. **Algorithm** switches between `ed25519` and `rsa4096`. **Expires** takes `0` for no expiry or a number followed by `d`, `w`, `m` or `y` (for example `2y`). The **Passphrase** row is on by default, so the pinentry window asks for the passphrase; the status line says that the page is waiting for it. Select **Generate key** and press `Enter`. The new key gets a signing key and an encryption subkey, so it can sign commits and encrypt files.
+4. **Create a key without a passphrase:** turn the **Passphrase** row off with `Enter`, then run **Generate key**. The confirmation focuses **Cancel**, because the private key is then stored unprotected. Press `y` only if that is what you want.
+5. **Export a public key:** in the key's block, select **Export public key…** and press `Enter`. The path proposed is `~/argvus-<key id>.asc`; change it if you want, then press `Enter`. The file is created with mode `600`. An existing file is never replaced, and the page shows the error instead.
+6. **Import a public key:** in **Import**, select **Import public key…**, type the path of the file and press `Enter`. Files that contain a private key are refused.
+7. **Find a key:** press `/` and type to show only the keys whose identity or fingerprint matches. `Esc` clears the search.
+
+Moving around: `↑`/`↓` or `j`/`k` move through the list, `Enter` activates a row, `Esc` goes back and `?` shows help.
+
+Passphrases are never typed into the Control Center: gpg-agent opens the pinentry window and only that window receives the secret. Private keys are never exported from the page. The page reads the keyring with `argvus gpg list` and writes only through `argvus gpg`. When `argvus gpg` is not installed, the page says so.
+
+#### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The page says `argvus gpg is not available` | The installed `argvus-launcher` predates the GPG command. Run `argvus gpg list` in a terminal: `unknown command` means the package must be rebuilt and installed. Keys also need `gnupg`. |
+| **Generate key** waits and no window opens | The pinentry is not installed or not selected. Check **Pinentry**, and install the matching package (`pinentry` provides `pinentry-qt`, `pinentry-gtk-2` and `pinentry-curses`). |
+| **Pinentry** shows `Not set` | gpg-agent uses its built-in default. Choose one of the three choices to set it. |
+| A status line shows `argvus-gpg: ...` | The launcher refused the action, and the text gives the reason, such as an invalid expiry or a file that already exists. |
+| The import is refused | The file contains a private key. Export only the public key on the other machine. |
+
 
 ### Locale & Region
 
@@ -234,7 +274,7 @@ argvus-control-center keybindings
 
 Run `argvus-control-center --help` for the routes available in the installed version. The command-line route is a shortcut into the same settings application, not a separate configuration system.
 
-Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
+Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
 
 ## Related
 

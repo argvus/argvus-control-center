@@ -26,6 +26,7 @@ A tela inicial atual do Control Center oferece estas áreas:
 * **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
 * **Snippets** — textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
 * **Chaves SSH** — pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`: gerar, carregar no agente, descarregar e apagar.
+* **Chaves GPG** — o keyring gerenciado pelo `argvus gpg`: listar, gerar, exportar e importar chaves públicas, e escolher o pinentry.
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
 * **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
@@ -52,7 +53,7 @@ A árvore atual de configurações inclui:
 | Widget Telemetry | Sessões e transparência |
 | Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console |
 | Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets, Chaves SSH |
+| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets, Chaves SSH, Chaves GPG |
 | Hyprland | Atalhos de teclado, Regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (Espaços de janela, Animações, Blur, Bordas), além da versão instalada do Hyprland |
 | Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
@@ -136,6 +137,45 @@ As senhas nunca são digitadas no Control Center nem passadas como argumentos de
 | **Agente** mostra `Agente indisponível` | O launcher não consegue alcançar o agente. Verifique o serviço como acima. |
 | A página diz que o `argvus-keys` não está instalado | Instale ou atualize o pacote `argvus-launcher`. |
 | **Apagar** mostra um erro | A chave está carregada no agente e foi mantida. Descarregue-a primeiro e apague de novo. |
+
+### Chaves GPG
+
+Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Aplicativos → Chaves GPG** (busque por `chaves gpg` ou execute `argvus-control-center gpg-keys`).
+
+A página tem estas seções, de cima para baixo:
+
+```
+Pinentry          o pinentry em uso e as opções: pinentry-qt, pinentry-gtk-2, pinentry-curses
+Gerar chave       identidade, algoritmo, validade, o alternador de senha e a ação Gerar chave
+Importar          a ação Importar chave pública
+Chaves            um bloco por chave: identidade, impressão digital, tipo, validade, chave privada, Exportar chave pública
+Atualizar         recarrega o keyring e o pinentry
+```
+
+#### Como usar
+
+1. Abra **Control Center → Aplicativos → Chaves GPG**. Pela Home, você também pode buscar por `chaves gpg`.
+2. **Escolher o pinentry:** em **Pinentry**, selecione uma opção e pressione `Enter`. A opção em uso é marcada com `●`. A confirmação começa em **Cancelar**; pressione `y` para trocar o pinentry, ou `n`/`Esc` para manter o atual. A página só grava a linha do pinentry em `gpg-agent.conf` e reinicia o `gpg-agent`.
+3. **Criar uma chave:** em **Gerar chave**, selecione **Identidade**, pressione `Enter`, digite `Nome <voce@example.com>` e pressione `Enter`. **Algoritmo** alterna entre `ed25519` e `rsa4096`. **Validade** aceita `0` para nenhuma ou um número seguido de `d`, `w`, `m` ou `y` (por exemplo `2y`). A linha **Senha** vem ligada por padrão, então a janela do pinentry pede a senha; a linha de status diz que a página está aguardando. Selecione **Gerar chave** e pressione `Enter`. A nova chave recebe uma chave de assinatura e uma subchave de criptografia, então serve para assinar commits e criptografar arquivos.
+4. **Criar uma chave sem senha:** desligue a linha **Senha** com `Enter` e depois execute **Gerar chave**. A confirmação começa em **Cancelar**, porque a chave privada fica sem proteção. Pressione `y` só se for isso que você quer.
+5. **Exportar uma chave pública:** no bloco da chave, selecione **Exportar chave pública…** e pressione `Enter`. O caminho sugerido é `~/argvus-<id da chave>.asc`; altere se quiser e pressione `Enter`. O arquivo é criado com modo `600`. Um arquivo existente nunca é substituído, e a página mostra o erro.
+6. **Importar uma chave pública:** em **Importar**, selecione **Importar chave pública…**, digite o caminho do arquivo e pressione `Enter`. Arquivos que contêm uma chave privada são recusados.
+7. **Encontrar uma chave:** pressione `/` e digite para mostrar só as chaves cuja identidade ou impressão digital corresponde. `Esc` limpa a busca.
+
+Navegação: `↑`/`↓` ou `j`/`k` percorrem a lista, `Enter` ativa a linha, `Esc` volta e `?` mostra a ajuda.
+
+As senhas nunca são digitadas no Control Center: o gpg-agent abre a janela do pinentry, e só essa janela recebe o segredo. Chaves privadas nunca são exportadas pela página. A página lê o keyring com `argvus gpg list` e grava só pelo `argvus gpg`. Quando o `argvus gpg` não está instalado, a página informa isso.
+
+#### Solução de problemas
+
+| Sintoma | Causa e solução |
+| --- | --- |
+| A página diz `O argvus gpg não está disponível` | O `argvus-launcher` instalado é anterior ao comando GPG. Rode `argvus gpg list` em um terminal: `unknown command` significa que o pacote precisa ser recompilado e instalado. As chaves também precisam do `gnupg`. |
+| **Gerar chave** espera e nenhuma janela abre | O pinentry não está instalado ou não está selecionado. Verifique **Pinentry** e instale o pacote correspondente (o pacote `pinentry` traz `pinentry-qt`, `pinentry-gtk-2` e `pinentry-curses`). |
+| **Pinentry** mostra `Não definido` | O gpg-agent usa o padrão embutido. Escolha uma das três opções para definir. |
+| Uma linha de status mostra `argvus-gpg: ...` | O launcher recusou a ação, e o texto explica o motivo, como validade inválida ou arquivo que já existe. |
+| A importação é recusada | O arquivo contém uma chave privada. Exporte só a chave pública na outra máquina. |
+
 
 ### Localidade e região
 
@@ -235,7 +275,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 
