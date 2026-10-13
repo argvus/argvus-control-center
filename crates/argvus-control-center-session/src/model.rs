@@ -151,6 +151,14 @@ pub fn manifest() -> Vec<Component> {
       true,
     ),
     component(
+      "secret-service",
+      "Secret Service",
+      "Provedor de senhas (gnome-keyring)",
+      vec!["gnome-keyring-daemon"],
+      Some("argvus-secret-service.service"),
+      false,
+    ),
+    component(
       "clipboard",
       "Área de transferência",
       "Histórico de clipboard",
@@ -237,6 +245,9 @@ mod tests {
     );
     assert!(components.iter().any(|c| c.id == "shell" && c.essential));
     assert!(components.iter().all(|c| Component::valid_id(&c.id)));
+    assert!(components.iter().any(|c| {
+      c.id == "secret-service" && c.unit.as_deref() == Some("argvus-secret-service.service")
+    }));
   }
 
   #[test]
