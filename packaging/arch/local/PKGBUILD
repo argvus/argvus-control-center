@@ -22,6 +22,7 @@ depends=(
   'reflector'
   'systemd'
   'wireplumber'
+  'wl-clipboard'
   'xkeyboard-config'
   'xdg-utils'
 )
