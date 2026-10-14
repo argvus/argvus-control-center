@@ -1637,8 +1637,35 @@ impl App {
         EditTarget::NewSnippetName => self.new_snippet_name = value,
         EditTarget::NewSnippetContent => self.new_snippet_content = value,
         EditTarget::NewSshKeyName => self.new_ssh_key_name = value,
-        EditTarget::GpgIdentity => self.gpg_form.identity = value,
-        EditTarget::GpgExpire => self.gpg_form.expire = value.trim().to_owned(),
+        EditTarget::GpgFullName => self.gpg_form.full_name = value,
+        EditTarget::GpgEmail => self.gpg_form.email = value,
+        EditTarget::GpgComment => self.gpg_form.comment = value,
+        EditTarget::GpgExpiry => self.gpg_form.expiry = value.trim().to_owned(),
+        // A passphrase is stored as typed: trimming would change the secret.
+        EditTarget::GpgPassphrase => self.gpg_form.passphrase = value,
+        EditTarget::GpgPassphraseConfirm => self.gpg_form.passphrase_confirm = value,
+        EditTarget::GpgExportPrivatePath(fingerprint) => {
+          let home = std::env::var("HOME").unwrap_or_default();
+          let path = crate::system::gpg_keys::expand_home(value.trim(), &home);
+          match crate::system::gpg_keys::export_private(&fingerprint, &path) {
+            Ok(()) => {
+              self.success(tr(self.lang, "control_center.gpg_keys_private_exported").to_string())
+            }
+            Err(error) => self.fail(error),
+          }
+        }
+        EditTarget::GpgImportPrivatePath => {
+          let home = std::env::var("HOME").unwrap_or_default();
+          let path = crate::system::gpg_keys::expand_home(value.trim(), &home);
+          match crate::system::gpg_keys::import_private(&path) {
+            Ok(()) => {
+              self.gpg_keys = crate::system::gpg_keys::load();
+              self.success(tr(self.lang, "control_center.gpg_keys_private_imported").to_string());
+            }
+            Err(error) => self.fail(error),
+          }
+        }
+        EditTarget::GpgEditExpiry => self.gpg_edit_expiry = value.trim().to_owned(),
         EditTarget::GpgExportPath(fingerprint) => {
           let home = std::env::var("HOME").unwrap_or_default();
           let path = crate::system::gpg_keys::expand_home(value.trim(), &home);
@@ -1705,14 +1732,25 @@ pub(crate) enum EditTarget {
   SnippetContent(String),
   /// The name typed for the next SSH key pair.
   NewSshKeyName,
-  /// The identity typed for the next GPG key.
-  GpgIdentity,
-  /// The expiry typed for the next GPG key.
-  GpgExpire,
+  /// The name, e-mail and comment typed for the next GPG key.
+  GpgFullName,
+  GpgEmail,
+  GpgComment,
+  /// The expiry date typed for the next GPG key.
+  GpgExpiry,
+  /// The passphrase and its confirmation for the next GPG key. Both are masked.
+  GpgPassphrase,
+  GpgPassphraseConfirm,
   /// Export path of one key, keyed by its fingerprint.
   GpgExportPath(String),
   /// File to import public keys from.
   GpgImportPath,
+  /// File to write the private key of one fingerprint to.
+  GpgExportPrivatePath(String),
+  /// File to import a private key from.
+  GpgImportPrivatePath,
+  /// The expiry date typed on the edit page of a key.
+  GpgEditExpiry,
 }
 
 /// Represents `Editor`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
@@ -1735,6 +1773,12 @@ impl Editor {
       target,
       multiline,
     }
+  }
+
+  /// The text currently typed in the editor.
+  #[cfg(test)]
+  pub(crate) fn text(&self) -> String {
+    self.value.iter().collect()
   }
 
   /// Executes the `input` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1826,7 +1870,10 @@ impl Editor {
           .bg(app.theme.background),
       );
     let inner = block.inner(area);
-    let secret = matches!(self.target, EditTarget::Password(_));
+    let secret = matches!(
+      self.target,
+      EditTarget::Password(_) | EditTarget::GpgPassphrase | EditTarget::GpgPassphraseConfirm
+    );
     let text: String = self
       .value
       .iter()

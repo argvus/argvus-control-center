@@ -2,7 +2,9 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+pub mod clipboard;
 pub mod command;
+pub mod date;
 pub mod fonts;
 pub mod gpg_keys;
 pub mod host;

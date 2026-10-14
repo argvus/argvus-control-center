@@ -31,6 +31,20 @@ pub enum Page {
   Snippets,
   SshKeys,
   GpgKeys,
+  /// Expiry date and "never expires" of the GPG generate form.
+  GpgFormExpiration,
+  /// Passphrase and its confirmation of the GPG generate form.
+  GpgFormPassphrase,
+  /// The keyring, listed one block per key.
+  GpgKeyList,
+  /// One key: its details and the actions that change it.
+  GpgKeyEdit,
+  /// Expiry date of the key being edited.
+  GpgEditExpiration,
+  /// The key that certifies the key being edited.
+  GpgEditSign,
+  /// The reason of the revocation of the key being edited.
+  GpgEditRevoke,
   MouseTouchpad,
   KeyboardLayout,
   KeyboardVariant,

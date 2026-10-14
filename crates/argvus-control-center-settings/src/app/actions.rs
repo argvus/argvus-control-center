@@ -21,6 +21,8 @@ use crate::config::fonts::SettingKind;
 use crate::i18n::{Lang, tr};
 use crate::item::{Item, RatbagRow};
 use crate::navigation::Page;
+use crate::system::clipboard;
+use crate::system::date::{CalendarDate, DateOrder};
 use crate::system::gpg_keys;
 use crate::system::snippets;
 use crate::system::ssh_keys;
@@ -66,7 +68,7 @@ fn is_searchable(page: Page) -> bool {
       | Page::GroupList
       | Page::SystemGroups
       | Page::SshKeys
-      | Page::GpgKeys
+      | Page::GpgKeyList
   )
 }
 
@@ -195,18 +197,93 @@ impl App {
       Item::OpenSnippetPicker => self.open_snippet_picker(),
       Item::SnippetContent(index) => self.open_snippet_content(index),
       Item::TypeSnippet(index) => self.type_snippet(index),
-      Item::GpgIdentity => self.open_gpg_identity(),
-      Item::GpgAlgorithm => self.gpg_form.algorithm = self.gpg_form.algorithm.toggled(),
-      Item::GpgExpire => self.open_gpg_expire(),
+      Item::ImportGpgPrivate => self.confirm_gpg_import_private(),
+      Item::ImportGpgKey => self.start_gpg_import_pick(gpg_keys::GpgImportKind::Public),
+      Item::OpenGpgKeyEdit(index) => self.open_gpg_key_edit(index),
+      Item::ExportGpgPrivate(index) => self.confirm_gpg_export_private(index),
+      Item::CopyGpgPublic(index) => self.copy_gpg_public(index),
+      Item::CopyGpgFingerprint(index) => self.copy_gpg_fingerprint(index),
+      Item::OpenGpgEditExpiration => self.open_gpg_edit_expiration(),
+      Item::GpgEditExpiry => self.open_gpg_field(
+        "control_center.gpg_keys_expiry",
+        self.gpg_edit_expiry.clone(),
+        EditTarget::GpgEditExpiry,
+      ),
+      Item::ApplyGpgExpiry => self.apply_gpg_expiry(),
+      Item::GpgEditPasswd => {
+        if let Some(fingerprint) = self.gpg_edit_fingerprint.clone() {
+          self.start_gpg_action("control_center.gpg_keys_passwd_changed", move || {
+            gpg_keys::change_passphrase(&fingerprint)
+          });
+        }
+      }
+      Item::OpenGpgSign => self.navigation.push(Page::GpgEditSign),
+      Item::GpgSignWith(index) => self.confirm_gpg_sign(index),
+      Item::OpenGpgRevoke => self.navigation.push(Page::GpgEditRevoke),
+      Item::GpgTrustWith(level) => {
+        if let Some(fingerprint) = self.gpg_edit_fingerprint.clone() {
+          self.start_gpg_action("control_center.gpg_keys_trust_changed", move || {
+            gpg_keys::set_trust(&fingerprint, level)
+          });
+        }
+      }
+      Item::GpgKeyserverSend => {
+        if let Some(fingerprint) = self.gpg_edit_fingerprint.clone() {
+          self.open_confirm(PendingAction::SendGpgKey(fingerprint));
+        }
+      }
+      Item::GpgKeyserverRecv => {
+        if let Some(fingerprint) = self.gpg_edit_fingerprint.clone() {
+          self.start_gpg_action("control_center.gpg_keys_received", move || {
+            gpg_keys::keyserver_recv(&fingerprint)
+          });
+        }
+      }
+      Item::GpgFullName => self.open_gpg_field(
+        "control_center.gpg_keys_full_name",
+        self.gpg_form.full_name.clone(),
+        EditTarget::GpgFullName,
+      ),
+      Item::GpgEmail => self.open_gpg_field(
+        "control_center.gpg_keys_email",
+        self.gpg_form.email.clone(),
+        EditTarget::GpgEmail,
+      ),
+      Item::GpgComment => self.open_gpg_field(
+        "control_center.gpg_keys_comment",
+        self.gpg_form.comment.clone(),
+        EditTarget::GpgComment,
+      ),
+      Item::GpgAlgorithm => self.gpg_form.toggle_algorithm(),
+      Item::GpgKeySize => self.gpg_form.next_key_size(),
+      Item::OpenGpgExpiration => self.navigation.push(Page::GpgFormExpiration),
+      Item::GpgExpiry => self.open_gpg_field(
+        "control_center.gpg_keys_expiry",
+        self.gpg_form.expiry.clone(),
+        EditTarget::GpgExpiry,
+      ),
+      Item::OpenGpgPassphrase => self.navigation.push(Page::GpgFormPassphrase),
+      // Passphrase editors are masked by their target, so they use the same opener.
+      Item::GpgPassphrase => self.open_gpg_field(
+        "control_center.gpg_keys_passphrase",
+        self.gpg_form.passphrase.clone(),
+        EditTarget::GpgPassphrase,
+      ),
+      Item::GpgPassphraseConfirm => self.open_gpg_field(
+        "control_center.gpg_keys_passphrase_confirm",
+        self.gpg_form.passphrase_confirm.clone(),
+        EditTarget::GpgPassphraseConfirm,
+      ),
       Item::GenerateGpgKey => self.generate_gpg_key(),
-      Item::ImportGpgKey => self.open_gpg_import(),
+      Item::CancelGpgForm => {
+        let order = self.gpg_date_order();
+        self.gpg_form.clear(order);
+      }
+      Item::OpenGpgKeys => self.navigation.push(Page::GpgKeyList),
       Item::ExportGpgKey(index) => self.open_gpg_export(index),
       Item::RefreshGpgKeys => {
         self.gpg_keys = gpg_keys::load();
         self.success(tr(self.lang, "control_center.gpg_keys_refreshed").to_string());
-      }
-      Item::GpgPinentry(choice) => {
-        self.open_confirm(PendingAction::SetGpgPinentry(choice.to_owned()));
       }
       Item::NewSshKeyName => self.open_new_ssh_key_name(),
       Item::SshKeyType => self.toggle_ssh_key_type(),
@@ -296,7 +373,24 @@ impl App {
       Item::Layout(index) => self.toggle_keyboard_layout(index),
       Item::Input(_) => self.apply_input(item),
       // A form field, not a setting: it changes only the draft form.
-      Item::GpgPassphrase => self.gpg_form.passphrase = !self.gpg_form.passphrase,
+      Item::GpgNeverExpires => self.gpg_form.never_expires = !self.gpg_form.never_expires,
+      Item::ToggleGpgSection(section) => {
+        // `insert` reports whether the section was closed; a section that was
+        // open is removed again.
+        let was_closed = self.gpg_sections_open.insert(section);
+        if !was_closed {
+          self.gpg_sections_open.remove(&section);
+        }
+      }
+      Item::GpgEditNeverExpires => self.gpg_edit_never = !self.gpg_edit_never,
+      Item::GpgProtectPassphrase => {
+        self.gpg_form.protect_with_passphrase = !self.gpg_form.protect_with_passphrase;
+        // A key without protection must not keep a passphrase typed earlier.
+        if !self.gpg_form.protect_with_passphrase {
+          self.gpg_form.passphrase.clear();
+          self.gpg_form.passphrase_confirm.clear();
+        }
+      }
       _ => {}
     }
   }
@@ -340,6 +434,13 @@ impl App {
         if let Some(entry) = self.snippets.entries.get(index) {
           let name = entry.name.clone();
           self.open_confirm(PendingAction::RemoveSnippet(name));
+        }
+      }
+      // Destructive rows come here, so these ask before they run.
+      Item::DeleteGpgKey(index) => self.confirm_gpg_delete(index),
+      Item::GpgRevokeWith(reason) => {
+        if let Some(fingerprint) = self.gpg_edit_fingerprint.clone() {
+          self.open_confirm(PendingAction::RevokeGpgKey(fingerprint, reason));
         }
       }
       Item::DeleteSshKey(index) => {
@@ -391,7 +492,9 @@ impl App {
   /// Whether the page's search is a box above the list, as on the home
   /// screen, instead of the bottom line.
   pub(crate) fn search_on_top(&self) -> bool {
-    self.has_action_bar()
+    // The GPG key list has no action bar, but its search still sits on top,
+    // like the pages that have one.
+    self.has_action_bar() || self.page() == Page::GpgKeyList
   }
 
   /// The action bar of the current page; empty for pages without one.
@@ -1287,20 +1390,18 @@ impl App {
     }
   }
 
-  fn open_gpg_identity(&mut self) {
-    self.admin.editor = Some(Editor::new(
-      tr(self.lang, "control_center.gpg_keys_identity").into(),
-      self.gpg_form.identity.clone(),
-      EditTarget::GpgIdentity,
-      false,
-    ));
+  /// The date layout follows the language, the same rule the form uses to read
+  /// and write dates.
+  pub(super) fn gpg_date_order(&self) -> DateOrder {
+    DateOrder::for_locale(&self.lang.locale())
   }
 
-  fn open_gpg_expire(&mut self) {
+  /// Opens the single-line editor for one text field of the generate form.
+  fn open_gpg_field(&mut self, title_key: &str, value: String, target: EditTarget) {
     self.admin.editor = Some(Editor::new(
-      tr(self.lang, "control_center.gpg_keys_expire").into(),
-      self.gpg_form.expire.clone(),
-      EditTarget::GpgExpire,
+      tr(self.lang, title_key).into(),
+      value,
+      target,
       false,
     ));
   }
@@ -1314,8 +1415,8 @@ impl App {
     ));
   }
 
-  /// Proposes `~/argvus-<key id>.asc`, which the user can change before the
-  /// export runs. The launcher never overwrites an existing file.
+  /// Proposes `~/<fingerprint>.asc`, which the user can change before the export
+  /// runs. The launcher never overwrites an existing file.
   fn open_gpg_export(&mut self, index: usize) {
     let Some(entry) = self.gpg_keys.entries.get(index) else {
       return;
@@ -1323,30 +1424,279 @@ impl App {
     let home = std::env::var("HOME").unwrap_or_default();
     self.admin.editor = Some(Editor::new(
       tr(self.lang, "control_center.gpg_keys_export_title").into(),
-      format!("{home}/argvus-{}.asc", entry.key_id),
+      format!("{home}/{}.asc", entry.fingerprint),
       EditTarget::GpgExportPath(entry.fingerprint.clone()),
       false,
     ));
   }
 
-  /// Without a passphrase the page asks first. With one, the launcher opens
-  /// the pinentry window from the worker thread.
-  fn generate_gpg_key(&mut self) {
-    if self.gpg_form.identity.trim().is_empty() {
-      self.fail(tr(self.lang, "control_center.gpg_keys_identity_required").to_string());
+  /// The key on the edit page, looked up by fingerprint every time, so a
+  /// refresh that removes the key leaves the page with nothing to act on.
+  pub(super) fn gpg_edit_entry(&self) -> Option<&gpg_keys::GpgKeyEntry> {
+    let fingerprint = self.gpg_edit_fingerprint.as_deref()?;
+    self
+      .gpg_keys
+      .entries
+      .iter()
+      .find(|entry| entry.fingerprint == fingerprint)
+  }
+
+  /// Opens the edit page of one key. The page follows the fingerprint, not the index.
+  fn open_gpg_key_edit(&mut self, index: usize) {
+    let Some(fingerprint) = self
+      .gpg_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.fingerprint.clone())
+    else {
+      return;
+    };
+    self.gpg_edit_fingerprint = Some(fingerprint);
+    self.navigation.push(Page::GpgKeyEdit);
+  }
+
+  /// Starts the expiry page with the key's current expiry. A key that never
+  /// expires starts with the switch on and a date two years away.
+  fn open_gpg_edit_expiration(&mut self) {
+    let order = self.gpg_date_order();
+    let expires = self
+      .gpg_edit_entry()
+      .map(|entry| entry.expires.clone())
+      .unwrap_or_default();
+    if expires.is_empty() || expires == "never" {
+      self.gpg_edit_never = true;
+      self.gpg_edit_expiry = CalendarDate::today().add_years(2).display(order);
+    } else {
+      self.gpg_edit_never = false;
+      // The launcher prints expiry as ISO, so it is read year first.
+      self.gpg_edit_expiry = CalendarDate::parse(&expires, DateOrder::YearFirst)
+        .map(|date| date.display(order))
+        .unwrap_or_default();
+    }
+    self.navigation.push(Page::GpgEditExpiration);
+  }
+
+  /// Checks the typed expiry, then changes the key in the background.
+  fn apply_gpg_expiry(&mut self) {
+    let Some(fingerprint) = self.gpg_edit_fingerprint.clone() else {
+      return;
+    };
+    let order = self.gpg_date_order();
+    match gpg_keys::expiry_argument(self.gpg_edit_never, &self.gpg_edit_expiry, order) {
+      Ok(expire) => self.start_gpg_action("control_center.gpg_keys_expiry_changed", move || {
+        gpg_keys::set_expiry(&fingerprint, &expire)
+      }),
+      Err(error) => {
+        let message = self.gpg_form_error_text(error);
+        self.fail(message);
+      }
+    }
+  }
+
+  /// Runs one key change on a worker thread. Only one runs at a time, because
+  /// each may open the pinentry window. The page reloads the keyring when it ends.
+  pub(super) fn start_gpg_action<F>(&mut self, success_key: &'static str, task: F)
+  where
+    F: FnOnce() -> Result<(), String> + Send + 'static,
+  {
+    if self.gpg_action.is_some() {
+      self.fail(tr(self.lang, "control_center.gpg_keys_action_busy").to_string());
       return;
     }
-    if self.gpg_form.passphrase {
+    self.gpg_action = Some((self.jobs.spawn(move |_| Ok(task())), success_key));
+    self.success(tr(self.lang, "control_center.gpg_keys_working").to_string());
+  }
+
+  fn confirm_gpg_delete(&mut self, index: usize) {
+    if let Some(entry) = self.gpg_keys.entries.get(index) {
+      let fingerprint = entry.fingerprint.clone();
+      self.open_confirm(PendingAction::DeleteGpgKey(fingerprint));
+    }
+  }
+
+  /// Only a key with a private part has something to export.
+  fn confirm_gpg_export_private(&mut self, index: usize) {
+    let Some(entry) = self.gpg_keys.entries.get(index) else {
+      return;
+    };
+    if !entry.secret {
+      self.fail(tr(self.lang, "control_center.gpg_keys_no_private").to_string());
+      return;
+    }
+    let fingerprint = entry.fingerprint.clone();
+    self.open_confirm(PendingAction::ExportGpgPrivate(fingerprint));
+  }
+
+  fn confirm_gpg_import_private(&mut self) {
+    self.open_confirm(PendingAction::ImportGpgPrivate);
+  }
+
+  /// Certifies the key on the edit page with the key at `index`.
+  fn confirm_gpg_sign(&mut self, index: usize) {
+    let Some(fingerprint) = self.gpg_edit_fingerprint.clone() else {
+      return;
+    };
+    let Some(signer) = self
+      .gpg_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.fingerprint.clone())
+    else {
+      return;
+    };
+    self.open_confirm(PendingAction::SignGpgKey(fingerprint, signer));
+  }
+
+  /// Opens the path editor for a private export. The proposed file is
+  /// `<fingerprint>-private.asc`, so it never collides with the public export;
+  /// it can be changed, and the launcher never overwrites a file.
+  pub(super) fn open_gpg_export_private(&mut self, fingerprint: String) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.gpg_keys_export_private_title").into(),
+      format!("{home}/{fingerprint}-private.asc"),
+      EditTarget::GpgExportPrivatePath(fingerprint),
+      false,
+    ));
+  }
+
+  /// Opens the file manager to choose a key file, on a worker thread because it
+  /// stays open until the user chooses or closes it.
+  pub(super) fn start_gpg_import_pick(&mut self, kind: gpg_keys::GpgImportKind) {
+    if self.gpg_pick.is_some() || self.gpg_action.is_some() {
+      self.fail(tr(self.lang, "control_center.gpg_keys_action_busy").to_string());
+      return;
+    }
+    self.gpg_pick = Some((
+      self.jobs.spawn(move |_| {
+        Ok(argvus_control_center_core::picker::pick_file(
+          "argvus-gpg-picker",
+          "gpg-selection",
+        ))
+      }),
+      kind,
+    ));
+    self.success(tr(self.lang, "control_center.gpg_keys_working").to_string());
+  }
+
+  /// Imports the file at `path` in the background, the same way as the other key changes.
+  pub(super) fn import_gpg_file(&mut self, kind: gpg_keys::GpgImportKind, path: &str) {
+    let path = path.to_owned();
+    match kind {
+      gpg_keys::GpgImportKind::Public => self
+        .start_gpg_action("control_center.gpg_keys_imported", move || {
+          gpg_keys::import(&path)
+        }),
+      gpg_keys::GpgImportKind::Private => self
+        .start_gpg_action("control_center.gpg_keys_private_imported", move || {
+          gpg_keys::import_private(&path)
+        }),
+    }
+  }
+
+  /// The typed-path editor, used when the file manager cannot report a choice.
+  pub(super) fn open_gpg_import_path(&mut self, kind: gpg_keys::GpgImportKind) {
+    match kind {
+      gpg_keys::GpgImportKind::Public => self.open_gpg_import(),
+      gpg_keys::GpgImportKind::Private => self.open_gpg_import_private(),
+    }
+  }
+
+  pub(super) fn open_gpg_import_private(&mut self) {
+    self.admin.editor = Some(Editor::new(
+      tr(self.lang, "control_center.gpg_keys_import_private_title").into(),
+      String::new(),
+      EditTarget::GpgImportPrivatePath,
+      false,
+    ));
+  }
+
+  /// Copies the armored public key through the launcher's standard output.
+  fn copy_gpg_public(&mut self, index: usize) {
+    let Some(fingerprint) = self
+      .gpg_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.fingerprint.clone())
+    else {
+      return;
+    };
+    match gpg_keys::public_key(&fingerprint).and_then(|key| {
+      clipboard::copy(&key)
+        .map_err(|_| tr(self.lang, "control_center.gpg_keys_copy_failed").to_string())
+    }) {
+      Ok(()) => self.success(tr(self.lang, "control_center.gpg_keys_public_copied").to_string()),
+      Err(error) => self.fail(error),
+    }
+  }
+
+  fn copy_gpg_fingerprint(&mut self, index: usize) {
+    let Some(fingerprint) = self
+      .gpg_keys
+      .entries
+      .get(index)
+      .map(|entry| entry.fingerprint.clone())
+    else {
+      return;
+    };
+    match clipboard::copy(&fingerprint) {
+      Ok(()) => {
+        self.success(tr(self.lang, "control_center.gpg_keys_fingerprint_copied").to_string())
+      }
+      Err(_) => self.fail(tr(self.lang, "control_center.gpg_keys_copy_failed").to_string()),
+    }
+  }
+
+  /// Checks the form first, so a mistake is reported before gpg runs. Without a
+  /// passphrase the page asks first.
+  fn generate_gpg_key(&mut self) {
+    let order = self.gpg_date_order();
+    if let Err(error) = self.gpg_form.validate(order) {
+      let message = self.gpg_form_error_text(error);
+      self.fail(message);
+      return;
+    }
+    if self.gpg_form.protect_with_passphrase {
       self.start_gpg_generation();
     } else {
       self.open_confirm(PendingAction::GenerateGpgNoPassphrase);
     }
   }
 
+  /// Runs the launcher on a worker thread. The passphrase is cleared from the
+  /// page as soon as the job has its copy, so it lives only in that job. When the
+  /// job fails the other fields stay and the passphrase must be typed again.
   pub(super) fn start_gpg_generation(&mut self) {
+    let order = self.gpg_date_order();
     let form = self.gpg_form.clone();
-    self.gpg_job = Some(self.jobs.spawn(move |_| Ok(gpg_keys::generate(&form))));
-    self.success(tr(self.lang, "control_center.gpg_keys_waiting_pinentry").to_string());
+    self.gpg_form.passphrase.clear();
+    self.gpg_form.passphrase_confirm.clear();
+    self.gpg_job = Some(
+      self
+        .jobs
+        .spawn(move |_| Ok(gpg_keys::generate(&form, order))),
+    );
+    self.success(tr(self.lang, "control_center.gpg_keys_generating").to_string());
+  }
+
+  /// The message for one problem with the generate form, in the current language.
+  fn gpg_form_error_text(&self, error: gpg_keys::FormError) -> String {
+    let key = match error {
+      gpg_keys::FormError::NameRequired => "control_center.gpg_keys_name_required",
+      gpg_keys::FormError::EmailInvalid => "control_center.gpg_keys_email_invalid",
+      gpg_keys::FormError::DateInvalid => {
+        let layout = self.gpg_date_order().layout();
+        return self
+          .lang
+          .tr_args("control_center.gpg_keys_date_invalid", [("layout", layout)])
+          .to_string();
+      }
+      gpg_keys::FormError::DateNotFuture => "control_center.gpg_keys_date_not_future",
+      gpg_keys::FormError::PassphraseEmpty => "control_center.gpg_keys_passphrase_empty",
+      gpg_keys::FormError::PassphraseInvalid => "control_center.gpg_keys_passphrase_invalid",
+      gpg_keys::FormError::PassphraseMismatch => "control_center.gpg_keys_passphrase_mismatch",
+    };
+    tr(self.lang, key).to_string()
   }
 
   fn unload_all_ssh_keys(&mut self) {

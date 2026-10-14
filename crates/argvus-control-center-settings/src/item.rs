@@ -17,6 +17,15 @@ pub enum RatbagRow {
   ReportRate,
 }
 
+/// The collapsible sections of the GPG keys page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GpgSection {
+  /// The generate form.
+  Generate,
+  /// The import actions.
+  Import,
+}
+
 /// Identity of one Settings menu row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Item {
@@ -138,25 +147,77 @@ pub enum Item {
   DeleteSshKey(usize),
 
   // GPG keys.
-  /// Identity field of the generate form.
-  GpgIdentity,
-  /// Cycles the algorithm of the generate form between ed25519 and rsa4096.
+  /// Expands or collapses one section of the GPG keys page.
+  ToggleGpgSection(GpgSection),
+  /// Full name field of the generate form.
+  GpgFullName,
+  /// E-mail field of the generate form.
+  GpgEmail,
+  /// Optional comment field of the generate form.
+  GpgComment,
+  /// Cycles the algorithm of the generate form between RSA and DSA.
   GpgAlgorithm,
-  /// Expiry field of the generate form: `0`, or a number of days, weeks,
-  /// months or years.
-  GpgExpire,
-  /// Whether the pinentry asks for a passphrase when a key is generated.
+  /// Cycles the key size the algorithm offers.
+  GpgKeySize,
+  /// Opens the expiration page of the generate form.
+  OpenGpgExpiration,
+  /// Expiry date field on the expiration page, in the user's date layout.
+  GpgExpiry,
+  /// Whether the key never expires. Turns the date field off.
+  GpgNeverExpires,
+  /// Opens the passphrase page of the generate form.
+  OpenGpgPassphrase,
+  /// Whether the key is protected by a passphrase.
+  GpgProtectPassphrase,
+  /// Passphrase and its confirmation, on the passphrase page.
   GpgPassphrase,
+  GpgPassphraseConfirm,
   /// Generates a key from the form. Without a passphrase it asks first.
   GenerateGpgKey,
-  /// Opens the editor for the file to import public keys from.
+  /// Clears every field of the generate form.
+  CancelGpgForm,
+  /// Opens the file to import public keys from.
   ImportGpgKey,
+  /// Asks for confirmation, then opens the file to import a private key from.
+  ImportGpgPrivate,
+  /// Opens the edit page of the key at this index in the listing.
+  OpenGpgKeyEdit(usize),
+  /// Asks for confirmation, then opens the path editor for a private export.
+  ExportGpgPrivate(usize),
+  /// Copies the public key or the fingerprint of the key at this index.
+  CopyGpgPublic(usize),
+  CopyGpgFingerprint(usize),
+  /// Asks for confirmation before the key at this index is deleted.
+  DeleteGpgKey(usize),
+  /// Opens the expiration page of the key being edited.
+  OpenGpgEditExpiration,
+  /// Expiry date field of the edit page, and its "never expires" switch.
+  GpgEditExpiry,
+  GpgEditNeverExpires,
+  /// Applies the expiry typed on the edit page.
+  ApplyGpgExpiry,
+  /// Changes the passphrase of the key being edited.
+  GpgEditPasswd,
+  /// Opens the page to certify the key being edited with another key.
+  OpenGpgSign,
+  /// Certifies the key being edited with the key at this index. Asks first.
+  GpgSignWith(usize),
+  /// Opens the page to revoke the key being edited.
+  OpenGpgRevoke,
+  /// Revokes the key being edited with this reason. Asks first.
+  GpgRevokeWith(crate::system::gpg_keys::RevokeReason),
+  /// Sets the trust of the key being edited.
+  GpgTrustWith(crate::system::gpg_keys::TrustLevel),
+  /// Publishes the key being edited to the keyserver. Asks first.
+  GpgKeyserverSend,
+  /// Fetches the key being edited from the keyserver.
+  GpgKeyserverRecv,
+  /// Opens the list of keys in the keyring.
+  OpenGpgKeys,
   /// Index into the listed keys. Opens the editor for the export path.
   ExportGpgKey(usize),
-  /// Lists the keyring and the pinentry again.
+  /// Lists the keyring again.
   RefreshGpgKeys,
-  /// A pinentry choice (`qt`, `gtk` or `curses`). Asks for confirmation first.
-  GpgPinentry(&'static str),
   /// Index into the loaded keybindings.
   Keybinding(usize),
   RestoreAllShortcuts,

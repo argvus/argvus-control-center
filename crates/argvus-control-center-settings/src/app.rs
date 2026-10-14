@@ -63,6 +63,12 @@ impl Status {
   }
 }
 
+/// A file choice running in the background, with the import it leads to.
+type GpgPick = (
+  JobHandle<Result<Option<std::path::PathBuf>, String>>,
+  gpg_keys::GpgImportKind,
+);
+
 #[derive(Debug, Clone)]
 /// Defines `PendingAction`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum PendingAction {
@@ -85,8 +91,18 @@ pub enum PendingAction {
   /// Generates a key without a passphrase, which the launcher only accepts
   /// with `--yes`. Confirmed before the form is sent.
   GenerateGpgNoPassphrase,
-  /// Writes the pinentry choice to `gpg-agent.conf`.
-  SetGpgPinentry(String),
+  /// Deletes a key by fingerprint.
+  DeleteGpgKey(String),
+  /// Exports the private key of a fingerprint; the path is typed next.
+  ExportGpgPrivate(String),
+  /// Imports a private key; the path is typed next.
+  ImportGpgPrivate,
+  /// Revokes a key by fingerprint with a reason.
+  RevokeGpgKey(String, crate::system::gpg_keys::RevokeReason),
+  /// Certifies the first fingerprint with the second one.
+  SignGpgKey(String, String),
+  /// Publishes a key by fingerprint to the keyserver.
+  SendGpgKey(String),
   /// The `r` shortcut on one shortcut; `leave` also closes the edit page.
   RestoreKeybinding {
     id: String,
@@ -154,6 +170,17 @@ pub struct App {
   /// Key generation runs on a worker thread: with a passphrase, the pinentry
   /// window keeps the call open until the user answers it.
   gpg_job: Option<JobHandle<Result<(), String>>>,
+  /// The key being edited, by fingerprint, so a refresh cannot point at another key.
+  pub(crate) gpg_edit_fingerprint: Option<String>,
+  /// The expiry typed on the edit page and its "never expires" switch.
+  pub(crate) gpg_edit_expiry: String,
+  pub(crate) gpg_edit_never: bool,
+  /// A key change running in the background, with the message shown when it succeeds.
+  gpg_action: Option<(JobHandle<Result<(), String>>, &'static str)>,
+  /// The sections of the GPG keys page that are expanded; the others are collapsed.
+  pub(crate) gpg_sections_open: std::collections::BTreeSet<crate::item::GpgSection>,
+  /// The file manager choosing a key file to import, and which kind of import.
+  gpg_pick: Option<GpgPick>,
   keybinding_capturing: bool,
   keybinding_editor_modifiers: [bool; 4],
   keybinding_editor_key: String,
@@ -260,8 +287,20 @@ impl App {
       new_ssh_key_name: String::new(),
       new_ssh_key_type: ssh_keys::KeyType::default(),
       gpg_keys: gpg_keys::load(),
-      gpg_form: gpg_keys::GpgForm::default(),
+      gpg_form: gpg_keys::GpgForm::new(crate::system::date::DateOrder::for_locale(&lang.locale())),
       gpg_job: None,
+      gpg_edit_fingerprint: None,
+      gpg_edit_expiry: String::new(),
+      gpg_edit_never: false,
+      gpg_action: None,
+      gpg_pick: None,
+      // Both sections start expanded; Enter on a section title collapses it.
+      gpg_sections_open: [
+        crate::item::GpgSection::Generate,
+        crate::item::GpgSection::Import,
+      ]
+      .into_iter()
+      .collect(),
       keybinding_capturing: false,
       keybinding_editor_modifiers: [false; 4],
       keybinding_editor_key: String::new(),
@@ -402,6 +441,48 @@ impl App {
         "{root} > {} > {}",
         tr(self.lang, "control_center.applications"),
         tr(self.lang, "control_center.gpg_keys")
+      ),
+      Page::GpgKeyEdit => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_edit"),
+      ),
+      Page::GpgEditExpiration => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_expiration"),
+      ),
+      Page::GpgEditSign => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_edit_sign"),
+      ),
+      Page::GpgEditRevoke => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_edit_revoke"),
+      ),
+      Page::GpgFormExpiration => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_expiration"),
+      ),
+      Page::GpgFormPassphrase => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_passphrase_page"),
+      ),
+      Page::GpgKeyList => format!(
+        "{root} > {} > {} > {}",
+        tr(self.lang, "control_center.applications"),
+        tr(self.lang, "control_center.gpg_keys"),
+        tr(self.lang, "control_center.gpg_keys_list"),
       ),
       Page::KeybindingEdit => format!(
         "{hyprland_root} > {} > {}",
@@ -710,13 +791,26 @@ impl App {
         Err(error) => self.fail(error),
       },
       PendingAction::GenerateGpgNoPassphrase => self.start_gpg_generation(),
-      PendingAction::SetGpgPinentry(choice) => match gpg_keys::set_pinentry(&choice) {
-        Ok(()) => {
-          self.gpg_keys = gpg_keys::load();
-          self.success(tr(self.lang, "control_center.gpg_keys_pinentry_set").to_string());
-        }
-        Err(error) => self.fail(error),
-      },
+      PendingAction::DeleteGpgKey(fingerprint) => self
+        .start_gpg_action("control_center.gpg_keys_deleted", move || {
+          gpg_keys::delete(&fingerprint)
+        }),
+      PendingAction::ExportGpgPrivate(fingerprint) => self.open_gpg_export_private(fingerprint),
+      PendingAction::ImportGpgPrivate => {
+        self.start_gpg_import_pick(gpg_keys::GpgImportKind::Private)
+      }
+      PendingAction::RevokeGpgKey(fingerprint, reason) => self
+        .start_gpg_action("control_center.gpg_keys_revoked", move || {
+          gpg_keys::revoke(&fingerprint, reason)
+        }),
+      PendingAction::SignGpgKey(fingerprint, signer) => self
+        .start_gpg_action("control_center.gpg_keys_signed", move || {
+          gpg_keys::sign_key(&fingerprint, &signer)
+        }),
+      PendingAction::SendGpgKey(fingerprint) => self
+        .start_gpg_action("control_center.gpg_keys_sent", move || {
+          gpg_keys::keyserver_send(&fingerprint)
+        }),
       PendingAction::ResetKeybindings => match keybindings::restore_all(&self.keybindings) {
         Ok(()) => {
           self.keybindings = keybindings::load();
@@ -795,6 +889,9 @@ impl App {
       | PendingAction::RemoveProject(_)
       | PendingAction::RemoveSnippet(_)
       | PendingAction::DeleteSshKey(_)
+      | PendingAction::DeleteGpgKey(_)
+      | PendingAction::ExportGpgPrivate(_)
+      | PendingAction::RevokeGpgKey(..)
       | PendingAction::GenerateGpgNoPassphrase => (label("control_center.confirm"), true),
       _ => (label("control_center.confirm"), false),
     };
@@ -910,11 +1007,45 @@ impl App {
         JobState::Finished(Err(_)) => changed = true,
       }
     }
+    if let Some((job, kind)) = self.gpg_pick.take() {
+      match job.try_state() {
+        JobState::Running => self.gpg_pick = Some((job, kind)),
+        // A chosen file is imported at once; a GUI file manager reports no
+        // choice, so the user types the path instead.
+        JobState::Finished(Ok(Ok(Some(path)))) => {
+          self.import_gpg_file(kind, &path.to_string_lossy());
+          changed = true;
+        }
+        JobState::Finished(Ok(Ok(None))) => {
+          self.open_gpg_import_path(kind);
+          changed = true;
+        }
+        JobState::Finished(Ok(Err(error))) | JobState::Finished(Err(error)) => {
+          self.fail(error);
+          changed = true;
+        }
+      }
+    }
+    if let Some((job, success_key)) = self.gpg_action.take() {
+      match job.try_state() {
+        JobState::Running => self.gpg_action = Some((job, success_key)),
+        JobState::Finished(Ok(Ok(()))) => {
+          self.gpg_keys = gpg_keys::load();
+          self.success(tr(self.lang, success_key).to_string());
+          changed = true;
+        }
+        JobState::Finished(Ok(Err(error))) | JobState::Finished(Err(error)) => {
+          self.fail(error);
+          changed = true;
+        }
+      }
+    }
     if let Some(job) = self.gpg_job.take() {
       match job.try_state() {
         JobState::Running => self.gpg_job = Some(job),
         JobState::Finished(Ok(Ok(()))) => {
-          self.gpg_form.identity.clear();
+          let order = self.gpg_date_order();
+          self.gpg_form.clear(order);
           self.gpg_keys = gpg_keys::load();
           self.success(tr(self.lang, "control_center.gpg_keys_generated").to_string());
           changed = true;
@@ -1825,11 +1956,43 @@ pub fn pending_action_text(lang: Lang, action: &PendingAction) -> (String, Strin
       tr(lang, "control_center.gpg_keys_no_passphrase_title").to_string(),
       tr(lang, "control_center.gpg_keys_no_passphrase_description").to_string(),
     ),
-    PendingAction::SetGpgPinentry(choice) => (
-      tr(lang, "control_center.gpg_keys_pinentry_title").to_string(),
+    PendingAction::DeleteGpgKey(fingerprint) => (
+      tr(lang, "control_center.gpg_keys_delete_title").to_string(),
       format!(
-        "{choice}. {}",
-        tr(lang, "control_center.gpg_keys_pinentry_description")
+        "{fingerprint}. {}",
+        tr(lang, "control_center.gpg_keys_delete_description")
+      ),
+    ),
+    PendingAction::ExportGpgPrivate(fingerprint) => (
+      tr(lang, "control_center.gpg_keys_export_private_confirm_title").to_string(),
+      format!(
+        "{fingerprint}. {}",
+        tr(lang, "control_center.gpg_keys_export_private_description")
+      ),
+    ),
+    PendingAction::ImportGpgPrivate => (
+      tr(lang, "control_center.gpg_keys_import_private_confirm_title").to_string(),
+      tr(lang, "control_center.gpg_keys_import_private_description").to_string(),
+    ),
+    PendingAction::RevokeGpgKey(fingerprint, _) => (
+      tr(lang, "control_center.gpg_keys_revoke_title").to_string(),
+      format!(
+        "{fingerprint}. {}",
+        tr(lang, "control_center.gpg_keys_revoke_description")
+      ),
+    ),
+    PendingAction::SignGpgKey(fingerprint, signer) => (
+      tr(lang, "control_center.gpg_keys_sign_title").to_string(),
+      format!(
+        "{fingerprint} → {signer}. {}",
+        tr(lang, "control_center.gpg_keys_sign_description")
+      ),
+    ),
+    PendingAction::SendGpgKey(fingerprint) => (
+      tr(lang, "control_center.gpg_keys_send_title").to_string(),
+      format!(
+        "{fingerprint}. {}",
+        tr(lang, "control_center.gpg_keys_send_description")
       ),
     ),
     PendingAction::RestoreKeybinding { .. } => (

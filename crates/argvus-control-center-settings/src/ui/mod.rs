@@ -97,8 +97,8 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
   // The key lists have a scrollbar: a key block is several rows tall, so the
   // end of the list is easy to miss. The bar takes one column of the list only
   // when the rows do not fit.
-  let scrollable =
-    matches!(app.page(), Page::SshKeys | Page::GpgKeys) && rows.len() > list_area.height as usize;
+  let scrollable = matches!(app.page(), Page::SshKeys | Page::GpgKeyList)
+    && rows.len() > list_area.height as usize;
   let (menu_area, scrollbar_area) = if scrollable {
     let split = Layout::default()
       .direction(Direction::Horizontal)
@@ -173,6 +173,13 @@ fn list_title_key(page: Page) -> &'static str {
     Page::TimeZone => "control_center.time_zone",
     Page::SshKeys => "control_center.ssh_keys",
     Page::GpgKeys => "control_center.gpg_keys",
+    Page::GpgFormExpiration => "control_center.gpg_keys_expiration",
+    Page::GpgFormPassphrase => "control_center.gpg_keys_passphrase_page",
+    Page::GpgKeyList => "control_center.gpg_keys_list",
+    Page::GpgKeyEdit => "control_center.gpg_keys_edit",
+    Page::GpgEditExpiration => "control_center.gpg_keys_expiration",
+    Page::GpgEditSign => "control_center.gpg_keys_edit_sign",
+    Page::GpgEditRevoke => "control_center.gpg_keys_edit_revoke",
     _ => "control_center.layout",
   }
 }

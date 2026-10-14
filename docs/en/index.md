@@ -25,7 +25,7 @@ The current Control Center home provides these areas:
 - **Default applications** — select installed applications for supported roles.
 - **Snippets** — text saved for `argvus snippets`, typed with `SUPER + ALT + N`.
 - **SSH keys** — key pairs in `~/.ssh` managed by `argvus keys`: generate, load into the agent, unload and delete.
-- **GPG keys** — the keyring managed by `argvus gpg`: list, generate, export and import public keys, and choose the pinentry.
+- **GPG keys** — the keyring managed by `argvus gpg`: generate keys (name, e-mail, comment, algorithm, size, expiry, passphrase), import and export public and private keys through the file manager, edit a key (expiry, passphrase, sign, revoke, trust, keyserver), copy, delete, and search the keys. gpg-agent uses pinentry-gtk.
 - **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
 - **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
 - **System** — host, users, groups and system administration pages available to the current installation.
@@ -144,37 +144,64 @@ GPG keys is the page for the keyring that `argvus gpg` manages. It is in **Appli
 The page has these sections, from top to bottom:
 
 ```
-Pinentry        the pinentry in use, and the choices: pinentry-qt, pinentry-gtk-2, pinentry-curses
-Generate key    identity, algorithm, expiry, the passphrase toggle and the Generate key action
-Import          the Import public key action
-Keys            one block per key: identity, fingerprint, type, expiry, private key, Export public key
-Refresh         reloads the keyring and the pinentry
+Pinentry         the pinentry gpg-agent uses, for information only: pinentry-gtk
+Generate key ▾   full name, e-mail, comment, algorithm, key strength, expiration date,
+                 passphrase, and the Generate key and Cancel actions (expanded at first)
+Import ▾         Import public key… and Import private key… (expanded at first)
+Keys ›           the keyring, on its own page, with the search at the top
 ```
+
+`▾` marks an expanded section and `▸` a collapsed one. `Enter` or `Space` expands or collapses it.
 
 #### How to use it
 
 1. Open **Control Center → Applications → GPG keys**. From the Home, you can also search for `gpg keys`.
-2. **Choose the pinentry:** in **Pinentry**, select a choice and press `Enter`. The current one is marked with `●`. The confirmation focuses **Cancel**; press `y` to change the pinentry, or `n`/`Esc` to keep the current one. The page writes only the pinentry line of `gpg-agent.conf` and restarts `gpg-agent`.
-3. **Create a key:** in **Generate key**, select **Identity**, press `Enter`, type `Name <you@example.com>` and press `Enter`. **Algorithm** switches between `ed25519` and `rsa4096`. **Expires** takes `0` for no expiry or a number followed by `d`, `w`, `m` or `y` (for example `2y`). The **Passphrase** row is on by default, so the pinentry window asks for the passphrase; the status line says that the page is waiting for it. Select **Generate key** and press `Enter`. The new key gets a signing key and an encryption subkey, so it can sign commits and encrypt files.
-4. **Create a key without a passphrase:** turn the **Passphrase** row off with `Enter`, then run **Generate key**. The confirmation focuses **Cancel**, because the private key is then stored unprotected. Press `y` only if that is what you want.
-5. **Export a public key:** in the key's block, select **Export public key…** and press `Enter`. The path proposed is `~/argvus-<key id>.asc`; change it if you want, then press `Enter`. The file is created with mode `600`. An existing file is never replaced, and the page shows the error instead.
-6. **Import a public key:** in **Import**, select **Import public key…**, type the path of the file and press `Enter`. Files that contain a private key are refused.
-7. **Find a key:** press `/` and type to show only the keys whose identity or fingerprint matches. `Esc` clears the search.
+2. **Pinentry** is fixed to `pinentry-gtk`. The page only shows it. The first time a key is generated, ARGVUS writes that pinentry into `gpg-agent.conf`, between its own marker lines, and keeps your other lines. If you already wrote a `pinentry-program` line outside those markers, generation stops with an error so that you can remove that line.
+3. **Create a key:** in **Generate key ▾**, type **Full name** and **E-mail**. Both are required, and **Generate key** stays disabled until both have text. **Comment** is optional. The user ID becomes `Name (comment) <e-mail>`.
+   - **Algorithm** switches between **RSA** and **DSA ElGamal**. A DSA key gets an ElGamal encryption subkey; an RSA key gets an RSA one.
+   - **Key strength** cycles through the sizes of the algorithm: RSA 1024, 2048 and 4096; DSA 1024, 2048 and 3072. gpg does not create DSA keys above 3072 bits, so 4096 is not offered for DSA.
+   - **Expiration date** opens its own page. Type the date in the layout of your language: `DD/MM/YYYY` in pt-BR, `YYYY/MM/DD` in English. The date must be after today. Turn on **Never expires** to make the key permanent; the date field is then disabled and not used.
+   - **Passphrase** opens its own page. **Protect with a passphrase** is on by default; type the **Passphrase** and then **Confirm passphrase**. The two must match. Turning protection off clears both fields, and the page asks for confirmation before it generates an unprotected key.
+4. Select **Generate key** and press `Enter`. The key gets a signing key and an encryption subkey. The passphrase is sent to the launcher on its standard input, never as a command argument. If generation fails, the other fields stay, but the passphrases are cleared and must be typed again.
+5. **Cancel** clears every field of the form and returns the dates and sizes to their defaults.
+6. **Import:** in **Import ▾**, choose **Import public key…** or **Import private key…**. The file manager opens so that you can choose the file. A private key asks for confirmation first, and its passphrase is asked by gpg when the key is used. If the file manager is a graphical one, it cannot report the file to the page; the page then opens a field where you type the path.
+7. **Keys ›** opens the keyring. Each key shows its identity, fingerprint, type, expiry and whether its private key is in the keyring. Each key has these actions:
+   - **Edit key ›** opens the key's own page (described below).
+   - **Export public key…** asks for a file path, proposed as `~/<fingerprint>.asc`. The file is created with mode `600`. An existing file is never replaced.
+   - **Export private key…** appears only for keys with a private part. It asks for confirmation, then for a file path, proposed as `~/<fingerprint>-private.asc`. The file is created with mode `600`.
+   - **Copy public key** and **Copy fingerprint** copy to the Wayland clipboard with `wl-copy`.
+   - **Delete key…** asks for confirmation, with the focus on Cancel. It removes the key and its private part.
+8. **Find a key:** on the **Keys** page, the search bar at the top filters the keys. Type to narrow the list; the search matches the identity (which includes the comment) and the fingerprint. `Esc` clears the search.
+9. **Edit key ›** shows the key's details, then these actions:
+   - **Expiration date ›** changes the expiry of the key and of each of its subkeys. Use **Never expires** to remove the expiry. **Apply** saves the change.
+   - **Change passphrase** asks the old and the new passphrase in the pinentry window.
+   - **Sign key with ›** certifies this key with one of your other keys that has a private part. The signer's passphrase is asked. The page asks for confirmation first.
+   - **Revoke key ›** lists the reasons: no reason, key compromised, key superseded, key no longer used. Each one asks for confirmation. A revoked key cannot be used any more.
+   - **Trust** sets how far you trust the key: not set, marginal, full or ultimate.
+   - **Publish to keyserver…** sends the public key to the keyserver set in `gpg.conf`, after confirmation. **Fetch from keyserver** downloads the key from that keyserver.
 
 Moving around: `↑`/`↓` or `j`/`k` move through the list, `Enter` activates a row, `Esc` goes back and `?` shows help.
 
-Passphrases are never typed into the Control Center: gpg-agent opens the pinentry window and only that window receives the secret. Private keys are never exported from the page. The page reads the keyring with `argvus gpg list` and writes only through `argvus gpg`. When `argvus gpg` is not installed, the page says so.
+Passphrases are typed only into the masked fields of the passphrase page, or into the pinentry window. The page sends the generation passphrase to `argvus gpg` on standard input, and the launcher hands it to gpg on a file descriptor, so it never appears in the process list, in a command argument or in the logs. Key changes run in the background; while one runs, the others wait. The page reads the keyring with `argvus gpg list` and writes only through `argvus gpg`. When `argvus gpg` is not installed, the page says so.
+
+Not in the page yet: searching the keyserver for a key by name or e-mail. Use **Fetch from keyserver** with a known fingerprint.
 
 #### Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |
 | The page says `argvus gpg is not available` | The installed `argvus-launcher` predates the GPG command. Run `argvus gpg list` in a terminal: `unknown command` means the package must be rebuilt and installed. Keys also need `gnupg`. |
-| **Generate key** waits and no window opens | The pinentry is not installed or not selected. Check **Pinentry**, and install the matching package (`pinentry` provides `pinentry-qt`, `pinentry-gtk-2` and `pinentry-curses`). |
-| **Pinentry** shows `Not set` | gpg-agent uses its built-in default. Choose one of the three choices to set it. |
-| A status line shows `argvus-gpg: ...` | The launcher refused the action, and the text gives the reason, such as an invalid expiry or a file that already exists. |
-| The import is refused | The file contains a private key. Export only the public key on the other machine. |
-
+| **Generate key** stays disabled | Type both **Full name** and **E-mail**. |
+| A status line says `argvus-gpg: pinentry-gtk is not installed` | Install the `pinentry` package, which provides `pinentry-gtk`. |
+| Generation stops with a `pinentry-program` error | `gpg-agent.conf` sets a pinentry outside the ARGVUS block. Remove that line; ARGVUS then writes its own. |
+| **Pinentry** shows `Not set` | gpg-agent uses its built-in default until the first key is generated from the page. |
+| The page says the installed `argvus-launcher` is older than the Control Center | Reinstall `argvus-launcher`: run `make build` and then `make install` in its repository, and reopen the page. The key actions stay off until the versions match. |
+| The file manager opens, but the page asks for a path | The file manager is a graphical one and cannot report the chosen file. Type the path in the field. |
+| **Copy public key** says it could not copy | `wl-copy` is not installed or the Wayland session is not available. Install `wl-clipboard`. |
+| **Edit key ›** says the key is no longer in the keyring | The keyring changed since the page opened. Go back to **Keys ›** and refresh. |
+| A status line shows `argvus-gpg: ...` | The launcher refused the action, and the text gives the reason, such as an invalid expiry, a file that already exists, or a missing `--yes`. |
+| An action waits and nothing happens | The pinentry window is hidden or was not opened. Check the session exposes `WAYLAND_DISPLAY` or `DISPLAY`. |
+| The import is refused | The file contains no key of the kind chosen. Public keys go through **Import public key…**; private keys through **Import private key…**. |
 
 ### Locale & Region
 

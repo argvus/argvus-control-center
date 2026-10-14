@@ -19,8 +19,6 @@ use argvus_control_center_core::{
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::thread;
 use std::time::Duration;
 
 pub use crate::profile::{
@@ -155,195 +153,6 @@ fn run_script_output(script_path: &Path, args: &[&str]) -> Option<String> {
     return None;
   }
   Some(terminal_text(&String::from_utf8_lossy(&output.stdout)))
-}
-
-/// Executes the `command_words` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn command_words(command: &str) -> Vec<String> {
-  command
-    .split_whitespace()
-    .map(str::to_string)
-    .filter(|word| !word.is_empty())
-    .collect()
-}
-
-/// Checks the condition represented by `is_tui_file_manager` using only the state available to the module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn is_tui_file_manager(command: &[String]) -> bool {
-  matches!(
-    command.first().map(String::as_str),
-    Some(
-      "argvus"
-        | "spf"
-        | "superfile"
-        | "yazi"
-        | "ranger"
-        | "lf"
-        | "joshuto"
-        | "broot"
-        | "mc"
-        | "nnn"
-    )
-  )
-}
-
-/// Executes the `default_app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn default_app(category: &str) -> Option<Vec<String>> {
-  let output = run_script_output(
-    &system_config_root().join("session/sh/get-default.sh"),
-    &[category],
-  )?;
-  let words = command_words(output.trim());
-  (!words.is_empty()).then_some(words)
-}
-
-/// Runs a Hyprland Lua `dispatch` and reports whether it was accepted. Places
-/// that dropped a dispatcher (e.g. `window not found`) still exit 0, logging a
-/// `warning:`/`error:` on stderr, so only stderr-clean runs count as success.
-fn hyprctl_lua_dispatch(expression: &str) -> bool {
-  let Ok(output) = SystemProcessRunner.run(
-    &ProcessRequest::new("hyprctl")
-      .arg("dispatch")
-      .arg(expression),
-  ) else {
-    return false;
-  };
-  if output.timed_out || output.status != Some(0) {
-    return false;
-  }
-  let stderr = String::from_utf8_lossy(&output.stderr);
-  !stderr.contains("warning:") && !stderr.contains("error:")
-}
-
-/// Focuses a window (by address or class) and raises it to the front, above the
-/// Control Center window that launched it.
-fn focus_and_raise(target: &str) {
-  // Only raise once the target is actually focused; otherwise the dispatcher
-  // below would raise whatever window currently has focus (the Control Center).
-  if hyprctl_lua_dispatch(&format!("hl.dsp.focus({{ window = '{target}' }})")) {
-    let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
-  }
-}
-
-/// Terminal-backed wallpaper chooser: opens as a floating, centered window in
-/// the standard 1024x768 File Manager proportion, on top of the Control Center.
-fn focus_wallpaper_picker(child_id: u32) {
-  // `argvus-tui-terminal` `exec`s the terminal, so `child_id` is also the PID
-  // of the Wayland surface. Cold terminal startup can take a few seconds, so
-  // poll patiently; only float/center/raise a window that actually exists, to
-  // avoid operating on whatever has focus meanwhile (the Control Center).
-  for _ in 0..80 {
-    thread::sleep(Duration::from_millis(100));
-    let Some(address) = client_address_for_pid(child_id) else {
-      continue;
-    };
-    if hyprctl_lua_dispatch(&format!("hl.dsp.focus({{ window = 'address:{address}' }})")) {
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.float({ action = 'enable' })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.resize({ x = 1024, y = 768 })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.center({})");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
-    }
-    return;
-  }
-  // Fallback for wrappers that fork instead of exec: match the known class.
-  for _ in 0..40 {
-    thread::sleep(Duration::from_millis(100));
-    if hyprctl_lua_dispatch("hl.dsp.focus({ window = 'class:argvus-wallpaper-picker' })") {
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.float({ action = 'enable' })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.resize({ x = 1024, y = 768 })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.center({})");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
-      break;
-    }
-  }
-}
-
-/// Terminal-backed launcher-icon chooser: opens as a floating, centered
-/// window in the standard 1024x768 File Manager proportion, on top of the
-/// Control Center. Mirrors `focus_wallpaper_picker`.
-fn focus_launcher_icon_picker(child_id: u32) {
-  for _ in 0..80 {
-    thread::sleep(Duration::from_millis(100));
-    let Some(address) = client_address_for_pid(child_id) else {
-      continue;
-    };
-    if hyprctl_lua_dispatch(&format!("hl.dsp.focus({{ window = 'address:{address}' }})")) {
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.float({ action = 'enable' })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.resize({ x = 1024, y = 768 })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.center({})");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
-    }
-    return;
-  }
-  // Fallback for wrappers that fork instead of exec: match the known class.
-  for _ in 0..40 {
-    thread::sleep(Duration::from_millis(100));
-    if hyprctl_lua_dispatch("hl.dsp.focus({ window = 'class:argvus-launcher-icon-picker' })") {
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.float({ action = 'enable' })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.resize({ x = 1024, y = 768 })");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.center({})");
-      let _ = hyprctl_lua_dispatch("hl.dsp.window.bring_to_top({})");
-      break;
-    }
-  }
-}
-
-/// Best-effort Wayland class (`class:`) used by the GUI File Managers Argvus
-/// knows about. TUI managers are matched by their own `argvus-wallpaper-picker`
-/// terminal window instead.
-fn gui_file_manager_class(command: &str) -> Option<&'static str> {
-  let name = Path::new(command)
-    .file_name()
-    .and_then(|name| name.to_str())
-    .unwrap_or(command);
-  match name {
-    "nautilus" => Some("org.gnome.Nautilus"),
-    "nemo" => Some("org.nemo.Nemo"),
-    "thunar" => Some("Thunar"),
-    "dolphin" => Some("org.kde.dolphin"),
-    "pcmanfm" | "pcmanfm-qt" => Some("pcmanfm"),
-    "krusader" => Some("org.kde.krusader"),
-    "caja" => Some("org.mate.Caja"),
-    "doublecmd" => Some("doublecmd"),
-    _ => None,
-  }
-}
-
-/// Resolves the Hyprland client address (`0x…`) mapped to `pid`, if the
-/// window already exists.
-fn client_address_for_pid(pid: u32) -> Option<String> {
-  let output = SystemProcessRunner
-    .run(&ProcessRequest::new("hyprctl").arg("-j").arg("clients"))
-    .ok()?;
-  if output.status.is_none_or(|status| status != 0) {
-    return None;
-  }
-  let value: Value = serde_json::from_slice(&output.stdout).ok()?;
-  value
-    .as_array()?
-    .iter()
-    .find(|client| client.get("pid").and_then(Value::as_u64) == Some(pid as u64))
-    .and_then(|client| client.get("address").and_then(Value::as_str))
-    .map(str::to_string)
-}
-
-/// Brings a freshly launched GUI File Manager window to the front, focused, on
-/// top of the `argvus-control-center` window. The Wayland surface appears
-/// asynchronously, so the exact process is polled first; GTK/KDE apps may be
-/// D-Bus activated, in which case the known class is used as a fallback.
-fn raise_file_manager_window(pid: u32, class: Option<&str>) {
-  for _ in 0..80 {
-    thread::sleep(Duration::from_millis(100));
-    if let Some(address) = client_address_for_pid(pid) {
-      focus_and_raise(&format!("address:{address}"));
-      return;
-    }
-  }
-  if let Some(class) = class {
-    let target = format!("class:{class}");
-    for _ in 0..40 {
-      thread::sleep(Duration::from_millis(100));
-      focus_and_raise(&target);
-    }
-  }
 }
 
 /// Retrieves data for `read_first` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1363,78 +1172,14 @@ pub fn set_wallpaper(name: &str) -> Result<(), String> {
 /// `argvus-wallpaper-picker` class); GUI managers are raised via their WM class
 /// or matched by PID to guarantee they appear in front.
 pub fn choose_wallpaper() -> Result<(), String> {
-  let file_manager =
-    default_app("file_manager").ok_or_else(|| "file manager padrão não encontrado".to_string())?;
-  let home = argvus_control_center_core::paths::home();
-
-  if !is_tui_file_manager(&file_manager) {
-    let binary = &file_manager[0];
-    let class = gui_file_manager_class(binary);
-    let child = argvus_control_center_core::process::command(binary)
-      .args(file_manager.iter().skip(1))
-      .arg(home)
-      .stdin(Stdio::null())
-      .stdout(Stdio::null())
-      .stderr(Stdio::null())
-      .spawn()
-      .map_err(|error| format!("não foi possível abrir o File Manager padrão: {error}"))?;
-    raise_file_manager_window(child.id(), class);
+  let Some(selected) = argvus_control_center_core::picker::pick_file(
+    "argvus-wallpaper-picker",
+    "wallpaper-selection",
+  )?
+  else {
     return Ok(());
-  }
-
-  let selection = cache_home()
-    .join("argvus")
-    .join(format!("wallpaper-selection-{}", std::process::id()));
-  if let Some(parent) = selection.parent() {
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-  }
-  let _ = fs::remove_file(&selection);
-
-  let mut terminal_command = argvus_control_center_core::process::command("argvus");
-  let mut terminal_args = vec![
-    "tui-terminal".to_string(),
-    "--class".to_string(),
-    "argvus-wallpaper-picker".to_string(),
-    "--term".to_string(),
-    "kitty".to_string(),
-    "--".to_string(),
-  ];
-  for argument in &file_manager {
-    terminal_args.push(argument.clone());
-  }
-  terminal_args.push(format!("--chooser-file={}", selection.display()));
-  terminal_args.push(home.to_string_lossy().to_string());
-
-  let mut child = terminal_command
-    .args(terminal_args)
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null())
-    .spawn()
-    .map_err(|error| format!("não foi possível abrir o File Manager padrão: {error}"))?;
-  focus_wallpaper_picker(child.id());
-  if child
-    .wait()
-    .map_err(|error| format!("File Manager padrão falhou: {error}"))?
-    .code()
-    .is_some_and(|status| status != 0)
-  {
-    return Err("File Manager padrão falhou".into());
-  }
-
-  let selected =
-    fs::read_to_string(&selection).map_err(|_| "nenhuma imagem foi selecionada".to_string())?;
-  let selected = selected.trim();
-  if selected.is_empty() {
-    return Err("nenhuma imagem foi selecionada".into());
-  }
-  let selected = Path::new(selected);
-  if !selected.is_file() {
-    return Err("o arquivo selecionado não existe".into());
-  }
-  persist_wallpaper_canonical(selected)?;
-  let _ = fs::remove_file(selection);
-  Ok(())
+  };
+  persist_wallpaper_canonical(&selected)
 }
 
 /// Persists the taskbar launcher's custom icon path to the canonical
@@ -1464,78 +1209,14 @@ fn persist_launcher_icon_canonical(path: &Path) -> Result<(), String> {
 /// icon (PNG/SVG) for the taskbar, in a window focused on top of the Control
 /// Center. Mirrors `choose_wallpaper`'s GUI/TUI flow.
 pub fn choose_launcher_icon() -> Result<(), String> {
-  let file_manager =
-    default_app("file_manager").ok_or_else(|| "file manager padrão não encontrado".to_string())?;
-  let home = argvus_control_center_core::paths::home();
-
-  if !is_tui_file_manager(&file_manager) {
-    let binary = &file_manager[0];
-    let class = gui_file_manager_class(binary);
-    let child = argvus_control_center_core::process::command(binary)
-      .args(file_manager.iter().skip(1))
-      .arg(home)
-      .stdin(Stdio::null())
-      .stdout(Stdio::null())
-      .stderr(Stdio::null())
-      .spawn()
-      .map_err(|error| format!("não foi possível abrir o File Manager padrão: {error}"))?;
-    raise_file_manager_window(child.id(), class);
+  let Some(selected) = argvus_control_center_core::picker::pick_file(
+    "argvus-launcher-icon-picker",
+    "launcher-icon-selection",
+  )?
+  else {
     return Ok(());
-  }
-
-  let selection = cache_home()
-    .join("argvus")
-    .join(format!("launcher-icon-selection-{}", std::process::id()));
-  if let Some(parent) = selection.parent() {
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-  }
-  let _ = fs::remove_file(&selection);
-
-  let mut terminal_command = argvus_control_center_core::process::command("argvus");
-  let mut terminal_args = vec![
-    "tui-terminal".to_string(),
-    "--class".to_string(),
-    "argvus-launcher-icon-picker".to_string(),
-    "--term".to_string(),
-    "kitty".to_string(),
-    "--".to_string(),
-  ];
-  for argument in &file_manager {
-    terminal_args.push(argument.clone());
-  }
-  terminal_args.push(format!("--chooser-file={}", selection.display()));
-  terminal_args.push(home.to_string_lossy().to_string());
-
-  let mut child = terminal_command
-    .args(terminal_args)
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null())
-    .spawn()
-    .map_err(|error| format!("não foi possível abrir o File Manager padrão: {error}"))?;
-  focus_launcher_icon_picker(child.id());
-  if child
-    .wait()
-    .map_err(|error| format!("File Manager padrão falhou: {error}"))?
-    .code()
-    .is_some_and(|status| status != 0)
-  {
-    return Err("File Manager padrão falhou".into());
-  }
-
-  let selected =
-    fs::read_to_string(&selection).map_err(|_| "nenhuma imagem foi selecionada".to_string())?;
-  let selected = selected.trim();
-  if selected.is_empty() {
-    return Err("nenhuma imagem foi selecionada".into());
-  }
-  let selected = Path::new(selected);
-  if !selected.is_file() {
-    return Err("o arquivo selecionado não existe".into());
-  }
-  persist_launcher_icon_canonical(selected)?;
-  let _ = fs::remove_file(selection);
-  Ok(())
+  };
+  persist_launcher_icon_canonical(&selected)
 }
 
 /// Applies the `set_spacing` operation while preserving the persistence and local-update contract. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1925,24 +1606,5 @@ mod tests {
     assert!(cards.enabled(ControlPanelCard::Power));
     assert!(cards.enabled(ControlPanelCard::User));
     assert!(parse_control_panel_cards("invalid").enabled(ControlPanelCard::User));
-  }
-
-  #[test]
-  /// Executes the `gui_file_manager_class_known_apps` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn gui_file_manager_class_known_apps() {
-    assert_eq!(
-      gui_file_manager_class("nautilus"),
-      Some("org.gnome.Nautilus")
-    );
-    assert_eq!(gui_file_manager_class("thunar"), Some("Thunar"));
-    assert_eq!(gui_file_manager_class("nemo"), Some("org.nemo.Nemo"));
-    assert_eq!(gui_file_manager_class("dolphin"), Some("org.kde.dolphin"));
-    assert_eq!(gui_file_manager_class("pcmanfm"), Some("pcmanfm"));
-    assert_eq!(
-      gui_file_manager_class("/usr/bin/nautilus"),
-      Some("org.gnome.Nautilus")
-    );
-    assert_eq!(gui_file_manager_class("unknown-fm"), None);
-    assert_eq!(gui_file_manager_class("spf"), None);
   }
 }

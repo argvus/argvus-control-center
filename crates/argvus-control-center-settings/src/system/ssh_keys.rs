@@ -6,10 +6,10 @@
 //! passphrase-protected generation open an ARGVUS terminal where the tool
 //! prompts for the secret, so it is never a process argument.
 use argvus_control_center_core::process::command;
+
+use super::clipboard;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
-use std::process::Stdio;
 
 /// Key algorithm offered by the generate form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -168,22 +168,7 @@ pub fn copy_public_key(name: &str) -> Result<(), CopyError> {
     .ok_or(CopyError::Unreadable)?
     .join(format!("{name}.pub"));
   let public_key = fs::read_to_string(path).map_err(|_| CopyError::Unreadable)?;
-  let mut child = command("wl-copy")
-    .stdin(Stdio::piped())
-    .spawn()
-    .map_err(|_| CopyError::Clipboard)?;
-  // The pipe is taken and dropped at the end of the closure, so wl-copy sees
-  // end of input before it is awaited.
-  let written = child
-    .stdin
-    .take()
-    .is_some_and(|mut stdin| stdin.write_all(public_key.trim_end().as_bytes()).is_ok());
-  let status = child.wait().map_err(|_| CopyError::Clipboard)?;
-  if written && status.success() {
-    Ok(())
-  } else {
-    Err(CopyError::Clipboard)
-  }
+  clipboard::copy(public_key.trim_end()).map_err(|_| CopyError::Clipboard)
 }
 
 /// The directory the launcher reads: `ARGVUS_SSH_DIR` when set, else `~/.ssh`.

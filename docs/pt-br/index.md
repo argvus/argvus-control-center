@@ -26,7 +26,7 @@ A tela inicial atual do Control Center oferece estas áreas:
 * **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
 * **Snippets** — textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
 * **Chaves SSH** — pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`: gerar, carregar no agente, descarregar e apagar.
-* **Chaves GPG** — o keyring gerenciado pelo `argvus gpg`: listar, gerar, exportar e importar chaves públicas, e escolher o pinentry.
+* **Chaves GPG** — o keyring gerenciado pelo `argvus gpg`: gerar chaves (nome, e-mail, comentário, algoritmo, tamanho, expiração, senha), importar e exportar chaves públicas e privadas pelo gerenciador de arquivos, editar uma chave (expiração, senha, assinar, revogar, confiança, servidor de chaves), copiar, excluir e buscar chaves. O gpg-agent usa o pinentry-gtk.
 * **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
 * **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
 * **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
@@ -140,42 +140,69 @@ As senhas nunca são digitadas no Control Center nem passadas como argumentos de
 
 ### Chaves GPG
 
-Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Aplicativos → Chaves GPG** (busque por `chaves gpg` ou execute `argvus-control-center gpg-keys`).
+Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Aplicativos → Chaves GPG** (busque por `chaves gpg` ou rode `argvus-control-center gpg-keys`).
 
-A página tem estas seções, de cima para baixo:
+As seções da página, de cima para baixo:
 
 ```
-Pinentry          o pinentry em uso e as opções: pinentry-qt, pinentry-gtk-2, pinentry-curses
-Gerar chave       identidade, algoritmo, validade, o alternador de senha e a ação Gerar chave
-Importar          a ação Importar chave pública
-Chaves            um bloco por chave: identidade, impressão digital, tipo, validade, chave privada, Exportar chave pública
-Atualizar         recarrega o keyring e o pinentry
+Pinentry          o pinentry que o gpg-agent usa, só para informação: pinentry-gtk
+Gerar chave ▾     nome completo, e-mail, comentário, algoritmo, tamanho, data de
+                  expiração, senha, e as ações Gerar chave e Cancelar (expandida no início)
+Importar ▾        Importar chave pública… e Importar chave privada… (expandida no início)
+Chaves ›          o chaveiro, em uma página própria, com a busca no topo
 ```
+
+`▾` marca uma seção expandida e `▸` uma recolhida. `Enter` ou `Espaço` expande ou recolhe.
 
 #### Como usar
 
 1. Abra **Control Center → Aplicativos → Chaves GPG**. Pela Home, você também pode buscar por `chaves gpg`.
-2. **Escolher o pinentry:** em **Pinentry**, selecione uma opção e pressione `Enter`. A opção em uso é marcada com `●`. A confirmação começa em **Cancelar**; pressione `y` para trocar o pinentry, ou `n`/`Esc` para manter o atual. A página só grava a linha do pinentry em `gpg-agent.conf` e reinicia o `gpg-agent`.
-3. **Criar uma chave:** em **Gerar chave**, selecione **Identidade**, pressione `Enter`, digite `Nome <voce@example.com>` e pressione `Enter`. **Algoritmo** alterna entre `ed25519` e `rsa4096`. **Validade** aceita `0` para nenhuma ou um número seguido de `d`, `w`, `m` ou `y` (por exemplo `2y`). A linha **Senha** vem ligada por padrão, então a janela do pinentry pede a senha; a linha de status diz que a página está aguardando. Selecione **Gerar chave** e pressione `Enter`. A nova chave recebe uma chave de assinatura e uma subchave de criptografia, então serve para assinar commits e criptografar arquivos.
-4. **Criar uma chave sem senha:** desligue a linha **Senha** com `Enter` e depois execute **Gerar chave**. A confirmação começa em **Cancelar**, porque a chave privada fica sem proteção. Pressione `y` só se for isso que você quer.
-5. **Exportar uma chave pública:** no bloco da chave, selecione **Exportar chave pública…** e pressione `Enter`. O caminho sugerido é `~/argvus-<id da chave>.asc`; altere se quiser e pressione `Enter`. O arquivo é criado com modo `600`. Um arquivo existente nunca é substituído, e a página mostra o erro.
-6. **Importar uma chave pública:** em **Importar**, selecione **Importar chave pública…**, digite o caminho do arquivo e pressione `Enter`. Arquivos que contêm uma chave privada são recusados.
-7. **Encontrar uma chave:** pressione `/` e digite para mostrar só as chaves cuja identidade ou impressão digital corresponde. `Esc` limpa a busca.
+2. **Pinentry** é fixo em `pinentry-gtk`. A página apenas o mostra. Na primeira vez que uma chave é gerada, o ARGVUS grava esse pinentry no `gpg-agent.conf`, entre as suas linhas de marcação, e mantém as outras linhas. Se você já escreveu uma linha `pinentry-program` fora dessas marcas, a geração para com erro, para que você remova essa linha.
+3. **Criar uma chave:** em **Gerar chave ▾**, digite **Nome completo** e **E-mail**. Os dois são obrigatórios, e **Gerar chave** fica desabilitado até que ambos tenham texto. **Comentário** é opcional. A identidade fica `Nome (comentário) <e-mail>`.
+   - **Algoritmo** alterna entre **RSA** e **DSA ElGamal**. Uma chave DSA recebe uma subchave de criptografia ElGamal; uma chave RSA recebe uma RSA.
+   - **Tamanho da chave** percorre os tamanhos do algoritmo: RSA 1024, 2048 e 4096; DSA 1024, 2048 e 3072. O gpg não cria chaves DSA acima de 3072 bits, por isso 4096 não é oferecido para DSA.
+   - **Data de expiração** abre uma página própria. Digite a data no formato do seu idioma: `DD/MM/AAAA` em pt-BR, `AAAA/MM/DD` em inglês. A data precisa ser posterior a hoje. Ative **Nunca expira** para tornar a chave permanente; o campo de data fica desabilitado e não é usado.
+   - **Senha** abre uma página própria. **Proteger com senha** vem ligado por padrão; digite a **Senha** e depois **Confirmar senha**. As duas precisam ser iguais. Desligar a proteção limpa os dois campos, e a página pede confirmação antes de gerar uma chave sem proteção.
+4. Selecione **Gerar chave** e pressione `Enter`. A chave recebe uma chave de assinatura e uma subchave de criptografia. A senha vai ao launcher pela entrada padrão, nunca como argumento de comando. Se a geração falhar, os outros campos permanecem, mas as senhas são limpas e precisam ser digitadas de novo.
+5. **Cancelar** limpa todos os campos do formulário e volta datas e tamanhos aos padrões.
+6. **Importar:** em **Importar ▾**, escolha **Importar chave pública…** ou **Importar chave privada…**. O gerenciador de arquivos abre para você escolher o arquivo. Uma chave privada pede confirmação antes; a senha dela é pedida pelo gpg quando a chave é usada. Se o gerenciador de arquivos for gráfico, ele não consegue informar o arquivo à página; então a página abre um campo onde você digita o caminho.
+7. **Chaves ›** abre o chaveiro. Cada chave mostra identidade, fingerprint, tipo, validade e se a chave privada está no chaveiro. Cada chave tem estas ações:
+   - **Editar chave ›** abre a página própria da chave (descrita abaixo).
+   - **Exportar chave pública…** pede o caminho de um arquivo, sugerido como `~/<fingerprint>.asc`. O arquivo é criado com modo `600`. Um arquivo existente nunca é substituído.
+   - **Exportar chave privada…** aparece só para chaves com parte privada. Pede confirmação e depois o caminho de um arquivo, sugerido como `~/<fingerprint>-private.asc`. O arquivo é criado com modo `600`.
+   - **Copiar chave pública** e **Copiar fingerprint** copiam para a área de transferência Wayland com o `wl-copy`.
+   - **Excluir chave…** pede confirmação, com o foco em Cancelar. Remove a chave e a parte privada dela.
+8. **Encontrar uma chave:** na página **Chaves**, a barra de busca no topo filtra as chaves. Digite para restringir a lista; a busca compara a identidade (que inclui o comentário) e o fingerprint. `Esc` limpa a busca.
+9. **Editar chave ›** mostra os detalhes da chave e depois estas ações:
+   - **Data de expiração ›** altera a validade da chave e de cada subchave. Use **Nunca expira** para remover a validade. **Aplicar** salva a alteração.
+   - **Alterar senha** pede a senha antiga e a nova na janela do pinentry.
+   - **Assinar chave com ›** certifica esta chave com uma das suas outras chaves que tenha parte privada. A senha do assinante é pedida. A página pede confirmação antes.
+   - **Revogar chave ›** lista os motivos: sem motivo, chave comprometida, chave substituída, chave não usada mais. Cada um pede confirmação. Uma chave revogada não pode mais ser usada.
+   - **Confiança** define o quanto você confia na chave: não definida, marginal, total ou máxima.
+   - **Publicar no servidor de chaves…** envia a chave pública ao servidor configurado no `gpg.conf`, depois de confirmar. **Buscar no servidor de chaves** baixa a chave desse servidor.
 
-Navegação: `↑`/`↓` ou `j`/`k` percorrem a lista, `Enter` ativa a linha, `Esc` volta e `?` mostra a ajuda.
+Para se mover: `↑`/`↓` ou `j`/`k` percorrem a lista, `Enter` ativa uma linha, `Esc` volta e `?` mostra a ajuda.
 
-As senhas nunca são digitadas no Control Center: o gpg-agent abre a janela do pinentry, e só essa janela recebe o segredo. Chaves privadas nunca são exportadas pela página. A página lê o keyring com `argvus gpg list` e grava só pelo `argvus gpg`. Quando o `argvus gpg` não está instalado, a página informa isso.
+As senhas são digitadas apenas nos campos mascarados da página de senha ou na janela do pinentry. A página envia a senha da geração ao `argvus gpg` pela entrada padrão, e o launcher a entrega ao gpg por um descritor de arquivo; assim ela nunca aparece na lista de processos, em argumento de comando ou nos logs. As alterações de chave rodam em segundo plano; enquanto uma roda, as outras esperam. A página lê o keyring com `argvus gpg list` e escreve apenas pelo `argvus gpg`. Quando o `argvus gpg` não está instalado, a página informa isso.
+
+Ainda não está na página: buscar uma chave no servidor por nome ou e-mail. Use **Buscar no servidor de chaves** com uma impressão digital conhecida.
 
 #### Solução de problemas
 
-| Sintoma | Causa e solução |
+| Sintoma | Causa e correção |
 | --- | --- |
 | A página diz `O argvus gpg não está disponível` | O `argvus-launcher` instalado é anterior ao comando GPG. Rode `argvus gpg list` em um terminal: `unknown command` significa que o pacote precisa ser recompilado e instalado. As chaves também precisam do `gnupg`. |
-| **Gerar chave** espera e nenhuma janela abre | O pinentry não está instalado ou não está selecionado. Verifique **Pinentry** e instale o pacote correspondente (o pacote `pinentry` traz `pinentry-qt`, `pinentry-gtk-2` e `pinentry-curses`). |
-| **Pinentry** mostra `Não definido` | O gpg-agent usa o padrão embutido. Escolha uma das três opções para definir. |
-| Uma linha de status mostra `argvus-gpg: ...` | O launcher recusou a ação, e o texto explica o motivo, como validade inválida ou arquivo que já existe. |
-| A importação é recusada | O arquivo contém uma chave privada. Exporte só a chave pública na outra máquina. |
-
+| **Gerar chave** continua desabilitado | Digite **Nome completo** e **E-mail**. |
+| Uma linha de status diz `argvus-gpg: pinentry-gtk não está instalado` | Instale o pacote `pinentry`, que fornece o `pinentry-gtk`. |
+| A geração para com erro de `pinentry-program` | O `gpg-agent.conf` define um pinentry fora do bloco do ARGVUS. Remova essa linha; o ARGVUS grava a sua. |
+| **Pinentry** mostra `Não definido` | O gpg-agent usa o padrão embutido até a primeira chave ser gerada pela página. |
+| A página diz que o `argvus-launcher` instalado é mais antigo que o Control Center | Reinstale o `argvus-launcher`: rode `make build` e depois `make install` no repositório dele, e reabra a página. As ações de chave ficam desligadas até as versões baterem. |
+| O gerenciador de arquivos abre, mas a página pede um caminho | O gerenciador é gráfico e não consegue informar o arquivo escolhido. Digite o caminho no campo. |
+| **Copiar chave pública** diz que não conseguiu copiar | O `wl-copy` não está instalado ou a sessão Wayland não está disponível. Instale o `wl-clipboard`. |
+| **Editar chave ›** diz que a chave não está mais no chaveiro | O chaveiro mudou depois que a página abriu. Volte para **Chaves ›** e atualize. |
+| Uma linha de status mostra `argvus-gpg: ...` | O launcher recusou a ação, e o texto explica o motivo, como uma validade inválida, um arquivo que já existe ou um `--yes` ausente. |
+| Uma ação espera e nada acontece | A janela do pinentry está escondida ou não foi aberta. Confira se a sessão expõe `WAYLAND_DISPLAY` ou `DISPLAY`. |
+| A importação é recusada | O arquivo não contém a chave do tipo escolhido. Chaves públicas vão por **Importar chave pública…**; privadas por **Importar chave privada…**. |
 
 ### Localidade e região
 

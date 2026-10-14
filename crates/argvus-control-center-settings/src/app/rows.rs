@@ -12,8 +12,9 @@ use super::{
 };
 use crate::config::fonts::{FontTarget, SettingKind};
 use crate::i18n::{Lang, na, tr};
-use crate::item::{Item, RatbagRow};
+use crate::item::{GpgSection, Item, RatbagRow};
 use crate::navigation::Page;
+use crate::system::gpg_keys::{RevokeReason, TrustLevel};
 use crate::system::{keybindings, locale};
 
 /// Languages offered by the Language page, in display order.
@@ -442,6 +443,13 @@ impl App {
       Page::Snippets => self.snippets_rows(),
       Page::SshKeys => self.ssh_keys_rows(),
       Page::GpgKeys => self.gpg_keys_rows(),
+      Page::GpgFormExpiration => self.gpg_expiration_rows(),
+      Page::GpgFormPassphrase => self.gpg_passphrase_rows(),
+      Page::GpgKeyList => self.gpg_key_list_rows(),
+      Page::GpgKeyEdit => self.gpg_key_edit_rows(),
+      Page::GpgEditExpiration => self.gpg_edit_expiration_rows(),
+      Page::GpgEditSign => self.gpg_edit_sign_rows(),
+      Page::GpgEditRevoke => self.gpg_edit_revoke_rows(),
       Page::KeybindingEdit => self.keybinding_edit_rows(),
       Page::KeybindingCapture => self.keybinding_capture_rows(),
       Page::Firewall
@@ -870,72 +878,201 @@ impl App {
     rows
   }
 
-  /// The GPG keys list: the pinentry choice, the generate form, the import
-  /// action, then one block per key that matches the search. Refresh closes
-  /// the list. Every action is a row, so there is no action bar.
-  fn gpg_keys_rows(&self) -> Vec<Row<Item>> {
+  /// The row that replaces every GPG action while the keyring cannot be used:
+  /// the launcher is missing, or it is older than the page expects. Either way
+  /// the page says why instead of showing actions that would fail.
+  fn gpg_blocked_row(&self) -> Option<Row<Item>> {
     if !self.gpg_keys.available {
-      return vec![Row::info(
+      Some(Row::info(
         self.label("control_center.gpg_keys_unavailable"),
         String::new(),
-      )];
+      ))
+    } else if self.gpg_keys.outdated {
+      Some(Row::info(
+        self.label("control_center.gpg_keys_outdated"),
+        String::new(),
+      ))
+    } else {
+      None
     }
-    let current = crate::system::gpg_keys::pinentry_choice(&self.gpg_keys.pinentry);
+  }
+
+  /// The GPG keys page: the generate form, the import action and the link to the
+  /// keyring. Expiry and passphrase have pages of their own, so the form stays
+  /// short. Every action is a row, so there is no action bar.
+  fn gpg_keys_rows(&self) -> Vec<Row<Item>> {
+    if let Some(row) = self.gpg_blocked_row() {
+      return vec![row];
+    }
+    let form = &self.gpg_form;
+    let generating = self.gpg_job.is_some();
+    // The launcher checks the rest when the key is generated, so the button is
+    // enabled as soon as the two identity fields hold text.
+    let ready = !form.full_name.trim().is_empty() && !form.email.trim().is_empty() && !generating;
+    let generate_open = self.gpg_sections_open.contains(&GpgSection::Generate);
+    let import_open = self.gpg_sections_open.contains(&GpgSection::Import);
     let mut rows = vec![
+      // The pinentry is shown for information only: ARGVUS fixes it to pinentry-gtk.
       Row::section(self.label("control_center.gpg_keys_pinentry")),
       Row::info(
         self.label("control_center.gpg_keys_pinentry_current"),
         self.pinentry_text(),
       ),
+      Row::collapsible_section(
+        Item::ToggleGpgSection(GpgSection::Generate),
+        self.label("control_center.gpg_keys_generate"),
+        !generate_open,
+      ),
     ];
-    for (choice, program) in crate::system::gpg_keys::PINENTRY_CHOICES {
-      rows.push(Row::choice(
-        Item::GpgPinentry(choice),
-        program,
-        current == Some(choice),
-      ));
+    if generate_open {
+      rows.extend([
+        Row::action(
+          Item::GpgFullName,
+          self.label("control_center.gpg_keys_full_name"),
+        )
+        .icon(icons::USER)
+        .detail(form.full_name.clone()),
+        Row::action(Item::GpgEmail, self.label("control_center.gpg_keys_email"))
+          .icon(icons::USER)
+          .detail(form.email.clone()),
+        Row::action(
+          Item::GpgComment,
+          self.label("control_center.gpg_keys_comment"),
+        )
+        .detail(form.comment.clone()),
+        Row::action(
+          Item::GpgAlgorithm,
+          self.label("control_center.gpg_keys_algorithm"),
+        )
+        .icon(icons::SHIELD)
+        .detail(algorithm_label(form.algorithm)),
+        Row::action(
+          Item::GpgKeySize,
+          self.label("control_center.gpg_keys_key_size"),
+        )
+        .icon(icons::SHIELD)
+        .detail(form.key_size.to_string()),
+        Row::action(
+          Item::OpenGpgExpiration,
+          self.label("control_center.gpg_keys_expiration"),
+        )
+        .icon(icons::TIMER)
+        .detail(self.gpg_expiration_summary()),
+        Row::action(
+          Item::OpenGpgPassphrase,
+          self.label("control_center.gpg_keys_passphrase"),
+        )
+        .icon(icons::KEY)
+        .detail(self.gpg_passphrase_summary()),
+        Row::action(
+          Item::GenerateGpgKey,
+          self.label("control_center.gpg_keys_generate_action"),
+        )
+        .icon(icons::ADD)
+        .enabled(ready),
+        Row::action(
+          Item::CancelGpgForm,
+          self.label("control_center.gpg_keys_cancel"),
+        ),
+      ]);
     }
-    let identity_missing = self.gpg_form.identity.trim().is_empty();
-    let generating = self.gpg_job.is_some();
+    rows.push(Row::collapsible_section(
+      Item::ToggleGpgSection(GpgSection::Import),
+      self.label("control_center.gpg_keys_import"),
+      !import_open,
+    ));
+    if import_open {
+      rows.extend([
+        Row::action(
+          Item::ImportGpgKey,
+          self.label("control_center.gpg_keys_import_action"),
+        )
+        .icon(icons::IMPORT),
+        Row::action(
+          Item::ImportGpgPrivate,
+          self.label("control_center.gpg_keys_import_private_action"),
+        )
+        .icon(icons::KEY),
+      ]);
+    }
     rows.extend([
-      Row::section(self.label("control_center.gpg_keys_generate")),
-      Row::action(
-        Item::GpgIdentity,
-        self.label("control_center.gpg_keys_identity"),
+      Row::section(self.label("control_center.gpg_keys_list")),
+      Row::submenu(
+        Item::OpenGpgKeys,
+        self.label("control_center.gpg_keys_list_action"),
       )
-      .icon(icons::USER)
-      .detail(self.gpg_form.identity.clone()),
+      .icon(icons::KEY)
+      .detail(self.gpg_keys.entries.len().to_string()),
+    ]);
+    rows
+  }
+
+  /// The expiration page: the date in the user's layout, and the switch that
+  /// turns the date off for a key that never expires.
+  fn gpg_expiration_rows(&self) -> Vec<Row<Item>> {
+    let form = &self.gpg_form;
+    vec![
+      Row::section(self.label("control_center.gpg_keys_expiration")),
       Row::action(
-        Item::GpgAlgorithm,
-        self.label("control_center.gpg_keys_algorithm"),
-      )
-      .icon(icons::SHIELD)
-      .detail(self.gpg_form.algorithm.as_arg()),
-      Row::action(
-        Item::GpgExpire,
-        self.label("control_center.gpg_keys_expire"),
+        Item::GpgExpiry,
+        self.label("control_center.gpg_keys_expiry"),
       )
       .icon(icons::TIMER)
-      .detail(self.gpg_form.expire.clone()),
+      .detail(form.expiry.clone())
+      .enabled(!form.never_expires),
       Row::toggle(
-        Item::GpgPassphrase,
-        self.label("control_center.gpg_keys_passphrase"),
-        self.gpg_form.passphrase,
+        Item::GpgNeverExpires,
+        self.label("control_center.gpg_keys_never_expires"),
+        form.never_expires,
+      ),
+      Row::info(
+        self.label("control_center.gpg_keys_expiry_layout"),
+        self.gpg_date_order().layout().to_owned(),
+      ),
+    ]
+  }
+
+  /// The passphrase page. The fields are masked and are disabled when the key is
+  /// not protected, so an unprotected key never keeps a passphrase.
+  fn gpg_passphrase_rows(&self) -> Vec<Row<Item>> {
+    let form = &self.gpg_form;
+    let protected = form.protect_with_passphrase;
+    let hint = if protected {
+      self.label("control_center.gpg_keys_passphrase_hint")
+    } else {
+      self.label("control_center.gpg_keys_passphrase_off_hint")
+    };
+    vec![
+      Row::section(self.label("control_center.gpg_keys_passphrase")),
+      Row::toggle(
+        Item::GpgProtectPassphrase,
+        self.label("control_center.gpg_keys_protect"),
+        protected,
       ),
       Row::action(
-        Item::GenerateGpgKey,
-        self.label("control_center.gpg_keys_generate_action"),
+        Item::GpgPassphrase,
+        self.label("control_center.gpg_keys_passphrase_field"),
       )
-      .icon(icons::ADD)
-      .enabled(!identity_missing && !generating),
-      Row::section(self.label("control_center.gpg_keys_import")),
+      .icon(icons::KEY)
+      .detail(masked(&form.passphrase))
+      .enabled(protected),
       Row::action(
-        Item::ImportGpgKey,
-        self.label("control_center.gpg_keys_import_action"),
+        Item::GpgPassphraseConfirm,
+        self.label("control_center.gpg_keys_passphrase_confirm"),
       )
-      .icon(icons::IMPORT),
-      Row::section(self.label("control_center.gpg_keys_list")),
-    ]);
+      .detail(masked(&form.passphrase_confirm))
+      .enabled(protected),
+      Row::info(hint, String::new()),
+    ]
+  }
+
+  /// The keyring, one block per key that matches the search. The search filters
+  /// the blocks, and refresh reloads the listing.
+  fn gpg_key_list_rows(&self) -> Vec<Row<Item>> {
+    if let Some(row) = self.gpg_blocked_row() {
+      return vec![row];
+    }
+    let mut rows = Vec::new();
     if self.gpg_keys.entries.is_empty() {
       rows.push(Row::info(
         self.label("control_center.gpg_keys_empty"),
@@ -969,7 +1106,7 @@ impl App {
     rows
   }
 
-  /// The pinentry in use, with where its setting comes from: `pinentry-qt (ARGVUS)`.
+  /// The pinentry in use, with where its setting comes from: `pinentry-gtk (ARGVUS)`.
   fn pinentry_text(&self) -> String {
     use crate::system::gpg_keys::PinentryOrigin;
 
@@ -985,6 +1122,200 @@ impl App {
     };
     let name = program.rsplit('/').next().unwrap_or(program);
     format!("{name} ({origin})")
+  }
+
+  /// The key on its own page: details, then the actions that change it. Actions
+  /// that need a private key are off for a public-only key.
+  fn gpg_key_edit_rows(&self) -> Vec<Row<Item>> {
+    if let Some(row) = self.gpg_blocked_row() {
+      return vec![row];
+    }
+    let Some(entry) = self.gpg_edit_entry() else {
+      return vec![Row::info(
+        self.label("control_center.gpg_keys_edit_missing"),
+        String::new(),
+      )];
+    };
+    let secret = if entry.secret {
+      self.label("control_center.gpg_keys_secret_yes")
+    } else {
+      self.label("control_center.gpg_keys_secret_no")
+    };
+    let expires = if entry.expires == "never" {
+      self.label("control_center.gpg_keys_never").to_owned()
+    } else {
+      entry.expires.clone()
+    };
+    let other_signers = self
+      .gpg_keys
+      .entries
+      .iter()
+      .any(|other| other.secret && other.fingerprint != entry.fingerprint);
+    let generating = self.gpg_action.is_some();
+    let mut rows = vec![
+      Row::section(self.label("control_center.gpg_keys_details")),
+      Row::info(
+        self.label("control_center.gpg_keys_identity"),
+        entry.user_id.clone(),
+      ),
+      Row::info(
+        self.label("control_center.gpg_keys_fingerprint"),
+        entry.fingerprint.clone(),
+      ),
+      Row::info(
+        self.label("control_center.gpg_keys_type"),
+        entry.key_type.clone(),
+      ),
+      Row::info(self.label("control_center.gpg_keys_expires"), expires),
+      Row::info(self.label("control_center.gpg_keys_secret"), secret),
+      Row::section(self.label("control_center.gpg_keys_edit")),
+      Row::submenu(
+        Item::OpenGpgEditExpiration,
+        self.label("control_center.gpg_keys_expiration"),
+      )
+      .icon(icons::TIMER)
+      .enabled(entry.secret && !generating),
+      Row::action(
+        Item::GpgEditPasswd,
+        self.label("control_center.gpg_keys_edit_passwd"),
+      )
+      .icon(icons::KEY)
+      .enabled(entry.secret && !generating),
+      Row::submenu(
+        Item::OpenGpgSign,
+        self.label("control_center.gpg_keys_edit_sign"),
+      )
+      .icon(icons::SHIELD)
+      .enabled(entry.secret && other_signers && !generating),
+      Row::submenu(
+        Item::OpenGpgRevoke,
+        self.label("control_center.gpg_keys_edit_revoke"),
+      )
+      .icon(icons::DELETE)
+      .enabled(entry.secret && !generating),
+      Row::section(self.label("control_center.gpg_keys_trust")),
+    ];
+    for level in TrustLevel::ALL {
+      rows.push(Row::choice(
+        Item::GpgTrustWith(level),
+        self.label(trust_label_key(level)),
+        false,
+      ));
+    }
+    rows.extend([
+      Row::section(self.label("control_center.gpg_keys_keyserver")),
+      Row::action(
+        Item::GpgKeyserverSend,
+        self.label("control_center.gpg_keys_keyserver_send"),
+      )
+      .icon(icons::SYNC)
+      .enabled(entry.secret && !generating),
+      Row::action(
+        Item::GpgKeyserverRecv,
+        self.label("control_center.gpg_keys_keyserver_recv"),
+      )
+      .icon(icons::SYNC)
+      .enabled(!generating),
+    ]);
+    rows
+  }
+
+  /// The expiry of the key being edited: the date, the "never" switch and the
+  /// action that applies both.
+  fn gpg_edit_expiration_rows(&self) -> Vec<Row<Item>> {
+    let generating = self.gpg_action.is_some();
+    vec![
+      Row::section(self.label("control_center.gpg_keys_expiration")),
+      Row::action(
+        Item::GpgEditExpiry,
+        self.label("control_center.gpg_keys_expiry"),
+      )
+      .icon(icons::TIMER)
+      .detail(self.gpg_edit_expiry.clone())
+      .enabled(!self.gpg_edit_never),
+      Row::toggle(
+        Item::GpgEditNeverExpires,
+        self.label("control_center.gpg_keys_never_expires"),
+        self.gpg_edit_never,
+      ),
+      Row::info(
+        self.label("control_center.gpg_keys_expiry_layout"),
+        self.gpg_date_order().layout().to_owned(),
+      ),
+      Row::action(
+        Item::ApplyGpgExpiry,
+        self.label("control_center.gpg_keys_apply"),
+      )
+      .icon(icons::SYNC)
+      .enabled(!generating),
+    ]
+  }
+
+  /// The keys that can certify the key being edited: the others with a private part.
+  fn gpg_edit_sign_rows(&self) -> Vec<Row<Item>> {
+    let edited = self.gpg_edit_fingerprint.as_deref();
+    let mut rows = vec![
+      Row::section(self.label("control_center.gpg_keys_edit_sign")),
+      Row::info(
+        self.label("control_center.gpg_keys_sign_hint"),
+        String::new(),
+      ),
+    ];
+    let mut any = false;
+    for (index, entry) in self.gpg_keys.entries.iter().enumerate() {
+      if !entry.secret || Some(entry.fingerprint.as_str()) == edited {
+        continue;
+      }
+      any = true;
+      rows.push(Row::action(Item::GpgSignWith(index), entry.user_id.clone()).icon(icons::KEY));
+    }
+    if !any {
+      rows.push(Row::info(
+        self.label("control_center.gpg_keys_no_signers"),
+        String::new(),
+      ));
+    }
+    rows
+  }
+
+  /// The reasons to revoke the key being edited. Each one asks for confirmation.
+  fn gpg_edit_revoke_rows(&self) -> Vec<Row<Item>> {
+    let mut rows = vec![
+      Row::section(self.label("control_center.gpg_keys_edit_revoke")),
+      Row::info(
+        self.label("control_center.gpg_keys_revoke_hint"),
+        String::new(),
+      ),
+    ];
+    for reason in RevokeReason::ALL {
+      rows.push(Row::destructive(
+        Item::GpgRevokeWith(reason),
+        self.label(revoke_label_key(reason)),
+      ));
+    }
+    rows
+  }
+
+  /// The expiry as the form summarises it: `Never`, or the typed date.
+  fn gpg_expiration_summary(&self) -> String {
+    if self.gpg_form.never_expires {
+      self.label("control_center.gpg_keys_never").to_owned()
+    } else {
+      self.gpg_form.expiry.clone()
+    }
+  }
+
+  /// Whether the next key is protected, as the form summarises it.
+  fn gpg_passphrase_summary(&self) -> String {
+    if self.gpg_form.protect_with_passphrase {
+      self
+        .label("control_center.gpg_keys_passphrase_on")
+        .to_owned()
+    } else {
+      self
+        .label("control_center.gpg_keys_passphrase_off")
+        .to_owned()
+    }
   }
 
   /// One key: its identity, fingerprint, type, expiry and whether the secret
@@ -1026,12 +1357,46 @@ impl App {
       secret,
     ));
     rows.push(
+      Row::submenu(
+        Item::OpenGpgKeyEdit(index),
+        self.label("control_center.gpg_keys_edit"),
+      )
+      .icon(icons::KEY),
+    );
+    rows.push(
       Row::action(
         Item::ExportGpgKey(index),
         self.label("control_center.gpg_keys_export"),
       )
       .icon(icons::EXPORT),
     );
+    if entry.secret {
+      rows.push(
+        Row::action(
+          Item::ExportGpgPrivate(index),
+          self.label("control_center.gpg_keys_export_private"),
+        )
+        .icon(icons::EXPORT),
+      );
+    }
+    rows.push(
+      Row::action(
+        Item::CopyGpgPublic(index),
+        self.label("control_center.gpg_keys_copy_public"),
+      )
+      .icon(icons::COPY),
+    );
+    rows.push(
+      Row::action(
+        Item::CopyGpgFingerprint(index),
+        self.label("control_center.gpg_keys_copy_fingerprint"),
+      )
+      .icon(icons::COPY),
+    );
+    rows.push(Row::destructive(
+      Item::DeleteGpgKey(index),
+      self.label("control_center.gpg_keys_delete"),
+    ));
     rows.push(Row::separator());
   }
 
@@ -1406,4 +1771,37 @@ fn binding_keys(lang: Lang, binding: &keybindings::Binding) -> String {
 /// One line for the list: the content with its line breaks shown inline.
 fn snippet_preview(content: &str) -> String {
   content.lines().collect::<Vec<_>>().join(" / ")
+}
+
+/// The algorithm name shown in the generate form.
+fn algorithm_label(algorithm: crate::system::gpg_keys::KeyAlgorithm) -> &'static str {
+  match algorithm {
+    crate::system::gpg_keys::KeyAlgorithm::Rsa => "RSA",
+    crate::system::gpg_keys::KeyAlgorithm::Dsa => "DSA ElGamal",
+  }
+}
+
+/// A passphrase as asterisks, one per character. The value itself is never shown.
+fn masked(passphrase: &str) -> String {
+  "*".repeat(passphrase.chars().count())
+}
+
+/// The message key of one trust level.
+fn trust_label_key(level: TrustLevel) -> &'static str {
+  match level {
+    TrustLevel::None => "control_center.gpg_keys_trust_none",
+    TrustLevel::Marginal => "control_center.gpg_keys_trust_marginal",
+    TrustLevel::Full => "control_center.gpg_keys_trust_full",
+    TrustLevel::Ultimate => "control_center.gpg_keys_trust_ultimate",
+  }
+}
+
+/// The message key of one revocation reason.
+fn revoke_label_key(reason: RevokeReason) -> &'static str {
+  match reason {
+    RevokeReason::None => "control_center.gpg_keys_revoke_none",
+    RevokeReason::Compromised => "control_center.gpg_keys_revoke_compromised",
+    RevokeReason::Superseded => "control_center.gpg_keys_revoke_superseded",
+    RevokeReason::Unused => "control_center.gpg_keys_revoke_unused",
+  }
 }

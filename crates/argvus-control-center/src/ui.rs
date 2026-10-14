@@ -640,7 +640,14 @@ fn draw_search(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
 
 /// Executes the `home_icon_for_item` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn home_icon_for_item(action: usize) -> String {
-  let glyph = match action {
+  let icon = AppConfig::icon(home_glyph(action));
+  argvus_tui::icons::icon_label(icon, "")
+}
+
+/// The glyph of one Home action. Every action listed on the Home has one, so a
+/// row never appears without its icon.
+fn home_glyph(action: usize) -> &'static str {
+  match action {
     0 => argvus_tui::icons::APPS,
     1 => argvus_tui::icons::FONTS,
     2 => argvus_tui::icons::NETWORK,
@@ -671,10 +678,9 @@ fn home_icon_for_item(action: usize) -> String {
     25 => argvus_tui::icons::TASKBAR,
     26 => argvus_tui::icons::CONTROL_PANEL,
     27 => argvus_tui::icons::TELEMETRY,
+    31 => argvus_tui::icons::SHIELD,
     _ => "",
-  };
-  let icon = AppConfig::icon(glyph);
-  argvus_tui::icons::icon_label(icon, "")
+  }
 }
 
 /// Executes the `home_icon_for_header` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -872,5 +878,13 @@ mod tests {
     assert!(text.contains("Configuração") || text.contains("Configuration"));
     assert!(text.contains("[x]") || text.contains("[ ]"));
     assert!(text.contains("Icones") || text.contains("Icons"));
+  }
+
+  #[test]
+  fn the_key_pages_on_the_home_have_an_icon() {
+    // A Home row without a glyph looks broken next to the others; the SSH and
+    // GPG key pages are the ones that were missing theirs.
+    assert!(!home_glyph(30).is_empty(), "SSH keys");
+    assert!(!home_glyph(31).is_empty(), "GPG keys");
   }
 }
