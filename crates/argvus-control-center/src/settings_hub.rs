@@ -55,6 +55,7 @@ impl SettingsHub {
       frame,
       frame.area(),
       theme,
+      lang,
       tr(lang, "control_center.settings"),
       tr(lang, "control_center.navigate_enter_open_esc_back_help"),
     );

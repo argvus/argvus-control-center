@@ -7,6 +7,7 @@ use crate::{
   journal::JournalEntry,
   model::{ServicePage, Unit},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
@@ -665,7 +666,7 @@ impl ServicesApp {
   pub fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_system"),
+      HomeCardId::System.label(self.lang),
       tr(self.lang, "control_center.services")
     );
     if self.page == ServicePage::Home {
@@ -904,6 +905,7 @@ impl ServicesApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.footer_hints(),
     );

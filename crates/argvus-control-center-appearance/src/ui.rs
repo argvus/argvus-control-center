@@ -15,6 +15,7 @@ use crate::{
     theme_family_label,
   },
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_theme::discovery::ThemeCategory;
 use rows::Item;
 
@@ -1779,7 +1780,7 @@ impl AppearanceApp {
   }
 
   fn breadcrumb_of(&self, page: AppearancePage) -> String {
-    let root = tr(self.lang, "control_center.appearance");
+    let root = HomeCardId::Appearance.label(self.lang);
     // Window Spaces, Animations, Blur and Borders are owned by the Hyprland
     // domain: they only exist behind the Hyprland router (crate principal),
     // even though they are implemented in this crate for reuse. Their
@@ -1787,7 +1788,7 @@ impl AppearanceApp {
     // Hyprland is listed under the Desktop & Input card on the principal
     // Home; Taskbar, Control Center and Widget Telemetry are listed under
     // Appearance, so their breadcrumbs start from the Appearance root.
-    let desktop_input_root = tr(self.lang, "control_center.card_desktop_input");
+    let desktop_input_root = HomeCardId::DesktopInput.label(self.lang);
     let hyprland_root = format!(
       "{desktop_input_root} > {}",
       tr(self.lang, "control_center.hyprland")
@@ -2109,6 +2110,7 @@ impl AppearanceApp {
       frame,
       frame.area(),
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.hints(&rows),
     );

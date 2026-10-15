@@ -7,6 +7,7 @@ use crate::{
   journal::JournalEntry,
   model::{AutostartEntry, Component, ComponentStatus, DiagnosticsEntry, SessionPage, manifest},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
@@ -515,7 +516,7 @@ impl SessionApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.preferences"),
+      HomeCardId::Preferences.label(self.lang),
       tr(self.lang, "control_center.session")
     );
     if self.page == SessionPage::Home {
@@ -653,6 +654,7 @@ impl SessionApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       self.footer_hints(),
     );

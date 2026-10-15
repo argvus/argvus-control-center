@@ -9,6 +9,7 @@ use crate::{
     AgentEvent, AgentPrompt, AgentReply, BluetoothPage, BluetoothSnapshot, Device, PromptStep,
   },
 };
+use argvus_control_center_core::navigation::{HomeCardId, join};
 use argvus_control_center_core::{
   capabilities::Capabilities,
   jobs::{JobHandle, JobManager, JobState},
@@ -578,13 +579,22 @@ impl BluetoothApp {
   }
   /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn draw(&self, f: &mut Frame) {
-    let breadcrumb = match self.page {
+    // Bluetooth is listed under the Hardware card, so its path starts there.
+    let page = match self.page {
       BluetoothPage::Home => tr(self.lang, "control_center.bluetooth"),
       BluetoothPage::State => tr(self.lang, "control_center.bluetooth_state"),
       BluetoothPage::Devices => tr(self.lang, "control_center.bluetooth_devices"),
       BluetoothPage::Pair => tr(self.lang, "control_center.bluetooth_pair"),
     };
-    let area = shell(f, f.area(), &self.theme, breadcrumb, self.footer_hints());
+    let breadcrumb = join(&[HomeCardId::Hardware.label(self.lang), page]);
+    let area = shell(
+      f,
+      f.area(),
+      &self.theme,
+      self.lang,
+      &breadcrumb,
+      self.footer_hints(),
+    );
     let buttons = self.buttons();
     let raw_buttons: Vec<Button> = buttons.iter().map(|(_, button)| button.clone()).collect();
     let (body, button_area) = if raw_buttons.is_empty() {

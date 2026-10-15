@@ -1366,6 +1366,77 @@ Validação: `cargo fmt --all -- --check`, `cargo check --workspace
 `argvus-control-center-core` e `argvus-tui`, todos sem falhas. Não
 documentado como "Fase" porque não migra nenhum botão para `RowKind`.
 
+### 5.11 Raiz traduzida, fonte única de cartões e breadcrumbs em pt-BR (2026-10-15)
+
+- **Raiz traduzida**: a chave `control_center.breadcrumb.root` (en-US
+  `Control Center`, pt-BR `Central de Controle`) é a única fonte do prefixo do
+  cabeçalho. `argvus_tui::page::shell` recebe `lang` e monta `<raiz> > <caminho>`;
+  antes o prefixo era o texto fixo `Control Center >`. A chave
+  `argvus_control_center` (título da Home e do About) passou a `Central de Controle`
+  em pt-BR, para o título e o caminho dizerem a mesma coisa.
+- **Fonte única dos cartões**: `argvus-control-center-core/src/navigation.rs`
+  define `HomeCardId` (Appearance, DesktopInput, Preferences, Hardware, System,
+  Tools), `root_label`, `join` e o separador `" > "`. A Home (`home/catalog.rs`),
+  os breadcrumbs de cada crate, o settings e a busca (`search_category`) leem os
+  nomes dos cartões dali. Não há mais `control_center.card_*` repetido dentro de
+  breadcrumbs. As chaves são as mesmas que já existiam; nenhuma chave de cartão foi criada.
+- **Bluetooth sob Hardware**: o Bluetooth passa a mostrar o cartão em que está
+  listado. Antes: `Control Center > Bluetooth > State`; agora:
+  `Control Center > Hardware & Connectivity > Bluetooth > State`
+  (pt-BR: `Central de Controle > Hardware e conectividade > Bluetooth > …`).
+- **Testes**: breadcrumbs em en-US e pt-BR no settings (`breadcrumbs_are_translated_in_pt_br`),
+  cabeçalho renderizado em pt-BR no diagnostics
+  (`diagnostics_header_is_translated_in_pt_br`), paridade da busca com o cartão
+  (`search_and_breadcrumbs_share_card_names`), `navigation.rs` (raiz e cartões
+  traduzidos em ambos os idiomas) e a raiz do `argvus-tui` lida do catálogo.
+
+Glossário (en → pt-BR), para revisão humana:
+
+| en-US | pt-BR | Chave |
+| --- | --- | --- |
+| Control Center | Central de Controle | `control_center.breadcrumb.root` |
+| Appearance | Aparência | `appearance` |
+| Desktop & Input | Desktop e entrada | `card_desktop_input` |
+| Preferences | Preferências | `preferences` |
+| Hardware & Connectivity | Hardware e conectividade | `card_hardware` |
+| System Administration | Administração do sistema | `card_system` |
+| Tools & Diagnostics | Ferramentas e diagnóstico | `card_tools` |
+| Settings | Configurações | `settings` |
+| Language & Region | Idioma e Região | `language_region` |
+| Displays | Monitores | `displays` |
+| Audio | Áudio | `audio` |
+
+Títulos da busca:
+
+- Cada entrada do registro (`app.rs`) guarda a chave do título, e o título é
+  resolvido no idioma atual ao registrar. A função `search_title` e o mapa por
+  segmento de rota foram removidos. Assim a busca mostra o mesmo texto da página,
+  e a pesquisa também casa termos em pt-BR. As palavras-chave em inglês e português continuam.
+- Três títulos mudaram de texto para bater com a página: `Dev Services` virou
+  `Developer Services`, `Highlight color` virou `Accent Color`, e `Kernel and Boot`
+  virou `Kernel & Boot`. `Widget Telemetry` passou a `Widget telemetry`, a
+  forma da chave existente. Só quatro chaves são novas: `themes`,
+  `taskbar_icons`, `taskbar_date` e `taskbar_time`.
+
+Revisão de termos pt-BR:
+
+- `Central de Controle` foi escolhido pelo mantenedor.
+- `Apps Padrão` virou `Aplicativos padrão`, sem mistura de idiomas.
+- `Kernel & Boot` virou `Kernel e boot`.
+- `Hostname` continua como termo técnico, consistente com a seção do sistema.
+- Ainda em inglês no catálogo pt-BR, para decisão futura: `Mirrors`, `Snippets`,
+  `Autostart` e `Dev Dashboard`.
+
+Verificação visual:
+
+- Em um terminal real (tmux, 120x40), a Home renderiza em pt-BR com
+  `Central de Controle` no título, e a página Hardware mostra
+  `Central de Controle > Hardware e conectividade > Visão geral do hardware > Resumo`.
+- A digitação de busca não chegou ao app no tmux: `/` e as letras não alteraram
+  o campo, e o `j` não moveu a seleção de forma verificável. Por isso a busca em
+  pt-BR foi verificada por testes (títulos resolvidos e chaves presentes nos dois
+  catálogos), não pela tela.
+
 ### 5.10 Settings do Control Center, System Administration e breadcrumbs (2026-10-15)
 
 - **Settings** é um item fora dos cards, no fim da Home (`HomeRow::Standalone`).

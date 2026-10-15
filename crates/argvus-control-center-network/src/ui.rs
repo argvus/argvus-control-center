@@ -6,6 +6,7 @@ use crate::{
   backend::NetworkBackend,
   model::{NetworkPage, NetworkSnapshot},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -317,7 +318,7 @@ impl NetworkApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_hardware"),
+      HomeCardId::Hardware.label(self.lang),
       tr(self.lang, "control_center.network_wifi")
     );
     if self.page == NetworkPage::Home {
@@ -801,6 +802,7 @@ impl NetworkApp {
       f,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.footer_hints(&rows),
     );

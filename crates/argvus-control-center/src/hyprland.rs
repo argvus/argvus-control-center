@@ -13,6 +13,7 @@
 use crate::app::{App, Route};
 #[cfg(feature = "appearance")]
 use argvus_control_center_appearance::AppearancePage;
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_settings::Page;
 use argvus_i18n::tr;
 use argvus_tui::{
@@ -132,7 +133,7 @@ fn info_rows(app: &App) -> Vec<Row<Item>> {
 pub fn breadcrumb(app: &App) -> String {
   let root = format!(
     "{} > {}",
-    tr(app.lang, "control_center.card_desktop_input"),
+    HomeCardId::DesktopInput.label(app.lang),
     tr(app.lang, "control_center.hyprland")
   );
   match app.hyprland.view {
@@ -227,6 +228,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
     frame,
     frame.area(),
     &app.theme,
+    app.lang,
     &breadcrumb(app),
     &footer_text,
   );

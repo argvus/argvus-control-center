@@ -64,6 +64,12 @@ make package           # build the local Arch package
   commands.
 - **Language layer**: all user-visible strings go through `argvus-i18n` (`tr()`).
   Never embed hard-coded Portuguese or English strings in the UI.
+- **Navigation names**: the navigation root and the Home card names are defined
+  once in `argvus-control-center-core::navigation` (`HomeCardId`, `root_label`,
+  `join`). Breadcrumbs, the Home and search read them from there; do not write a
+  `control_center.card_*` key inside a breadcrumb. `argvus_tui::page::shell`
+  takes the `lang` and prefixes the translated root
+  (`control_center.breadcrumb.root`).
 
 ## Testing rules
 

@@ -6,6 +6,7 @@ use crate::{
   backend,
   model::{LidContext, PowerBehavior, PowerButtonBehavior, PowerPage, PowerState},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
@@ -708,9 +709,10 @@ impl PowerApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &format!(
         "{} > {}",
-        tr(self.lang, "control_center.preferences"),
+        HomeCardId::Preferences.label(self.lang),
         tr(self.lang, "control_center.power")
       ),
       tr(

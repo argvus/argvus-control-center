@@ -5,6 +5,7 @@
 //! is the gate of the row that lists it; runtime availability (capabilities,
 //! system locales) is passed in explicitly through [`HomeAvailability`].
 
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_i18n::{Lang, tr};
 use argvus_tui::icons;
 
@@ -246,7 +247,7 @@ pub fn home_rows(
     &mut rows,
     card(
       lang,
-      "control_center.appearance",
+      HomeCardId::Appearance.title_key(),
       "control_center.card_appearance_description",
       icons::PALETTE,
     ),
@@ -290,7 +291,7 @@ pub fn home_rows(
     &mut rows,
     card(
       lang,
-      "control_center.card_desktop_input",
+      HomeCardId::DesktopInput.title_key(),
       "control_center.card_desktop_input_description",
       icons::KEYBOARD,
     ),
@@ -333,7 +334,7 @@ pub fn home_rows(
     &mut rows,
     card(
       lang,
-      "control_center.preferences",
+      HomeCardId::Preferences.title_key(),
       "control_center.card_preferences_description",
       icons::ACCOUNT_COG,
     ),
@@ -374,7 +375,7 @@ pub fn home_rows(
     &mut rows,
     card(
       lang,
-      "control_center.card_hardware",
+      HomeCardId::Hardware.title_key(),
       "control_center.card_hardware_description",
       icons::HARDWARE,
     ),
@@ -425,7 +426,7 @@ pub fn home_rows(
     &mut rows,
     card(
       lang,
-      "control_center.card_system",
+      HomeCardId::System.title_key(),
       "control_center.card_system_description",
       icons::SETTINGS,
     ),
@@ -482,7 +483,7 @@ pub fn home_rows(
     &mut rows,
     card(
       lang,
-      "control_center.card_tools",
+      HomeCardId::Tools.title_key(),
       "control_center.card_tools_description",
       icons::WRENCH,
     ),

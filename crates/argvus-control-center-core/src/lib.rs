@@ -7,6 +7,7 @@ pub mod config;
 pub mod format;
 pub mod i18n;
 pub mod jobs;
+pub mod navigation;
 pub mod paths;
 pub mod picker;
 pub mod privileged;

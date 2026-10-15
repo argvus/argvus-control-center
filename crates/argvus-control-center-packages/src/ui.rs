@@ -10,6 +10,7 @@ use crate::{
   },
 };
 use argvus_control_center_core::format::human_bytes;
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -1672,6 +1673,7 @@ impl PackagesApp {
       f,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.footer_hints(&rows),
     );
@@ -1788,7 +1790,7 @@ impl PackagesApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_system"),
+      HomeCardId::System.label(self.lang),
       tr(self.lang, "control_center.packages")
     );
     if self.page == PackagesPage::Home {

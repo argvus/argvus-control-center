@@ -346,6 +346,7 @@ impl ConfigApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       self.footer_hints(),
     );

@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use argvus_control_center_core::config::AppConfig;
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_i18n::tr;
 use argvus_tui::chrome::{Header, draw_footer, draw_header, draw_help, draw_too_small};
 use argvus_tui::text::ellipsize;
@@ -143,7 +144,7 @@ fn draw_home(app: &mut App, frame: &mut Frame) {
           let label = format!(
             "{} > {}",
             search_category(app.lang, &entry.category),
-            search_title(app.lang, entry)
+            entry.title
           );
           let style = if is_selected {
             Style::new()
@@ -502,74 +503,14 @@ fn home_icon_for_item(destination: HomeDestination) -> String {
 
 /// Executes the `search_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn search_category(lang: argvus_i18n::Lang, category: &str) -> String {
+  // A card category shares its label with the Home and the breadcrumbs.
+  if let Some(card) = HomeCardId::from_search_category(category) {
+    return card.label(lang).to_string();
+  }
   let key = format!("control_center.{category}");
   let translated = tr(lang, &key);
   if translated == key {
     category.to_string()
-  } else {
-    translated.to_string()
-  }
-}
-
-/// Executes the `search_title` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn search_title(
-  lang: argvus_i18n::Lang,
-  entry: &argvus_control_center_core::search::SearchEntry,
-) -> String {
-  let segment = entry
-    .route
-    .rsplit('/')
-    .next()
-    .unwrap_or(entry.title.as_str());
-  let key = match segment {
-    "fonts" => "control_center.fonts",
-    "default-apps" => "control_center.default_apps",
-    "wifi" => "control_center.wi_fi",
-    "plymouth" => "control_center.plymouth",
-    "bootloader" => "control_center.bootloader_f1a3c5",
-    "initramfs" => "control_center.initramfs",
-    "summary" => "control_center.summary",
-    "status" => "control_center.status",
-    "interfaces" => "control_center.interfaces",
-    "ethernet" => "control_center.ethernet",
-    "vpn" => "control_center.vpn",
-    "dns" => "control_center.dns",
-    "proxy" => "control_center.proxy",
-    "output" => "control_center.output",
-    "input" => "control_center.input",
-    "devices" => "control_center.devices",
-    "state" => "control_center.state",
-    "pair" => "control_center.pair",
-    "cpu" => "control_center.hardware_cpu",
-    "gpu" => "control_center.hardware_gpu",
-    "memory" => "control_center.memory",
-    "power" => "control_center.power",
-    "system" => "control_center.system",
-    "user" => "control_center.user",
-    "failed" => "control_center.failed",
-    "logs" => "control_center.logs",
-    "search" => "control_center.search_2c43ee",
-    "installed" => "control_center.installed_e91b6d",
-    "updates" => "control_center.updates",
-    "orphans" => "control_center.orphans_29aae8",
-    "cache" => "control_center.cache",
-    "aur" => "control_center.aur",
-    "history" => "control_center.history",
-    "downgrade" => "control_center.downgrade",
-    "mirrors" => "control_center.mirrors",
-    "disks" => "control_center.disks",
-    "partitions" => "control_center.partitions",
-    "filesystems" => "control_center.filesystems",
-    "mounts" => "control_center.mount_points",
-    "smart" => "control_center.smart",
-    "usage" => "control_center.disk_usage",
-    "keybindings" => "control_center.keyboard_shortcuts",
-    "mode" => "control_center.resolution",
-    _ => return entry.title.clone(),
-  };
-  let translated = tr(lang, key);
-  if translated == key {
-    entry.title.clone()
   } else {
     translated.to_string()
   }
@@ -580,6 +521,25 @@ mod tests {
   use super::*;
   use crate::app::InitialRoute;
   use ratatui::{Terminal, backend::TestBackend};
+
+  #[test]
+  /// A search card label and a breadcrumb card label come from the same
+  /// `HomeCardId`, so they read the same in en-US and pt-BR.
+  fn search_and_breadcrumbs_share_card_names() {
+    for lang in [
+      argvus_i18n::Lang::for_locale("en-US"),
+      argvus_i18n::Lang::for_locale("pt-BR"),
+    ] {
+      for card in HomeCardId::ALL {
+        let category = card.title_key().strip_prefix("control_center.").unwrap();
+        assert_eq!(
+          search_category(lang, category),
+          card.label(lang),
+          "{card:?}"
+        );
+      }
+    }
+  }
 
   #[test]
   /// Executes the `home_renders_existing_and_phase_two_destinations` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

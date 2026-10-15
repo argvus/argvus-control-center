@@ -52,6 +52,8 @@ The main settings tree currently includes:
 
 Some of these are full pages and some are subpages reached through search or a domain summary. The exact list is determined by the installed ARGVUS providers.
 
+Each page shows its path in the header, for example `Control Center > Hardware & Connectivity > Audio`. The path starts with the Home card that lists the page, so the same page reads the same from the Home, from search and from the CLI. The root and the card names are translated: the Portuguese interface shows `Central de Controle > Hardware e conectividade > Áudio`.
+
 ## What each area is for
 
 ### Appearance

@@ -6,6 +6,7 @@ use crate::{
   backend,
   model::{HardwarePage, HardwareSnapshot, format_kib},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -396,7 +397,7 @@ impl HardwareApp {
   pub fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_hardware"),
+      HomeCardId::Hardware.label(self.lang),
       tr(self.lang, "control_center.hardware_overview")
     );
     if self.page == HardwarePage::Home {
@@ -454,7 +455,14 @@ impl HardwareApp {
       )
     };
 
-    let body = shell(frame, area, &self.theme, &self.breadcrumb(), hints);
+    let body = shell(
+      frame,
+      area,
+      &self.theme,
+      self.lang,
+      &self.breadcrumb(),
+      hints,
+    );
     let buttons = self.buttons();
 
     let (content_area, button_area) = if buttons.is_empty() {

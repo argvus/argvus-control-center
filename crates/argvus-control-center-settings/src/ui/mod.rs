@@ -577,7 +577,7 @@ mod tests {
       .map(|cell| cell.symbol())
       .collect::<String>();
     assert!(rendered.contains("ARGVUS"));
-    assert!(rendered.contains("Default Apps") || rendered.contains("Apps Padrão"));
+    assert!(rendered.contains("Default Apps") || rendered.contains("Aplicativos padrão"));
     let quit = format!(
       "q {}",
       crate::i18n::tr(app.lang, "control_center.hint.quit")

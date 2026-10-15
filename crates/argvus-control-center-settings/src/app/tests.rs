@@ -1541,3 +1541,62 @@ fn breadcrumbs_show_the_home_card_of_each_page() {
     assert_eq!(app(page).breadcrumb(), expected, "{page:?}");
   }
 }
+
+fn app_in(page: Page, locale: &str) -> App {
+  let mut app = App::with_context(page, Lang::for_locale(locale), Theme::load());
+  app.error_modal = None;
+  app
+}
+
+#[test]
+/// The same breadcrumbs in pt-BR: the root and every card are translated, and
+/// no English card name leaks into the path.
+fn breadcrumbs_are_translated_in_pt_br() {
+  let cases = [
+    (
+      Page::Hostname,
+      "Central de Controle > Administração do sistema > Hostname",
+    ),
+    (
+      Page::UsersGroups,
+      "Central de Controle > Administração do sistema > Usuários e grupos",
+    ),
+    (
+      Page::DefaultApps,
+      "Central de Controle > Preferências > Aplicativos padrão",
+    ),
+    (
+      Page::LocaleRegion,
+      "Central de Controle > Preferências > Idioma e Região",
+    ),
+    (
+      Page::Keybindings,
+      "Central de Controle > Desktop e entrada > Atalhos de Teclado",
+    ),
+    (
+      Page::MouseTouchpad,
+      "Central de Controle > Desktop e entrada > Mouse e Touchpad",
+    ),
+    (
+      Page::Projects,
+      "Central de Controle > Ferramentas e diagnóstico > Projetos",
+    ),
+    (
+      Page::SshKeys,
+      "Central de Controle > Ferramentas e diagnóstico > Chaves SSH",
+    ),
+    (
+      Page::Language,
+      "Central de Controle > Configurações > Idioma",
+    ),
+  ];
+  for (page, expected) in cases {
+    let breadcrumb = app_in(page, "pt-BR").breadcrumb();
+    assert_eq!(breadcrumb, expected, "{page:?}");
+    assert!(
+      !breadcrumb.contains("System Administration"),
+      "{breadcrumb}"
+    );
+    assert!(!breadcrumb.contains("Control Center"), "{breadcrumb}");
+  }
+}

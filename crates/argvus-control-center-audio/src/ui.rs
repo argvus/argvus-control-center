@@ -6,6 +6,7 @@ use crate::{
   backend::{AudioBackend, AudioError, clamp_volume},
   model::{AudioDevice, AudioPage, AudioSnapshot},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -524,6 +525,7 @@ impl AudioApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       self.footer_hints(),
     );
@@ -859,7 +861,7 @@ impl AudioApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_hardware"),
+      HomeCardId::Hardware.label(self.lang),
       tr(self.lang, "control_center.audio")
     );
     if self.page == AudioPage::Home {

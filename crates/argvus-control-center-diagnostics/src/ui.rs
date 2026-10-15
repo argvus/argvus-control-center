@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::{backend, model::*};
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -218,7 +219,7 @@ impl DiagnosticsApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_tools"),
+      HomeCardId::Tools.label(self.lang),
       tr(self.lang, "control_center.diagnostics")
     );
     match self.page {
@@ -493,6 +494,7 @@ impl DiagnosticsApp {
       frame,
       frame.area(),
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       self.footer_hints(),
     );
@@ -644,11 +646,12 @@ mod tests {
 
   /// Executes the `app` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn app() -> DiagnosticsApp {
-    let mut app = DiagnosticsApp::new(
-      Lang::for_locale("en-US"),
-      Theme::load(),
-      Capabilities::default(),
-    );
+    app_in(Lang::for_locale("en-US"))
+  }
+
+  /// The diagnostics page in `lang`, with fixed checks.
+  fn app_in(lang: Lang) -> DiagnosticsApp {
+    let mut app = DiagnosticsApp::new(lang, Theme::load(), Capabilities::default());
     app.job = None;
     app.checks = vec![
       DiagnosticCheck {
@@ -798,6 +801,28 @@ mod tests {
       .collect::<String>();
     assert!(text.contains("Services"));
     assert!(text.contains("Details"));
+  }
+
+  #[test]
+  /// The header is drawn from the translated root and card: in pt-BR the rendered
+  /// screen shows the full path in Portuguese and no English navigation segment.
+  fn diagnostics_header_is_translated_in_pt_br() {
+    let app = app_in(Lang::for_locale("pt-BR"));
+    let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
+    let mut app = app;
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let rendered = terminal
+      .backend()
+      .buffer()
+      .content
+      .iter()
+      .map(|cell| cell.symbol())
+      .collect::<String>();
+    assert!(
+      rendered.contains("Central de Controle > Ferramentas e diagnóstico > Diagnóstico"),
+      "{rendered}"
+    );
+    assert!(!rendered.contains("Tools & Diagnostics"), "{rendered}");
   }
 
   #[test]

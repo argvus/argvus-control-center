@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::{backend, model::DevServicesSnapshot};
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -144,7 +145,7 @@ impl DevServicesApp {
   pub fn breadcrumb(&self) -> String {
     format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_tools"),
+      HomeCardId::Tools.label(self.lang),
       tr(self.lang, "control_center.developer_services")
     )
   }
@@ -241,6 +242,7 @@ impl DevServicesApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.footer_hints(),
     );

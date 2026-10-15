@@ -53,6 +53,8 @@ A árvore atual de configurações inclui:
 
 Alguns itens são páginas completas e outros são subpáginas alcançadas pela busca ou por um resumo de domínio. A lista exata depende dos providers ARGVUS instalados.
 
+Cada página mostra o seu caminho no cabeçalho, por exemplo `Central de Controle > Hardware e conectividade > Áudio`. O caminho começa no cartão da Home que lista a página, então ela aparece do mesmo jeito pela Home, pela busca e pela CLI. A raiz e os nomes dos cartões são traduzidos; em inglês o cabeçalho mostra `Control Center > Hardware & Connectivity > Audio`.
+
 ## Para que serve cada área
 
 ### Aparência

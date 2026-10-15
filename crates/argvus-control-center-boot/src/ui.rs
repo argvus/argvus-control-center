@@ -6,6 +6,7 @@ use crate::{
   backend::BootBackend,
   model::{BootPage, BootSnapshot, BootloaderKind},
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -643,6 +644,7 @@ impl BootApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.footer_hints(&rows),
     );
@@ -1177,7 +1179,7 @@ impl BootApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_system"),
+      HomeCardId::System.label(self.lang),
       tr(self.lang, "control_center.boot")
     );
     if self.page == BootPage::Home {

@@ -406,7 +406,7 @@ impl App {
       (
         "settings.fonts",
         "appearance",
-        "Fonts",
+        "control_center.fonts",
         "font fonts typeface typography",
         "settings/fonts",
       ),
@@ -414,7 +414,7 @@ impl App {
       (
         "settings.default_apps",
         "preferences",
-        "Default Apps",
+        "control_center.default_apps",
         "default application apps browser terminal file manager",
         "settings/default-apps",
       ),
@@ -422,7 +422,7 @@ impl App {
       (
         "settings.window_rules",
         "card_desktop_input",
-        "Window rules",
+        "control_center.window_rules",
         "window rules workspace class app placement regras janela area de trabalho",
         "settings/window-rules",
       ),
@@ -430,7 +430,7 @@ impl App {
       (
         "settings.projects",
         "card_tools",
-        "Projects",
+        "control_center.projects",
         "projects project folders path directory root shortcut seletor projetos pastas caminho diretorio raiz atalho",
         "settings/projects",
       ),
@@ -438,7 +438,7 @@ impl App {
       (
         "settings.snippets",
         "card_tools",
-        "Snippets",
+        "control_center.snippets",
         "snippets snippet text type typing shortcut picker trechos texto digitar atalho seletor",
         "settings/snippets",
       ),
@@ -446,7 +446,7 @@ impl App {
       (
         "settings.ssh_keys",
         "card_tools",
-        "SSH keys",
+        "control_center.ssh_keys",
         "ssh keys key pair generate load unload agent passphrase chaves ssh gerar carregar descarregar agente senha par",
         "settings/ssh-keys",
       ),
@@ -454,7 +454,7 @@ impl App {
       (
         "settings.gpg_keys",
         "card_tools",
-        "GPG keys",
+        "control_center.gpg_keys",
         "gpg keys key pair generate export import pinentry passphrase chaves gpg gerar exportar importar senha pinentry",
         "settings/gpg-keys",
       ),
@@ -462,7 +462,7 @@ impl App {
       (
         "settings.firewall",
         "card_system",
-        "Firewall",
+        "control_center.firewall",
         "firewall ports rules block allow network security portas regras bloquear permitir rede seguranca",
         "settings/firewall",
       ),
@@ -470,7 +470,7 @@ impl App {
       (
         "settings.hostname",
         "card_system",
-        "Hostname",
+        "control_center.hostname",
         "hostname name machine computer host nome maquina computador",
         "settings/hostname",
       ),
@@ -478,7 +478,7 @@ impl App {
       (
         "settings.users_groups",
         "card_system",
-        "Users & Groups",
+        "control_center.users_groups",
         "users groups accounts usuarios grupos contas",
         "settings/users-groups",
       ),
@@ -486,7 +486,7 @@ impl App {
       (
         "settings.notifications",
         "card_system",
-        "Notifications",
+        "control_center.notifications",
         "notifications do not disturb dnd silence notificacoes nao perturbe silenciar",
         "settings/notifications",
       ),
@@ -494,7 +494,7 @@ impl App {
       (
         "about",
         "system",
-        "About",
+        "control_center.about",
         "about information version license",
         "about/system",
       ),
@@ -502,7 +502,7 @@ impl App {
       (
         "network",
         "network",
-        "Network",
+        "control_center.network",
         "network internet connectivity",
         "network/home",
       ),
@@ -510,7 +510,7 @@ impl App {
       (
         "audio",
         "audio",
-        "Audio",
+        "control_center.audio",
         "audio sound volume",
         "audio/home",
       ),
@@ -518,7 +518,7 @@ impl App {
       (
         "bluetooth",
         "bluetooth",
-        "Bluetooth",
+        "control_center.bluetooth",
         "bluetooth wireless pairing",
         "bluetooth/home",
       ),
@@ -526,14 +526,14 @@ impl App {
       (
         "hardware",
         "hardware",
-        "Hardware",
+        "control_center.hardware",
         "hardware system devices",
         "hardware/home",
       ),
       (
         "settings.keybindings",
         "card_desktop_input",
-        "Keyboard Shortcuts",
+        "control_center.keyboard_shortcuts",
         "keyboard shortcuts keybindings hotkeys bindings atalhos teclado",
         "settings/keybindings",
       ),
@@ -541,7 +541,7 @@ impl App {
       (
         "services",
         "services",
-        "Services",
+        "control_center.services",
         "services systemd daemon",
         "services/home",
       ),
@@ -549,17 +549,23 @@ impl App {
       (
         "dev-services",
         "dev-services",
-        "Dev Services",
+        "control_center.developer_services",
         "dev services systemd ports containers podman docker desenvolvimento portas",
         "dev-services/home",
       ),
       #[cfg(feature = "boot")]
-      ("boot", "boot", "Boot", "boot startup", "boot/home"),
+      (
+        "boot",
+        "boot",
+        "control_center.boot",
+        "boot startup",
+        "boot/home",
+      ),
       #[cfg(feature = "packages")]
       (
         "packages",
         "packages",
-        "Packages",
+        "control_center.section_packages",
         "package pacman software",
         "packages/home",
       ),
@@ -567,7 +573,7 @@ impl App {
       (
         "storage",
         "storage",
-        "Storage",
+        "control_center.storage",
         "storage disk filesystem",
         "storage/home",
       ),
@@ -575,7 +581,7 @@ impl App {
       (
         "diagnostics",
         "diagnostics",
-        "Diagnostics",
+        "control_center.diagnostics",
         "diagnostics health",
         "diagnostics/home",
       ),
@@ -583,7 +589,7 @@ impl App {
       (
         "hardware.summary",
         "hardware",
-        "Summary",
+        "control_center.summary",
         "summary hardware overview",
         "hardware/summary",
       ),
@@ -591,7 +597,7 @@ impl App {
       (
         "hardware.cpu",
         "hardware",
-        "CPU",
+        "control_center.hardware_cpu",
         "cpu processor",
         "hardware/cpu",
       ),
@@ -599,7 +605,7 @@ impl App {
       (
         "hardware.gpu",
         "hardware",
-        "GPU",
+        "control_center.hardware_gpu",
         "gpu graphics video driver",
         "hardware/gpu",
       ),
@@ -607,7 +613,7 @@ impl App {
       (
         "hardware.memory",
         "hardware",
-        "Memory",
+        "control_center.memory",
         "memory ram",
         "hardware/memory",
       ),
@@ -615,7 +621,7 @@ impl App {
       (
         "hardware.power",
         "hardware",
-        "Power",
+        "control_center.power",
         "power energy battery",
         "hardware/power",
       ),
@@ -623,7 +629,7 @@ impl App {
       (
         "hardware.devices",
         "hardware",
-        "Devices",
+        "control_center.devices",
         "devices pci usb drm input",
         "hardware/devices",
       ),
@@ -631,7 +637,7 @@ impl App {
       (
         "services.system",
         "services",
-        "System",
+        "control_center.system",
         "systemd services service daemon",
         "services/system",
       ),
@@ -639,7 +645,7 @@ impl App {
       (
         "services.user",
         "services",
-        "User",
+        "control_center.user",
         "systemd user service",
         "services/user",
       ),
@@ -647,7 +653,7 @@ impl App {
       (
         "services.failed",
         "services",
-        "Failed",
+        "control_center.failed",
         "failed failures",
         "services/failed",
       ),
@@ -655,7 +661,7 @@ impl App {
       (
         "services.logs",
         "services",
-        "Logs",
+        "control_center.logs",
         "logs journal journalctl",
         "services/logs",
       ),
@@ -663,7 +669,7 @@ impl App {
       (
         "network.status",
         "network",
-        "Status",
+        "control_center.status",
         "network rede internet",
         "network/status",
       ),
@@ -671,7 +677,7 @@ impl App {
       (
         "network.interfaces",
         "network",
-        "Interfaces",
+        "control_center.interfaces",
         "interfaces interface rede",
         "network/interfaces",
       ),
@@ -679,7 +685,7 @@ impl App {
       (
         "network.wifi",
         "network",
-        "Wi-Fi",
+        "control_center.wi_fi",
         "wifi wireless wlan sem fio",
         "network/wifi",
       ),
@@ -687,7 +693,7 @@ impl App {
       (
         "network.ethernet",
         "network",
-        "Ethernet",
+        "control_center.ethernet",
         "ethernet lan",
         "network/ethernet",
       ),
@@ -695,7 +701,7 @@ impl App {
       (
         "network.vpn",
         "network",
-        "VPN",
+        "control_center.vpn",
         "vpn wireguard openvpn tunnel",
         "network/vpn",
       ),
@@ -703,7 +709,7 @@ impl App {
       (
         "network.dns",
         "network",
-        "DNS",
+        "control_center.dns",
         "dns resolved nameserver",
         "network/dns",
       ),
@@ -711,7 +717,7 @@ impl App {
       (
         "network.proxy",
         "network",
-        "Proxy",
+        "control_center.proxy",
         "proxy http https",
         "network/proxy",
       ),
@@ -719,7 +725,7 @@ impl App {
       (
         "audio.output",
         "audio",
-        "Output",
+        "control_center.output",
         "audio sound som output saída",
         "audio/output",
       ),
@@ -727,7 +733,7 @@ impl App {
       (
         "audio.input",
         "audio",
-        "Input",
+        "control_center.input",
         "audio microphone microfone input entrada",
         "audio/input",
       ),
@@ -735,7 +741,7 @@ impl App {
       (
         "audio.devices",
         "audio",
-        "Devices",
+        "control_center.devices",
         "audio devices dispositivos",
         "audio/devices",
       ),
@@ -743,7 +749,7 @@ impl App {
       (
         "bluetooth.state",
         "bluetooth",
-        "State",
+        "control_center.state",
         "bluetooth bt estado",
         "bluetooth/state",
       ),
@@ -751,7 +757,7 @@ impl App {
       (
         "bluetooth.devices",
         "bluetooth",
-        "Devices",
+        "control_center.devices",
         "bluetooth dispositivos",
         "bluetooth/devices",
       ),
@@ -759,7 +765,7 @@ impl App {
       (
         "bluetooth.pair",
         "bluetooth",
-        "Pair",
+        "control_center.pair",
         "bluetooth pair parear",
         "bluetooth/pair",
       ),
@@ -767,7 +773,7 @@ impl App {
       (
         "boot.summary",
         "boot",
-        "Summary",
+        "control_center.summary",
         "boot startup inicializacao kernel",
         "boot/summary",
       ),
@@ -775,7 +781,7 @@ impl App {
       (
         "boot.kernel",
         "boot",
-        "Kernel",
+        "control_center.kernel",
         "kernel linux",
         "boot/kernel",
       ),
@@ -783,7 +789,7 @@ impl App {
       (
         "boot.bootloader",
         "boot",
-        "Bootloader",
+        "control_center.bootloader_f1a3c5",
         "bootloader grub systemd-boot loader",
         "boot/bootloader",
       ),
@@ -791,7 +797,7 @@ impl App {
       (
         "boot.initramfs",
         "boot",
-        "Initramfs",
+        "control_center.initramfs",
         "initramfs mkinitcpio",
         "boot/initramfs",
       ),
@@ -799,7 +805,7 @@ impl App {
       (
         "boot.plymouth",
         "boot",
-        "Plymouth",
+        "control_center.plymouth",
         "plymouth splash",
         "boot/plymouth",
       ),
@@ -807,7 +813,7 @@ impl App {
       (
         "packages.search",
         "packages",
-        "Search",
+        "control_center.search_2c43ee",
         "pacman package pacote",
         "packages/search",
       ),
@@ -815,7 +821,7 @@ impl App {
       (
         "packages.installed",
         "packages",
-        "Installed",
+        "control_center.installed_e91b6d",
         "installed instalados",
         "packages/installed",
       ),
@@ -823,7 +829,7 @@ impl App {
       (
         "packages.updates",
         "packages",
-        "Updates",
+        "control_center.updates",
         "update upgrade atualizar",
         "packages/updates",
       ),
@@ -831,7 +837,7 @@ impl App {
       (
         "packages.orphans",
         "packages",
-        "Orphans",
+        "control_center.orphans_29aae8",
         "orphan órfão orfao",
         "packages/orphans",
       ),
@@ -839,7 +845,7 @@ impl App {
       (
         "packages.cache",
         "packages",
-        "Cache",
+        "control_center.cache",
         "cache paccache",
         "packages/cache",
       ),
@@ -847,7 +853,7 @@ impl App {
       (
         "packages.aur",
         "packages",
-        "AUR",
+        "control_center.aur",
         "aur paru yay",
         "packages/aur",
       ),
@@ -855,7 +861,7 @@ impl App {
       (
         "packages.history",
         "packages",
-        "History",
+        "control_center.history",
         "history histórico pacman.log",
         "packages/history",
       ),
@@ -863,7 +869,7 @@ impl App {
       (
         "packages.downgrade",
         "packages",
-        "Downgrade",
+        "control_center.downgrade",
         "downgrade",
         "packages/downgrade",
       ),
@@ -871,7 +877,7 @@ impl App {
       (
         "packages.mirrors",
         "packages",
-        "Mirrors",
+        "control_center.mirrors",
         "mirror reflector",
         "packages/mirrors",
       ),
@@ -879,7 +885,7 @@ impl App {
       (
         "storage.summary",
         "storage",
-        "Summary",
+        "control_center.summary",
         "storage armazenamento disk disco",
         "storage/summary",
       ),
@@ -887,7 +893,7 @@ impl App {
       (
         "storage.disks",
         "storage",
-        "Disks",
+        "control_center.disks",
         "disk disco nvme ssd hdd",
         "storage/disks",
       ),
@@ -895,7 +901,7 @@ impl App {
       (
         "storage.partitions",
         "storage",
-        "Partitions",
+        "control_center.partitions",
         "partition partição",
         "storage/partitions",
       ),
@@ -903,7 +909,7 @@ impl App {
       (
         "storage.filesystems",
         "storage",
-        "Filesystems",
+        "control_center.filesystems",
         "filesystem sistema arquivos",
         "storage/filesystems",
       ),
@@ -911,7 +917,7 @@ impl App {
       (
         "storage.mounts",
         "storage",
-        "Mount points",
+        "control_center.mount_points",
         "mount montagem",
         "storage/mounts",
       ),
@@ -919,7 +925,7 @@ impl App {
       (
         "storage.smart",
         "storage",
-        "SMART",
+        "control_center.smart",
         "smart health saúde",
         "storage/smart",
       ),
@@ -927,7 +933,7 @@ impl App {
       (
         "storage.usage",
         "storage",
-        "Disk usage",
+        "control_center.disk_usage",
         "space espaço uso disco",
         "storage/usage",
       ),
@@ -935,7 +941,7 @@ impl App {
       (
         "diagnostics.summary",
         "diagnostics",
-        "Summary",
+        "control_center.summary",
         "diagnostic diagnóstico health status",
         "diagnostics/summary",
       ),
@@ -943,7 +949,7 @@ impl App {
       (
         "diagnostics.services",
         "diagnostics",
-        "Services",
+        "control_center.services",
         "services serviços failed falhos",
         "diagnostics/services",
       ),
@@ -951,7 +957,7 @@ impl App {
       (
         "diagnostics.boot",
         "diagnostics",
-        "Kernel and Boot",
+        "control_center.kernel_boot",
         "boot kernel initramfs",
         "diagnostics/boot",
       ),
@@ -959,7 +965,7 @@ impl App {
       (
         "diagnostics.graphics",
         "diagnostics",
-        "Graphics",
+        "control_center.graphics",
         "graphics gráficos gpu vmwgfx",
         "diagnostics/graphics",
       ),
@@ -967,7 +973,7 @@ impl App {
       (
         "diagnostics.network",
         "diagnostics",
-        "Network",
+        "control_center.network",
         "network rede dns",
         "diagnostics/network",
       ),
@@ -975,7 +981,7 @@ impl App {
       (
         "diagnostics.audio",
         "diagnostics",
-        "Audio",
+        "control_center.audio",
         "audio áudio pipewire",
         "diagnostics/audio",
       ),
@@ -983,7 +989,7 @@ impl App {
       (
         "diagnostics.bluetooth",
         "diagnostics",
-        "Bluetooth",
+        "control_center.bluetooth",
         "bluetooth",
         "diagnostics/bluetooth",
       ),
@@ -991,7 +997,7 @@ impl App {
       (
         "diagnostics.storage",
         "diagnostics",
-        "Storage",
+        "control_center.storage",
         "storage armazenamento smart",
         "diagnostics/storage",
       ),
@@ -999,7 +1005,7 @@ impl App {
       (
         "diagnostics.packages",
         "diagnostics",
-        "Packages",
+        "control_center.section_packages",
         "packages pacotes updates",
         "diagnostics/packages",
       ),
@@ -1007,7 +1013,7 @@ impl App {
       (
         "diagnostics.argvus",
         "diagnostics",
-        "ARGVUS",
+        "control_center.argvus",
         "argvus session theme tema",
         "diagnostics/argvus",
       ),
@@ -1015,7 +1021,7 @@ impl App {
       (
         "power.summary",
         "power",
-        "Power",
+        "control_center.summary",
         "power energia energy battery bateria",
         "power/summary",
       ),
@@ -1023,7 +1029,7 @@ impl App {
       (
         "session.summary",
         "session",
-        "Session",
+        "control_center.summary",
         "session sessão inicio inicializacao",
         "session/summary",
       ),
@@ -1031,7 +1037,7 @@ impl App {
       (
         "session.components",
         "session",
-        "Components",
+        "control_center.components_7073b6",
         "components componentes desktop wayland hyprland",
         "session/components",
       ),
@@ -1039,7 +1045,7 @@ impl App {
       (
         "session.autostart",
         "session",
-        "Autostart",
+        "control_center.autostart",
         "autostart login inicialização iniciar",
         "session/autostart",
       ),
@@ -1047,7 +1053,7 @@ impl App {
       (
         "session.diagnostics",
         "session",
-        "Diagnostics",
+        "control_center.diagnostics",
         "diagnostic diagnóstico",
         "session/diagnostics",
       ),
@@ -1055,7 +1061,7 @@ impl App {
       (
         "session.logs",
         "session",
-        "Logs",
+        "control_center.logs",
         "logs journal journalctl",
         "session/logs",
       ),
@@ -1063,7 +1069,7 @@ impl App {
       (
         "displays.summary",
         "displays",
-        "Displays",
+        "control_center.summary",
         "displays monitores monitor screens telas",
         "displays/summary",
       ),
@@ -1071,7 +1077,7 @@ impl App {
       (
         "displays.mode",
         "displays",
-        "Res",
+        "control_center.resolution",
         "resolution resolucao modo mode refresh",
         "displays/mode",
       ),
@@ -1079,7 +1085,7 @@ impl App {
       (
         "displays.scale",
         "displays",
-        "Scale",
+        "control_center.scale",
         "scale escala zoom",
         "displays/scale",
       ),
@@ -1087,7 +1093,7 @@ impl App {
       (
         "displays.position",
         "displays",
-        "Position",
+        "control_center.position",
         "position posicao layout arrangement",
         "displays/position",
       ),
@@ -1095,7 +1101,7 @@ impl App {
       (
         "displays.vrr",
         "displays",
-        "VRR",
+        "control_center.vrr",
         "vrr variable refresh rate freesync",
         "displays/vrr",
       ),
@@ -1103,7 +1109,7 @@ impl App {
       (
         "displays.hdr",
         "displays",
-        "HDR",
+        "control_center.hdr",
         "hdr high dynamic range",
         "displays/hdr",
       ),
@@ -1111,7 +1117,7 @@ impl App {
       (
         "displays.orientation",
         "displays",
-        "Orientation",
+        "control_center.orientation",
         "orientation orientacao rotate rotacionar",
         "displays/orientation",
       ),
@@ -1119,7 +1125,7 @@ impl App {
       (
         "displays.primary",
         "displays",
-        "Primary",
+        "control_center.primary_monitor",
         "primary principal",
         "displays/primary",
       ),
@@ -1127,7 +1133,7 @@ impl App {
       (
         "appearance.summary",
         "appearance",
-        "Appearance",
+        "control_center.summary",
         "appearance aparencia theme tema wallpaper papel de parede accent cor destaque",
         "appearance/summary",
       ),
@@ -1135,7 +1141,7 @@ impl App {
       (
         "appearance.themes",
         "appearance",
-        "Themes",
+        "control_center.themes",
         "themes temas theme tema appearance aparencia",
         "appearance/themes",
       ),
@@ -1143,7 +1149,7 @@ impl App {
       (
         "appearance.wallpapers",
         "appearance",
-        "Wallpapers",
+        "control_center.wallpapers",
         "wallpapers papéis de parede papel wallpaper plano de fundo",
         "appearance/wallpapers",
       ),
@@ -1151,7 +1157,7 @@ impl App {
       (
         "appearance.accents",
         "appearance",
-        "Highlight color",
+        "control_center.highlight_color",
         "accent cor de destaque highlight color aparencia",
         "appearance/accents",
       ),
@@ -1159,7 +1165,7 @@ impl App {
       (
         "appearance.taskbar",
         "appearance",
-        "Taskbar",
+        "control_center.taskbar",
         "taskbar barra grupo utility group hover expandido expanded sempre always",
         "appearance/taskbar",
       ),
@@ -1167,7 +1173,7 @@ impl App {
       (
         "appearance.taskbar_position",
         "taskbar",
-        "Taskbar position",
+        "control_center.taskbar_position",
         "taskbar barra posicao position gaps espacamento margin margem",
         "appearance/taskbar-position",
       ),
@@ -1175,7 +1181,7 @@ impl App {
       (
         "appearance.taskbar_icons",
         "taskbar",
-        "Taskbar icons",
+        "control_center.taskbar_icons",
         "taskbar barra icones icons audio player spotify launcher search utilities network power profile keyboard layout memory cpu temperature gpu usage",
         "appearance/taskbar-icons",
       ),
@@ -1183,7 +1189,7 @@ impl App {
       (
         "appearance.taskbar_date",
         "taskbar",
-        "Taskbar date",
+        "control_center.taskbar_date",
         "taskbar barra data date format weekday dia mes month year ano",
         "appearance/taskbar-date",
       ),
@@ -1191,7 +1197,7 @@ impl App {
       (
         "appearance.taskbar_time",
         "taskbar",
-        "Taskbar time",
+        "control_center.taskbar_time",
         "taskbar barra hora time clock relogio seconds segundos 24h am pm",
         "appearance/taskbar-time",
       ),
@@ -1199,7 +1205,7 @@ impl App {
       (
         "appearance.widget_telemetry",
         "appearance",
-        "Widget Telemetry",
+        "control_center.widget_telemetry",
         "widget telemetry system cpu gpu memory storage processes network shortcuts",
         "appearance/widget-telemetry",
       ),
@@ -1207,16 +1213,16 @@ impl App {
       (
         "appearance.control_panel",
         "appearance",
-        "Control Panel",
+        "control_center.control_panel",
         "control panel painel de controle cards sessions sessoes transparency transparencia",
         "appearance/control-panel",
       ),
     ];
-    for (id, category, title, keywords, route) in entries {
+    for (id, category, title_key, keywords, route) in entries {
       let _ = search_registry.register(SearchEntry {
         id: id.into(),
         category: category.into(),
-        title: title.into(),
+        title: tr(lang, title_key).into(),
         keywords: keywords.split_whitespace().map(str::to_owned).collect(),
         route: route.into(),
       });
@@ -2204,6 +2210,18 @@ mod tests {
   use super::*;
 
   #[test]
+  /// Every search result shows its translated title. A raw catalog key here
+  /// means an entry points at a key that the catalogs do not define.
+  fn search_entries_show_translated_titles() {
+    let app = App::new(InitialRoute::Home);
+    assert!(!app.search_registry.entries().is_empty());
+    for entry in app.search_registry.entries() {
+      assert!(!entry.title.is_empty(), "{}", entry.id);
+      assert!(!entry.title.starts_with("control_center."), "{}", entry.id);
+    }
+  }
+
+  #[test]
   /// Executes the `home_navigation_is_bounded` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn home_navigation_is_bounded() {
     let mut app = App::new(InitialRoute::Home);
@@ -2279,7 +2297,10 @@ mod tests {
         HomeRow::Item { .. } | HomeRow::Standalone { .. } => None,
       })
       .expect("card heading");
-    assert_eq!(heading, tr(app.lang, "control_center.card_desktop_input"));
+    assert_eq!(
+      heading,
+      argvus_control_center_core::navigation::HomeCardId::DesktopInput.label(app.lang)
+    );
   }
 
   #[cfg(feature = "about")]

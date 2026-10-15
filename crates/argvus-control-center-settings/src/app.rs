@@ -28,6 +28,7 @@ use crate::system::ssh_keys;
 use crate::system::window_rules;
 use crate::system::{host, input, keyboard, locale, time};
 use crate::theme::Theme;
+use argvus_control_center_core::navigation::{HomeCardId, root_label};
 use argvus_control_center_core::{
   jobs::{JobHandle, JobManager, JobState},
   privileged::{PrivilegedRequest, SystemSettingsOperation},
@@ -355,25 +356,26 @@ impl App {
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.argvus_control_center");
+    let root = root_label(self.lang);
     // Every Home card owns a root segment, so a page's breadcrumb follows the
-    // card it is listed under instead of the location it had before.
-    let category_root = |key: &str| format!("{root} > {}", tr(self.lang, key));
-    let desktop_input_root = category_root("control_center.card_desktop_input");
-    let appearance_root = category_root("control_center.appearance");
-    let tools_root = category_root("control_center.card_tools");
-    let system_root = category_root("control_center.card_system");
+    // card it is listed under instead of the location it had before. The card
+    // names come from `HomeCardId`, the same source the Home and search use.
+    let category_root = |label: &str| format!("{root} > {label}");
+    let desktop_input_root = category_root(HomeCardId::DesktopInput.label(self.lang));
+    let appearance_root = category_root(HomeCardId::Appearance.label(self.lang));
+    let tools_root = category_root(HomeCardId::Tools.label(self.lang));
+    let system_root = category_root(HomeCardId::System.label(self.lang));
     let language_root = format!(
       "{root} > {} > {}",
-      tr(self.lang, "control_center.preferences"),
+      HomeCardId::Preferences.label(self.lang),
       tr(self.lang, "control_center.language_region")
     );
     let users_groups_root = format!(
       "{system_root} > {}",
       tr(self.lang, "control_center.users_groups")
     );
-    let preferences_root = category_root("control_center.preferences");
-    let settings_root = category_root("control_center.settings");
+    let preferences_root = category_root(HomeCardId::Preferences.label(self.lang));
+    let settings_root = category_root(tr(self.lang, "control_center.settings"));
     match self.page() {
       Page::Main => root.to_string(),
       Page::DefaultApps => format!(

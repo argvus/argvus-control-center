@@ -9,6 +9,7 @@ use crate::{
     PromptGoal,
   },
 };
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   config::AppConfig,
   jobs::{JobHandle, JobManager, JobState},
@@ -1604,7 +1605,7 @@ impl DisplaysApp {
   fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_desktop_input"),
+      HomeCardId::DesktopInput.label(self.lang),
       tr(self.lang, "control_center.displays")
     );
     match self.page {
@@ -1927,6 +1928,7 @@ impl DisplaysApp {
       frame,
       area,
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       &self.footer_hints(&rows),
     );

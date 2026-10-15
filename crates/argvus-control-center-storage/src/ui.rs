@@ -4,6 +4,7 @@
 //! the UI consumes normalized models and results.
 use crate::{backend, model::*};
 use argvus_control_center_core::format::human_bytes;
+use argvus_control_center_core::navigation::HomeCardId;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -184,7 +185,7 @@ impl StorageApp {
   pub fn breadcrumb(&self) -> String {
     let root = format!(
       "{} > {}",
-      tr(self.lang, "control_center.card_hardware"),
+      HomeCardId::Hardware.label(self.lang),
       tr(self.lang, "control_center.storage")
     );
     if self.page == StoragePage::Home {
@@ -762,6 +763,7 @@ impl StorageApp {
       frame,
       frame.area(),
       &self.theme,
+      self.lang,
       &self.breadcrumb(),
       if self.len() > 0 {
         tr(self.lang, "control_center.scroll_r_refresh_esc_back_help")
