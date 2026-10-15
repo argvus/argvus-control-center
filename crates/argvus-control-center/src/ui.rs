@@ -629,6 +629,7 @@ mod tests {
     assert!(text.contains("Icones") || text.contains("Icons"));
   }
 
+  #[cfg(feature = "apps")]
   #[test]
   fn the_key_pages_on_the_home_have_an_icon() {
     // A Home row without a glyph looks broken next to the others; the SSH and

@@ -638,10 +638,15 @@ mod tests {
   /// Capability-dependent destinations disappear when their capability is missing.
   fn capability_gated_destinations_follow_availability() {
     let listed = destinations(&home_rows(english(), HomeAvailability::default()));
+    #[cfg(feature = "displays")]
     assert!(!listed.contains(&HomeDestination::Displays));
+    #[cfg(feature = "power")]
     assert!(!listed.contains(&HomeDestination::Power));
+    #[cfg(feature = "session")]
     assert!(!listed.contains(&HomeDestination::Session));
+    #[cfg(feature = "bluetooth")]
     assert!(!listed.contains(&HomeDestination::Bluetooth));
+    #[cfg(feature = "dev-services")]
     assert!(!listed.contains(&HomeDestination::DevServices));
   }
 }
