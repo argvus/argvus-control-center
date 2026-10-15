@@ -53,6 +53,8 @@ zbus = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 argvus-i18n = { package = "argvus-i18n-core", path = "../argvus-i18n/crates/core" }
+argvus-theme = { path = "../argvus-tui/crates/argvus-theme" }
+argvus-tui = { path = "../argvus-tui/crates/argvus-tui" }
 
 [profile.release]
 # LTO reduces the final executable size; strip avoids shipping debug symbols in the

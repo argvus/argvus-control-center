@@ -2,12 +2,18 @@
 
 ## Layout
 
+`argvus-tui`, `argvus-theme` and `argvus-i18n` are sibling repositories under
+`de/`, not members of this workspace. The root `Cargo.toml` points at them
+through `[workspace.dependencies]` path entries, and every crate inherits them
+with `.workspace = true`.
+
+- `argvus-tui`: terminal lifecycle, shared chrome/widgets
+- `argvus-theme`: ARGVUS theme consumer + semantic TUI theme
+- `argvus-i18n`: language detection and translations
+
 ```
 crates/
 ├── argvus-control-center/              binary, Home, CLI, route composition
-├── argvus-tui/                         terminal lifecycle, shared chrome/widgets
-├── argvus-theme/                       ARGVUS theme consumer + semantic TUI theme
-├── argvus-i18n/                        language detection and translations
 ├── argvus-about/                       tab documents, system data, logo, links
 ├── argvus-control-center-settings/     settings domain (locale, boot, appearance, ...)
 ├── argvus-control-center-apps/         default apps + app selector
