@@ -29,13 +29,6 @@ use argvus_control_center_services::ServicePage;
 use argvus_control_center_session::SessionPage;
 #[cfg(feature = "apps")]
 use argvus_control_center_settings::Category;
-#[cfg(any(
-  feature = "apps",
-  feature = "fonts",
-  feature = "locale",
-  feature = "language",
-  feature = "system"
-))]
 use argvus_control_center_settings::Page;
 #[cfg(feature = "fonts")]
 use argvus_control_center_settings::{FontTarget, SettingKind};
@@ -381,13 +374,6 @@ fn parse_packages(args: &[String]) -> Result<PackagesPage, String> {
   })
 }
 
-#[cfg(any(
-  feature = "apps",
-  feature = "fonts",
-  feature = "locale",
-  feature = "language",
-  feature = "system"
-))]
 /// Executes the `settings_route` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn settings_route(page: Page) -> Option<InitialRoute> {
   Some(InitialRoute::Settings(page))
