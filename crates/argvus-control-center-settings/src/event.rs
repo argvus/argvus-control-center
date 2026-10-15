@@ -185,7 +185,8 @@ fn handle_regular_key(app: &mut App, key: KeyEvent) {
     KeyCode::Char('/') => return app.begin_search(),
     KeyCode::Char('r') => {
       match page {
-        Page::System => app.refresh_system(),
+        Page::Hostname => app.refresh_system(),
+        Page::Notifications => app.refresh_dnd(),
         Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups => {
           app.admin.load(false)
         }

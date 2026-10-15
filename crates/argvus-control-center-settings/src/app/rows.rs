@@ -426,7 +426,8 @@ impl App {
         rows
       }
       Page::Language => self.language_rows(),
-      Page::System => self.system_rows(),
+      Page::UsersGroups => self.users_groups_rows(),
+      Page::Notifications => self.notification_rows(),
       Page::Hostname => vec![
         Row::value(
           Item::Hostname,
@@ -533,12 +534,8 @@ impl App {
         .count()
   }
 
-  fn system_rows(&self) -> Vec<Row<Item>> {
-    let hostname = if self.hostname.is_empty() {
-      na(self.lang).to_string()
-    } else {
-      self.hostname.clone()
-    };
+  /// Users & Groups hub: one submenu for the users and one for the groups.
+  fn users_groups_rows(&self) -> Vec<Row<Item>> {
     let accounts_loaded = self.admin.is_loaded();
     let count = |count: usize| {
       if accounts_loaded {
@@ -548,19 +545,18 @@ impl App {
       }
     };
     vec![
-      Row::value(
-        Item::Hostname,
-        self.label("control_center.hostname"),
-        hostname,
-        None,
-      )
-      .icon(icons::MONITOR),
       Row::submenu(Item::Users, self.label("control_center.users"))
         .icon(icons::USER)
         .detail(count(self.admin.users(false).len())),
       Row::submenu(Item::Groups, self.label("control_center.groups_label"))
         .icon(icons::GROUP)
         .detail(count(self.admin.groups(false).len())),
+    ]
+  }
+
+  /// Notifications: the Do Not Disturb switch.
+  fn notification_rows(&self) -> Vec<Row<Item>> {
+    vec![
       Row::toggle(
         Item::DoNotDisturb,
         self.label("control_center.do_not_disturb"),

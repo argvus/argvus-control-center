@@ -201,30 +201,36 @@ fn reset_row_and_r_open_the_same_confirmation() {
 }
 
 #[test]
-fn system_dashboard_uses_typed_rows_and_live_state() {
-  let app = app(Page::System);
+fn users_groups_hub_uses_typed_submenus_with_counts() {
+  let app = app(Page::UsersGroups);
   let rows = app.rows();
-  assert_eq!(rows.len(), 4);
-  assert_eq!(rows[0].id(), Some(&Item::Hostname));
-  assert_eq!(rows[0].kind(), RowKind::Value { step: None });
-  assert_eq!(rows[0].icon_glyph(), Some(argvus_tui::icons::MONITOR));
-  assert_eq!(rows[1].label(), "Users");
+  assert_eq!(rows.len(), 2);
+  assert_eq!(rows[0].id(), Some(&Item::Users));
+  assert_eq!(rows[0].label(), "Users");
+  assert_eq!(rows[0].detail_text(), Some("N/A"));
+  assert_eq!(rows[1].id(), Some(&Item::Groups));
+  assert!(!rows[1].label().ends_with(':'));
   assert_eq!(rows[1].detail_text(), Some("N/A"));
-  assert_eq!(rows[2].id(), Some(&Item::Groups));
-  assert!(!rows[2].label().ends_with(':'));
-  assert_eq!(rows[2].detail_text(), Some("N/A"));
-  assert!(matches!(rows[3].kind(), RowKind::Toggle { .. }));
-  assert!(rows[3].label().contains("Do Not Disturb"));
+}
+
+#[test]
+fn notifications_page_holds_only_do_not_disturb() {
+  let app = app(Page::Notifications);
+  let rows = app.rows();
+  assert_eq!(rows.len(), 1);
+  assert_eq!(rows[0].id(), Some(&Item::DoNotDisturb));
+  assert!(matches!(rows[0].kind(), RowKind::Toggle { .. }));
+  assert!(rows[0].label().contains("Do Not Disturb"));
 }
 
 #[test]
 fn hostname_row_opens_the_editor_directly() {
-  let mut app = app(Page::System);
+  let mut app = app(Page::Hostname);
   app.hostname = "current-machine".into();
   press(&mut app, KeyCode::Enter);
   assert!(app.hostname_editing);
   assert_eq!(app.hostname_input, "current-machine");
-  assert_eq!(app.page(), Page::System);
+  assert_eq!(app.page(), Page::Hostname);
 }
 
 #[test]
@@ -240,8 +246,8 @@ fn hostname_page_row_keeps_current_value_while_editing() {
 }
 
 #[test]
-fn system_dashboard_counts_match_loaded_accounts() {
-  let mut app = app(Page::System);
+fn users_groups_counts_match_loaded_accounts() {
+  let mut app = app(Page::UsersGroups);
   app.admin.accounts = serde_json::json!({
     "actor_uid":1000,
     "shells":["/bin/bash", "/bin/zsh"],
@@ -256,8 +262,8 @@ fn system_dashboard_counts_match_loaded_accounts() {
     ]
   });
   let rows = app.rows();
+  assert_eq!(rows[0].detail_text(), Some("1"));
   assert_eq!(rows[1].detail_text(), Some("1"));
-  assert_eq!(rows[2].detail_text(), Some("1"));
   assert!(rows.iter().all(Row::is_selectable));
 }
 
@@ -1477,4 +1483,61 @@ fn exports_propose_the_fingerprint_as_the_file_name() {
     "{}",
     private.text()
   );
+}
+
+#[test]
+/// Every page reached from the Home shows the card it is listed under, so the
+/// breadcrumb keeps the path the user followed (see the Control Center Home).
+fn breadcrumbs_show_the_home_card_of_each_page() {
+  let cases = [
+    (
+      Page::Hostname,
+      "Control Center > System Administration > Hostname",
+    ),
+    (
+      Page::UsersGroups,
+      "Control Center > System Administration > Users & Groups",
+    ),
+    (
+      Page::Notifications,
+      "Control Center > System Administration > Notifications",
+    ),
+    (
+      Page::Firewall,
+      "Control Center > System Administration > Firewall",
+    ),
+    (
+      Page::DefaultApps,
+      "Control Center > Preferences > Default Apps",
+    ),
+    (Page::Language, "Control Center > Settings > Language"),
+    (
+      Page::LocaleRegion,
+      "Control Center > Preferences > Language & Region",
+    ),
+    (Page::DateTime, "Control Center > Preferences > Date & Time"),
+    (
+      Page::Keybindings,
+      "Control Center > Desktop & Input > Keyboard Shortcuts",
+    ),
+    (
+      Page::WindowRules,
+      "Control Center > Desktop & Input > Window rules",
+    ),
+    (
+      Page::MouseTouchpad,
+      "Control Center > Desktop & Input > Mouse & Touchpad",
+    ),
+    (
+      Page::Projects,
+      "Control Center > Tools & Diagnostics > Projects",
+    ),
+    (
+      Page::SshKeys,
+      "Control Center > Tools & Diagnostics > SSH keys",
+    ),
+  ];
+  for (page, expected) in cases {
+    assert_eq!(app(page).breadcrumb(), expected, "{page:?}");
+  }
 }

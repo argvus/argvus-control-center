@@ -50,8 +50,11 @@ pub enum Page {
   KeyboardVariant,
   ConsoleKeymap,
   Language,
-  System,
   Hostname,
+  /// Users & Groups hub: Users and Groups submenus.
+  UsersGroups,
+  /// Notifications: Do Not Disturb.
+  Notifications,
   Firewall,
   Users,
   UserList,

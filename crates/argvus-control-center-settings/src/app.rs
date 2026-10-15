@@ -359,30 +359,29 @@ impl App {
     // Every Home card owns a root segment, so a page's breadcrumb follows the
     // card it is listed under instead of the location it had before.
     let category_root = |key: &str| format!("{root} > {}", tr(self.lang, key));
-    let shell_root = category_root("control_center.desktop_shell");
-    // Keybindings/WindowRules (and their sub-pages) are owned by the Hyprland
-    // domain: they only exist behind the Hyprland router, even though they are
-    // implemented in this crate for reuse. Their breadcrumb sits under the
-    // Desktop Shell card, where the Hyprland item is listed.
-    let hyprland_root = format!(
-      "{shell_root} > {}",
-      tr(self.lang, "control_center.hyprland")
-    );
+    let desktop_input_root = category_root("control_center.card_desktop_input");
     let appearance_root = category_root("control_center.appearance");
-    let applications_root = category_root("control_center.applications");
-    let security_root = category_root("control_center.security_category");
-    let language_root = category_root("control_center.language_region");
-    let hardware_root = category_root("control_center.hardware");
-    let general_root = category_root("control_center.general");
+    let tools_root = category_root("control_center.card_tools");
+    let system_root = category_root("control_center.card_system");
+    let language_root = format!(
+      "{root} > {} > {}",
+      tr(self.lang, "control_center.preferences"),
+      tr(self.lang, "control_center.language_region")
+    );
+    let users_groups_root = format!(
+      "{system_root} > {}",
+      tr(self.lang, "control_center.users_groups")
+    );
     let preferences_root = category_root("control_center.preferences");
+    let settings_root = category_root("control_center.settings");
     match self.page() {
       Page::Main => root.to_string(),
       Page::DefaultApps => format!(
-        "{applications_root} > {}",
+        "{preferences_root} > {}",
         tr(self.lang, "control_center.default_apps")
       ),
       Page::AppSelector(category) => format!(
-        "{applications_root} > {} > {}",
+        "{preferences_root} > {} > {}",
         tr(self.lang, "control_center.default_apps"),
         category_label(self.lang, category)
       ),
@@ -404,7 +403,7 @@ impl App {
       // the hub stays reachable through the `locale` CLI route.
       Page::LocaleRegion => language_root,
       Page::MouseTouchpad => format!(
-        "{hardware_root} > {}",
+        "{desktop_input_root} > {}",
         tr(self.lang, "control_center.mouse_touchpad")
       ),
       Page::TimeZone => format!(
@@ -412,7 +411,7 @@ impl App {
         tr(self.lang, "control_center.time_zone")
       ),
       Page::DateTime => format!(
-        "{language_root} > {}",
+        "{preferences_root} > {}",
         tr(self.lang, "control_center.date_time")
       ),
       // The first Language & Region entry (formerly Regional Locale).
@@ -429,71 +428,71 @@ impl App {
         tr(self.lang, "control_center.keyboard")
       ),
       Page::Keybindings => format!(
-        "{hyprland_root} > {}",
+        "{desktop_input_root} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts")
       ),
       Page::WindowRules => format!(
-        "{hyprland_root} > {}",
+        "{desktop_input_root} > {}",
         tr(self.lang, "control_center.window_rules")
       ),
       Page::Projects => format!(
-        "{applications_root} > {}",
+        "{tools_root} > {}",
         tr(self.lang, "control_center.projects")
       ),
       Page::Snippets => format!(
-        "{applications_root} > {}",
+        "{tools_root} > {}",
         tr(self.lang, "control_center.snippets")
       ),
       Page::SshKeys => format!(
-        "{security_root} > {}",
+        "{tools_root} > {}",
         tr(self.lang, "control_center.ssh_keys")
       ),
       Page::GpgKeys => format!(
-        "{security_root} > {}",
+        "{tools_root} > {}",
         tr(self.lang, "control_center.gpg_keys")
       ),
       Page::GpgKeyEdit => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_edit"),
       ),
       Page::GpgEditExpiration => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_expiration"),
       ),
       Page::GpgEditSign => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_edit_sign"),
       ),
       Page::GpgEditRevoke => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_edit_revoke"),
       ),
       Page::GpgFormExpiration => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_expiration"),
       ),
       Page::GpgFormPassphrase => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_passphrase_page"),
       ),
       Page::GpgKeyList => format!(
-        "{security_root} > {} > {}",
+        "{tools_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_list"),
       ),
       Page::KeybindingEdit => format!(
-        "{hyprland_root} > {} > {}",
+        "{desktop_input_root} > {} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts"),
         tr(self.lang, "control_center.edit_shortcut")
       ),
       Page::KeybindingCapture => format!(
-        "{hyprland_root} > {} > {}",
+        "{desktop_input_root} > {} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts"),
         tr(self.lang, "control_center.change_shortcut")
       ),
@@ -514,28 +513,29 @@ impl App {
       // Preferences keeps the interface language; Language & Region > Language
       // is the regional locale page.
       Page::Language => format!(
-        "{preferences_root} > {}",
+        "{settings_root} > {}",
         tr(self.lang, "control_center.language")
       ),
-      Page::System => general_root,
+      Page::UsersGroups => users_groups_root,
+      Page::Notifications => format!(
+        "{system_root} > {}",
+        tr(self.lang, "control_center.notifications")
+      ),
       Page::Firewall => format!(
-        "{security_root} > {}",
+        "{system_root} > {}",
         tr(self.lang, "control_center.firewall")
       ),
       Page::Users => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {}",
         tr(self.lang, "control_center.users")
       ),
       Page::UserList => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {} > {}",
         tr(self.lang, "control_center.users"),
         tr(self.lang, "control_center.list")
       ),
       Page::SystemUsers => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {} > {}",
         tr(self.lang, "control_center.users"),
         tr(self.lang, "control_center.system_accounts")
       ),
@@ -549,34 +549,29 @@ impl App {
       | Page::UserUsername
       | Page::UserFullName
       | Page::UserDelete => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {}",
         tr(self.lang, "control_center.users")
       ),
       Page::Groups => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {}",
         tr(self.lang, "control_center.groups")
       ),
       Page::GroupList => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {} > {}",
         tr(self.lang, "control_center.groups"),
         tr(self.lang, "control_center.list")
       ),
       Page::SystemGroups => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {} > {}",
         tr(self.lang, "control_center.groups"),
         tr(self.lang, "control_center.system_accounts")
       ),
       Page::Group | Page::GroupMembers | Page::CreateGroup => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.general"),
+        "{users_groups_root} > {}",
         tr(self.lang, "control_center.groups")
       ),
       Page::Hostname => format!(
-        "{general_root} > {}",
+        "{system_root} > {}",
         tr(self.lang, "control_center.hostname")
       ),
     }
@@ -593,6 +588,18 @@ impl App {
         | Page::SettingSelector(_)
         | Page::Keybindings
     )
+  }
+
+  /// Prepares the state that a page needs as soon as it is opened.
+  pub fn enter_page(&mut self, page: Page) {
+    self.admin.ensure_loaded(page);
+    match page {
+      Page::UsersGroups if !self.admin.busy() && !self.admin.is_loaded() => {
+        self.admin.load(false);
+      }
+      Page::Notifications => self.refresh_dnd(),
+      _ => {}
+    }
   }
 
   /// Executes the `refresh_system` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -613,7 +620,7 @@ impl App {
   }
 
   /// Executes the `refresh_dnd` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn refresh_dnd(&mut self) {
+  pub fn refresh_dnd(&mut self) {
     if self.dnd_job.is_some() {
       return;
     }
@@ -990,7 +997,7 @@ impl App {
   pub fn poll(&mut self) -> bool {
     let mut changed = false;
     if self.dnd_job.is_none()
-      && self.page() == Page::System
+      && self.page() == Page::Notifications
       && self.dnd_last_refresh.elapsed() >= Duration::from_secs(2)
     {
       self.refresh_dnd();

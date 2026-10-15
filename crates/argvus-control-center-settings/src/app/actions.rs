@@ -137,7 +137,7 @@ impl App {
       Item::DefaultApps => self.navigation.push(Page::DefaultApps),
       Item::Fonts => self.navigation.push(Page::Fonts),
       Item::LocaleRegion => self.navigation.push(Page::LocaleRegion),
-      Item::System => self.navigation.push(Page::System),
+      Item::System => self.navigation.push(Page::Hostname),
       Item::Category(category) => {
         self.navigation.push(Page::AppSelector(category));
         self.select_current();
@@ -734,7 +734,12 @@ impl App {
         search: is_searchable(page),
         refresh: matches!(
           page,
-          Page::System | Page::UserList | Page::SystemUsers | Page::GroupList | Page::SystemGroups
+          Page::Hostname
+            | Page::Notifications
+            | Page::UserList
+            | Page::SystemUsers
+            | Page::GroupList
+            | Page::SystemGroups
         ),
         quit: page == Page::Main,
         extra: &extra,

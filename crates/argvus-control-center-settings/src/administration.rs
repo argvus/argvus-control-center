@@ -249,6 +249,15 @@ impl Administration {
     self.queued.clear();
   }
 
+  /// Loads the snapshot of an administration page when it is opened and its
+  /// data is still missing. Pages opened after the settings app was built
+  /// (from Home, search or the CLI) would otherwise show only their Reload row.
+  pub fn ensure_loaded(&mut self, page: Page) {
+    if is_page(page) && !self.busy() && !self.has_loaded_data(page) {
+      self.load(page == Page::Firewall);
+    }
+  }
+
   /// Retrieves data for `load` without mixing collection with TUI rendering. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn load(&mut self, firewall: bool) {
     if self.busy() {
