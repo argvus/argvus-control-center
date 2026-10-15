@@ -142,7 +142,11 @@ impl DevServicesApp {
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
-    tr(self.lang, "control_center.dev_services").into()
+    format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_tools"),
+      tr(self.lang, "control_center.developer_services")
+    )
   }
 
   /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

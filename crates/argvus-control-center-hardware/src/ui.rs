@@ -394,9 +394,13 @@ impl HardwareApp {
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.hardware");
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_hardware"),
+      tr(self.lang, "control_center.hardware_overview")
+    );
     if self.page == HardwarePage::Home {
-      root.into()
+      root
     } else {
       format!("{root} > {}", self.label(self.page))
     }

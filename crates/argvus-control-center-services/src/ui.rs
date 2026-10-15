@@ -663,9 +663,13 @@ impl ServicesApp {
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.services");
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_system"),
+      tr(self.lang, "control_center.services")
+    );
     if self.page == ServicePage::Home {
-      root.into()
+      root
     } else {
       format!("{root} > {}", self.label(self.page))
     }

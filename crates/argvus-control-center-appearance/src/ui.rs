@@ -1784,21 +1784,21 @@ impl AppearanceApp {
     // domain: they only exist behind the Hyprland router (crate principal),
     // even though they are implemented in this crate for reuse. Their
     // breadcrumb reflects that ownership instead of this crate's own root.
-    // Hyprland, Taskbar, Control Panel and Widget Telemetry are items of the
-    // Desktop Shell card on the principal Home, so their breadcrumbs start
-    // from that card instead of the Appearance root.
-    let shell_root = tr(self.lang, "control_center.desktop_shell");
+    // Hyprland is listed under the Desktop & Input card on the principal
+    // Home; Taskbar, Control Center and Widget Telemetry are listed under
+    // Appearance, so their breadcrumbs start from the Appearance root.
+    let desktop_input_root = tr(self.lang, "control_center.card_desktop_input");
     let hyprland_root = format!(
-      "{shell_root} > {}",
+      "{desktop_input_root} > {}",
       tr(self.lang, "control_center.hyprland")
     );
-    let taskbar_root = format!("{shell_root} > {}", tr(self.lang, "control_center.taskbar"));
+    let taskbar_root = format!("{root} > {}", tr(self.lang, "control_center.taskbar"));
     let control_panel_root = format!(
-      "{shell_root} > {}",
-      tr(self.lang, "control_center.control_panel")
+      "{root} > {}",
+      tr(self.lang, "control_center.control_center")
     );
     let widget_telemetry_root = format!(
-      "{shell_root} > {}",
+      "{root} > {}",
       tr(self.lang, "control_center.widget_telemetry")
     );
     // Theme, Appearance Mode, Accent Color and Wallpaper live under the

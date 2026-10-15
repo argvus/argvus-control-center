@@ -708,7 +708,11 @@ impl PowerApp {
       frame,
       area,
       &self.theme,
-      tr(self.lang, "control_center.power"),
+      &format!(
+        "{} > {}",
+        tr(self.lang, "control_center.preferences"),
+        tr(self.lang, "control_center.power")
+      ),
       tr(
         self.lang,
         "control_center.navigate_tab_actions_enter_list_r_refresh_esc_back_help",

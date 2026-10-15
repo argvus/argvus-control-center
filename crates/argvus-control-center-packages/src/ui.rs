@@ -1785,14 +1785,15 @@ impl PackagesApp {
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_system"),
+      tr(self.lang, "control_center.packages")
+    );
     if self.page == PackagesPage::Home {
-      tr(self.lang, "control_center.packages").into()
+      root
     } else {
-      format!(
-        "{} > {}",
-        tr(self.lang, "control_center.packages"),
-        self.page_label()
-      )
+      format!("{root} > {}", self.page_label())
     }
   }
   /// Executes the `page_label` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.

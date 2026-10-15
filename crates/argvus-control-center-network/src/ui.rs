@@ -315,9 +315,13 @@ impl NetworkApp {
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.network");
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_hardware"),
+      tr(self.lang, "control_center.network_wifi")
+    );
     if self.page == NetworkPage::Home {
-      root.into()
+      root
     } else {
       format!("{root} > {}", self.page_label())
     }

@@ -1175,9 +1175,13 @@ impl BootApp {
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.boot");
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_system"),
+      tr(self.lang, "control_center.boot")
+    );
     if self.page == BootPage::Home {
-      root.into()
+      root
     } else {
       format!("{root} > {}", self.page_label())
     }

@@ -513,9 +513,13 @@ impl SessionApp {
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.session");
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.preferences"),
+      tr(self.lang, "control_center.session")
+    );
     if self.page == SessionPage::Home {
-      root.into()
+      root
     } else {
       format!("{root} > {}", self.page_label())
     }

@@ -216,9 +216,13 @@ impl DiagnosticsApp {
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn breadcrumb(&self) -> String {
-    let root = tr(self.lang, "control_center.diagnostics");
+    let root = format!(
+      "{} > {}",
+      tr(self.lang, "control_center.card_tools"),
+      tr(self.lang, "control_center.diagnostics")
+    );
     match self.page {
-      DiagnosticPage::Home => root.into(),
+      DiagnosticPage::Home => root,
       DiagnosticPage::Summary => {
         format!("{root} > {}", tr(self.lang, "control_center.summary"))
       }
@@ -800,7 +804,7 @@ mod tests {
   /// Executes the `diagnostics_detail_footer_and_breadcrumb_follow_the_parent_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn diagnostics_detail_footer_and_breadcrumb_follow_the_parent_category() {
     let app = app();
-    assert_eq!(app.breadcrumb(), "Diagnostics");
+    assert_eq!(app.breadcrumb(), "Tools & Diagnostics > Diagnostics");
     let mut detail = app;
     detail.page = DiagnosticPage::Detail(2);
     assert!(detail.breadcrumb().ends_with("System"));
