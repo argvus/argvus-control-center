@@ -18,18 +18,12 @@ The Control Panel can expose quick controls for a setting that is configured per
 
 The current Control Center home provides these areas:
 
-- **Appearance** — themes, modes, accents and wallpapers.
-- **Taskbar** — position, spaces, icons, date and time, reusing the effects pages implemented in Appearance.
-- **Control Panel** — card sessions, order and transparency, reusing the effects pages implemented in Appearance.
-- **Widget Telemetry** — sessions and transparency for the telemetry widget, reusing the effects pages implemented in Appearance.
-- **Default applications** — select installed applications for supported roles.
-- **Snippets** — text saved for `argvus snippets`, typed with `SUPER + ALT + N`.
-- **SSH keys** — key pairs in `~/.ssh` managed by `argvus keys`: generate, load into the agent, unload and delete.
-- **GPG keys** — the keyring managed by `argvus gpg`: generate keys (name, e-mail, comment, algorithm, size, expiry, passphrase), import and export public and private keys through the file manager, edit a key (expiry, passphrase, sign, revoke, trust, keyserver), copy, delete, and search the keys. gpg-agent uses pinentry-gtk.
-- **Fonts** — choose the font targets and font rendering settings exposed by ARGVUS.
-- **Locale & Region** — time zone, date and time, regional locale, system locales and keyboard configuration.
-- **System** — host, users, groups and system administration pages available to the current installation.
-- **Hyprland** — keyboard shortcuts, window rules and the window-effects pages reused from Appearance (window spaces, animations, blur, borders), plus the installed Hyprland version.
+- **Desktop Shell** — Hyprland (keyboard shortcuts, window rules, window spaces, animations, blur, borders and the installed version), Taskbar, Control Panel and Widget Telemetry.
+- **Language & Region** — language (regional locale), time zone, date and time, system locales and keyboard layout, each opened directly from the home.
+- **Appearance** — Fonts, Desktop (theme, appearance mode, accent color and wallpaper) and Application Style (terminal and launcher transparency).
+- **Applications** — default applications, Projects and Snippets. Snippets are text saved for `argvus snippets`, typed with `SUPER + ALT + N`.
+- **Security** — SSH keys (key pairs in `~/.ssh` managed by `argvus keys`: generate, load into the agent, unload and delete), GPG keys (the keyring managed by `argvus gpg`: generate keys, import and export, edit a key, copy, delete and search; gpg-agent uses pinentry-gtk) and the firewall.
+- **General** — host name, users and groups, and the system administration pages available to the current installation.
 - **Displays, network, session and other domains** — available through the home search and domain routes when the corresponding optional capabilities are installed.
 
 The exact provider pages can depend on installed packages and permissions. Do not assume that a missing optional domain is a broken Control Center.
@@ -46,15 +40,13 @@ The main settings tree currently includes:
 
 | Area | Current destinations |
 | --- | --- |
-| Appearance | Themes, theme modes, highlight color, wallpapers, effects, spaces/borders/position |
-| Taskbar | Position, spacing, utility group, icons, date and time |
-| Control Panel | Card visibility/order, sessions and transparency |
-| Widget Telemetry | Sessions and transparency |
+| Desktop Shell | Hyprland (keyboard shortcuts, window rules, window spaces, animations, blur, borders), Taskbar (position, spacing, utility group, icons, date and time), Control Panel and Widget Telemetry |
+| Appearance | Fonts; Desktop: theme, appearance mode, accent color and wallpapers; Application Style: terminal and launcher transparency |
 | Input and keyboard | Mouse and touchpad, keyboard layout/variant, console keymap |
-| Locale & Region | Language, time zone, date and time, regional locale, system locales and keyboard |
-| Applications | Default applications and per-category selectors, Projects, Snippets, SSH keys, GPG keys |
-| Hyprland | Keyboard shortcuts, Window rules, and the window-effects pages reused from Appearance (Window spaces, Animations, Blur, Borders), plus the installed Hyprland version |
-| System | Hostname, firewall, users, groups and system administration |
+| Language & Region | Language, time zone, date and time, system locales and keyboard layout |
+| Applications | Default applications and per-category selectors, Projects, Snippets |
+| Security | SSH keys, GPG keys, firewall |
+| General | Hostname, users, groups and system administration |
 | Hardware | Summary, CPU, GPU, memory, power and devices |
 | Services and diagnostics | Services, Dev Services, boot, packages, storage and diagnostics |
 | Connectivity | Network, audio and Bluetooth |
@@ -67,11 +59,11 @@ Some of these are full pages and some are subpages reached through search or a d
 
 ### Appearance
 
-Appearance is the main customization area. It includes themes and Sticky/Float modes, accent colors and bundled or custom wallpapers. Taskbar, Control Panel and Widget Telemetry are separate top-level areas (see below) that reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. Animations works the same way under Hyprland > Animations: its Enable switch, the Custom curves (Bézier, Spring, Linear and Ease-out) and the five animation categories form one draft that is applied together with **Apply**. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+Appearance is the main customization area. Its Desktop group holds the theme (with its Sticky or Float mode), the appearance mode, the accent color and the wallpapers, and its Application Style group holds the terminal and launcher transparency. Taskbar, Control Panel and Widget Telemetry are part of Desktop Shell (see below) and reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. Animations works the same way under Hyprland > Animations: its Enable switch, the Custom curves (Bézier, Spring, Linear and Ease-out) and the five animation categories form one draft that is applied together with **Apply**. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
 
 ### Taskbar
 
-Taskbar configures the panel's position, the spacing around it and its windows, the utility icon group, and the date/time blocks, plus its own transparency.
+Taskbar configures the panel's position, the spacing around it and its windows, the utility icon group, and the date/time blocks, plus its own transparency. It is listed under **Desktop Shell** on the home.
 
 ### Control Panel
 
@@ -103,7 +95,7 @@ The page reads the entries from `argvus-config` and writes them through `argvus 
 
 ### SSH keys
 
-SSH keys is the page for the key pairs that `argvus keys` manages. It is in **Applications → SSH keys** (search `ssh keys` or run `argvus-control-center ssh-keys`).
+SSH keys is the page for the key pairs that `argvus keys` manages. It is in **Security → SSH keys** (search `ssh keys` or run `argvus-control-center ssh-keys`).
 
 The page has four parts, from top to bottom:
 
@@ -116,7 +108,7 @@ Actions       Refresh and Unload all keys from agent
 
 #### How to use it
 
-1. Open **Control Center → Applications → SSH keys**. From the Home, you can also search for `ssh keys`.
+1. Open **Control Center → Security → SSH keys**. From the Home, you can also search for `ssh keys`.
 2. **Find a key:** press `/`, then type to show only the pairs whose name or comment matches. `Enter` ends the search and runs the highlighted row, as in the other lists, so check the row before pressing it; `Esc` clears the search.
 3. **Create a pair:** in **Generate**, select **Name**, press `Enter`, type the name and press `Enter` again. Select **Type** and press `Enter` to switch between `ed25519` and `rsa`. Select **Generate key pair** and press `Enter`. The new pair appears under **Keys** at once, without a passphrase.
 4. **Copy the public key:** in the pair's block, select **Copy public key** and press `Enter`. The contents of the `.pub` file go to the Wayland clipboard, ready to paste into a server's `authorized_keys` or a Git host. The private key is never copied. This needs `wl-clipboard` (`wl-copy`); without it, the page says the key was not copied.
@@ -139,7 +131,7 @@ Passphrases are never typed into the Control Center and never passed as command 
 
 ### GPG keys
 
-GPG keys is the page for the keyring that `argvus gpg` manages. It is in **Applications → GPG keys** (search `gpg keys` or run `argvus-control-center gpg-keys`).
+GPG keys is the page for the keyring that `argvus gpg` manages. It is in **Security → GPG keys** (search `gpg keys` or run `argvus-control-center gpg-keys`).
 
 The page has these sections, from top to bottom:
 
@@ -155,7 +147,7 @@ Keys ›           the keyring, on its own page, with the search at the top
 
 #### How to use it
 
-1. Open **Control Center → Applications → GPG keys**. From the Home, you can also search for `gpg keys`.
+1. Open **Control Center → Security → GPG keys**. From the Home, you can also search for `gpg keys`.
 2. **Pinentry** is fixed to `pinentry-gtk`. The page only shows it. The first time a key is generated, ARGVUS writes that pinentry into `gpg-agent.conf`, between its own marker lines, and keeps your other lines. If you already wrote a `pinentry-program` line outside those markers, generation stops with an error so that you can remove that line.
 3. **Create a key:** in **Generate key ▾**, type **Full name** and **E-mail**. Both are required, and **Generate key** stays disabled until both have text. **Comment** is optional. The user ID becomes `Name (comment) <e-mail>`.
    - **Algorithm** switches between **RSA** and **DSA ElGamal**. A DSA key gets an ElGamal encryption subkey; an RSA key gets an RSA one.
@@ -203,9 +195,9 @@ Not in the page yet: searching the keyserver for a key by name or e-mail. Use **
 | An action waits and nothing happens | The pinentry window is hidden or was not opened. Check the session exposes `WAYLAND_DISPLAY` or `DISPLAY`. |
 | The import is refused | The file contains no key of the kind chosen. Public keys go through **Import public key…**; private keys through **Import private key…**. |
 
-### Locale & Region
+### Language & Region
 
-This area contains time zone, date and time, regional locale, system locales and keyboard settings. Keyboard settings include layout, variant and console keymap. The home search also exposes keyboard shortcuts and mouse/touchpad settings as direct settings routes.
+This card lists Language (the regional locale), Time Zone, Date & Time, System Locales and Keyboard Layout, and each one opens directly from the home. The keyboard pages also hold the variant and console keymap. The home search also exposes keyboard shortcuts and mouse/touchpad settings as direct settings routes.
 
 ### Hardware and displays
 
@@ -213,7 +205,7 @@ When the corresponding capabilities are installed, the Control Center can show h
 
 ### Connectivity and audio
 
-The network area exposes the installed network provider's status and connection pages, including Wi-Fi, Ethernet, VPN, DNS, proxy and firewall routes when available. Bluetooth is conditional on Bluetooth support. The audio area is provided when its optional capability is enabled and integrates with the installed audio service.
+The network area exposes the installed network provider's status and connection pages, including Wi-Fi, Ethernet, VPN, DNS and proxy routes when available. The firewall is listed under **Security**. Bluetooth is conditional on Bluetooth support. The audio area is provided when its optional capability is enabled and integrates with the installed audio service.
 
 ### Power and session
 
@@ -229,7 +221,7 @@ On the **Packages** lists that filter while typing (Search, AUR, Installed, Orph
 
 ### Users and groups
 
-When the account provider is available, open **Settings → System → Users** or search for **users**. The interface can list normal and system accounts, create a user, edit account metadata, manage supplementary and primary groups, change or lock a password, unlock it, require a password change at the next login, set or remove an avatar, and enable automatic login.
+When the account provider is available, open **Control Center → General → Users** or search for **users**. The interface can list normal and system accounts, create a user, edit account metadata, manage supplementary and primary groups, change or lock a password, unlock it, require a password change at the next login, set or remove an avatar, and enable automatic login.
 
 User creation asks for a username, full name, shell, supplementary groups and an optional password confirmation. A blank password creates the account with its password locked; it does not silently create a usable password. A user page groups the account fields (full name, shell, primary and supplementary groups, followed by **Save changes**), the **Automatic login** toggle, the **Password** actions (change, lock, unlock, require a change at the next login) and the **Avatar** actions. Username, UID / GID and home directory are shown for information only. The **Danger zone** at the end holds the separate destructive actions to delete the account while keeping its home directory or to delete the home directory as well. Read the confirmation text carefully before choosing the latter. Account operations are privileged and may open the system authorization prompt. Avatars can be consumed by the greeter through the account's standard face image integration.
 
@@ -249,21 +241,19 @@ While the Home search is active, printable keys are entered into the query, incl
 
 ## Appearance workflow
 
-Open **Appearance** to see the integrated visual controls. Its pages are:
+Open **Appearance** to see the integrated visual controls. Its groups are:
 
-- **Themes** — choose a bundled family and its Sticky or Float mode, or manage custom theme profiles.
-- **Accents** — choose the accent or enter a valid six-digit RGB color.
-- **Wallpapers** — choose a bundled wallpaper or select a custom file.
-- **Spaces, Borders & Position** — taskbar position, taskbar/shell spacing, window gaps, borders and edge thickness.
-- **Effects** — enable or disable the shared visual-effects state.
-- **Widget Telemetry** — enable the telemetry surface, select its available blocks and reorder them (`Shift+Up`/`Shift+Down` on a focused block).
-- **Control Panel** — enable, disable and reorder panel cards (`Shift+Up`/`Shift+Down` on a focused card, applied immediately through the same primitive the real panel's drag-and-drop uses).
+- **Fonts** — the font targets and font rendering settings.
+- **Desktop** — **Theme** (choose a bundled family and its Sticky or Float mode, or manage custom theme profiles), **Appearance Mode** (Sticky or Float, independent of the theme), **Accent Color** (a bundled accent or a valid six-digit RGB color) and **Wallpaper** (a bundled wallpaper or a custom file).
+- **Application Style** — the **Terminal** and **Launcher** transparency.
+
+The Desktop Shell card holds the surfaces that use these settings: **Widget Telemetry** (enable the telemetry surface, select its available blocks and reorder them with `Shift+Up`/`Shift+Down` on a focused block) and **Control Panel** (enable, disable and reorder panel cards with `Shift+Up`/`Shift+Down` on a focused card, applied immediately through the same primitive the real panel's drag-and-drop uses).
 
 These actions update the logical ARGVUS state and apply the affected runtime configuration. See [Appearance](/docs/user-guide/appearance/), [Themes](/docs/argvus-themes/) and [Windows and layout](/docs/argvus-hyprland/windows-and-layout/).
 
 ## Keyboard use
 
-The settings application supports keyboard navigation. Every page is a single list: use the arrow keys or `j`/`k` to move, `Enter` to open or run the selected row, `Space` to toggle, `Esc` to go back, `/` to search lists and `?` for help; the footer shows the keys that apply to the selected row. Actions are rows of the list, not buttons, and `Tab` does not move to them. Rows that only show information are skipped. While a text field, a search or a list filter is active, `q` and `?` are typed as text instead of quitting or opening the help. **Reset defaults** and **Restore all shortcuts** are rows in a **Danger zone** at the end of their pages; `r` asks for the same reset, and on the shortcuts list `r` restores the selected shortcut after a confirmation. On **Keyboard → Layout**, `/` focuses the **Search** box at the top of the page, and `Esc` clears it; `Enter` sets the default layout (marked with `●`) and `Space` adds or removes a layout (`[x]`); these keys only change a draft, and the **Apply** button in the **Actions** bar under the list writes the layouts and the default to Hyprland in one step. From the list, `Tab` or `←/→` moves the focus to that bar while **Apply** is enabled (the footer shows `←/→ Actions` then); `←/→` steps through its buttons and `↑/↓` return to the list. Leaving the page with unapplied changes asks for confirmation first. On **Locale & Region → Time Zone** the layout is the same: `/` focuses the **Search** box at the top, `Enter` picks a zone in a draft (marked with `●`), and the **Apply** button in the **Actions** bar under the list writes it to the system with `timedatectl`; `Tab`, `←/→` and `↑/↓` work as on Keyboard → Layout. Leaving with a zone that was not applied asks for confirmation first. On **System Locales**, `Enter` or `Space` marks a locale and the **Apply** row at the end writes the selection.
+The settings application supports keyboard navigation. Every page is a single list: use the arrow keys or `j`/`k` to move, `Enter` to open or run the selected row, `Space` to toggle, `Esc` to go back, `/` to search lists and `?` for help; the footer shows the keys that apply to the selected row. Actions are rows of the list, not buttons, and `Tab` does not move to them. Rows that only show information are skipped. While a text field, a search or a list filter is active, `q` and `?` are typed as text instead of quitting or opening the help. **Reset defaults** and **Restore all shortcuts** are rows in a **Danger zone** at the end of their pages; `r` asks for the same reset, and on the shortcuts list `r` restores the selected shortcut after a confirmation. On **Language & Region → Keyboard Layout**, `/` focuses the **Search** box at the top of the page, and `Esc` clears it; `Enter` sets the default layout (marked with `●`) and `Space` adds or removes a layout (`[x]`); these keys only change a draft, and the **Apply** button in the **Actions** bar under the list writes the layouts and the default to Hyprland in one step. From the list, `Tab` or `←/→` moves the focus to that bar while **Apply** is enabled (the footer shows `←/→ Actions` then); `←/→` steps through its buttons and `↑/↓` return to the list. Leaving the page with unapplied changes asks for confirmation first. On **Language & Region → Time Zone** the layout is the same: `/` focuses the **Search** box at the top, `Enter` picks a zone in a draft (marked with `●`), and the **Apply** button in the **Actions** bar under the list writes it to the system with `timedatectl`; `Tab`, `←/→` and `↑/↓` work as on Keyboard Layout. Leaving with a zone that was not applied asks for confirmation first. On **System Locales**, `Enter` or `Space` marks a locale and the **Apply** row at the end writes the selection.
 
 Pages that collect changes before saving them (a user, a group, account creation, password change, firewall configuration and System Locales) end that block with a **Save** or **Apply** row that stays dimmed until something changed. If going back would discard unsaved changes, Control Center asks first. Every confirmation shows **Confirm** and **Cancel** as two rows with the focus on **Cancel**: `Enter` runs the focused row, `y` confirms and `n` or `Esc` cancel.
 
@@ -281,7 +271,7 @@ Reset support is deliberately per domain:
 - **Fonts** can restore all font settings, a target, or an individual setting.
 - **Default applications** can restore all defaults, a category, or an individual selector.
 - **Keyboard shortcuts** can restore one binding or all bindings and then reload the generated session bindings.
-- **Window rules** is in **Hyprland → Settings → Window rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
+- **Window rules** is in **Desktop Shell → Hyprland → Window rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
 
 - **Projects** is in **Applications → Projects** (search `projects` or run `argvus control-center projects`). **Add project folder** and **Add root folder** sit at the top of the page and open a text field with the path; the launcher checks that it is a directory and shows the error otherwise, including when the folder would push the effective project count past 9 (`SUPER + ALT + 1..9` cannot address more). Each configured folder, marked as a root (its subfolders are projects) or a single project, gets its own block below the form with a **Remove** row that asks for confirmation. The page calls `argvus-projects`, so changes are written by the launcher and apply the next time `SUPER + O` or `SUPER + ALT + 1..9` runs. If `argvus-projects` is not installed, the page says so.
 - **Other system pages** expose reset, apply, delete or restore actions only when the underlying provider supports them.
@@ -301,7 +291,7 @@ argvus-control-center keybindings
 
 Run `argvus-control-center --help` for the routes available in the installed version. The command-line route is a shortcut into the same settings application, not a separate configuration system.
 
-Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
+Useful direct routes include `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `firewall`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` and `appearance`. Appearance also accepts focused routes such as `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` and `widget-telemetry`; display accepts `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` and `hdr`. Use the installed `--help` output when scripting because availability still depends on the installed build.
 
 ## Related
 

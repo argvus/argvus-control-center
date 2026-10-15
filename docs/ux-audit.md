@@ -1367,6 +1367,41 @@ Validação: `cargo fmt --all -- --check`, `cargo check --workspace
 `argvus-control-center-core` e `argvus-tui`, todos sem falhas. Não
 documentado como "Fase" porque não migra nenhum botão para `RowKind`.
 
+### 5.8 Reorganização das categorias da Home (2026-10-15)
+
+Mudança de arquitetura de informação, fora das fases de `RowKind`. Não altera
+ações nem o momento em que cada mudança é efetivada.
+
+- **Home**: os cards Hyprland, Taskbar, Control Panel e Widget Telemetry viram
+  um único card **Desktop Shell** (quatro itens com seus próprios destinos).
+  **Language & Region** abre diretamente Language (antiga Regional Locale),
+  Time Zone, Date & Time, System Locales (só no Arch) e Keyboard Layout; o hub
+  `Page::LocaleRegion` continua acessível pela CLI `locale`. **Appearance**
+  abre Fonts, Desktop (Theme, Appearance Mode, Accent Color, Wallpaper) e
+  Application Style (Terminal, Launcher). O item "Themes & Visuals" saiu da
+  Home; o hub `AppearancePage::Home` fica só como raiz da CLI `appearance`.
+  **Security** (novo) reúne SSH Keys, GPG Keys e Firewall. Applications
+  mantém Default Apps, Projects e Snippets.
+- **Breadcrumbs** (`argvus-control-center-settings` e
+  `argvus-control-center-appearance`) passaram a seguir o cartão da Home, por
+  exemplo `Control Center > Security > SSH keys`,
+  `Control Center > Language & Region > Language`,
+  `Control Center > Applications > Default Apps` e
+  `Control Center > Desktop Shell > Hyprland > Keyboard Shortcuts`.
+  `Control Center > General` substitui o antigo `System`, e Hostname passou a
+  usar a chave i18n em vez de texto fixo. Layout do teclado também deixou de
+  ser texto fixo.
+- **Firewall** saiu da aba de Network: `NetworkPage::Firewall` foi removido. A
+  página é a mesma de `Page::Firewall`, aberta a partir de Security. A rota
+  CLI `network firewall` continua funcionando e abre essa página.
+- **Busca**: SSH Keys, GPG Keys e Firewall usam a categoria Security. O
+  registro ganhou a entrada Firewall.
+- **i18n**: chave `control_center.security_category` (Security / Segurança)
+  para o cabeçalho do card. Removidas as chaves órfãs
+  `hyprland_description`, `taskbar_description`,
+  `control_panel_description`, `widget_telemetry_description`,
+  `themes_and_visuals` e `themes`, em en-US e pt-BR.
+
 ## 6. Pontos de decisão
 
 ### 6.1 Decisões registradas (2026-10-04)
@@ -1494,3 +1529,9 @@ Ajustes aprovados junto com o plano da Fase 1:
   `en/`/`pt-br/`, mas confirme se a sincronização do site ignora arquivos na
   raiz de `docs/`. O `cspell.json` usa idioma `en`; se o cspell rodar em `docs/`,
   este arquivo em português vai acusar palavras.
+
+### 6.3 Pontos abertos da reorganização (2026-10-15)
+
+| Ponto | Decisão | Status |
+| --- | --- | --- |
+| D43 | `HardwarePage::Power` (Hardware > Power) saiu da Home, mas continua acessível pela CLI `hardware power` e pela busca. É o único seletor de perfis de energia do ARGVUS (tecla `e`); o cartão Power & Session não tem esse recurso, então remover a página apagaria a função. Opções: (a) manter como está; (b) mover o seletor de perfis para Power & Session e remover `Hardware > Power`; (c) remover só a rota CLI e a entrada de busca. | aberto |

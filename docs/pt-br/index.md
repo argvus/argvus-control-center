@@ -19,17 +19,12 @@ O Control Panel pode oferecer controles rápidos para uma configuração permane
 
 A tela inicial atual do Control Center oferece estas áreas:
 
-* **Aparência** — temas, modos, acentos e wallpapers.
-* **Taskbar** — posição, espaços, ícones, data e hora, reaproveitando as páginas de efeitos implementadas na Aparência.
-* **Control Panel** — sessões, ordem e transparência dos cards, reaproveitando as páginas de efeitos implementadas na Aparência.
-* **Widget Telemetry** — sessões e transparência do widget de telemetria, reaproveitando as páginas de efeitos implementadas na Aparência.
-* **Aplicativos padrão** — selecione aplicativos instalados para funções compatíveis.
-* **Snippets** — textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
-* **Chaves SSH** — pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`: gerar, carregar no agente, descarregar e apagar.
-* **Chaves GPG** — o keyring gerenciado pelo `argvus gpg`: gerar chaves (nome, e-mail, comentário, algoritmo, tamanho, expiração, senha), importar e exportar chaves públicas e privadas pelo gerenciador de arquivos, editar uma chave (expiração, senha, assinar, revogar, confiança, servidor de chaves), copiar, excluir e buscar chaves. O gpg-agent usa o pinentry-gtk.
-* **Fontes** — escolha os alvos de fonte e as configurações de renderização expostas pelo ARGVUS.
-* **Localidade e região** — fuso horário, data e hora, localidade regional, locales do sistema e configuração do teclado.
-* **Sistema** — host, usuários, grupos e páginas de administração disponíveis na instalação atual.
+* **Desktop Shell** — Hyprland (atalhos de teclado, regras de janela, espaços de janela, animações, blur, bordas e a versão instalada), Taskbar, Control Panel e Widget Telemetry.
+* **Idioma e região** — idioma (localidade regional), fuso horário, data e hora, locales do sistema e layout do teclado, cada um aberto diretamente pela tela inicial.
+* **Aparência** — Fontes, Área de trabalho (tema, modo de aparência, cor de destaque e wallpaper) e Estilo dos aplicativos (transparência do terminal e do lançador).
+* **Aplicativos** — aplicativos padrão, Projetos e Snippets. Snippets são textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
+* **Segurança** — chaves SSH (pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`: gerar, carregar no agente, descarregar e apagar), chaves GPG (o keyring gerenciado pelo `argvus gpg`: gerar, importar e exportar, editar, copiar, excluir e buscar; o gpg-agent usa o pinentry-gtk) e o firewall.
+* **Geral** — nome do host, usuários, grupos e páginas de administração do sistema disponíveis na instalação atual.
 * **Hyprland** — atalhos de teclado, regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (espaços de janela, animações, blur, bordas), além da versão instalada do Hyprland.
 * **Displays, rede, sessão e outros domínios** — disponíveis pela busca inicial e pelas rotas de domínio quando os recursos opcionais correspondentes estão instalados.
 
@@ -47,15 +42,13 @@ A árvore atual de configurações inclui:
 
 | Área | Destinos atuais |
 | --- | --- |
-| Aparência | Temas, modos de tema, cor de destaque, wallpapers, efeitos, espaços/bordas/posição |
-| Taskbar | Posição, espaçamento, grupo utilitário, ícones, data e hora |
-| Control Panel | Visibilidade/ordem dos cards, sessões e transparência |
-| Widget Telemetry | Sessões e transparência |
-| Entrada e teclado | Mouse e touchpad, layout/variante do teclado, mapa do console |
-| Localidade e região | Idioma, fuso horário, data e hora, localidade regional, locales do sistema e teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets, Chaves SSH, Chaves GPG |
-| Hyprland | Atalhos de teclado, Regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (Espaços de janela, Animações, Blur, Bordas), além da versão instalada do Hyprland |
-| Sistema | Hostname, firewall, usuários, grupos e administração do sistema |
+| Desktop Shell | Hyprland (atalhos de teclado, regras de janela, espaços de janela, animações, blur, bordas), Taskbar (posição, espaçamento, grupo utilitário, ícones, data e hora), Control Panel e Widget Telemetry |
+| Aparência | Fontes; Área de trabalho: tema, modo de aparência, cor de destaque e wallpapers; Estilo dos aplicativos: transparência do terminal e do lançador |
+| Entrada e teclado | Mouse e touchpad, variante do teclado, mapa do console |
+| Idioma e região | Idioma, fuso horário, data e hora, locales do sistema e layout do teclado |
+| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets |
+| Segurança | Chaves SSH, Chaves GPG, firewall |
+| Geral | Hostname, usuários, grupos e administração do sistema |
 | Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
 | Serviços e diagnósticos | Serviços, Serviços de Dev, boot, pacotes, armazenamento e diagnósticos |
 | Conectividade | Rede, áudio e Bluetooth |
@@ -68,11 +61,11 @@ Alguns itens são páginas completas e outros são subpáginas alcançadas pela 
 
 ### Aparência
 
-Aparência é a principal área de personalização. Ela inclui temas e modos Sticky/Float, cores de destaque e wallpapers incluídos ou personalizados. Taskbar, Control Panel e Widget Telemetry são áreas próprias no nível principal (veja abaixo) que reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Animações funciona da mesma forma em Hyprland > Animations (Animações): o controle Ligar, as Curvas personalizadas (Bézier, Spring, Linear e Ease-out) e as cinco categorias de animações formam um único rascunho, aplicado junto com **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+Aparência é a principal área de personalização. Seu grupo Área de trabalho reúne o tema (com seu modo Sticky ou Float), o modo de aparência, a cor de destaque e os wallpapers, e seu grupo Estilo dos aplicativos reúne a transparência do terminal e do lançador. Taskbar, Control Panel e Widget Telemetry fazem parte do Desktop Shell (veja abaixo) e reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Animações funciona da mesma forma em Hyprland > Animations (Animações): o controle Ligar, as Curvas personalizadas (Bézier, Spring, Linear e Ease-out) e as cinco categorias de animações formam um único rascunho, aplicado junto com **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
 
 ### Taskbar
 
-A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência.
+A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência. Aparece no cartão **Desktop Shell** da tela inicial.
 
 ### Control Panel
 
@@ -104,7 +97,7 @@ A página lê os snippets do `argvus-config` e grava por meio do `argvus snippet
 
 ### Chaves SSH
 
-Chaves SSH é a página dos pares de chaves que o `argvus keys` gerencia. Ela fica em **Aplicativos → Chaves SSH** (busque por `chaves ssh` ou execute `argvus-control-center ssh-keys`).
+Chaves SSH é a página dos pares de chaves que o `argvus keys` gerencia. Ela fica em **Segurança → Chaves SSH** (busque por `chaves ssh` ou execute `argvus-control-center ssh-keys`).
 
 A página tem quatro partes, de cima para baixo:
 
@@ -117,7 +110,7 @@ Ações         Atualizar e Descarregar todas as chaves do agente
 
 #### Como usar
 
-1. Abra **Control Center → Aplicativos → Chaves SSH**. Pela Home, você também pode buscar por `chaves ssh`.
+1. Abra **Control Center → Segurança → Chaves SSH**. Pela Home, você também pode buscar por `chaves ssh`.
 2. **Encontrar uma chave:** pressione `/` e digite para mostrar só os pares cujo nome ou comentário combina. `Enter` encerra a busca e executa a linha destacada, como nas outras listas, então confira a linha antes de apertar; `Esc` limpa a busca.
 3. **Criar um par:** em **Gerar**, selecione **Nome**, pressione `Enter`, digite o nome e pressione `Enter` de novo. Selecione **Tipo** e pressione `Enter` para alternar entre `ed25519` e `rsa`. Selecione **Gerar par de chaves** e pressione `Enter`. O novo par aparece em **Chaves** imediatamente, sem senha.
 4. **Copiar a chave pública:** no bloco do par, selecione **Copiar chave pública** e pressione `Enter`. O conteúdo do arquivo `.pub` vai para a área de transferência do Wayland, pronto para colar no `authorized_keys` de um servidor ou em um host Git. A chave privada nunca é copiada. Isso precisa do `wl-clipboard` (`wl-copy`); sem ele, a página informa que a chave não foi copiada.
@@ -140,7 +133,7 @@ As senhas nunca são digitadas no Control Center nem passadas como argumentos de
 
 ### Chaves GPG
 
-Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Aplicativos → Chaves GPG** (busque por `chaves gpg` ou rode `argvus-control-center gpg-keys`).
+Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Segurança → Chaves GPG** (busque por `chaves gpg` ou rode `argvus-control-center gpg-keys`).
 
 As seções da página, de cima para baixo:
 
@@ -156,7 +149,7 @@ Chaves ›          o chaveiro, em uma página própria, com a busca no topo
 
 #### Como usar
 
-1. Abra **Control Center → Aplicativos → Chaves GPG**. Pela Home, você também pode buscar por `chaves gpg`.
+1. Abra **Control Center → Segurança → Chaves GPG**. Pela Home, você também pode buscar por `chaves gpg`.
 2. **Pinentry** é fixo em `pinentry-gtk`. A página apenas o mostra. Na primeira vez que uma chave é gerada, o ARGVUS grava esse pinentry no `gpg-agent.conf`, entre as suas linhas de marcação, e mantém as outras linhas. Se você já escreveu uma linha `pinentry-program` fora dessas marcas, a geração para com erro, para que você remova essa linha.
 3. **Criar uma chave:** em **Gerar chave ▾**, digite **Nome completo** e **E-mail**. Os dois são obrigatórios, e **Gerar chave** fica desabilitado até que ambos tenham texto. **Comentário** é opcional. A identidade fica `Nome (comentário) <e-mail>`.
    - **Algoritmo** alterna entre **RSA** e **DSA ElGamal**. Uma chave DSA recebe uma subchave de criptografia ElGamal; uma chave RSA recebe uma RSA.
@@ -204,9 +197,9 @@ Ainda não está na página: buscar uma chave no servidor por nome ou e-mail. Us
 | Uma ação espera e nada acontece | A janela do pinentry está escondida ou não foi aberta. Confira se a sessão expõe `WAYLAND_DISPLAY` ou `DISPLAY`. |
 | A importação é recusada | O arquivo não contém a chave do tipo escolhido. Chaves públicas vão por **Importar chave pública…**; privadas por **Importar chave privada…**. |
 
-### Localidade e região
+### Idioma e região
 
-Esta área contém fuso horário, data e hora, localidade regional, locales do sistema e configurações do teclado. As configurações do teclado incluem layout, variante e mapa de teclado do console. A busca inicial também expõe atalhos de teclado e mouse/touchpad como rotas diretas de configuração.
+Este cartão lista Idioma (a localidade regional), Fuso horário, Data e hora, Locales do sistema e Layout do teclado, e cada um abre diretamente pela tela inicial. As páginas de teclado também concentram a variante e o mapa de teclado do console. A busca inicial também expõe atalhos de teclado e mouse/touchpad como rotas diretas de configuração.
 
 ### Hardware e displays
 
@@ -214,7 +207,7 @@ Quando os recursos correspondentes estão instalados, o Control Center pode most
 
 ### Conectividade e áudio
 
-A área de rede expõe o status e as páginas do provider de rede instalado, incluindo rotas de Wi-Fi, Ethernet, VPN, DNS, proxy e firewall quando disponíveis. Bluetooth depende do suporte Bluetooth. A área de áudio aparece quando o recurso opcional correspondente está habilitado e integra-se ao serviço de áudio instalado.
+A área de rede expõe o status e as páginas do provider de rede instalado, incluindo rotas de Wi-Fi, Ethernet, VPN, DNS e proxy quando disponíveis. O firewall fica listado em **Segurança**. Bluetooth depende do suporte Bluetooth. A área de áudio aparece quando o recurso opcional correspondente está habilitado e integra-se ao serviço de áudio instalado.
 
 ### Energia e sessão
 
@@ -230,7 +223,7 @@ Nas listas de **Pacotes** que filtram ao digitar (Buscar, AUR, Instalados, Órf�
 
 ### Usuários e grupos
 
-Quando o provider de contas está disponível, abra **Configurações → Sistema → Usuários** ou busque por **usuários**. A interface pode listar contas normais e de sistema, criar usuários, editar metadados, gerenciar grupos suplementares e primários, alterar ou bloquear uma senha, desbloqueá-la, exigir troca de senha no próximo login, definir ou remover um avatar, e ativar o login automático.
+Quando o provider de contas está disponível, abra **Control Center → Geral → Usuários** ou busque por **usuários**. A interface pode listar contas normais e de sistema, criar usuários, editar metadados, gerenciar grupos suplementares e primários, alterar ou bloquear uma senha, desbloqueá-la, exigir troca de senha no próximo login, definir ou remover um avatar, e ativar o login automático.
 
 A criação pede username, nome completo, shell, grupos suplementares e uma senha opcional com confirmação. Uma senha vazia cria a conta com a senha bloqueada; não cria silenciosamente uma senha utilizável. A página de um usuário agrupa os campos da conta (nome completo, shell, grupo principal e grupos suplementares, seguidos de **Salvar alterações**), o alternador de **Login automático**, as ações de **Senha** (alterar, bloquear, desbloquear, exigir troca no próximo login) e as de **Avatar**. Username, UID / GID e diretório home aparecem só como informação. A **Zona de perigo** no fim reúne as ações destrutivas separadas para remover a conta mantendo o diretório home ou removendo também o home. Leia atentamente a confirmação antes de escolher a segunda opção. Operações de conta exigem privilégio e podem abrir o prompt de autorização do sistema. Avatares podem ser consumidos pelo greeter por meio da integração padrão de imagem da conta.
 
@@ -250,21 +243,19 @@ Enquanto a busca da tela inicial estiver ativa, as teclas imprimíveis são inse
 
 ## Fluxo de aparência
 
-Abra **Aparência** para ver os controles visuais integrados. Suas páginas são:
+Abra **Aparência** para ver os controles visuais integrados. Seus grupos são:
 
-* **Temas** — escolha uma família incluída e seu modo Sticky ou Float, ou gerencie perfis de tema personalizados.
-* **Acentos** — escolha o acento ou informe uma cor RGB válida de seis dígitos.
-* **Wallpapers** — escolha um wallpaper incluído ou selecione um arquivo personalizado.
-* **Espaços, bordas e posição** — posição da taskbar, espaço da taskbar/shell, gaps das janelas, bordas e espessura das bordas.
-* **Efeitos** — ative ou desative o estado compartilhado de efeitos visuais.
-* **Widgets de telemetria** — ative a superfície de telemetria, selecione seus blocos disponíveis e reordene-os (`Shift+↑`/`Shift+↓` com um bloco focado).
-* **Control Panel** — ative, desative e reordene os cards do painel (`Shift+↑`/`Shift+↓` com um card focado, aplicado na hora através do mesmo mecanismo que o arrastar do painel real usa).
+* **Fontes** — os alvos de fonte e as configurações de renderização.
+* **Área de trabalho** — **Tema** (escolha uma família incluída e seu modo Sticky ou Float, ou gerencie perfis de tema personalizados), **Modo de aparência** (Sticky ou Float, independente do tema), **Cor de destaque** (um acento incluído ou uma cor RGB válida de seis dígitos) e **Wallpaper** (um wallpaper incluído ou um arquivo personalizado).
+* **Estilo dos aplicativos** — a transparência do **Terminal** e do **Lançador**.
+
+O cartão Desktop Shell reúne as superfícies que usam essas configurações: **Widget Telemetry** (ative a superfície de telemetria, selecione seus blocos disponíveis e reordene-os com `Shift+↑`/`Shift+↓` em um bloco focado) e **Control Panel** (ative, desative e reordene os cards do painel com `Shift+↑`/`Shift+↓` em um card focado, aplicado na hora através do mesmo mecanismo que o arrastar do painel real usa).
 
 Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](/pt/docs/user-guide/appearance/), [Temas](/pt/docs/argvus-themes/) e [Janelas e layout](/pt/docs/argvus-hyprland/windows-and-layout/).
 
 ## Uso pelo teclado
 
-O aplicativo de configurações suporta navegação pelo teclado. Cada página é uma lista única: use as setas ou `j`/`k` para mover, `Enter` para abrir ou executar a linha selecionada, `Space` para alternar, `Esc` para voltar, `/` para buscar listas e `?` para ajuda; o rodapé mostra as teclas que valem para a linha selecionada. As ações são linhas da lista, não botões, e `Tab` não leva até elas. Linhas que só mostram informação são puladas. Enquanto um campo de texto, uma busca ou um filtro de lista estiver ativo, `q` e `?` são digitados como texto em vez de sair ou abrir a ajuda. **Restaurar padrões** e **Restaurar todos os atalhos** são linhas de uma **Zona de perigo** no fim das suas páginas; `r` pede a mesma restauração, e na lista de atalhos `r` restaura o atalho selecionado depois de uma confirmação. Em **Teclado → Layout**, `/` foca a caixa **Buscar** no topo da página, e `Esc` a limpa; `Enter` define o layout padrão (marcado com `●`) e `Space` adiciona ou remove um layout (`[x]`); essas teclas só alteram um rascunho, e o botão **Aplicar** na barra **Ações**, fixa embaixo da lista, grava os layouts e o padrão no Hyprland de uma vez. Na lista, `Tab` ou `←/→` levam o foco até essa barra enquanto **Aplicar** estiver habilitado (o rodapé mostra então `←/→ Ações`); `←/→` percorrem os botões dela e `↑/↓` devolvem o foco à lista. Sair da página com alterações não aplicadas pede confirmação antes. Em **Localidade e região → Fuso horário** o layout é o mesmo: `/` foca a caixa **Buscar** no topo, `Enter` escolhe um fuso em um rascunho (marcado com `●`), e o botão **Aplicar** na barra **Ações**, embaixo da lista, grava o fuso no sistema com `timedatectl`; `Tab`, `←/→` e `↑/↓` funcionam como em Teclado → Layout. Sair com um fuso não aplicado pede confirmação antes. Em **Locales do sistema**, `Enter` ou `Space` marcam um locale e a linha **Aplicar** no fim grava a seleção.
+O aplicativo de configurações suporta navegação pelo teclado. Cada página é uma lista única: use as setas ou `j`/`k` para mover, `Enter` para abrir ou executar a linha selecionada, `Space` para alternar, `Esc` para voltar, `/` para buscar listas e `?` para ajuda; o rodapé mostra as teclas que valem para a linha selecionada. As ações são linhas da lista, não botões, e `Tab` não leva até elas. Linhas que só mostram informação são puladas. Enquanto um campo de texto, uma busca ou um filtro de lista estiver ativo, `q` e `?` são digitados como texto em vez de sair ou abrir a ajuda. **Restaurar padrões** e **Restaurar todos os atalhos** são linhas de uma **Zona de perigo** no fim das suas páginas; `r` pede a mesma restauração, e na lista de atalhos `r` restaura o atalho selecionado depois de uma confirmação. Em **Idioma e região → Layout do teclado**, `/` foca a caixa **Buscar** no topo da página, e `Esc` a limpa; `Enter` define o layout padrão (marcado com `●`) e `Space` adiciona ou remove um layout (`[x]`); essas teclas só alteram um rascunho, e o botão **Aplicar** na barra **Ações**, fixa embaixo da lista, grava os layouts e o padrão no Hyprland de uma vez. Na lista, `Tab` ou `←/→` levam o foco até essa barra enquanto **Aplicar** estiver habilitado (o rodapé mostra então `←/→ Ações`); `←/→` percorrem os botões dela e `↑/↓` devolvem o foco à lista. Sair da página com alterações não aplicadas pede confirmação antes. Em **Idioma e região → Fuso horário** o layout é o mesmo: `/` foca a caixa **Buscar** no topo, `Enter` escolhe um fuso em um rascunho (marcado com `●`), e o botão **Aplicar** na barra **Ações**, embaixo da lista, grava o fuso no sistema com `timedatectl`; `Tab`, `←/→` e `↑/↓` funcionam como em Layout do teclado. Sair com um fuso não aplicado pede confirmação antes. Em **Locales do sistema**, `Enter` ou `Space` marcam um locale e a linha **Aplicar** no fim grava a seleção.
 
 As páginas que juntam alterações antes de salvar (um usuário, um grupo, a criação de conta, a troca de senha, a configuração do firewall e Locales do sistema) terminam esse bloco com a linha **Salvar** ou **Aplicar**, que fica apagada até haver alguma alteração. Se voltar descartaria alterações não salvas, o Control Center pergunta antes. Toda confirmação mostra **Confirmar** e **Cancelar** como duas linhas, com o foco em **Cancelar**: `Enter` executa a linha em foco, `y` confirma e `n` ou `Esc` cancelam.
 
@@ -282,7 +273,7 @@ O suporte à restauração é específico de cada domínio:
 * **Fontes** pode restaurar todas as fontes, um alvo ou uma configuração individual.
 * **Aplicativos padrão** pode restaurar todos os padrões, uma categoria ou um seletor individual.
 * **Atalhos de teclado** pode restaurar um atalho ou todos e então recarregar os atalhos gerados da sessão.
-* **Regras de janela** ficam em **Hyprland → Configurações → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
+* **Regras de janela** ficam em **Desktop Shell → Hyprland → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
 
 * **Projetos** ficam em **Aplicativos → Projetos** (busque por `projetos` ou execute `argvus control-center projects`). **Adicionar pasta de projeto** e **Adicionar pasta raiz** ficam no topo da página e abrem um campo de texto com o caminho; o launcher confere se é um diretório e mostra o erro caso não seja, inclusive quando a pasta levaria o total efetivo de projetos além de 9 (o `SUPER + ALT + 1..9` não consegue endereçar mais que isso). Cada pasta configurada, marcada como raiz (seus subdiretórios são projetos) ou projeto único, ganha seu próprio bloco abaixo do formulário com uma linha **Remover** que pede confirmação. A página chama o `argvus-projects`, então as alterações são gravadas pelo launcher e valem na próxima vez que `SUPER + O` ou `SUPER + ALT + 1..9` forem usados. Se o `argvus-projects` não estiver instalado, a página informa isso.
 * **Outras páginas do sistema** exibem ações de restauração, aplicação, exclusão ou recuperação somente quando o provider responsável oferece esse recurso.
@@ -302,7 +293,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `firewall`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 

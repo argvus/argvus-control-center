@@ -99,9 +99,9 @@ models/widgets. They consume the existing semantic ARGVUS `Theme`; they do not
 define a second palette or language system. Existing settings confirmation and
 status flows remain intact until a later, separately validated migration.
 
-Future navigation will place Firewall under `Rede` (after Proxy), while current
-settings routes remain unchanged in Phase 1. No future-domain screen is
-registered until its backend and view are implemented.
+The Home lists Firewall under its Security card, next to SSH keys and GPG keys;
+the `network firewall` route is kept and opens that same page. No future-domain
+screen is registered until its backend and view are implemented.
 
 ### Safety and backend boundaries
 
@@ -117,7 +117,7 @@ Optional dependencies are capabilities, not requirements: absent NetworkManager,
 BlueZ, PipeWire, smartmontools, Plymouth, reflector, power-management tools, or
 bootloader tools must produce an unavailable state, never a panic. Future domains
 will retain separate model, detection, backend, action, error, and view modules.
-Firewall belongs to the future Network domain.
+Firewall belongs to the Security card of the Home, not to the Network domain.
 
 ### Phase 3 domains
 
