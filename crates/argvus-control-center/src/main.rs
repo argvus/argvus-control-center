@@ -9,6 +9,17 @@ use argvus_control_center::app::App;
 use argvus_control_center::{cli, event, ui};
 use argvus_tui::terminal::{TerminalGuard, install_panic_hook};
 
+/// Polls one domain when its feature is compiled in and folds its change flag
+/// into `$dirty`. The `cfg` is evaluated where the macro is expanded.
+macro_rules! poll_domain {
+  ($dirty:ident, $feature:literal, $domain:expr) => {
+    #[cfg(feature = $feature)]
+    {
+      $dirty |= $domain.poll();
+    }
+  };
+}
+
 /// Executes the `main` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn main() -> Result<()> {
   let args: Vec<String> = std::env::args().skip(1).collect();
@@ -69,58 +80,19 @@ fn main() -> Result<()> {
     ))]
     {
       let mut domain_dirty = false;
-      #[cfg(feature = "hardware")]
-      {
-        domain_dirty |= app.hardware.poll();
-      }
-      #[cfg(feature = "services")]
-      {
-        domain_dirty |= app.services.poll();
-      }
-      #[cfg(feature = "dev-services")]
-      {
-        domain_dirty |= app.dev_services.poll();
-      }
-      #[cfg(feature = "network")]
-      {
-        domain_dirty |= app.network.poll();
-      }
-      #[cfg(feature = "audio")]
-      {
-        domain_dirty |= app.audio.poll();
-      }
-      #[cfg(feature = "bluetooth")]
-      {
-        domain_dirty |= app.bluetooth.poll();
-      }
-      #[cfg(feature = "boot")]
-      {
-        domain_dirty |= app.boot.poll();
-      }
-      #[cfg(feature = "packages")]
-      {
-        domain_dirty |= app.packages.poll();
-      }
-      #[cfg(feature = "storage")]
-      {
-        domain_dirty |= app.storage.poll();
-      }
-      #[cfg(feature = "diagnostics")]
-      {
-        domain_dirty |= app.diagnostics.poll();
-      }
-      #[cfg(feature = "power")]
-      {
-        domain_dirty |= app.power.poll();
-      }
-      #[cfg(feature = "session")]
-      {
-        domain_dirty |= app.session.poll();
-      }
-      #[cfg(feature = "displays")]
-      {
-        domain_dirty |= app.displays.poll();
-      }
+      poll_domain!(domain_dirty, "hardware", app.hardware);
+      poll_domain!(domain_dirty, "services", app.services);
+      poll_domain!(domain_dirty, "dev-services", app.dev_services);
+      poll_domain!(domain_dirty, "network", app.network);
+      poll_domain!(domain_dirty, "audio", app.audio);
+      poll_domain!(domain_dirty, "bluetooth", app.bluetooth);
+      poll_domain!(domain_dirty, "boot", app.boot);
+      poll_domain!(domain_dirty, "packages", app.packages);
+      poll_domain!(domain_dirty, "storage", app.storage);
+      poll_domain!(domain_dirty, "diagnostics", app.diagnostics);
+      poll_domain!(domain_dirty, "power", app.power);
+      poll_domain!(domain_dirty, "session", app.session);
+      poll_domain!(domain_dirty, "displays", app.displays);
       #[cfg(feature = "appearance")]
       {
         domain_dirty |= app.appearance.poll();
