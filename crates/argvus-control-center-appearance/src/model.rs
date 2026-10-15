@@ -418,12 +418,11 @@ pub enum ControlPanelCard {
   Appearance,
   Session,
   Display,
-  SpacesBordersPosition,
   Power,
 }
 
 impl ControlPanelCard {
-  pub const ALL: [Self; 14] = [
+  pub const ALL: [Self; 13] = [
     Self::User,
     Self::Notifications,
     Self::Calendar,
@@ -436,7 +435,6 @@ impl ControlPanelCard {
     Self::Appearance,
     Self::Session,
     Self::Display,
-    Self::SpacesBordersPosition,
     Self::Power,
   ];
 
@@ -455,7 +453,6 @@ impl ControlPanelCard {
       Self::Appearance => "appearance",
       Self::Session => "session",
       Self::Display => "display",
-      Self::SpacesBordersPosition => "spaces-borders-position",
       Self::Power => "power",
     }
   }
@@ -475,7 +472,6 @@ impl ControlPanelCard {
       Self::Appearance => "control_center.control_panel_card_appearance",
       Self::Session => "control_center.control_panel_card_session",
       Self::Display => "control_center.control_panel_card_display",
-      Self::SpacesBordersPosition => "control_center.control_panel_card_spaces_borders_position",
       Self::Power => "control_center.control_panel_card_power",
     }
   }
@@ -1130,10 +1126,6 @@ mod tests {
     );
     assert_eq!(WidgetTelemetryBlock::CpuGpu.key(), "cpu_gpu");
     assert!(WidgetTelemetryBlocks::default().enabled(WidgetTelemetryBlock::Network));
-    assert_eq!(
-      ControlPanelCard::SpacesBordersPosition.key(),
-      "spaces-borders-position"
-    );
     assert!(ControlPanelCards::default().enabled(ControlPanelCard::Power));
   }
   #[test]

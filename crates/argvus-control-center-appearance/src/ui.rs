@@ -1794,10 +1794,7 @@ impl AppearanceApp {
       tr(self.lang, "control_center.hyprland")
     );
     let taskbar_root = format!("{root} > {}", tr(self.lang, "control_center.taskbar"));
-    let control_panel_root = format!(
-      "{root} > {}",
-      tr(self.lang, "control_center.control_center")
-    );
+    let control_panel_root = format!("{root} > {}", tr(self.lang, "control_center.control_panel"));
     let widget_telemetry_root = format!(
       "{root} > {}",
       tr(self.lang, "control_center.widget_telemetry")

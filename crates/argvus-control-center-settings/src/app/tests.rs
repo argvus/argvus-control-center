@@ -1522,7 +1522,7 @@ fn breadcrumbs_show_the_home_card_of_each_page() {
     ),
     (
       Page::WindowRules,
-      "Control Center > Desktop & Input > Window rules",
+      "Control Center > Desktop & Input > Hyprland > Window rules",
     ),
     (
       Page::MouseTouchpad,

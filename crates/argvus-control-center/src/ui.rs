@@ -507,6 +507,15 @@ fn search_category(lang: argvus_i18n::Lang, category: &str) -> String {
   if let Some(card) = HomeCardId::from_search_category(category) {
     return card.label(lang).to_string();
   }
+  // Hyprland is a page inside the Desktop & Input card, so its results keep
+  // that root, as the breadcrumb of the Hyprland pages does.
+  if category == "hyprland" {
+    return format!(
+      "{} > {}",
+      HomeCardId::DesktopInput.label(lang),
+      tr(lang, "control_center.hyprland")
+    );
+  }
   let key = format!("control_center.{category}");
   let translated = tr(lang, &key);
   if translated == key {

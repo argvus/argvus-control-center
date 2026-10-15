@@ -433,8 +433,10 @@ impl App {
         "{desktop_input_root} > {}",
         tr(self.lang, "control_center.keyboard_shortcuts")
       ),
+      // Window rules is listed only under the Hyprland category.
       Page::WindowRules => format!(
-        "{desktop_input_root} > {}",
+        "{desktop_input_root} > {} > {}",
+        tr(self.lang, "control_center.hyprland"),
         tr(self.lang, "control_center.window_rules")
       ),
       Page::Projects => format!(

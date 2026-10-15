@@ -31,8 +31,6 @@ pub enum HomeDestination {
   KeyboardAndShortcuts,
   #[cfg(feature = "hardware")]
   MouseTouchpad,
-  #[cfg(feature = "apps")]
-  WindowRules,
   #[cfg(feature = "locale")]
   LanguageRegion,
   #[cfg(feature = "locale")]
@@ -107,8 +105,6 @@ impl HomeDestination {
       Self::KeyboardAndShortcuts => icons::KEYBOARD,
       #[cfg(feature = "hardware")]
       Self::MouseTouchpad => icons::MOUSE,
-      #[cfg(feature = "apps")]
-      Self::WindowRules => icons::WINDOW_RULES,
       #[cfg(feature = "locale")]
       Self::LanguageRegion => icons::EARTH,
       #[cfg(feature = "locale")]
@@ -234,7 +230,7 @@ pub fn home_rows(
   #[cfg(feature = "appearance")]
   items.push(item(
     lang,
-    "control_center.control_center",
+    "control_center.control_panel",
     HomeDestination::ControlCenter,
   ));
   #[cfg(feature = "appearance")]
@@ -280,12 +276,6 @@ pub fn home_rows(
     lang,
     "control_center.mouse_touchpad",
     HomeDestination::MouseTouchpad,
-  ));
-  #[cfg(feature = "apps")]
-  items.push(item(
-    lang,
-    "control_center.window_rules",
-    HomeDestination::WindowRules,
   ));
   push_card(
     &mut rows,

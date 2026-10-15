@@ -612,7 +612,6 @@ fn control_panel_card_from_key(key: &str) -> Option<ControlPanelCard> {
     "appearance" => ControlPanelCard::Appearance,
     "session" => ControlPanelCard::Session,
     "display" => ControlPanelCard::Display,
-    "spaces-borders-position" => ControlPanelCard::SpacesBordersPosition,
     "power" => ControlPanelCard::Power,
     _ => return None,
   })

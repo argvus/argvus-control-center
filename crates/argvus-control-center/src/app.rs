@@ -421,7 +421,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.window_rules",
-        "card_desktop_input",
+        "hyprland",
         "control_center.window_rules",
         "window rules workspace class app placement regras janela area de trabalho",
         "settings/window-rules",
@@ -1421,8 +1421,6 @@ impl App {
       HomeDestination::KeyboardAndShortcuts => self.open_settings(Page::Keybindings),
       #[cfg(feature = "hardware")]
       HomeDestination::MouseTouchpad => self.open_settings(Page::MouseTouchpad),
-      #[cfg(feature = "apps")]
-      HomeDestination::WindowRules => self.open_settings(Page::WindowRules),
       #[cfg(feature = "locale")]
       HomeDestination::LanguageRegion => self.open_settings(Page::LocaleRegion),
       #[cfg(feature = "locale")]

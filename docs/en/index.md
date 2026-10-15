@@ -20,8 +20,8 @@ The current Control Center home provides these areas:
 
 The home is a catalog of destinations grouped in six cards. Each destination opens its page directly, and the search finds it under any card.
 
-- **Appearance** — customize the desktop: Fonts, Desktop Style (theme, appearance mode, accent color and wallpapers), Application Style (terminal and launcher transparency), Taskbar, Control Center and Widget Telemetry.
-- **Desktop & Input** — configure the workspace: Hyprland (window spaces, animations, blur, borders and the installed version), Displays, Keyboard & Shortcuts, Mouse & Touchpad and Window Rules.
+- **Appearance** — customize the desktop: Fonts, Desktop Style (theme, appearance mode, accent color and wallpapers), Application Style (terminal and launcher transparency), Taskbar, Control Panel and Widget Telemetry.
+- **Desktop & Input** — configure the workspace: Hyprland (window rules, window spaces, animations, blur, borders and the installed version), Displays, Keyboard & Shortcuts and Mouse & Touchpad.
 - **Preferences** — personal and regional settings: Language & Region (the language, time zone, formats and keyboard layout hub), Date & Time, Default Applications, Power and Session.
 - **Hardware & Connectivity** — devices and connections: Hardware Overview, Network & Wi-Fi, Bluetooth, Audio and Storage.
 - **System Administration** — manage the operating system: Packages, Services, Boot, Hostname, Users & Groups, Firewall and Notifications (Do Not Disturb).
@@ -42,8 +42,8 @@ The main settings tree currently includes:
 
 | Area | Current destinations |
 | --- | --- |
-| Appearance | Fonts; Desktop Style: theme, appearance mode, accent color and wallpapers; Application Style: terminal and launcher transparency; Taskbar; Control Center; Widget Telemetry |
-| Desktop & Input | Hyprland (window spaces, animations, blur, borders), Displays, Keyboard & Shortcuts, Mouse & Touchpad, Window Rules |
+| Appearance | Fonts; Desktop Style: theme, appearance mode, accent color and wallpapers; Application Style: terminal and launcher transparency; Taskbar; Control Panel; Widget Telemetry |
+| Desktop & Input | Hyprland (window rules, window spaces, animations, blur, borders), Displays, Keyboard & Shortcuts, Mouse & Touchpad |
 | Preferences | Language & Region (language, time zone, formats, system locales and keyboard layout), Date & Time, Default Applications, Power, Session |
 | Hardware & Connectivity | Hardware Overview (summary, CPU, GPU, memory, devices), Network & Wi-Fi, Bluetooth, Audio, Storage |
 | System Administration | Packages, Services, Boot, Hostname, Users & Groups, Firewall, Notifications |
@@ -58,7 +58,7 @@ Each page shows its path in the header, for example `Control Center > Hardware &
 
 ### Appearance
 
-Appearance is the main customization area. Its Desktop group holds the theme (with its Sticky or Float mode), the appearance mode, the accent color and the wallpapers, and its Application Style group holds the terminal and launcher transparency. Taskbar, Control Center and Widget Telemetry are listed directly under Appearance on the home and reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. Animations works the same way under Hyprland > Animations: its Enable switch, the Custom curves (Bézier, Spring, Linear and Ease-out) and the five animation categories form one draft that is applied together with **Apply**. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+Appearance is the main customization area. Its Desktop group holds the theme (with its Sticky or Float mode), the appearance mode, the accent color and the wallpapers, and its Application Style group holds the terminal and launcher transparency. Taskbar, Control Panel and Widget Telemetry are listed directly under Appearance on the home and reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. Animations works the same way under Hyprland > Animations: its Enable switch, the Custom curves (Bézier, Spring, Linear and Ease-out) and the five animation categories form one draft that is applied together with **Apply**. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
 
 ### Taskbar
 
@@ -270,7 +270,7 @@ Reset support is deliberately per domain:
 - **Fonts** can restore all font settings, a target, or an individual setting.
 - **Default applications** can restore all defaults, a category, or an individual selector.
 - **Keyboard shortcuts** can restore one binding or all bindings and then reload the generated session bindings.
-- **Window rules** is in **Desktop & Input → Window Rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
+- **Window rules** is in **Desktop & Input → Hyprland → Window Rules** (search `window rules` or run `argvus-control-center window-rules`). Each rule has a **Workspace** row (`Enter` or `←/→` steps through 1 to 10) and a **Window classes** row that opens a text field with comma-separated regular expressions. **Add rule** creates `rule-N` with workspace 1 and no classes. Each rule's **Remove rule** sits in the **Danger zone** and asks for confirmation. Every change is written to `hyprland.window_rules` in `argvus config` and reloads the configuration immediately; invalid class patterns are rejected and shown as an error.
 
 - **Projects** is in **Tools & Diagnostics → Projects** (search `projects` or run `argvus control-center projects`). **Add project folder** and **Add root folder** sit at the top of the page and open a text field with the path; the launcher checks that it is a directory and shows the error otherwise, including when the folder would push the effective project count past 9 (`SUPER + ALT + 1..9` cannot address more). Each configured folder, marked as a root (its subfolders are projects) or a single project, gets its own block below the form with a **Remove** row that asks for confirmation. The page calls `argvus-projects`, so changes are written by the launcher and apply the next time `SUPER + O` or `SUPER + ALT + 1..9` runs. If `argvus-projects` is not installed, the page says so.
 - **Other system pages** expose reset, apply, delete or restore actions only when the underlying provider supports them.

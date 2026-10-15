@@ -1079,7 +1079,7 @@ fn validate_content(id: FileId, data: &[u8]) -> Result<(), String> {
 }
 
 fn validate_control_panel_cards(value: &str) -> Result<(), String> {
-  const IDS: [&str; 14] = [
+  const IDS: [&str; 13] = [
     "user",
     "notifications",
     "calendar",
@@ -1092,7 +1092,6 @@ fn validate_control_panel_cards(value: &str) -> Result<(), String> {
     "appearance",
     "session",
     "display",
-    "spaces-borders-position",
     "power",
   ];
   let json: serde_json::Value =
