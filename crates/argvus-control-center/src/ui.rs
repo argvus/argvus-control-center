@@ -555,7 +555,7 @@ mod tests {
       .map(|cell| cell.symbol())
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
-    assert!(text.contains("Control Center"));
+    assert!(text.contains("Control Center") || text.contains("Central de Controle"));
     assert!(text.contains("/ Search") || text.contains("/ Pesquisar") || text.contains("Search"));
   }
 
