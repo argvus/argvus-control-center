@@ -4,6 +4,7 @@
 //! the UI consumes normalized models and results.
 pub mod capabilities;
 pub mod config;
+pub mod format;
 pub mod i18n;
 pub mod jobs;
 pub mod paths;

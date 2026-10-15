@@ -3,6 +3,7 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::{backend, model::*};
+use argvus_control_center_core::format::human_bytes;
 use argvus_control_center_core::{
   capabilities::Capabilities,
   config::AppConfig,
@@ -969,28 +970,6 @@ fn yes_no(lang: Lang, value: bool) -> String {
     },
   )
   .into()
-}
-/// Executes the `human_bytes` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn human_bytes(bytes: u64) -> String {
-  /// Defines the constant `KIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-  const KIB: u64 = 1024;
-  /// Defines the constant `MIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-  const MIB: u64 = 1024 * 1024;
-  /// Defines the constant `GIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-  const GIB: u64 = 1024 * 1024 * 1024;
-  /// Defines the constant `TIB`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-  const TIB: u64 = 1024 * 1024 * 1024 * 1024;
-  if bytes >= TIB {
-    format!("{:.1} TiB", bytes as f64 / TIB as f64)
-  } else if bytes >= GIB {
-    format!("{:.1} GiB", bytes as f64 / GIB as f64)
-  } else if bytes >= MIB {
-    format!("{:.0} MiB", bytes as f64 / MIB as f64)
-  } else if bytes >= KIB {
-    format!("{:.0} KiB", bytes as f64 / KIB as f64)
-  } else {
-    format!("{bytes} B")
-  }
 }
 
 #[cfg(test)]
