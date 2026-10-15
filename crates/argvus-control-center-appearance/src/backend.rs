@@ -790,9 +790,13 @@ pub fn load_page(
     .unwrap_or_else(|| DEFAULT_ACCENT.to_string());
   state.accent = normalize_hex_color(&read_first(&accent_file(), &default_accent))
     .unwrap_or_else(|| default_accent.clone());
+  // The Desktop page shows the active wallpaper name, so it loads the active
+  // value too. The file list is only needed by the Wallpapers pages.
+  if matches!(page, AppearancePage::Desktop | AppearancePage::Wallpapers) {
+    state.wallpaper_active = active_wallpaper();
+  }
   if page == AppearancePage::Wallpapers {
     state.wallpapers = list_wallpapers();
-    state.wallpaper_active = active_wallpaper();
   }
   if matches!(
     page,
