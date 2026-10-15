@@ -494,7 +494,7 @@ fn parse_locale(args: &[String]) -> Result<Page, String> {
 /// Converts input data into `parse_system` while applying local validation. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn parse_system(args: &[String]) -> Result<Page, String> {
   if args.is_empty() {
-    return Ok(Page::System);
+    return Ok(Page::Hostname);
   }
   if args.len() != 1 {
     return Err("system accepts at most one page".to_string());
@@ -688,7 +688,7 @@ mod tests {
       (vec!["locale", "keyboard-variant"], Page::KeyboardVariant),
       (vec!["locale", "console-keymap"], Page::ConsoleKeymap),
       (vec!["language"], Page::Language),
-      (vec!["system"], Page::System),
+      (vec!["system"], Page::Hostname),
       (vec!["system", "hostname"], Page::Hostname),
       (vec!["system", "firewall"], Page::Firewall),
       (vec!["system", "--users"], Page::Users),

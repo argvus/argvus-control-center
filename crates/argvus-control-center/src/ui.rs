@@ -16,7 +16,8 @@ use ratatui::widgets::{
   Widget,
 };
 
-use crate::app::{App, HomeRow, Route};
+use crate::app::{App, Route};
+use crate::home::{HomeCategory, HomeDestination, HomeRow};
 
 /// Renders `draw` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn draw(app: &mut App, frame: &mut Frame) {
@@ -36,6 +37,7 @@ pub fn draw(app: &mut App, frame: &mut Frame) {
 
   match app.route {
     Route::Home => draw_home(app, frame),
+    Route::AppSettings => app.settings_hub.draw(frame, app.lang, &app.theme),
     Route::Config => app.config.draw(frame),
     Route::Settings => argvus_control_center_settings::ui::draw(&mut app.settings, frame),
     #[cfg(feature = "about")]
@@ -92,8 +94,10 @@ fn draw_home(app: &mut App, frame: &mut Frame) {
   let inner = area.inner(Margin::new(1, 1));
   let rows = Layout::vertical([
     Constraint::Length(1),
+    Constraint::Length(1),
     Constraint::Length(3),
     Constraint::Min(1),
+    Constraint::Length(1),
     Constraint::Length(1),
   ])
   .split(inner);
@@ -107,7 +111,14 @@ fn draw_home(app: &mut App, frame: &mut Frame) {
       version_label: "",
     },
   );
-  draw_search(app, frame, rows[1]);
+  frame.render_widget(
+    Paragraph::new(Line::from(Span::styled(
+      tr(app.lang, "control_center.home_subtitle"),
+      Style::new().fg(app.theme.muted),
+    ))),
+    rows[1].inner(Margin::new(1, 0)),
+  );
+  draw_search(app, frame, rows[2]);
   if app.search_active && !app.search_query.is_empty() {
     let mut lines: Vec<Line<'static>> = vec![Line::from(Span::styled(
       format!("  {}", tr(app.lang, "control_center.search_results")),
@@ -147,7 +158,7 @@ fn draw_home(app: &mut App, frame: &mut Frame) {
               format!(
                 " {} {}",
                 if is_selected { ">" } else { " " },
-                ellipsize(&label, rows[2].width.saturating_sub(6) as usize)
+                ellipsize(&label, rows[3].width.saturating_sub(6) as usize)
               ),
               style,
             ))
@@ -156,13 +167,14 @@ fn draw_home(app: &mut App, frame: &mut Frame) {
         }
       }
     }
-    frame.render_widget(Paragraph::new(lines), rows[2].inner(Margin::new(2, 1)));
+    frame.render_widget(Paragraph::new(lines), rows[3].inner(Margin::new(2, 1)));
   } else {
-    draw_home_grid(app, frame, rows[2]);
+    draw_home_grid(app, frame, rows[3]);
   }
+  draw_standalone_home_entries(app, frame, rows[4]);
   draw_footer(
     frame,
-    rows[3],
+    rows[5],
     &app.theme,
     None,
     if app.search_active {
@@ -173,151 +185,8 @@ fn draw_home(app: &mut App, frame: &mut Frame) {
   );
 }
 
-#[derive(Debug, Clone)]
-enum HomeGridRow {
-  Header(&'static str),
-  Items(Vec<(usize, &'static str, usize)>),
-}
-
 fn draw_home_grid(app: &mut App, frame: &mut Frame, area: Rect) {
   draw_home_cards(app, frame, area);
-}
-
-#[allow(dead_code)]
-fn draw_home_grid_legacy(app: &mut App, frame: &mut Frame, area: Rect) {
-  let content = area.inner(Margin::new(1, 0));
-  let columns = ((content.width as usize + 2) / 25).max(1);
-  let grid_rows = home_grid_rows(app, columns);
-  let row_heights: Vec<u16> = grid_rows
-    .iter()
-    .map(|row| match row {
-      HomeGridRow::Header(_) => 1,
-      HomeGridRow::Items(_) => 3,
-    })
-    .collect();
-  let selected_row = grid_rows
-    .iter()
-    .position(|row| matches!(row, HomeGridRow::Items(items) if items.iter().any(|(index, _, _)| *index == app.home_selected)))
-    .unwrap_or(0);
-  let visible_height = content.height.max(1);
-  let mut scroll = app.home_scroll.min(grid_rows.len().saturating_sub(1));
-  while selected_row < scroll {
-    scroll = scroll.saturating_sub(1);
-  }
-  while selected_row > scroll
-    && row_heights[scroll..=selected_row]
-      .iter()
-      .map(|height| *height as usize)
-      .sum::<usize>()
-      > visible_height as usize
-  {
-    scroll += 1;
-  }
-  app.home_scroll = scroll.min(grid_rows.len().saturating_sub(1));
-
-  let mut y = content.y;
-  for (index, row) in grid_rows.iter().enumerate().skip(app.home_scroll) {
-    let height = row_heights[index];
-    if y >= content.bottom() || y + height > content.bottom() {
-      break;
-    }
-    let row_area = Rect::new(content.x, y, content.width, height);
-    match row {
-      HomeGridRow::Header(label) => {
-        let style = Style::new()
-          .fg(app.theme.accent)
-          .add_modifier(Modifier::BOLD);
-        frame.render_widget(
-          Paragraph::new(Line::from(Span::styled(
-            format!("{}{}", home_icon_for_header(app, label), label),
-            style,
-          ))),
-          row_area,
-        );
-      }
-      HomeGridRow::Items(items) => {
-        let constraints = vec![Constraint::Ratio(1, columns as u32); items.len()];
-        for (tile, item) in Layout::horizontal(constraints)
-          .split(row_area)
-          .iter()
-          .zip(items)
-        {
-          let (item_index, label, action) = *item;
-          let is_selected = item_index == app.home_selected;
-          let style = if is_selected {
-            Style::new()
-              .fg(app.theme.selected_foreground)
-              .bg(app.theme.selected_background)
-              .add_modifier(Modifier::BOLD)
-          } else {
-            Style::new()
-              .fg(app.theme.foreground)
-              .bg(app.theme.background)
-          };
-          let text = format!(
-            "{}{}{}",
-            if is_selected { "> " } else { "  " },
-            home_icon_for_item(action),
-            label
-          );
-          frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-              ellipsize(&text, tile.width.saturating_sub(2) as usize),
-              style,
-            )))
-            .block(
-              Block::new()
-                .borders(Borders::ALL)
-                .border_style(style)
-                .bg(style.bg.unwrap_or(app.theme.background)),
-            ),
-            *tile,
-          );
-        }
-      }
-    }
-    y += height;
-  }
-}
-
-#[allow(dead_code)]
-fn home_grid_rows(app: &App, columns: usize) -> Vec<HomeGridRow> {
-  let mut rows = Vec::new();
-  let mut item_index = 0;
-  let mut items = Vec::new();
-  for row in app.home_rows() {
-    match row {
-      HomeRow::Header(label) => {
-        if !items.is_empty() {
-          rows.extend(
-            items
-              .chunks(columns)
-              .map(|chunk| HomeGridRow::Items(chunk.to_vec())),
-          );
-          items.clear();
-        }
-        rows.push(HomeGridRow::Header(label));
-      }
-      HomeRow::Item { label, action } => {
-        items.push((item_index, label, action));
-        item_index += 1;
-      }
-    }
-  }
-  rows.extend(
-    items
-      .chunks(columns)
-      .map(|chunk| HomeGridRow::Items(chunk.to_vec())),
-  );
-  rows
-}
-
-#[derive(Debug, Clone)]
-struct HomeCard {
-  category: &'static str,
-  description: &'static str,
-  items: Vec<(usize, &'static str, usize)>,
-  wide: bool,
 }
 
 fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -327,18 +196,10 @@ fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
   let mut rows: Vec<Vec<&HomeCard>> = Vec::new();
   let mut current = Vec::new();
   for card in &cards {
-    if card.wide {
-      if !current.is_empty() {
-        rows.push(current);
-        current = Vec::new();
-      }
-      rows.push(vec![card]);
-    } else {
-      current.push(card);
-      if current.len() == columns {
-        rows.push(current);
-        current = Vec::new();
-      }
+    current.push(card);
+    if current.len() == columns {
+      rows.push(current);
+      current = Vec::new();
     }
   }
   if !current.is_empty() {
@@ -347,13 +208,7 @@ fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
 
   let row_heights: Vec<u16> = rows
     .iter()
-    .map(|row| {
-      row
-        .iter()
-        .map(|card| card_height(card, columns))
-        .max()
-        .unwrap_or(1)
-    })
+    .map(|row| row.iter().map(|card| card_height(card)).max().unwrap_or(1))
     .collect();
   let selected_row = rows
     .iter()
@@ -389,17 +244,13 @@ fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
       break;
     }
     let row_area = Rect::new(content.x, y, content.width, height);
-    let constraints = if row.len() == 1 && row[0].wide {
-      vec![Constraint::Percentage(100)]
-    } else {
-      vec![Constraint::Ratio(1, row.len() as u32); row.len()]
-    };
+    let constraints = vec![Constraint::Ratio(1, row.len() as u32); row.len()];
     for (card_area, card) in Layout::horizontal(constraints)
       .split(row_area)
       .iter()
       .zip(row)
     {
-      draw_home_card(app, frame, *card_area, card, columns);
+      draw_home_card(app, frame, *card_area, card);
     }
     y += height;
   }
@@ -425,26 +276,39 @@ fn draw_home_cards(app: &mut App, frame: &mut Frame, area: Rect) {
   }
 }
 
+/// A Home card: its heading and the destinations it lists, in order.
+#[derive(Debug, Clone)]
+struct HomeCard {
+  category: HomeCategory,
+  items: Vec<(usize, &'static str, HomeDestination)>,
+}
+
+/// Builds the Home cards, one per heading of the catalog.
 fn home_cards(app: &App) -> Vec<HomeCard> {
   let mut cards = Vec::new();
   let mut item_index = 0;
   let mut current: Option<HomeCard> = None;
   for row in app.home_rows() {
     match row {
-      HomeRow::Header(label) => {
+      HomeRow::Header(category) => {
         if let Some(card) = current.take() {
           cards.push(card);
         }
         current = Some(HomeCard {
-          category: label,
-          description: home_category_description(app, label),
+          category,
           items: Vec::new(),
-          wide: label == tr(app.lang, "control_center.system"),
         });
       }
-      HomeRow::Item { label, action } => {
+      HomeRow::Item { label, destination } => {
         if let Some(card) = current.as_mut() {
-          card.items.push((item_index, label, action));
+          card.items.push((item_index, label, destination));
+        }
+        item_index += 1;
+      }
+      // Standalone entries are drawn below the cards, see `draw_standalone_home_entries`.
+      HomeRow::Standalone { .. } => {
+        if let Some(card) = current.take() {
+          cards.push(card);
         }
         item_index += 1;
       }
@@ -456,16 +320,49 @@ fn home_cards(app: &App) -> Vec<HomeCard> {
   cards
 }
 
-fn card_height(card: &HomeCard, columns: usize) -> u16 {
-  let item_rows = if card.wide && columns > 2 {
-    1
-  } else {
-    card.items.len()
+/// Draws the entries listed outside the cards (Settings), one row below the grid.
+fn draw_standalone_home_entries(app: &App, frame: &mut Frame, area: Rect) {
+  let Some(label) = app.home_rows().iter().find_map(|row| match row {
+    HomeRow::Standalone { label, .. } => Some(*label),
+    _ => None,
+  }) else {
+    return;
   };
-  3 + item_rows.max(1) as u16 * 2
+  // A standalone entry is always the last destination of the Home.
+  let index = app.home_item_count().saturating_sub(1);
+  let selected = app.home_selected == index;
+  let style = if selected {
+    Style::new()
+      .fg(app.theme.selected_foreground)
+      .bg(app.theme.selected_background)
+      .add_modifier(Modifier::BOLD)
+  } else {
+    Style::new()
+      .fg(app.theme.foreground)
+      .bg(app.theme.background)
+  };
+  let text = format!(
+    "{}{}{}",
+    if selected { "> " } else { "  " },
+    home_icon_for_item(HomeDestination::Settings),
+    label
+  );
+  frame.render_widget(
+    Paragraph::new(Line::from(Span::styled(
+      ellipsize(&text, area.width.saturating_sub(2) as usize),
+      style,
+    ))),
+    area,
+  );
 }
 
-fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, columns: usize) {
+/// Rows a card needs: its border, heading, description, divider and one row per item.
+fn card_height(card: &HomeCard) -> u16 {
+  5 + card.items.len().max(1) as u16
+}
+
+/// Draws one Home card: border, icon and title, description, divider, items.
+fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard) {
   let selected = card
     .items
     .iter()
@@ -475,22 +372,26 @@ fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, col
   } else {
     app.theme.border
   };
-  let header_style = Style::new()
-    .fg(app.theme.accent)
-    .add_modifier(Modifier::BOLD);
+  let width = area.width.saturating_sub(2) as usize;
   let title = format!(
     "{}{}",
-    home_icon_for_header(app, card.category),
-    card.category
+    argvus_tui::icons::icon_label(AppConfig::icon(card.category.glyph), ""),
+    card.category.title
   );
   let header_lines = vec![
     Line::from(Span::styled(
-      ellipsize(&title, area.width.saturating_sub(2) as usize),
-      header_style,
+      ellipsize(&title, width),
+      Style::new()
+        .fg(app.theme.accent)
+        .add_modifier(Modifier::BOLD),
     )),
     Line::from(Span::styled(
-      ellipsize(card.description, area.width.saturating_sub(2) as usize),
+      ellipsize(card.category.description, width),
       Style::new().fg(app.theme.muted),
+    )),
+    Line::from(Span::styled(
+      "─".repeat(width),
+      Style::new().fg(app.theme.border),
     )),
   ];
   frame.render_widget(
@@ -503,30 +404,23 @@ fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, col
     area.x + 1,
     area.y + 1,
     area.width.saturating_sub(2),
-    2.min(area.height.saturating_sub(2)),
+    3.min(area.height.saturating_sub(2)),
   );
   frame.render_widget(Paragraph::new(header_lines), header_area);
   let item_area = Rect::new(
     area.x + 1,
-    area.y + 3,
+    area.y + 4,
     area.width.saturating_sub(2),
-    area.height.saturating_sub(4),
+    area.height.saturating_sub(5),
   );
-  let item_columns = if card.wide && columns > 2 {
-    card.items.len().max(1)
-  } else {
-    1
-  };
   for (index, item) in card.items.iter().enumerate() {
-    let row = index / item_columns.max(1);
-    let column = index % item_columns.max(1);
-    let item_width = item_area.width / item_columns.max(1) as u16;
-    let item_rect = Rect::new(
-      item_area.x + column as u16 * item_width,
-      item_area.y + row as u16 * 2,
-      item_width,
-      1,
-    );
+    let Ok(row) = u16::try_from(index) else {
+      break;
+    };
+    if row >= item_area.height {
+      break;
+    }
+    let item_rect = Rect::new(item_area.x, item_area.y + row, item_area.width, 1);
     let is_selected = item.0 == app.home_selected;
     let style = if is_selected {
       Style::new()
@@ -544,44 +438,12 @@ fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, col
     );
     frame.render_widget(
       Paragraph::new(Line::from(Span::styled(
-        ellipsize(&text, item_width.saturating_sub(1) as usize),
+        ellipsize(&text, item_rect.width.saturating_sub(1) as usize),
         style,
       ))),
       item_rect,
     );
   }
-}
-
-fn home_category_description(app: &App, label: &str) -> &'static str {
-  let key = match label {
-    value if value == tr(app.lang, "control_center.desktop_shell") => {
-      "control_center.desktop_shell_description"
-    }
-    value if value == tr(app.lang, "control_center.language_region") => {
-      "control_center.language_region_description"
-    }
-    value if value == tr(app.lang, "control_center.appearance") => {
-      "control_center.appearance_description"
-    }
-    value if value == tr(app.lang, "control_center.applications") => {
-      "control_center.applications_description"
-    }
-    value if value == tr(app.lang, "control_center.security_category") => {
-      "control_center.security_category_description"
-    }
-    value if value == tr(app.lang, "control_center.hardware") => {
-      "control_center.hardware_description"
-    }
-    value if value == tr(app.lang, "control_center.power_session") => {
-      "control_center.power_session_description"
-    }
-    value if value == tr(app.lang, "control_center.connectivity") => {
-      "control_center.connectivity_description"
-    }
-    value if value == tr(app.lang, "control_center.system") => "control_center.system_description",
-    _ => "control_center.preferences_description",
-  };
-  tr(app.lang, key)
 }
 
 /// Renders `draw_search` while respecting the current domain state and semantic theme. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -633,77 +495,9 @@ fn draw_search(app: &App, frame: &mut Frame, area: ratatui::layout::Rect) {
 }
 
 /// Executes the `home_icon_for_item` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn home_icon_for_item(action: usize) -> String {
-  let icon = AppConfig::icon(home_glyph(action));
+fn home_icon_for_item(destination: HomeDestination) -> String {
+  let icon = AppConfig::icon(destination.glyph());
   argvus_tui::icons::icon_label(icon, "")
-}
-
-/// The glyph of one Home action. Every action listed on the Home has one, so a
-/// row never appears without its icon.
-fn home_glyph(action: usize) -> &'static str {
-  match action {
-    0 => argvus_tui::icons::APPS,
-    1 => argvus_tui::icons::FONTS,
-    2 => argvus_tui::icons::TRANSLATE,
-    3 => argvus_tui::icons::KEYBOARD,
-    4 => argvus_tui::icons::MONITOR,
-    5 => argvus_tui::icons::NETWORK,
-    6 => argvus_tui::icons::AUDIO,
-    7 => argvus_tui::icons::LINK,
-    8 => argvus_tui::icons::BOOT,
-    9 => argvus_tui::icons::PACKAGES,
-    10 => argvus_tui::icons::SETTINGS,
-    11 => argvus_tui::icons::SETTINGS,
-    12 => argvus_tui::icons::STORAGE,
-    13 => argvus_tui::icons::DIAGNOSTICS,
-    14 => argvus_tui::icons::INFO,
-    15 => argvus_tui::icons::SETTINGS,
-    16 => argvus_tui::icons::POWER,
-    17 => argvus_tui::icons::REFRESH,
-    18 => argvus_tui::icons::MONITOR,
-    20 => argvus_tui::icons::MOUSE,
-    21 => argvus_tui::icons::KEYBOARD,
-    22 => argvus_tui::icons::WINDOW_RULES,
-    23 => argvus_tui::icons::PROJECTS,
-    29 => argvus_tui::icons::SCRIPT,
-    30 => argvus_tui::icons::KEY,
-    24 => argvus_tui::icons::LAYOUT,
-    25 => argvus_tui::icons::TASKBAR,
-    26 => argvus_tui::icons::CONTROL_PANEL,
-    27 => argvus_tui::icons::TELEMETRY,
-    31 => argvus_tui::icons::LOCK,
-    32 => argvus_tui::icons::CLOCK,
-    33 => argvus_tui::icons::CALENDAR,
-    34 => argvus_tui::icons::EARTH,
-    35 => argvus_tui::icons::KEYBOARD_VARIANT,
-    36 => argvus_tui::icons::WALLPAPER,
-    37 => argvus_tui::icons::TERMINAL,
-    39 => argvus_tui::icons::SHIELD,
-    _ => "",
-  }
-}
-
-/// Executes the `home_icon_for_header` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-fn home_icon_for_header(app: &App, label: &str) -> String {
-  let glyph = [
-    ("control_center.desktop_shell", argvus_tui::icons::LAYOUT),
-    ("control_center.language_region", argvus_tui::icons::EARTH),
-    ("control_center.appearance", argvus_tui::icons::PALETTE),
-    ("control_center.applications", argvus_tui::icons::APPS),
-    (
-      "control_center.security_category",
-      argvus_tui::icons::SHIELD,
-    ),
-    ("control_center.hardware", argvus_tui::icons::MONITOR),
-    ("control_center.power_session", argvus_tui::icons::POWER),
-    ("control_center.connectivity", argvus_tui::icons::NETWORK),
-    ("control_center.system", argvus_tui::icons::SETTINGS),
-    ("control_center.preferences", argvus_tui::icons::SETTINGS),
-  ]
-  .into_iter()
-  .find_map(|(key, glyph)| (tr(app.lang, key) == label).then_some(glyph))
-  .unwrap_or("▸");
-  argvus_tui::icons::icon_label(AppConfig::icon(glyph), "")
 }
 
 /// Executes the `search_category` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -870,7 +664,7 @@ mod tests {
       .map(|cell| cell.symbol())
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
-    assert!(text.contains("Configuração") || text.contains("Configuration"));
+    assert!(text.contains("Estilo") || text.contains("Style"));
     assert!(text.contains("[x]") || text.contains("[ ]"));
     assert!(text.contains("Icones") || text.contains("Icons"));
   }
@@ -879,7 +673,7 @@ mod tests {
   fn the_key_pages_on_the_home_have_an_icon() {
     // A Home row without a glyph looks broken next to the others; the SSH and
     // GPG key pages are the ones that were missing theirs.
-    assert!(!home_glyph(30).is_empty(), "SSH keys");
-    assert!(!home_glyph(31).is_empty(), "GPG keys");
+    assert!(!HomeDestination::SshKeys.glyph().is_empty(), "SSH keys");
+    assert!(!HomeDestination::GpgKeys.glyph().is_empty(), "GPG keys");
   }
 }

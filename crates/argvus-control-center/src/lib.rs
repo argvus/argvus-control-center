@@ -6,5 +6,7 @@ pub mod app;
 pub mod cli;
 pub mod config_app;
 pub mod event;
+pub mod home;
 pub mod hyprland;
+pub mod settings_hub;
 pub mod ui;

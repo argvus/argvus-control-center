@@ -81,9 +81,19 @@ pub fn handle(app: &mut App, event: Event) {
 
   match app.route {
     Route::Home => handle_home(app, key),
+    Route::AppSettings => match app.settings_hub.handle(key.code) {
+      crate::settings_hub::HubAction::Back => app.route = Route::Home,
+      crate::settings_hub::HubAction::Language => {
+        // Esc on the Language page returns here instead of to the Home.
+        app.return_route = Route::AppSettings;
+        app.open_settings(argvus_control_center_settings::Page::Language);
+      }
+      crate::settings_hub::HubAction::Style => app.route = Route::Config,
+      crate::settings_hub::HubAction::None => {}
+    },
     Route::Config => {
       if app.config.handle(key.code) {
-        app.route = Route::Home;
+        app.route = Route::AppSettings;
       }
     }
     Route::Settings => {
@@ -258,7 +268,7 @@ fn handle_home(app: &mut App, key: KeyEvent) {
     KeyCode::Left | KeyCode::Char('h') => app.move_home_category(-1),
     KeyCode::Right | KeyCode::Char('l') => app.move_home_category(1),
     KeyCode::Enter => app.open_home(),
-    KeyCode::Char('s') => app.route = Route::Config,
+    KeyCode::Char('s') => app.route = Route::AppSettings,
     _ => {}
   }
 }
@@ -576,13 +586,9 @@ mod tests {
   fn home_opens_network_and_back_returns_home() {
     let mut app = App::new(InitialRoute::Home);
     app.home_selected = app
-      .home_rows()
+      .home_destinations()
       .iter()
-      .filter_map(|row| match row {
-        crate::app::HomeRow::Item { action, .. } => Some(*action),
-        crate::app::HomeRow::Header(_) => None,
-      })
-      .position(|action| action == 5)
+      .position(|destination| *destination == crate::home::HomeDestination::Network)
       .expect("Network row must be listed");
     handle(&mut app, press(KeyCode::Enter));
     assert_eq!(app.route, Route::Network);
@@ -613,12 +619,24 @@ mod tests {
 
   #[test]
   /// Executes the `s_opens_config_and_escape_returns_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn s_opens_config_and_escape_returns_home() {
+  fn s_opens_the_settings_hub_and_escape_returns_home() {
     let mut app = App::new(InitialRoute::Home);
     handle(&mut app, press(KeyCode::Char('s')));
-    assert_eq!(app.route, Route::Config);
+    assert_eq!(app.route, Route::AppSettings);
     handle(&mut app, press(KeyCode::Esc));
     assert_eq!(app.route, Route::Home);
+  }
+
+  #[test]
+  /// Esc on the Style screen returns to the Settings hub, as in the path Home > Settings > Style.
+  fn escape_on_style_returns_to_the_settings_hub() {
+    let mut app = App::new(InitialRoute::Home);
+    handle(&mut app, press(KeyCode::Char('s')));
+    handle(&mut app, press(KeyCode::Down));
+    handle(&mut app, press(KeyCode::Enter));
+    assert_eq!(app.route, Route::Config);
+    handle(&mut app, press(KeyCode::Esc));
+    assert_eq!(app.route, Route::AppSettings);
   }
 
   #[test]

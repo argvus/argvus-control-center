@@ -28,14 +28,17 @@ type ConfigOperation = Arc<dyn PrivilegedOperation>;
 
 /// The ARGVUS Control Center configuration screen. Hosts the option that
 /// enables/disables the decorative icons across the whole layout plus the
-/// transparency and blur controls for the Control Center window itself.
+/// transparency control for the Control Center window itself. Blur is owned by
+/// Hyprland > Blur and is only carried through unchanged.
 pub struct ConfigApp {
   lang: Lang,
   theme: Theme,
   pub icons: bool,
   pub transparency: bool,
   pub transparency_value: i32,
-  pub blur: bool,
+  /// Blur flag read from argvus-config and sent back unchanged, so saving the
+  /// transparency does not overwrite it.
+  blur_kept: bool,
   selected: usize,
   pub status: Option<StatusMessage>,
   operation: ConfigOperation,
@@ -75,14 +78,14 @@ impl ConfigApp {
     runner: Arc<dyn ProcessRunner + Send + Sync>,
   ) -> Self {
     let config = AppConfig::load();
-    let (transparency, transparency_value, blur) = load_effects(&runner);
+    let (transparency, transparency_value, blur_kept) = load_effects(&runner);
     Self {
       lang,
       theme,
       icons: config.icons(),
       transparency,
       transparency_value,
-      blur,
+      blur_kept,
       selected: 0,
       status: None,
       operation,
@@ -107,17 +110,16 @@ impl ConfigApp {
         tr(self.lang, "control_center.control_center_transparency"),
         self.transparency_value
       ),
-      format!(
-        "[{}] {}",
-        checkbox(self.blur),
-        tr(self.lang, "control_center.control_center_blur")
-      ),
     ]
   }
 
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
-    tr(self.lang, "control_center.configuration").into()
+    format!(
+      "{} > {}",
+      tr(self.lang, "control_center.settings"),
+      tr(self.lang, "control_center.style")
+    )
   }
 
   /// Executes the `footer_hints` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -151,10 +153,6 @@ impl ConfigApp {
           0 => self.toggle(),
           1 => {
             self.transparency = !self.transparency;
-            self.save_effects();
-          }
-          2 => {
-            self.blur = !self.blur;
             self.save_effects();
           }
           _ => {}
@@ -219,7 +217,7 @@ impl ConfigApp {
     }));
   }
 
-  /// Persists the Control Center transparency and blur values through the
+  /// Persists the Control Center transparency through the
   /// user-owned `effects-toggle.sh` surface-apply hop. The script writes the
   /// argvus-config keys, rematerializes the tab-less Kitty profile and asks
   /// running instances to reload, so the running window updates live.
@@ -241,7 +239,11 @@ impl ConfigApp {
       "disabled"
     };
     let transparency_value = self.transparency_value.to_string();
-    let blur_enabled = if self.blur { "enabled" } else { "disabled" };
+    let blur_enabled = if self.blur_kept {
+      "enabled"
+    } else {
+      "disabled"
+    };
     // The Control Center surface reads the blur enable flag only; the blur
     // value argument is still required to keep the shared surface contract.
     let blur_value = "50";
@@ -354,7 +356,7 @@ impl ConfigApp {
       &self.theme,
       &[Line::from(format!(
         "  {}",
-        tr(self.lang, "control_center.appearance")
+        tr(self.lang, "control_center.style")
       ))],
     );
     let rows = self.rows();
@@ -744,7 +746,7 @@ mod tests {
       .map(|cell| cell.symbol())
       .collect::<String>();
     assert!(text.contains("ARGVUS"));
-    assert!(text.contains("Configuração") || text.contains("Configuration"));
+    assert!(text.contains("Estilo") || text.contains("Style"));
     assert!(text.contains("[x]") || text.contains("[ ]"));
     assert!(text.contains("Icones") || text.contains("Icons"));
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };

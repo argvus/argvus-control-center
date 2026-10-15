@@ -8,6 +8,9 @@
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
 use crate::config_app::ConfigApp;
+use crate::home::{
+  HomeAvailability, HomeDestination, HomeRow, catalog::home_rows as home_catalog_rows,
+};
 #[cfg(feature = "about")]
 use argvus_control_center_about::{App as AboutState, Tab};
 #[cfg(feature = "appearance")]
@@ -52,6 +55,8 @@ use std::time::{Duration, Instant};
 /// Defines `Route`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
 pub enum Route {
   Home,
+  /// Settings of the Control Center itself: Language and Style.
+  AppSettings,
   Settings,
   Config,
   #[cfg(feature = "about")]
@@ -149,6 +154,8 @@ pub struct App {
   /// Route restored when leaving a page the Hyprland category opened
   /// (Settings or Appearance); defaults back to `Route::Home` once consumed.
   pub return_route: Route,
+  /// Cursor of the Control Center Settings hub.
+  pub settings_hub: crate::settings_hub::SettingsHub,
   /// State of the "Hyprland" category page.
   pub hyprland: crate::hyprland::HyprlandState,
   /// Home selection index, kept separate from the route to support returning.
@@ -213,13 +220,6 @@ pub struct App {
   pub jobs: JobManager,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Defines `HomeRow`. Its explicit shape preserves the contract consumed by the rest of the workspace and keeps the intent visible as the module evolves.
-pub enum HomeRow {
-  Header(&'static str),
-  Item { label: &'static str, action: usize },
-}
-
 impl App {
   /// Constructs `new` with this module's expected initial state. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn new(initial: InitialRoute) -> Self {
@@ -281,7 +281,7 @@ impl App {
       #[cfg(feature = "language")]
       InitialRoute::Language => Page::Language,
       #[cfg(feature = "system")]
-      InitialRoute::System => Page::System,
+      InitialRoute::System => Page::Hostname,
       _ => Page::Main,
     };
     #[cfg(feature = "about")]
@@ -413,7 +413,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.default_apps",
-        "applications",
+        "preferences",
         "Default Apps",
         "default application apps browser terminal file manager",
         "settings/default-apps",
@@ -421,7 +421,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.window_rules",
-        "hyprland",
+        "card_desktop_input",
         "Window rules",
         "window rules workspace class app placement regras janela area de trabalho",
         "settings/window-rules",
@@ -429,7 +429,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.projects",
-        "applications",
+        "card_tools",
         "Projects",
         "projects project folders path directory root shortcut seletor projetos pastas caminho diretorio raiz atalho",
         "settings/projects",
@@ -437,7 +437,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.snippets",
-        "applications",
+        "card_tools",
         "Snippets",
         "snippets snippet text type typing shortcut picker trechos texto digitar atalho seletor",
         "settings/snippets",
@@ -445,7 +445,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.ssh_keys",
-        "security_category",
+        "card_tools",
         "SSH keys",
         "ssh keys key pair generate load unload agent passphrase chaves ssh gerar carregar descarregar agente senha par",
         "settings/ssh-keys",
@@ -453,7 +453,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.gpg_keys",
-        "security_category",
+        "card_tools",
         "GPG keys",
         "gpg keys key pair generate export import pinentry passphrase chaves gpg gerar exportar importar senha pinentry",
         "settings/gpg-keys",
@@ -461,10 +461,34 @@ impl App {
       #[cfg(feature = "system")]
       (
         "settings.firewall",
-        "security_category",
+        "card_system",
         "Firewall",
         "firewall ports rules block allow network security portas regras bloquear permitir rede seguranca",
         "settings/firewall",
+      ),
+      #[cfg(feature = "system")]
+      (
+        "settings.hostname",
+        "card_system",
+        "Hostname",
+        "hostname name machine computer host nome maquina computador",
+        "settings/hostname",
+      ),
+      #[cfg(feature = "system")]
+      (
+        "settings.users_groups",
+        "card_system",
+        "Users & Groups",
+        "users groups accounts usuarios grupos contas",
+        "settings/users-groups",
+      ),
+      #[cfg(feature = "system")]
+      (
+        "settings.notifications",
+        "card_system",
+        "Notifications",
+        "notifications do not disturb dnd silence notificacoes nao perturbe silenciar",
+        "settings/notifications",
       ),
       #[cfg(feature = "about")]
       (
@@ -508,7 +532,7 @@ impl App {
       ),
       (
         "settings.keybindings",
-        "hyprland",
+        "card_desktop_input",
         "Keyboard Shortcuts",
         "keyboard shortcuts keybindings hotkeys bindings atalhos teclado",
         "settings/keybindings",
@@ -1134,7 +1158,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.taskbar",
-        "taskbar",
+        "appearance",
         "Taskbar",
         "taskbar barra grupo utility group hover expandido expanded sempre always",
         "appearance/taskbar",
@@ -1174,7 +1198,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.widget_telemetry",
-        "widget_telemetry",
+        "appearance",
         "Widget Telemetry",
         "widget telemetry system cpu gpu memory storage processes network shortcuts",
         "appearance/widget-telemetry",
@@ -1182,7 +1206,7 @@ impl App {
       #[cfg(feature = "appearance")]
       (
         "appearance.control_panel",
-        "control_panel",
+        "appearance",
         "Control Panel",
         "control panel painel de controle cards sessions sessoes transparency transparencia",
         "appearance/control-panel",
@@ -1202,6 +1226,7 @@ impl App {
       theme: theme.clone(),
       route,
       return_route: Route::Home,
+      settings_hub: crate::settings_hub::SettingsHub::default(),
       hyprland: crate::hyprland::HyprlandState::new(hyprland_version),
       home_selected: 0,
       home_scroll: 0,
@@ -1253,260 +1278,41 @@ impl App {
     }
   }
 
-  #[allow(clippy::vec_init_then_push)]
-  /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Lists the Home catalog for the current language and detected capabilities.
   pub fn home_rows(&self) -> Vec<HomeRow> {
-    let mut rows = Vec::new();
-    // Desktop Shell groups the four shell surfaces that used to be separate
-    // cards. Each item keeps its own route; only the card changed.
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.desktop_shell",
-    )));
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.hyprland"),
-      action: 24,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.taskbar"),
-      action: 25,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.control_panel"),
-      action: 26,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.widget_telemetry"),
-      action: 27,
-    });
-    // Language & Region opens each setting directly. The first entry is the
-    // former Regional Locale page, renamed to Language. Preferences > Language
-    // keeps the UI language; the two entries are intentionally distinct.
-    #[cfg(feature = "locale")]
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.language_region",
-    )));
-    #[cfg(feature = "locale")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.language"),
-      action: 2,
-    });
-    #[cfg(feature = "locale")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.time_zone"),
-      action: 32,
-    });
-    #[cfg(feature = "locale")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.date_time"),
-      action: 33,
-    });
-    #[cfg(feature = "locale")]
-    if self.settings.system_locales_available() {
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.system_locales"),
-        action: 34,
-      });
+    home_catalog_rows(self.lang, self.home_availability())
+  }
+
+  /// Destinations in the order the Home lists them, without headings.
+  pub fn home_destinations(&self) -> Vec<HomeDestination> {
+    self
+      .home_rows()
+      .iter()
+      .filter_map(|row| match row {
+        HomeRow::Item { destination, .. } | HomeRow::Standalone { destination, .. } => {
+          Some(*destination)
+        }
+        HomeRow::Header(_) => None,
+      })
+      .collect()
+  }
+
+  /// Runtime facts that decide which Home destinations are listed.
+  fn home_availability(&self) -> HomeAvailability {
+    HomeAvailability {
+      hyprctl: self.capabilities.has_hyprctl,
+      loginctl: self.capabilities.has_loginctl,
+      sessionctl: self.capabilities.has_sessionctl,
+      bluetooth: self.capabilities.has_bluetooth,
+      systemd: self.capabilities.has_systemd,
+      podman: self.capabilities.has_podman,
+      docker: self.capabilities.has_docker,
     }
-    #[cfg(feature = "locale")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.keyboard_layout"),
-      action: 35,
-    });
-    rows.push(HomeRow::Header(tr(self.lang, "control_center.appearance")));
-    #[cfg(feature = "fonts")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.fonts"),
-      action: 1,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.desktop"),
-      action: 36,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.application_style"),
-      action: 37,
-    });
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.applications",
-    )));
-    #[cfg(feature = "apps")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.default_apps"),
-      action: 0,
-    });
-    #[cfg(feature = "apps")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.projects"),
-      action: 23,
-    });
-    #[cfg(feature = "apps")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.snippets"),
-      action: 29,
-    });
-    // Security holds credentials and firewall policy, which were scattered
-    // across Applications and Network.
-    #[cfg(any(feature = "apps", feature = "system"))]
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.security_category",
-    )));
-    #[cfg(feature = "apps")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.ssh_keys"),
-      action: 30,
-    });
-    #[cfg(feature = "apps")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.gpg_keys"),
-      action: 31,
-    });
-    #[cfg(feature = "system")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.firewall"),
-      action: 39,
-    });
-    #[cfg(any(feature = "hardware", feature = "displays", feature = "audio"))]
-    rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
-    #[cfg(feature = "hardware")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.overview"),
-      action: 4,
-    });
-    #[cfg(feature = "hardware")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.mouse_touchpad"),
-      action: 20,
-    });
-    #[cfg(feature = "audio")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.audio"),
-      action: 6,
-    });
-    #[cfg(feature = "displays")]
-    if self.capabilities.has_hyprctl {
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.displays"),
-        action: 18,
-      });
-    }
-    #[cfg(any(feature = "power", feature = "session"))]
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.power_session",
-    )));
-    #[cfg(feature = "power")]
-    if self.capabilities.has_loginctl {
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.power"),
-        action: 16,
-      });
-    }
-    #[cfg(feature = "session")]
-    if self.capabilities.has_sessionctl {
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.session"),
-        action: 17,
-      });
-    }
-    #[cfg(any(feature = "network", feature = "bluetooth"))]
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.connectivity",
-    )));
-    #[cfg(feature = "network")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.network"),
-      action: 5,
-    });
-    #[cfg(feature = "bluetooth")]
-    if self.capabilities.has_bluetooth {
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.bluetooth"),
-        action: 7,
-      });
-    }
-    #[cfg(any(
-      feature = "boot",
-      feature = "packages",
-      feature = "services",
-      feature = "dev-services",
-      feature = "storage",
-      feature = "diagnostics",
-      feature = "system"
-    ))]
-    rows.push(HomeRow::Header(tr(self.lang, "control_center.system")));
-    #[cfg(feature = "boot")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.boot"),
-      action: 8,
-    });
-    #[cfg(feature = "packages")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.packages"),
-      action: 9,
-    });
-    #[cfg(feature = "services")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.services"),
-      action: 10,
-    });
-    #[cfg(feature = "dev-services")]
-    if self.capabilities.has_systemd || self.capabilities.has_podman || self.capabilities.has_docker
-    {
-      rows.push(HomeRow::Item {
-        label: tr(self.lang, "control_center.dev_services"),
-        action: 28,
-      });
-    }
-    #[cfg(feature = "storage")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.storage"),
-      action: 12,
-    });
-    #[cfg(feature = "diagnostics")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.diagnostics"),
-      action: 13,
-    });
-    #[cfg(feature = "system")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.general"),
-      action: 11,
-    });
-    #[cfg(feature = "about")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.about_4cf69b"),
-      action: 14,
-    });
-    rows.push(HomeRow::Header(tr(self.lang, "control_center.preferences")));
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.configuration"),
-      action: 15,
-    });
-    #[cfg(feature = "language")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.language"),
-      action: 3,
-    });
-    rows
   }
 
   /// Executes the `home_item_count` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn home_item_count(&self) -> usize {
-    self
-      .home_rows()
-      .iter()
-      .filter(|row| matches!(row, HomeRow::Item { .. }))
-      .count()
+    self.home_destinations().len()
   }
 
   /// Executes the `move_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -1546,6 +1352,14 @@ impl App {
           current.push(item_index);
           item_index += 1;
         }
+        // The standalone entry is a category of its own, below the cards.
+        HomeRow::Standalone { .. } => {
+          if !current.is_empty() {
+            categories.push(std::mem::take(&mut current));
+          }
+          categories.push(vec![item_index]);
+          item_index += 1;
+        }
       }
     }
     if !current.is_empty() {
@@ -1564,145 +1378,143 @@ impl App {
     }
   }
 
-  /// Executes the `open_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
+  /// Opens the destination selected on the Home, if there is one.
   pub fn open_home(&mut self) {
-    let Some(action) = self
-      .home_rows()
-      .into_iter()
-      .filter_map(|row| match row {
-        HomeRow::Item { action, .. } => Some(action),
-        HomeRow::Header(_) => None,
-      })
-      .nth(self.home_selected)
-    else {
+    let Some(destination) = self.home_destinations().get(self.home_selected).copied() else {
       return;
     };
-    match action {
-      #[cfg(feature = "apps")]
-      0 => self.open_settings(Page::DefaultApps),
-      #[cfg(feature = "apps")]
-      23 => self.open_settings(Page::Projects),
-      #[cfg(feature = "apps")]
-      29 => self.open_settings(Page::Snippets),
-      #[cfg(feature = "apps")]
-      30 => self.open_settings(Page::SshKeys),
-      #[cfg(feature = "apps")]
-      31 => self.open_settings(Page::GpgKeys),
+    self.open_destination(destination);
+  }
+
+  /// Routes to the page of one Home destination. Each arm keeps the route and
+  /// the reload that the destination used before the catalog existed.
+  fn open_destination(&mut self, destination: HomeDestination) {
+    match destination {
       #[cfg(feature = "fonts")]
-      1 => self.open_settings(Page::Fonts),
-      #[cfg(feature = "locale")]
-      2 => self.open_settings(Page::RegionalLocale),
-      #[cfg(feature = "locale")]
-      32 => self.open_settings(Page::TimeZone),
-      #[cfg(feature = "locale")]
-      33 => self.open_settings(Page::DateTime),
-      #[cfg(feature = "locale")]
-      34 => self.open_settings(Page::SystemLocales),
-      #[cfg(feature = "locale")]
-      35 => self.open_settings(Page::KeyboardLayout),
-      #[cfg(feature = "system")]
-      39 => self.open_settings(Page::Firewall),
-      #[cfg(feature = "language")]
-      3 => self.open_settings(Page::Language),
+      HomeDestination::Fonts => self.open_settings(Page::Fonts),
+      #[cfg(feature = "appearance")]
+      HomeDestination::DesktopStyle => self.open_appearance_page(AppearancePage::Desktop),
+      #[cfg(feature = "appearance")]
+      HomeDestination::ApplicationStyle => {
+        self.open_appearance_page(AppearancePage::ApplicationStyle)
+      }
+      #[cfg(feature = "appearance")]
+      HomeDestination::Taskbar => self.open_appearance_surface(AppearancePage::Taskbar),
+      #[cfg(feature = "appearance")]
+      HomeDestination::ControlCenter => self.open_appearance_surface(AppearancePage::ControlPanel),
+      #[cfg(feature = "appearance")]
+      HomeDestination::WidgetTelemetry => {
+        self.open_appearance_surface(AppearancePage::WidgetTelemetry)
+      }
+      HomeDestination::Hyprland => self.route = Route::Hyprland,
+      #[cfg(feature = "displays")]
+      HomeDestination::Displays => {
+        self.route = Route::Displays;
+        self.displays.reload();
+      }
+      HomeDestination::KeyboardAndShortcuts => self.open_settings(Page::Keybindings),
       #[cfg(feature = "hardware")]
-      4 => self.route = Route::Hardware,
-      #[cfg(feature = "network")]
-      5 => {
-        self.route = Route::Network;
-        self.network.reload();
-      }
-      #[cfg(feature = "audio")]
-      6 => {
-        self.route = Route::Audio;
-        self.audio.reload();
-      }
-      #[cfg(feature = "bluetooth")]
-      7 => {
-        self.route = Route::Bluetooth;
-        self.bluetooth.reload();
-      }
-      #[cfg(feature = "boot")]
-      8 => {
-        self.route = Route::Boot;
-        self.boot.reload();
-      }
-      #[cfg(feature = "packages")]
-      9 => {
-        self.route = Route::Packages;
-        self.packages.reload();
-      }
-      #[cfg(feature = "services")]
-      10 => {
-        self.route = Route::Services;
-        self.services.reload();
-      }
-      #[cfg(feature = "system")]
-      11 => self.open_settings(Page::System),
-      #[cfg(feature = "storage")]
-      12 => {
-        self.route = Route::Storage;
-        self.storage.reload();
-      }
-      #[cfg(feature = "diagnostics")]
-      13 => {
-        self.route = Route::Diagnostics;
-        self.diagnostics.reload();
-      }
-      #[cfg(feature = "about")]
-      14 => self.route = Route::About,
-      15 => self.route = Route::Config,
+      HomeDestination::MouseTouchpad => self.open_settings(Page::MouseTouchpad),
+      #[cfg(feature = "apps")]
+      HomeDestination::WindowRules => self.open_settings(Page::WindowRules),
+      #[cfg(feature = "locale")]
+      HomeDestination::LanguageRegion => self.open_settings(Page::LocaleRegion),
+      #[cfg(feature = "locale")]
+      HomeDestination::DateTime => self.open_settings(Page::DateTime),
+      #[cfg(feature = "apps")]
+      HomeDestination::DefaultApplications => self.open_settings(Page::DefaultApps),
       #[cfg(feature = "power")]
-      16 => {
+      HomeDestination::Power => {
         self.route = Route::Power;
         self.power.reload();
       }
       #[cfg(feature = "session")]
-      17 => {
+      HomeDestination::Session => {
         self.route = Route::Session;
         self.session.reload();
       }
-      #[cfg(feature = "displays")]
-      18 => {
-        self.route = Route::Displays;
-        self.displays.reload();
+      HomeDestination::Settings => self.route = Route::AppSettings,
+      #[cfg(feature = "hardware")]
+      HomeDestination::HardwareOverview => self.route = Route::Hardware,
+      #[cfg(feature = "network")]
+      HomeDestination::Network => {
+        self.route = Route::Network;
+        self.network.reload();
       }
-      #[cfg(feature = "appearance")]
-      36 => self.open_appearance_page(AppearancePage::Desktop),
-      #[cfg(feature = "appearance")]
-      37 => self.open_appearance_page(AppearancePage::ApplicationStyle),
-      20 => self.open_settings(Page::MouseTouchpad),
-      24 => self.route = Route::Hyprland,
-      #[cfg(feature = "appearance")]
-      25 => {
-        self.appearance.page = AppearancePage::Taskbar;
-        self.route = Route::Appearance;
-        self.appearance.reload();
+      #[cfg(feature = "bluetooth")]
+      HomeDestination::Bluetooth => {
+        self.route = Route::Bluetooth;
+        self.bluetooth.reload();
       }
-      #[cfg(feature = "appearance")]
-      26 => {
-        self.appearance.page = AppearancePage::ControlPanel;
-        self.route = Route::Appearance;
-        self.appearance.reload();
+      #[cfg(feature = "audio")]
+      HomeDestination::Audio => {
+        self.route = Route::Audio;
+        self.audio.reload();
       }
-      #[cfg(feature = "appearance")]
-      27 => {
-        self.appearance.page = AppearancePage::WidgetTelemetry;
-        self.route = Route::Appearance;
-        self.appearance.reload();
+      #[cfg(feature = "storage")]
+      HomeDestination::Storage => {
+        self.route = Route::Storage;
+        self.storage.reload();
       }
+      #[cfg(feature = "packages")]
+      HomeDestination::Packages => {
+        self.route = Route::Packages;
+        self.packages.reload();
+      }
+      #[cfg(feature = "services")]
+      HomeDestination::Services => {
+        self.route = Route::Services;
+        self.services.reload();
+      }
+      #[cfg(feature = "boot")]
+      HomeDestination::Boot => {
+        self.route = Route::Boot;
+        self.boot.reload();
+      }
+      #[cfg(feature = "system")]
+      HomeDestination::Firewall => self.open_settings(Page::Firewall),
+      #[cfg(feature = "system")]
+      HomeDestination::Hostname => self.open_settings(Page::Hostname),
+      #[cfg(feature = "system")]
+      HomeDestination::UsersGroups => self.open_settings(Page::UsersGroups),
+      #[cfg(feature = "system")]
+      HomeDestination::Notifications => self.open_settings(Page::Notifications),
+      #[cfg(feature = "apps")]
+      HomeDestination::Projects => self.open_settings(Page::Projects),
+      #[cfg(feature = "apps")]
+      HomeDestination::Snippets => self.open_settings(Page::Snippets),
+      #[cfg(feature = "apps")]
+      HomeDestination::SshKeys => self.open_settings(Page::SshKeys),
+      #[cfg(feature = "apps")]
+      HomeDestination::GpgKeys => self.open_settings(Page::GpgKeys),
       #[cfg(feature = "dev-services")]
-      28 => {
+      HomeDestination::DevServices => {
         self.route = Route::DevServices;
         self.dev_services.reload();
       }
-      _ => {}
+      #[cfg(feature = "diagnostics")]
+      HomeDestination::Diagnostics => {
+        self.route = Route::Diagnostics;
+        self.diagnostics.reload();
+      }
+      #[cfg(feature = "about")]
+      HomeDestination::About => self.route = Route::About,
     }
+  }
+
+  /// Opens one page of the Appearance tree from the Home, reloading its state.
+  #[cfg(feature = "appearance")]
+  fn open_appearance_surface(&mut self, page: AppearancePage) {
+    self.appearance.page = page;
+    self.route = Route::Appearance;
+    self.appearance.reload();
   }
 
   /// Executes the `open_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn open_settings(&mut self, page: Page) {
     self.settings.navigation = argvus_control_center_settings::navigation::Navigation::new(page);
     self.settings.select_current();
+    self.settings.enter_page(page);
     self.route = Route::Settings;
   }
 
@@ -1839,6 +1651,9 @@ impl App {
       (_, "gpg-keys") => self.open_settings(Page::GpgKeys),
       #[cfg(feature = "system")]
       (_, "firewall") => self.open_settings(Page::Firewall),
+      (_, "hostname") => self.open_settings(Page::Hostname),
+      (_, "users-groups") => self.open_settings(Page::UsersGroups),
+      (_, "notifications") => self.open_settings(Page::Notifications),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),
@@ -2148,7 +1963,8 @@ impl App {
   pub fn back(&mut self) {
     match self.route {
       Route::Home => {}
-      Route::Config => self.route = Route::Home,
+      Route::AppSettings => self.route = Route::Home,
+      Route::Config => self.route = Route::AppSettings,
       #[cfg(feature = "about")]
       Route::About => self.route = Route::Home,
       #[cfg(feature = "hardware")]
@@ -2407,9 +2223,9 @@ mod tests {
       assert!(matches!(
         rows
           .iter()
-          .filter(|row| matches!(row, HomeRow::Item { .. }))
+          .filter(|row| !matches!(row, HomeRow::Header(_)))
           .nth(app.home_selected),
-        Some(HomeRow::Item { .. })
+        Some(HomeRow::Item { .. } | HomeRow::Standalone { .. })
       ));
     }
   }
@@ -2439,26 +2255,31 @@ mod tests {
 
   #[cfg(feature = "hardware")]
   #[test]
-  /// Executes the `mouse_touchpad_is_in_the_hardware_group` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn mouse_touchpad_is_in_the_hardware_group() {
+  /// Mouse & Touchpad belongs to the Desktop & Input card, with the keyboard.
+  fn mouse_touchpad_is_in_the_desktop_input_card() {
     let app = App::new(InitialRoute::Home);
     let rows = app.home_rows();
-    let hardware_index = rows
+    let mouse = rows
       .iter()
       .position(|row| {
-        matches!(row, HomeRow::Header(label) if *label == tr(app.lang, "control_center.hardware"))
-      })
-      .expect("hardware heading");
-    let input_index = rows
-      .iter()
-      .position(|row| {
-        matches!(row, HomeRow::Item { label, .. } if *label == tr(app.lang, "control_center.mouse_touchpad"))
+        matches!(
+          row,
+          HomeRow::Item {
+            destination: HomeDestination::MouseTouchpad,
+            ..
+          }
+        )
       })
       .expect("mouse and touchpad item");
-    assert!(input_index > hardware_index);
-    assert!(!rows[..hardware_index].iter().any(|row| {
-      matches!(row, HomeRow::Item { label, .. } if *label == tr(app.lang, "control_center.mouse_touchpad"))
-    }));
+    let heading = rows[..mouse]
+      .iter()
+      .rev()
+      .find_map(|row| match row {
+        HomeRow::Header(category) => Some(category.title),
+        HomeRow::Item { .. } | HomeRow::Standalone { .. } => None,
+      })
+      .expect("card heading");
+    assert_eq!(heading, tr(app.lang, "control_center.card_desktop_input"));
   }
 
   #[cfg(feature = "about")]
@@ -2469,13 +2290,9 @@ mod tests {
     app.back();
     assert_eq!(app.route, Route::Home);
     app.home_selected = app
-      .home_rows()
+      .home_destinations()
       .iter()
-      .filter_map(|row| match row {
-        HomeRow::Item { action, .. } => Some(*action),
-        HomeRow::Header(_) => None,
-      })
-      .position(|action| action == 14)
+      .position(|destination| *destination == HomeDestination::About)
       .expect("About row must be listed");
     app.open_home();
     assert_eq!(app.route, Route::About);
@@ -2483,21 +2300,27 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `home_lists_and_opens_the_configuration_screen` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_lists_and_opens_the_configuration_screen() {
+  /// Settings is listed below the cards and opens the Settings hub, where Esc returns to the Home.
+  fn home_lists_and_opens_the_settings_hub() {
     let mut app = App::new(InitialRoute::Home);
     app.home_selected = app
-      .home_rows()
+      .home_destinations()
       .iter()
-      .filter_map(|row| match row {
-        HomeRow::Item { action, .. } => Some(*action),
-        HomeRow::Header(_) => None,
-      })
-      .position(|action| action == 15)
-      .expect("Configuration row must be listed");
+      .position(|destination| *destination == HomeDestination::Settings)
+      .expect("Settings row must be listed");
+    assert_eq!(app.home_selected, app.home_item_count() - 1);
     app.open_home();
-    assert_eq!(app.route, Route::Config);
+    assert_eq!(app.route, Route::AppSettings);
     app.back();
     assert_eq!(app.route, Route::Home);
+  }
+
+  #[test]
+  /// Style is reached from the hub and Esc returns to the hub, not to the Home.
+  fn style_returns_to_the_settings_hub() {
+    let mut app = App::new(InitialRoute::Home);
+    app.route = Route::Config;
+    app.back();
+    assert_eq!(app.route, Route::AppSettings);
   }
 }
