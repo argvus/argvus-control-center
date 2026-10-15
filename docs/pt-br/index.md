@@ -19,14 +19,15 @@ O Control Panel pode oferecer controles rápidos para uma configuração permane
 
 A tela inicial atual do Control Center oferece estas áreas:
 
-* **Desktop Shell** — Hyprland (atalhos de teclado, regras de janela, espaços de janela, animações, blur, bordas e a versão instalada), Taskbar, Control Panel e Widget Telemetry.
-* **Idioma e região** — idioma (localidade regional), fuso horário, data e hora, locales do sistema e layout do teclado, cada um aberto diretamente pela tela inicial.
-* **Aparência** — Fontes, Área de trabalho (tema, modo de aparência, cor de destaque e wallpaper) e Estilo dos aplicativos (transparência do terminal e do lançador).
-* **Aplicativos** — aplicativos padrão, Projetos e Snippets. Snippets são textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`.
-* **Segurança** — chaves SSH (pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`: gerar, carregar no agente, descarregar e apagar), chaves GPG (o keyring gerenciado pelo `argvus gpg`: gerar, importar e exportar, editar, copiar, excluir e buscar; o gpg-agent usa o pinentry-gtk) e o firewall.
-* **Geral** — nome do host, usuários, grupos e páginas de administração do sistema disponíveis na instalação atual.
-* **Hyprland** — atalhos de teclado, regras de janela e as páginas de efeitos de janela reaproveitadas da Aparência (espaços de janela, animações, blur, bordas), além da versão instalada do Hyprland.
-* **Displays, rede, sessão e outros domínios** — disponíveis pela busca inicial e pelas rotas de domínio quando os recursos opcionais correspondentes estão instalados.
+A tela inicial é um catálogo de destinos agrupados em seis cartões. Cada destino abre a própria página diretamente, e a busca o encontra independentemente do cartão.
+
+* **Aparência** — personalize o desktop: Fontes, Estilo do desktop (tema, modo de aparência, cor de destaque e wallpapers), Estilo dos aplicativos (transparência do terminal e do lançador), Taskbar, Central de controle e Widget Telemetry.
+* **Desktop e entrada** — configure seu espaço de trabalho: Hyprland (espaços de janela, animações, blur, bordas e a versão instalada), Displays, Teclado e atalhos, Mouse e touchpad e Regras de janela.
+* **Preferências** — configurações pessoais e regionais: Idioma e região (o hub de idioma, fuso horário, formatos e layout do teclado), Data e hora, Aplicativos padrão, Energia e Sessão.
+* **Hardware e conectividade** — dispositivos e conexões: Visão geral do hardware, Rede e Wi-Fi, Bluetooth, Áudio e Armazenamento.
+* **Administração do sistema** — gerencie o sistema operacional: Pacotes, Serviços, Boot, Nome do host, Usuários e grupos, Firewall e Notificações (Não perturbe).
+* **Configurações** — o próprio Control Center, listado depois dos cartões: Idioma (idioma da interface) e Estilo (ícones decorativos e transparência). Pressione `s` para abri-la.
+* **Ferramentas e diagnóstico** — ferramentas de desenvolvimento e manutenção: Projetos, Snippets (textos salvos para o `argvus snippets`, digitados com `SUPER + ALT + N`), Chaves SSH (pares de chaves em `~/.ssh` gerenciados pelo `argvus keys`), Chaves GPG (o keyring gerenciado pelo `argvus gpg`; o gpg-agent usa o pinentry-gtk), Serviços de desenvolvimento, Diagnóstico e Sobre o ARGVUS.
 
 As páginas exatas dos providers podem depender dos pacotes instalados e das permissões. A ausência de um domínio opcional não significa necessariamente que o Control Center esteja quebrado.
 
@@ -42,18 +43,13 @@ A árvore atual de configurações inclui:
 
 | Área | Destinos atuais |
 | --- | --- |
-| Desktop Shell | Hyprland (atalhos de teclado, regras de janela, espaços de janela, animações, blur, bordas), Taskbar (posição, espaçamento, grupo utilitário, ícones, data e hora), Control Panel e Widget Telemetry |
-| Aparência | Fontes; Área de trabalho: tema, modo de aparência, cor de destaque e wallpapers; Estilo dos aplicativos: transparência do terminal e do lançador |
-| Entrada e teclado | Mouse e touchpad, variante do teclado, mapa do console |
-| Idioma e região | Idioma, fuso horário, data e hora, locales do sistema e layout do teclado |
-| Aplicativos | Aplicativos padrão e seletores por categoria, Projetos, Snippets |
-| Segurança | Chaves SSH, Chaves GPG, firewall |
-| Geral | Hostname, usuários, grupos e administração do sistema |
-| Hardware | Resumo, CPU, GPU, memória, energia e dispositivos |
-| Serviços e diagnósticos | Serviços, Serviços de Dev, boot, pacotes, armazenamento e diagnósticos |
-| Conectividade | Rede, áudio e Bluetooth |
-| Sessão | Componentes, autostart, diagnósticos e logs |
-| Displays | Resolução, taxa de atualização, escala, posição, orientação, display principal, VRR e HDR quando suportados |
+| Aparência | Fontes; Estilo do desktop: tema, modo de aparência, cor de destaque e wallpapers; Estilo dos aplicativos: transparência do terminal e do lançador; Taskbar; Central de controle; Widget Telemetry |
+| Desktop e entrada | Hyprland (espaços de janela, animações, blur, bordas), Displays, Teclado e atalhos, Mouse e touchpad, Regras de janela |
+| Preferências | Idioma e região (idioma, fuso horário, formatos, locales do sistema e layout do teclado), Data e hora, Aplicativos padrão, Energia, Sessão |
+| Hardware e conectividade | Visão geral do hardware (resumo, CPU, GPU, memória, dispositivos), Rede e Wi-Fi, Bluetooth, Áudio, Armazenamento |
+| Administração do sistema | Pacotes, Serviços, Boot, Nome do host, Usuários e grupos, Firewall, Notificações |
+| Configurações | Idioma (idioma da interface), Estilo (ícones e transparência) |
+| Ferramentas e diagnóstico | Projetos, Snippets, Chaves SSH, Chaves GPG, Serviços de desenvolvimento, Diagnóstico, Sobre o ARGVUS |
 
 Alguns itens são páginas completas e outros são subpáginas alcançadas pela busca ou por um resumo de domínio. A lista exata depende dos providers ARGVUS instalados.
 
@@ -61,11 +57,11 @@ Alguns itens são páginas completas e outros são subpáginas alcançadas pela 
 
 ### Aparência
 
-Aparência é a principal área de personalização. Seu grupo Área de trabalho reúne o tema (com seu modo Sticky ou Float), o modo de aparência, a cor de destaque e os wallpapers, e seu grupo Estilo dos aplicativos reúne a transparência do terminal e do lançador. Taskbar, Control Panel e Widget Telemetry fazem parte do Desktop Shell (veja abaixo) e reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Animações funciona da mesma forma em Hyprland > Animations (Animações): o controle Ligar, as Curvas personalizadas (Bézier, Spring, Linear e Ease-out) e as cinco categorias de animações formam um único rascunho, aplicado junto com **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+Aparência é a principal área de personalização. Seu grupo Área de trabalho reúne o tema (com seu modo Sticky ou Float), o modo de aparência, a cor de destaque e os wallpapers, e seu grupo Estilo dos aplicativos reúne a transparência do terminal e do lançador. Taskbar, Central de controle e Widget Telemetry aparecem diretamente em Aparência na tela inicial e reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Animações funciona da mesma forma em Hyprland > Animations (Animações): o controle Ligar, as Curvas personalizadas (Bézier, Spring, Linear e Ease-out) e as cinco categorias de animações formam um único rascunho, aplicado junto com **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
 
 ### Taskbar
 
-A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência. Aparece no cartão **Desktop Shell** da tela inicial.
+A Taskbar configura a posição do painel, o espaçamento ao redor dele e das janelas, o grupo de ícones utilitários e os blocos de data/hora, além da própria transparência. Aparece no cartão **Aparência** da tela inicial.
 
 ### Control Panel
 
@@ -85,7 +81,7 @@ Aplicativos padrão seleciona programas instalados para funções como terminal,
 
 ### Snippets
 
-Snippets é a página dos textos que o `argvus snippets` digita com `SUPER + ALT + N`. Ela fica em **Aplicativos → Snippets** (busque por `snippets` ou execute `argvus-control-center snippets`).
+Snippets é a página dos textos que o `argvus snippets` digita com `SUPER + ALT + N`. Ela fica em **Ferramentas e diagnóstico → Snippets** (busque por `snippets` ou execute `argvus-control-center snippets`).
 
 * **Novo snippet** — digite um **Nome** e um **Conteúdo** e depois **Salvar snippet**. Um nome que já existe substitui o conteúdo desse snippet.
 * **Snippets salvos** — listados com a posição (`1  email`) e o conteúdo em uma linha. `Enter` sobre o conteúdo o edita. **Digitar** digita o snippet, e **Remover** pede confirmação.
@@ -97,7 +93,7 @@ A página lê os snippets do `argvus-config` e grava por meio do `argvus snippet
 
 ### Chaves SSH
 
-Chaves SSH é a página dos pares de chaves que o `argvus keys` gerencia. Ela fica em **Segurança → Chaves SSH** (busque por `chaves ssh` ou execute `argvus-control-center ssh-keys`).
+Chaves SSH é a página dos pares de chaves que o `argvus keys` gerencia. Ela fica em **Ferramentas e diagnóstico → Chaves SSH** (busque por `chaves ssh` ou execute `argvus-control-center ssh-keys`).
 
 A página tem quatro partes, de cima para baixo:
 
@@ -110,7 +106,7 @@ Ações         Atualizar e Descarregar todas as chaves do agente
 
 #### Como usar
 
-1. Abra **Control Center → Segurança → Chaves SSH**. Pela Home, você também pode buscar por `chaves ssh`.
+1. Abra **Control Center → Ferramentas e diagnóstico → Chaves SSH**. Pela Home, você também pode buscar por `chaves ssh`.
 2. **Encontrar uma chave:** pressione `/` e digite para mostrar só os pares cujo nome ou comentário combina. `Enter` encerra a busca e executa a linha destacada, como nas outras listas, então confira a linha antes de apertar; `Esc` limpa a busca.
 3. **Criar um par:** em **Gerar**, selecione **Nome**, pressione `Enter`, digite o nome e pressione `Enter` de novo. Selecione **Tipo** e pressione `Enter` para alternar entre `ed25519` e `rsa`. Selecione **Gerar par de chaves** e pressione `Enter`. O novo par aparece em **Chaves** imediatamente, sem senha.
 4. **Copiar a chave pública:** no bloco do par, selecione **Copiar chave pública** e pressione `Enter`. O conteúdo do arquivo `.pub` vai para a área de transferência do Wayland, pronto para colar no `authorized_keys` de um servidor ou em um host Git. A chave privada nunca é copiada. Isso precisa do `wl-clipboard` (`wl-copy`); sem ele, a página informa que a chave não foi copiada.
@@ -133,7 +129,7 @@ As senhas nunca são digitadas no Control Center nem passadas como argumentos de
 
 ### Chaves GPG
 
-Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Segurança → Chaves GPG** (busque por `chaves gpg` ou rode `argvus-control-center gpg-keys`).
+Chaves GPG é a página do keyring que o `argvus gpg` gerencia. Ela fica em **Ferramentas e diagnóstico → Chaves GPG** (busque por `chaves gpg` ou rode `argvus-control-center gpg-keys`).
 
 As seções da página, de cima para baixo:
 
@@ -149,7 +145,7 @@ Chaves ›          o chaveiro, em uma página própria, com a busca no topo
 
 #### Como usar
 
-1. Abra **Control Center → Segurança → Chaves GPG**. Pela Home, você também pode buscar por `chaves gpg`.
+1. Abra **Control Center → Ferramentas e diagnóstico → Chaves GPG**. Pela Home, você também pode buscar por `chaves gpg`.
 2. **Pinentry** é fixo em `pinentry-gtk`. A página apenas o mostra. Na primeira vez que uma chave é gerada, o ARGVUS grava esse pinentry no `gpg-agent.conf`, entre as suas linhas de marcação, e mantém as outras linhas. Se você já escreveu uma linha `pinentry-program` fora dessas marcas, a geração para com erro, para que você remova essa linha.
 3. **Criar uma chave:** em **Gerar chave ▾**, digite **Nome completo** e **E-mail**. Os dois são obrigatórios, e **Gerar chave** fica desabilitado até que ambos tenham texto. **Comentário** é opcional. A identidade fica `Nome (comentário) <e-mail>`.
    - **Algoritmo** alterna entre **RSA** e **DSA ElGamal**. Uma chave DSA recebe uma subchave de criptografia ElGamal; uma chave RSA recebe uma RSA.
@@ -207,7 +203,7 @@ Quando os recursos correspondentes estão instalados, o Control Center pode most
 
 ### Conectividade e áudio
 
-A área de rede expõe o status e as páginas do provider de rede instalado, incluindo rotas de Wi-Fi, Ethernet, VPN, DNS e proxy quando disponíveis. O firewall fica listado em **Segurança**. Bluetooth depende do suporte Bluetooth. A área de áudio aparece quando o recurso opcional correspondente está habilitado e integra-se ao serviço de áudio instalado.
+A área de rede expõe o status e as páginas do provider de rede instalado, incluindo rotas de Wi-Fi, Ethernet, VPN, DNS e proxy quando disponíveis. O firewall fica listado em **Administração do sistema**. Bluetooth depende do suporte Bluetooth. A área de áudio aparece quando o recurso opcional correspondente está habilitado e integra-se ao serviço de áudio instalado.
 
 ### Energia e sessão
 
@@ -223,7 +219,7 @@ Nas listas de **Pacotes** que filtram ao digitar (Buscar, AUR, Instalados, Órf�
 
 ### Usuários e grupos
 
-Quando o provider de contas está disponível, abra **Control Center → Geral → Usuários** ou busque por **usuários**. A interface pode listar contas normais e de sistema, criar usuários, editar metadados, gerenciar grupos suplementares e primários, alterar ou bloquear uma senha, desbloqueá-la, exigir troca de senha no próximo login, definir ou remover um avatar, e ativar o login automático.
+Quando o provider de contas está disponível, abra **Control Center → Administração do sistema → Usuários e grupos → Usuários** ou busque por **usuários**. A interface pode listar contas normais e de sistema, criar usuários, editar metadados, gerenciar grupos suplementares e primários, alterar ou bloquear uma senha, desbloqueá-la, exigir troca de senha no próximo login, definir ou remover um avatar, e ativar o login automático.
 
 A criação pede username, nome completo, shell, grupos suplementares e uma senha opcional com confirmação. Uma senha vazia cria a conta com a senha bloqueada; não cria silenciosamente uma senha utilizável. A página de um usuário agrupa os campos da conta (nome completo, shell, grupo principal e grupos suplementares, seguidos de **Salvar alterações**), o alternador de **Login automático**, as ações de **Senha** (alterar, bloquear, desbloquear, exigir troca no próximo login) e as de **Avatar**. Username, UID / GID e diretório home aparecem só como informação. A **Zona de perigo** no fim reúne as ações destrutivas separadas para remover a conta mantendo o diretório home ou removendo também o home. Leia atentamente a confirmação antes de escolher a segunda opção. Operações de conta exigem privilégio e podem abrir o prompt de autorização do sistema. Avatares podem ser consumidos pelo greeter por meio da integração padrão de imagem da conta.
 
@@ -231,9 +227,9 @@ O **Login automático** inicia a sessão da conta selecionada no próximo boot s
 
 Os grupos possuem suas próprias páginas de lista e edição, incluindo gerenciamento de membros e exclusão de grupo. O Control Center não substitui as políticas de contas do sistema: contas protegidas e operações que exigem autorização continuam sujeitas às restrições do sistema operacional.
 
-### Configuração do Control Center
+### Configurações do Control Center
 
-A página **Configuração** atualmente controla os ícones decorativos do layout do Control Center. Ela altera a apresentação do aplicativo de configurações; não desativa serviços ARGVUS nem remove providers. O salvamento pode exigir autorização, enquanto a alteração visual é aplicada ao aplicativo atual.
+**Configurações** é o último item da tela inicial. A página **Idioma** define o idioma da interface, e a página **Estilo** controla os ícones decorativos e a transparência do Control Center. O blur não fica em Estilo: ele é uma configuração global do Hyprland, em Hyprland > Blur. A página Estilo altera a apresentação do aplicativo de configurações; ela não desativa serviços ARGVUS nem remove providers. Salvar os ícones pode exigir autorização, enquanto a alteração visual é aplicada ao aplicativo atual. `Esc` em Estilo volta à página Configurações, e `Esc` nela volta à tela inicial.
 
 ## Busca e recursos opcionais
 
@@ -249,7 +245,7 @@ Abra **Aparência** para ver os controles visuais integrados. Seus grupos são:
 * **Área de trabalho** — **Tema** (escolha uma família incluída e seu modo Sticky ou Float, ou gerencie perfis de tema personalizados), **Modo de aparência** (Sticky ou Float, independente do tema), **Cor de destaque** (um acento incluído ou uma cor RGB válida de seis dígitos) e **Wallpaper** (um wallpaper incluído ou um arquivo personalizado).
 * **Estilo dos aplicativos** — a transparência do **Terminal** e do **Lançador**.
 
-O cartão Desktop Shell reúne as superfícies que usam essas configurações: **Widget Telemetry** (ative a superfície de telemetria, selecione seus blocos disponíveis e reordene-os com `Shift+↑`/`Shift+↓` em um bloco focado) e **Control Panel** (ative, desative e reordene os cards do painel com `Shift+↑`/`Shift+↓` em um card focado, aplicado na hora através do mesmo mecanismo que o arrastar do painel real usa).
+O cartão Aparência reúne as superfícies que usam essas configurações: **Widget Telemetry** (ative a superfície de telemetria, selecione seus blocos disponíveis e reordene-os com `Shift+↑`/`Shift+↓` em um bloco focado) e **Control Panel** (ative, desative e reordene os cards do painel com `Shift+↑`/`Shift+↓` em um card focado, aplicado na hora através do mesmo mecanismo que o arrastar do painel real usa).
 
 Essas ações atualizam o estado lógico do ARGVUS e aplicam a configuração de runtime afetada. Veja [Aparência](/pt/docs/user-guide/appearance/), [Temas](/pt/docs/argvus-themes/) e [Janelas e layout](/pt/docs/argvus-hyprland/windows-and-layout/).
 
@@ -273,9 +269,9 @@ O suporte à restauração é específico de cada domínio:
 * **Fontes** pode restaurar todas as fontes, um alvo ou uma configuração individual.
 * **Aplicativos padrão** pode restaurar todos os padrões, uma categoria ou um seletor individual.
 * **Atalhos de teclado** pode restaurar um atalho ou todos e então recarregar os atalhos gerados da sessão.
-* **Regras de janela** ficam em **Desktop Shell → Hyprland → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
+* **Regras de janela** ficam em **Desktop e entrada → Regras de janela** (busque por `regras de janela` ou execute `argvus-control-center window-rules`). Cada regra tem a linha **Workspace** (`Enter` ou `←/→` percorrem de 1 a 10) e a linha **Classes de janela**, que abre um campo de texto com expressões regulares separadas por vírgula. **Adicionar regra** cria `rule-N` no workspace 1, sem classes. **Remover regra** de cada regra fica na **Zona de perigo** e pede confirmação. Cada alteração é gravada em `hyprland.window_rules` no `argvus-config` e recarrega a configuração na hora; padrões de classe inválidos são recusados e mostrados como erro.
 
-* **Projetos** ficam em **Aplicativos → Projetos** (busque por `projetos` ou execute `argvus control-center projects`). **Adicionar pasta de projeto** e **Adicionar pasta raiz** ficam no topo da página e abrem um campo de texto com o caminho; o launcher confere se é um diretório e mostra o erro caso não seja, inclusive quando a pasta levaria o total efetivo de projetos além de 9 (o `SUPER + ALT + 1..9` não consegue endereçar mais que isso). Cada pasta configurada, marcada como raiz (seus subdiretórios são projetos) ou projeto único, ganha seu próprio bloco abaixo do formulário com uma linha **Remover** que pede confirmação. A página chama o `argvus-projects`, então as alterações são gravadas pelo launcher e valem na próxima vez que `SUPER + O` ou `SUPER + ALT + 1..9` forem usados. Se o `argvus-projects` não estiver instalado, a página informa isso.
+* **Projetos** ficam em **Ferramentas e diagnóstico → Projetos** (busque por `projetos` ou execute `argvus control-center projects`). **Adicionar pasta de projeto** e **Adicionar pasta raiz** ficam no topo da página e abrem um campo de texto com o caminho; o launcher confere se é um diretório e mostra o erro caso não seja, inclusive quando a pasta levaria o total efetivo de projetos além de 9 (o `SUPER + ALT + 1..9` não consegue endereçar mais que isso). Cada pasta configurada, marcada como raiz (seus subdiretórios são projetos) ou projeto único, ganha seu próprio bloco abaixo do formulário com uma linha **Remover** que pede confirmação. A página chama o `argvus-projects`, então as alterações são gravadas pelo launcher e valem na próxima vez que `SUPER + O` ou `SUPER + ALT + 1..9` forem usados. Se o `argvus-projects` não estiver instalado, a página informa isso.
 * **Outras páginas do sistema** exibem ações de restauração, aplicação, exclusão ou recuperação somente quando o provider responsável oferece esse recurso.
 
 Remover uma preferência do usuário pode fazer um provider retornar ao estado padrão, mas apagar arquivos manualmente não é um procedimento geral de recuperação. Prefira a ação de restauração da página ou o comando documentado para o recurso.

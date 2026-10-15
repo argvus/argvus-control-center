@@ -80,7 +80,6 @@ Atalhos globais preservados em todas as telas: `↑↓/jk`, `PgUp/PgDn`,
 | Home | Atalho para Configuração | Abre Configuração | Mantido | `s` | pendente |
 | Configuração | Ícones | Liga/desliga ícones (imediato) | Toggle | `Enter`/`Space` | pendente |
 | Configuração | Transparência do Control Center | Ajuste ±, salva (imediato) | Value (`←/→`) | `←→` | pendente |
-| Configuração | Blur do Control Center | Ajuste ±, salva (imediato) | Value (`←/→`) | `←→` | pendente |
 | About | Abas | Troca de aba | Mantido (`Tab` legítimo para abas) | `Tab/BackTab/h/l/←→` | pendente |
 
 ### 0.2 `argvus-control-center-appearance`
@@ -899,7 +898,7 @@ Notas de projeto:
 | 3 | `projects` (página em Applications, padronizada com o layout de Window rules: seção Add no topo, um bloco por pasta configurada com Remove próprio e separador; `argvus projects` passou a recusar adicionar além do limite de 9 projetos, já que `SUPER + ALT + 1..9` só endereça essa faixa) | concluída, sem commit; verificação visual em 80x24 pendente |
 | 3 | `ssh-keys` (página nova em Applications, sem tela antiga para migrar; já no modelo novo: seções Gerar, Chaves e Agente, sem barra de botões, Atualizar e Descarregar todas como linhas de ação, Apagar na Zona de perigo com confirmação e foco em Cancelar; backend `argvus keys`, sem passphrase em argv). Carregar abre um terminal ARGVUS para a senha. Sem atalho novo, então o cheatsheet não muda. Teste de renderização em 80x24 pendente | concluída, sem commit; renderização real pendente |
 | 3 | `gpg-keys` (página em Applications, sem tela antiga para migrar). Gerar chave e Importar são seções colapsáveis (expandidas no início, `Enter` alterna); Chaves › abre o chaveiro com a busca no topo e, por chave, Editar ›, exportar pública e privada, copiar chave e fingerprint, excluir. Editar › tem expiração, senha (pinentry), assinar, revogar, confiança e servidor de chaves. Importação pública e privada usa o gerenciador de arquivos (`pick_file` no core), com campo de caminho quando o gerenciador é gráfico. Pinentry fixo em pinentry-gtk, só informativo. A senha do formulário vai ao launcher pela entrada padrão. Pendente: buscar chave no servidor por nome ou e-mail; renderização em 80x24 pendente. | concluída parcialmente, sem commit |
-| 3 | Home (`argvus-control-center`) | pendente |
+| 3 | Home: catálogo em `home/catalog.rs` (`HomeDestination` com IDs estáveis, ícone e cartão por destino), taxonomia do esboço `TUI_home.png` (seis cartões, ver 5.9) e breadcrumbs/busca alinhados aos cartões. Testes de catálogo e 763 testes do workspace passando (com `ARGVUS_I18N_DIR` apontando para o catálogo do repositório) | concluída, sem commit; renderização real em 80x24 pendente |
 | 4 | Chaves i18n órfãs (en-US e pt-BR) | pendente |
 | 4 | Código morto (páginas `Transparency`/`Blur*`, `argvus_tui::buttons`) | pendente |
 | 4 | README "Keyboard controls" e entrada no CHANGELOG | pendente |
@@ -1367,7 +1366,62 @@ Validação: `cargo fmt --all -- --check`, `cargo check --workspace
 `argvus-control-center-core` e `argvus-tui`, todos sem falhas. Não
 documentado como "Fase" porque não migra nenhum botão para `RowKind`.
 
-### 5.8 Reorganização das categorias da Home (2026-10-15)
+### 5.10 Settings do Control Center, System Administration e breadcrumbs (2026-10-15)
+
+- **Settings** é um item fora dos cards, no fim da Home (`HomeRow::Standalone`).
+  Abre `Route::AppSettings` (`settings_hub.rs`), com duas linhas: **Language**
+  (`Page::Language`, Esc volta ao hub) e **Style ›** (`Route::Config`, Esc volta
+  ao hub). `s` abre o hub; a CLI `config` continua abrindo Style direto.
+- **Blur** saiu da tela Style. Blur do Control Center é controlado pelo Hyprland
+  (Hyprland > Blur). O valor persistido `blur_control-center_enabled` é lido ao
+  abrir e reenviado sem alteração, porque o script `surface-apply` exige o
+  argumento e outros componentes leem a chave.
+- **System Administration** passou a ser: Packages, Services, Boot, Hostname,
+  Users & Groups (hub com Users › e Groups ›), Firewall e Notifications (Do Not
+  Disturb). **General** foi removido; a rota CLI `system` abre Hostname.
+- **Firewall** carrega os dados ao abrir por qualquer caminho (Home, busca ou
+  CLI), via `Administration::ensure_loaded`. Antes só carregava no construtor,
+  então aparecia só a linha Reload.
+- **Breadcrumbs**: cada página mostra o card onde está listada. Os crates de
+  domínio prefixam o card (`Desktop & Input > Displays`, `Preferences > Power`,
+  `Hardware & Connectivity > Network & Wi-Fi`, `System Administration > Packages`,
+  `Tools & Diagnostics > Diagnostics`). Date & Time fica em `Preferences > Date
+  & Time` mesmo aberto pelo hub de Language & Region.
+
+Desvio do plano aprovado: o card de cada destino é fixo, então o prefixo fica no
+`breadcrumb()` de cada crate (sem campo `parent`). Isso cobre Home, busca e CLI
+pelo mesmo caminho e evita estado extra.
+
+### 5.9 Taxonomia do esboço `TUI_home.png` (2026-10-15)
+
+Substitui a organização da 5.8. A Home agora tem seis cartões, na ordem do
+esboço: **Appearance** (Fonts, Desktop Style, Application Style, Taskbar,
+Control Center, Widget Telemetry), **Desktop & Input** (Hyprland, Displays,
+Keyboard & Shortcuts, Mouse & Touchpad, Window Rules), **Preferences**
+(Language & Region, Date & Time, Default Applications, Power, Session,
+Interface Language, Configuration), **Hardware & Connectivity** (Hardware
+Overview, Network & Wi-Fi, Bluetooth, Audio, Storage), **System
+Administration** (Packages, Services, Boot, Users & Groups, Firewall,
+General) e **Tools & Diagnostics** (Projects, Snippets, SSH keys, GPG keys,
+Dev Services, Diagnostics, About ARGVUS). Cada cartão tem título, descrição
+e ícone no próprio catálogo; um cartão sem destino disponível não aparece.
+
+Mudanças de código: o catálogo está em `home/catalog.rs` (`HomeDestination`
+com IDs estáveis, `glyph()` e `HomeCategory`), a Home não usa mais números de
+ação nem comparação de texto traduzido para ícone e descrição, e o cartão
+"wide" de System foi removido (todos os cartões têm o mesmo tamanho). A linha
+de descrição do cartão tem divisória, e a Home ganhou um subtítulo.
+
+Busca e breadcrumbs seguem o cartão onde o destino aparece: Default Apps em
+Preferences; Projects, Snippets, SSH keys e GPG keys em Tools & Diagnostics;
+Firewall em System Administration; Keyboard Shortcuts e Window Rules em
+Desktop & Input; Taskbar, Control Center e Widget Telemetry em Appearance.
+O ícone `WRENCH` (`nf-md-wrench`, `U+F05B7`, conferido na Nerd Font instalada)
+entrou no catálogo de `argvus-tui`.
+
+Desvios do esboço estão em 6.3 (D44 a D49).
+
+### 5.8 Reorganização das categorias da Home (2026-10-15, substituída pela 5.9)
 
 Mudança de arquitetura de informação, fora das fases de `RowKind`. Não altera
 ações nem o momento em que cada mudança é efetivada.
@@ -1535,3 +1589,14 @@ Ajustes aprovados junto com o plano da Fase 1:
 | Ponto | Decisão | Status |
 | --- | --- | --- |
 | D43 | `HardwarePage::Power` (Hardware > Power) saiu da Home, mas continua acessível pela CLI `hardware power` e pela busca. É o único seletor de perfis de energia do ARGVUS (tecla `e`); o cartão Power & Session não tem esse recurso, então remover a página apagaria a função. Opções: (a) manter como está; (b) mover o seletor de perfis para Power & Session e remover `Hardware > Power`; (c) remover só a rota CLI e a entrada de busca. | aberto |
+| D44 | Taxonomia da Home segue o esboço `TUI_home.png` e o prompt: Appearance, Desktop & Input, Preferences, Hardware & Connectivity, System Administration, Tools & Diagnostics. Substitui o cartão Desktop Shell e o cartão Security da reorganização anterior. | decidido (2026-10-15) |
+| D45 | Itens do esboço sem página equivalente: "Icons & Themes" não existe como destino (temas ficam em Desktop Style); "Storage & Displays" vira só Storage (Displays já está em Desktop & Input). | decidido (2026-10-15), confirmar |
+| D46 | Rótulos combinados do esboço viram duas linhas, cada uma com seu destino real: Projects e Snippets; SSH keys e GPG keys; Keyboard & Shortcuts (página própria) separado de Keyboard layout (dentro de Language & Region). Power e Session continuam separados, pois são páginas distintas. Nenhum hub novo foi criado. | decidido (2026-10-15), confirmar |
+| D47 | Language & Region abre o hub `Page::LocaleRegion`, que já reúne Time Zone, Date & Time, Regional locale, System locales e Keyboard. Date & Time continua também como item próprio em Preferences, como no esboço. | decidido (2026-10-15) |
+| D48 | Itens fora do esboço mantidos para não perder funções: Application Style e Widget Telemetry (no prompt), Interface Language, Configuration, General (Hostname e configurações do sistema) e Window Rules (no prompt). | decidido (2026-10-15) |
+| D49 | Language (idioma da interface) passa a ser "Interface Language" em Preferences. A entrada de Language & Region deixa de ter o mesmo rótulo. | decidido (2026-10-15) |
+| D50 | Settings é um item fora dos cards, no fim da Home. Abre um hub com Language e Style, e `s` abre o hub. | decidido (2026-10-15) |
+| D51 | Blur sai da tela Style. O valor `blur_control-center_enabled` é preservado, sem UI, porque o script `surface-apply` e outros componentes dependem dele. | decidido (2026-10-15) |
+| D52 | General sai da Home. Hostname vira item próprio, e a rota CLI `system` abre Hostname. Page::System foi removida. | decidido (2026-10-15), confirmar |
+| D53 | Notifications é uma página própria com Do Not Disturb, reaproveitando o toggle e o job existentes. | decidido (2026-10-15) |
+| D54 | Date & Time aparece com o caminho raso (`Preferences > Date & Time`) mesmo quando aberto pelo hub de Language & Region. | decidido (2026-10-15) |
