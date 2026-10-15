@@ -12,7 +12,6 @@ pub enum NetworkPage {
   Vpn,
   Dns,
   Proxy,
-  Firewall,
   /// Details of the interface at this index of `NetworkSnapshot::interfaces`.
   Detail(usize),
   /// Details of the Wi-Fi network at this index of `NetworkSnapshot::wifi`.

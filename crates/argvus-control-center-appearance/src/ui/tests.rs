@@ -72,9 +72,12 @@ fn line_with<'screen>(screen: &'screen [String], needle: &str) -> &'screen str {
 
 #[test]
 fn home_has_categories_and_spacing_is_nested() {
-  // Taskbar/Control Panel/Widget Telemetry are entered directly from the
-  // Control Center Home now (crate principal), not from this Home anymore.
-  assert_eq!(app(AppearancePage::Home).page_rows().len(), 6);
+  // The Appearance root only groups Desktop and Application Style; the
+  // principal Home lists both groups directly. Taskbar/Control Panel/Widget
+  // Telemetry are entered from the Desktop Shell card, not from here.
+  assert_eq!(app(AppearancePage::Home).page_rows().len(), 2);
+  assert_eq!(app(AppearancePage::Desktop).page_rows().len(), 4);
+  assert_eq!(app(AppearancePage::ApplicationStyle).page_rows().len(), 2);
   // Position/Spaces (moved from the removed "Spaces, Borders & Position"
   // hub) now live inside Taskbar, between Transparency and Icons.
   assert_eq!(app(AppearancePage::Taskbar).page_rows().len(), 6);
@@ -142,13 +145,20 @@ fn rows_have_the_kind_of_what_they_do() {
 
 #[test]
 fn every_navigable_row_owns_a_semantic_icon() {
-  let home = app(AppearancePage::Home).rows();
-  let glyphs: Vec<_> = home.iter().map(|row| row.icon_glyph()).collect();
+  let root = app(AppearancePage::Home).rows();
+  assert_eq!(root[0].icon_glyph(), Some(icons::WALLPAPER));
+  assert_eq!(root[1].icon_glyph(), Some(icons::TERMINAL));
+
+  let desktop = app(AppearancePage::Desktop).rows();
+  let glyphs: Vec<_> = desktop.iter().map(|row| row.icon_glyph()).collect();
   assert_eq!(glyphs[0], Some(icons::PALETTE));
-  assert_eq!(glyphs[1], Some(icons::ACCENT));
-  assert_eq!(glyphs[3], Some(icons::TERMINAL));
+  assert_eq!(glyphs[2], Some(icons::ACCENT));
   let unique: std::collections::HashSet<_> = glyphs.iter().collect();
-  assert_eq!(unique.len(), glyphs.len(), "Home siblings repeat an icon");
+  assert_eq!(
+    unique.len(),
+    glyphs.len(),
+    "Desktop siblings repeat an icon"
+  );
   assert!(
     !glyphs
       .iter()
@@ -191,7 +201,7 @@ fn mode_page_lists_sticky_and_float_independent_of_theme() {
   assert!(rows[0].contains("Sticky"));
   assert!(rows[1].contains("Float"));
 
-  let mut ui = app(AppearancePage::Home);
+  let mut ui = app(AppearancePage::Desktop);
   assert_eq!(selected(&ui), Some(Item::Themes));
   select(&mut ui, Item::Mode);
   ui.handle(KeyCode::Enter);
@@ -439,20 +449,22 @@ fn builtin_themes_always_present() {
 #[test]
 fn home_rows_follow_the_global_icon_setting() {
   AppConfig::set_session_icons(true);
-  let screen = render(&mut app(AppearancePage::Home), 80, 24);
+  let screen = render(&mut app(AppearancePage::Desktop), 80, 24);
   assert!(line_with(&screen, "Theme").contains(icons::PALETTE));
+  let screen = render(&mut app(AppearancePage::ApplicationStyle), 80, 24);
   assert!(line_with(&screen, "Terminal").contains(icons::TERMINAL));
 
   AppConfig::set_session_icons(false);
-  let screen = render(&mut app(AppearancePage::Home), 80, 24);
+  let screen = render(&mut app(AppearancePage::Desktop), 80, 24);
   assert!(!line_with(&screen, "Theme").contains(icons::PALETTE));
+  let screen = render(&mut app(AppearancePage::ApplicationStyle), 80, 24);
   assert!(!line_with(&screen, "Terminal").contains(icons::TERMINAL));
   AppConfig::set_session_icons(true);
 }
 
 #[test]
 fn home_renders_one_vertical_list_at_80_columns() {
-  let screen = render(&mut app(AppearancePage::Home), 80, 24);
+  let screen = render(&mut app(AppearancePage::Desktop), 80, 24);
   let theme = line_with(&screen, "Theme");
   assert!(
     theme.contains("> "),
@@ -505,10 +517,10 @@ fn disabled_rounding_is_skipped_and_does_not_open_prompt() {
 #[test]
 fn space_keeps_activating_actions_submenus_choices_and_editors() {
   // Submenu: Space opens the page, as Enter.
-  let mut home = app(AppearancePage::Home);
-  select(&mut home, Item::Terminal);
-  home.handle(KeyCode::Char(' '));
-  assert_eq!(home.page, AppearancePage::Terminal);
+  let mut style = app(AppearancePage::ApplicationStyle);
+  select(&mut style, Item::Terminal);
+  style.handle(KeyCode::Char(' '));
+  assert_eq!(style.page, AppearancePage::Terminal);
 
   // Choice: Space applies the option immediately, as Enter.
   let mut position = app(AppearancePage::TaskbarPosition);

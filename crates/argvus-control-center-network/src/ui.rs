@@ -14,9 +14,6 @@ use argvus_control_center_core::{
   process::SystemProcessRunner,
   sanitize::terminal_text,
 };
-use argvus_control_center_settings::{
-  App as SettingsApp, Page as SettingsPage, event as settings_event, ui as settings_ui,
-};
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
@@ -27,7 +24,7 @@ use argvus_tui::{
   menu::{MenuEvent, MenuState, MenuStyle, Row, draw_menu},
   page::{shell, status},
 };
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use crossterm::event::KeyCode;
 use ratatui::{
   Frame,
   text::Line,
@@ -58,7 +55,6 @@ pub struct NetworkApp {
   scan: bool,
   confirm_forget: bool,
   confirmation: ConfirmState,
-  firewall: Option<SettingsApp>,
 }
 
 /// Stable identity of a Network menu row. List items carry their index in
@@ -113,29 +109,14 @@ impl NetworkApp {
       scan: false,
       confirm_forget: false,
       confirmation: ConfirmState::new(),
-      firewall: None,
     }
   }
   /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn reload(&mut self) {
-    if self.page == NetworkPage::Firewall {
-      self.ensure_firewall();
-      return;
-    }
     if self.requested_page != self.page
       || self.refreshed.is_none_or(|at| at.elapsed().as_secs() >= 5)
     {
       self.start_refresh(false);
-    }
-  }
-  /// Executes the `ensure_firewall` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn ensure_firewall(&mut self) {
-    if self.firewall.is_none() {
-      self.firewall = Some(SettingsApp::with_context(
-        SettingsPage::Firewall,
-        self.lang,
-        self.theme.clone(),
-      ));
     }
   }
   /// Executes the `start_refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -168,15 +149,7 @@ impl NetworkApp {
       }
       self.updates = None;
       self.scan = false;
-      if self.page != NetworkPage::Firewall {
-        self.start_refresh(false);
-      }
-    }
-    if self.page == NetworkPage::Firewall {
-      return self
-        .firewall
-        .as_mut()
-        .is_some_and(|settings| settings.expire_status());
+      self.start_refresh(false);
     }
     let mut changed = false;
     let updates = self
@@ -217,7 +190,7 @@ impl NetworkApp {
         }
       }
       self.scan = false;
-      if self.requested_page != self.page && self.page != NetworkPage::Firewall {
+      if self.requested_page != self.page {
         self.start_refresh(false);
       }
       changed = true;
@@ -337,7 +310,7 @@ impl NetworkApp {
     if has_vpn {
       pages.push(NetworkPage::Vpn);
     }
-    pages.extend([NetworkPage::Dns, NetworkPage::Proxy, NetworkPage::Firewall]);
+    pages.extend([NetworkPage::Dns, NetworkPage::Proxy]);
     pages
   }
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -361,7 +334,6 @@ impl NetworkApp {
       NetworkPage::Vpn => label("control_center.vpn"),
       NetworkPage::Dns => label("control_center.dns"),
       NetworkPage::Proxy => label("control_center.proxy"),
-      NetworkPage::Firewall => label("control_center.firewall"),
       NetworkPage::Detail(_) => label("control_center.interface"),
       NetworkPage::WifiDetail(i) => self
         .snapshot
@@ -492,24 +464,15 @@ impl NetworkApp {
     )
   }
   /// Whether typed characters currently go to text (Wi-Fi password, manual
-  /// DNS, the list filter, or a text field of the embedded firewall page), so
-  /// `q`/`?` must not act as the global quit/help keys. Mirrors the
-  /// precedence of [`Self::handle`]: the forget confirmation is not typing.
+  /// DNS or the list filter), so `q`/`?` must not act as the global quit/help
+  /// keys. Mirrors the precedence of [`Self::handle`]: the forget confirmation
+  /// is not typing.
   pub fn captures_text(&self) -> bool {
-    if self.page == NetworkPage::Firewall {
-      return self
-        .firewall
-        .as_ref()
-        .is_some_and(SettingsApp::captures_text);
-    }
     !self.confirm_forget
       && (self.password.is_some() || self.dns_input.is_some() || self.search.is_some())
   }
 
   pub fn handle(&mut self, key: KeyCode) -> bool {
-    if self.page == NetworkPage::Firewall {
-      return self.handle_firewall(key);
-    }
     if self.confirm_forget {
       match self.confirmation.handle(key) {
         ConfirmOutcome::Confirmed => {
@@ -618,11 +581,7 @@ impl NetworkApp {
   fn open_home_page(&mut self, page: NetworkPage) {
     self.page = page;
     self.menu = MenuState::default();
-    if page == NetworkPage::Firewall {
-      self.reload();
-    } else {
-      self.start_refresh(false);
-    }
+    self.start_refresh(false);
   }
   /// Leaves a page for its parent and puts the cursor back on the row that
   /// opened it. Returns `true` when the Network page itself should close.
@@ -740,32 +699,11 @@ impl NetworkApp {
         row: menu.selected_kind(rows),
         can_go_back: true,
         search: self.is_list_page(),
-        refresh: self.page != NetworkPage::Firewall,
+        refresh: true,
         extra,
         ..HintContext::default()
       },
     )
-  }
-  /// Processes `handle_firewall` in this module's event flow. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn handle_firewall(&mut self, key: KeyCode) -> bool {
-    let Some(settings) = &mut self.firewall else {
-      self.page = NetworkPage::Home;
-      self.menu = MenuState::default();
-      return false;
-    };
-    let event = Event::Key(KeyEvent::new_with_kind_and_state(
-      key,
-      KeyModifiers::NONE,
-      KeyEventKind::Press,
-      KeyEventState::NONE,
-    ));
-    settings_event::handle(settings, event);
-    if settings.page() == SettingsPage::Main {
-      self.firewall = None;
-      self.page = NetworkPage::Home;
-      self.menu = MenuState::default();
-    }
-    false
   }
   /// Executes the `forget_selected` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn forget_selected(&mut self) {
@@ -852,12 +790,6 @@ impl NetworkApp {
   /// Renders the page: the single menu list, then the text fields, the
   /// confirmation and the status.
   pub fn draw(&mut self, f: &mut Frame) {
-    if self.page == NetworkPage::Firewall {
-      if let Some(settings) = &mut self.firewall {
-        settings_ui::draw(settings, f);
-      }
-      return;
-    }
     let area = f.area();
     let rows = self.rows();
     self.menu.normalize(&rows);
@@ -978,7 +910,6 @@ impl NetworkApp {
       NetworkPage::VpnDetail(i) => self.vpn_detail_rows(i),
       NetworkPage::Dns => self.dns_rows(),
       NetworkPage::Proxy => self.proxy_rows(),
-      NetworkPage::Firewall => Vec::new(),
     }
   }
   /// The trailing Actions group of the list pages: `Refresh` (`r`).
@@ -1071,11 +1002,6 @@ impl NetworkApp {
             tr(self.lang, "control_center.proxy"),
             icons::PROXY,
             proxy.clone(),
-          ),
-          NetworkPage::Firewall => (
-            tr(self.lang, "control_center.firewall"),
-            icons::SHIELD,
-            String::new(),
           ),
           _ => return None,
         };
@@ -1473,24 +1399,6 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `home_opens_firewall_and_back_returns_home` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn home_opens_firewall_and_back_returns_home() {
-    let mut app = app();
-    for _ in 0..5 {
-      app.handle(KeyCode::Down);
-    }
-    app.handle(KeyCode::Enter);
-    assert_eq!(app.page, NetworkPage::Firewall);
-    assert!(app.firewall.is_some());
-    // fc-list does not run in tests, so the embedded settings page opens with
-    // the font discovery error; the test is about navigation.
-    app.firewall.as_mut().unwrap().error_modal = None;
-    assert!(!app.handle(KeyCode::Esc));
-    assert_eq!(app.page, NetworkPage::Home);
-    assert!(app.firewall.is_none());
-  }
-
-  #[test]
   /// Executes the `wifi_is_only_listed_when_a_card_exists` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn wifi_is_only_listed_when_a_card_exists() {
     let mut app = app();
@@ -1524,42 +1432,15 @@ mod tests {
   }
 
   #[test]
-  /// Executes the `firewall_page_delegates_to_settings` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn firewall_page_delegates_to_settings() {
-    let mut app = app();
-    app.page = NetworkPage::Firewall;
-    app.reload();
-    assert!(app.firewall.is_some());
-    // fc-list does not run in tests, so the embedded settings page opens with
-    // the font discovery error; the test is about navigation.
-    app.firewall.as_mut().unwrap().error_modal = None;
-    assert!(!app.handle(KeyCode::Esc));
-    assert_eq!(app.page, NetworkPage::Home);
-    assert!(app.handle(KeyCode::Esc));
-  }
-
-  #[test]
-  /// Executes the `initial_firewall_route_creates_embedded_context` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
-  fn initial_firewall_route_creates_embedded_context() {
-    let mut app = app();
-    app.page = NetworkPage::Firewall;
-    app.reload();
-    assert!(app.firewall.is_some());
-    assert_eq!(
-      app.firewall.as_ref().unwrap().page(),
-      SettingsPage::Firewall
-    );
-  }
-
-  #[test]
   /// The Home is one submenu per available page, and the status is its detail.
   fn home_lists_each_page_as_a_submenu_with_its_state() {
     let mut app = app();
     with_network(&mut app);
     app.snapshot.connectivity = "full".into();
     let rows = app.rows();
-    // Status, Interfaces, Ethernet, Wi-Fi (a card exists), DNS, Proxy, Firewall.
-    assert_eq!(rows.len(), 7);
+    // Status, Interfaces, Ethernet, Wi-Fi (a card exists), DNS, Proxy. Firewall
+    // lives under Security on the Control Center Home.
+    assert_eq!(rows.len(), 6);
     assert!(rows.iter().all(|row| row.kind() == RowKind::Submenu));
     assert_eq!(rows[0].id(), Some(&Item::Open(NetworkPage::Status)));
     assert_eq!(rows[4].id(), Some(&Item::Open(NetworkPage::Dns)));

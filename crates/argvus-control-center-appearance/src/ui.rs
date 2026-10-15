@@ -664,6 +664,8 @@ impl AppearanceApp {
   /// immediate, draft edits stay in the draft).
   fn activate(&mut self, item: Item) {
     match item {
+      Item::Desktop => self.go(AppearancePage::Desktop),
+      Item::ApplicationStyle => self.go(AppearancePage::ApplicationStyle),
       Item::Themes => self.go(AppearancePage::Themes),
       Item::Accent => self.go(AppearancePage::Accents),
       Item::Wallpaper => self.go(AppearancePage::Wallpapers),
@@ -1484,13 +1486,19 @@ impl AppearanceApp {
     }
     match self.page {
       AppearancePage::Home => unreachable!(),
+      // Both groups are Home cards of the principal crate, so leaving them
+      // returns straight to the Control Center Home instead of this crate's
+      // root (which only the CLI `appearance` route reaches).
+      AppearancePage::Desktop | AppearancePage::ApplicationStyle => {
+        return true;
+      }
       AppearancePage::Themes
       | AppearancePage::Wallpapers
       | AppearancePage::Accents
-      | AppearancePage::Terminal
       | AppearancePage::Mode => {
-        self.go(AppearancePage::Home);
+        self.go(AppearancePage::Desktop);
       }
+      AppearancePage::Terminal => self.go(AppearancePage::ApplicationStyle),
       AppearancePage::OfficialThemes => self.go(AppearancePage::Themes),
       AppearancePage::ThemeFamilies { .. } => {
         self.go(AppearancePage::OfficialThemes);
@@ -1557,7 +1565,7 @@ impl AppearanceApp {
         self.effect_draft = None;
         self.go(AppearancePage::Terminal);
       }
-      AppearancePage::Launchers => self.go(AppearancePage::Home),
+      AppearancePage::Launchers => self.go(AppearancePage::ApplicationStyle),
       AppearancePage::TransparencySurface {
         surface: EffectSurface::Launchers,
       } => {
@@ -1776,80 +1784,85 @@ impl AppearanceApp {
     // domain: they only exist behind the Hyprland router (crate principal),
     // even though they are implemented in this crate for reuse. Their
     // breadcrumb reflects that ownership instead of this crate's own root.
+    // Hyprland, Taskbar, Control Panel and Widget Telemetry are items of the
+    // Desktop Shell card on the principal Home, so their breadcrumbs start
+    // from that card instead of the Appearance root.
+    let shell_root = tr(self.lang, "control_center.desktop_shell");
     let hyprland_root = format!(
-      "{} > {}",
-      tr(self.lang, "control_center.hyprland"),
-      tr(self.lang, "control_center.settings")
+      "{shell_root} > {}",
+      tr(self.lang, "control_center.hyprland")
     );
-    // Taskbar, Control Panel and Widget Telemetry were promoted from
-    // Appearance subsections to their own top-level Home categories (see
-    // `home_rows()` in the principal crate); their breadcrumb follows the
-    // same pattern as `hyprland_root` instead of the Appearance root.
-    let taskbar_root = format!(
-      "{} > {}",
-      tr(self.lang, "control_center.taskbar"),
-      tr(self.lang, "control_center.settings")
-    );
+    let taskbar_root = format!("{shell_root} > {}", tr(self.lang, "control_center.taskbar"));
     let control_panel_root = format!(
-      "{} > {}",
-      tr(self.lang, "control_center.control_panel"),
-      tr(self.lang, "control_center.settings")
+      "{shell_root} > {}",
+      tr(self.lang, "control_center.control_panel")
     );
     let widget_telemetry_root = format!(
-      "{} > {}",
-      tr(self.lang, "control_center.widget_telemetry"),
-      tr(self.lang, "control_center.settings")
+      "{shell_root} > {}",
+      tr(self.lang, "control_center.widget_telemetry")
+    );
+    // Theme, Appearance Mode, Accent Color and Wallpaper live under the
+    // Desktop group; Terminal and Launcher live under Application Style.
+    let desktop_root = format!("{root} > {}", tr(self.lang, "control_center.desktop"));
+    let style_root = format!(
+      "{root} > {}",
+      tr(self.lang, "control_center.application_style")
     );
     match page {
       AppearancePage::Home => root.into(),
-      AppearancePage::Themes => format!("{root} > {}", tr(self.lang, "control_center.themes")),
+      AppearancePage::Desktop => desktop_root,
+      AppearancePage::ApplicationStyle => style_root,
+      AppearancePage::Themes => {
+        format!("{desktop_root} > {}", tr(self.lang, "control_center.theme"))
+      }
       AppearancePage::OfficialThemes => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.themes"),
+        "{desktop_root} > {} > {}",
+        tr(self.lang, "control_center.theme"),
         tr(self.lang, "control_center.theme_profile_official")
       ),
       AppearancePage::ThemeImport => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.themes"),
+        "{desktop_root} > {} > {}",
+        tr(self.lang, "control_center.theme"),
         tr(self.lang, "control_center.theme_profile_import")
       ),
       AppearancePage::ThemeFamilies { category } => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.themes"),
+        "{desktop_root} > {} > {} > {}",
+        tr(self.lang, "control_center.theme"),
         tr(self.lang, "control_center.theme_profile_official"),
         tr(self.lang, theme_category_label_key(category))
       ),
       AppearancePage::CustomThemes => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.themes"),
+        "{desktop_root} > {} > {}",
+        tr(self.lang, "control_center.theme"),
         tr(self.lang, "control_center.theme_profile_custom")
       ),
-      AppearancePage::Mode => {
+      AppearancePage::Mode => format!(
+        "{desktop_root} > {}",
+        tr(self.lang, "control_center.appearance_mode")
+      ),
+      AppearancePage::Wallpapers => {
         format!(
-          "{root} > {}",
-          tr(self.lang, "control_center.appearance_mode")
+          "{desktop_root} > {}",
+          tr(self.lang, "control_center.wallpapers")
         )
       }
-      AppearancePage::Wallpapers => {
-        format!("{root} > {}", tr(self.lang, "control_center.wallpapers"))
-      }
       AppearancePage::WallpaperModes { collection } => format!(
-        "{root} > {} > {}",
+        "{desktop_root} > {} > {}",
         tr(self.lang, "control_center.wallpapers"),
         tr(self.lang, collection.label_key())
       ),
       AppearancePage::WallpaperItems { collection, mode } => format!(
-        "{root} > {} > {} > {}",
+        "{desktop_root} > {} > {} > {}",
         tr(self.lang, "control_center.wallpapers"),
         tr(self.lang, collection.label_key()),
         tr(self.lang, mode.label_key())
       ),
       AppearancePage::Accents => format!(
-        "{root} > {}",
+        "{desktop_root} > {}",
         tr(self.lang, "control_center.highlight_color")
       ),
       AppearancePage::AccentEdit => format!(
-        "{root} > {} > {}",
+        "{desktop_root} > {} > {}",
         tr(self.lang, "control_center.highlight_color"),
         tr(self.lang, "control_center.edit_highlight_color")
       ),
@@ -1861,13 +1874,19 @@ impl AppearanceApp {
       // Entered directly from the Hyprland category (crate principal); no
       // intermediate "Effects" level in this crate anymore.
       AppearancePage::Blur => format!("{hyprland_root} > {}", tr(self.lang, "control_center.blur")),
-      AppearancePage::Terminal => format!("{root} > {}", tr(self.lang, "control_center.terminal")),
+      AppearancePage::Terminal => format!(
+        "{style_root} > {}",
+        tr(self.lang, "control_center.terminal")
+      ),
       AppearancePage::TerminalTransparency => format!(
-        "{root} > {} > {}",
+        "{style_root} > {} > {}",
         tr(self.lang, "control_center.terminal"),
         tr(self.lang, "control_center.transparency")
       ),
-      AppearancePage::Launchers => format!("{root} > {}", tr(self.lang, "control_center.launcher")),
+      AppearancePage::Launchers => format!(
+        "{style_root} > {}",
+        tr(self.lang, "control_center.launcher")
+      ),
       AppearancePage::TransparencySurface { surface } => format!(
         "{root} > {} > {} > {}",
         tr(self.lang, "control_center.effects"),

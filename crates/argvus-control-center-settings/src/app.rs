@@ -356,62 +356,76 @@ impl App {
   /// Executes the `breadcrumb` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn breadcrumb(&self) -> String {
     let root = tr(self.lang, "control_center.argvus_control_center");
+    // Every Home card owns a root segment, so a page's breadcrumb follows the
+    // card it is listed under instead of the location it had before.
+    let category_root = |key: &str| format!("{root} > {}", tr(self.lang, key));
+    let shell_root = category_root("control_center.desktop_shell");
     // Keybindings/WindowRules (and their sub-pages) are owned by the Hyprland
     // domain: they only exist behind the Hyprland router, even though they are
-    // implemented in this crate for reuse. Their breadcrumb reflects that
-    // ownership instead of this crate's own root.
+    // implemented in this crate for reuse. Their breadcrumb sits under the
+    // Desktop Shell card, where the Hyprland item is listed.
     let hyprland_root = format!(
-      "{} > {}",
-      tr(self.lang, "control_center.hyprland"),
-      tr(self.lang, "control_center.settings")
+      "{shell_root} > {}",
+      tr(self.lang, "control_center.hyprland")
     );
+    let appearance_root = category_root("control_center.appearance");
+    let applications_root = category_root("control_center.applications");
+    let security_root = category_root("control_center.security_category");
+    let language_root = category_root("control_center.language_region");
+    let hardware_root = category_root("control_center.hardware");
+    let general_root = category_root("control_center.general");
+    let preferences_root = category_root("control_center.preferences");
     match self.page() {
       Page::Main => root.to_string(),
-      Page::DefaultApps => format!("{root} > {}", tr(self.lang, "control_center.default_apps")),
+      Page::DefaultApps => format!(
+        "{applications_root} > {}",
+        tr(self.lang, "control_center.default_apps")
+      ),
       Page::AppSelector(category) => format!(
-        "{root} > {} > {}",
+        "{applications_root} > {} > {}",
         tr(self.lang, "control_center.default_apps"),
         category_label(self.lang, category)
       ),
-      Page::Fonts => format!("{root} > {}", tr(self.lang, "control_center.fonts")),
+      Page::Fonts => format!(
+        "{appearance_root} > {}",
+        tr(self.lang, "control_center.fonts")
+      ),
       Page::FontSelector(target) => format!(
-        "{root} > {} > {}",
+        "{appearance_root} > {} > {}",
         tr(self.lang, "control_center.fonts"),
         font_target_label(self.lang, target)
       ),
       Page::SettingSelector(setting) => format!(
-        "{root} > {} > {}",
+        "{appearance_root} > {} > {}",
         tr(self.lang, "control_center.fonts"),
         setting_label(self.lang, setting)
       ),
-      Page::LocaleRegion => format!("{root} > {}", tr(self.lang, "control_center.locale_region")),
+      // The former Locale & Region hub. The Home opens its children directly;
+      // the hub stays reachable through the `locale` CLI route.
+      Page::LocaleRegion => language_root,
       Page::MouseTouchpad => format!(
-        "{root} > {}",
+        "{hardware_root} > {}",
         tr(self.lang, "control_center.mouse_touchpad")
       ),
       Page::TimeZone => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
+        "{language_root} > {}",
         tr(self.lang, "control_center.time_zone")
       ),
       Page::DateTime => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
+        "{language_root} > {}",
         tr(self.lang, "control_center.date_time")
       ),
+      // The first Language & Region entry (formerly Regional Locale).
       Page::RegionalLocale => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
-        tr(self.lang, "control_center.regional_locale")
+        "{language_root} > {}",
+        tr(self.lang, "control_center.language")
       ),
       Page::SystemLocales => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
+        "{language_root} > {}",
         tr(self.lang, "control_center.system_locales")
       ),
       Page::Keyboard => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
+        "{language_root} > {}",
         tr(self.lang, "control_center.keyboard")
       ),
       Page::Keybindings => format!(
@@ -423,64 +437,53 @@ impl App {
         tr(self.lang, "control_center.window_rules")
       ),
       Page::Projects => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{applications_root} > {}",
         tr(self.lang, "control_center.projects")
       ),
       Page::Snippets => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{applications_root} > {}",
         tr(self.lang, "control_center.snippets")
       ),
       Page::SshKeys => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {}",
         tr(self.lang, "control_center.ssh_keys")
       ),
       Page::GpgKeys => format!(
-        "{root} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {}",
         tr(self.lang, "control_center.gpg_keys")
       ),
       Page::GpgKeyEdit => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_edit"),
       ),
       Page::GpgEditExpiration => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_expiration"),
       ),
       Page::GpgEditSign => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_edit_sign"),
       ),
       Page::GpgEditRevoke => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_edit_revoke"),
       ),
       Page::GpgFormExpiration => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_expiration"),
       ),
       Page::GpgFormPassphrase => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_passphrase_page"),
       ),
       Page::GpgKeyList => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.applications"),
+        "{security_root} > {} > {}",
         tr(self.lang, "control_center.gpg_keys"),
         tr(self.lang, "control_center.gpg_keys_list"),
       ),
@@ -495,42 +498,44 @@ impl App {
         tr(self.lang, "control_center.change_shortcut")
       ),
       Page::KeyboardLayout => format!(
-        "{root} > {} > {} > Layout",
-        tr(self.lang, "control_center.locale_region"),
-        tr(self.lang, "control_center.keyboard")
+        "{language_root} > {}",
+        tr(self.lang, "control_center.keyboard_layout")
       ),
       Page::KeyboardVariant => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
+        "{language_root} > {} > {}",
         tr(self.lang, "control_center.keyboard"),
         tr(self.lang, "control_center.variant")
       ),
       Page::ConsoleKeymap => format!(
-        "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.locale_region"),
+        "{language_root} > {} > {}",
         tr(self.lang, "control_center.keyboard"),
         tr(self.lang, "control_center.console_keymap")
       ),
-      Page::Language => format!("{root} > {}", tr(self.lang, "control_center.language")),
-      Page::System => format!("{root} > {}", tr(self.lang, "control_center.system")),
+      // Preferences keeps the interface language; Language & Region > Language
+      // is the regional locale page.
+      Page::Language => format!(
+        "{preferences_root} > {}",
+        tr(self.lang, "control_center.language")
+      ),
+      Page::System => general_root,
       Page::Firewall => format!(
-        "{root} > {} > Firewall",
-        tr(self.lang, "control_center.network")
+        "{security_root} > {}",
+        tr(self.lang, "control_center.firewall")
       ),
       Page::Users => format!(
         "{root} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.users")
       ),
       Page::UserList => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.users"),
         tr(self.lang, "control_center.list")
       ),
       Page::SystemUsers => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.users"),
         tr(self.lang, "control_center.system_accounts")
       ),
@@ -545,34 +550,34 @@ impl App {
       | Page::UserFullName
       | Page::UserDelete => format!(
         "{root} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.users")
       ),
       Page::Groups => format!(
         "{root} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.groups")
       ),
       Page::GroupList => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.groups"),
         tr(self.lang, "control_center.list")
       ),
       Page::SystemGroups => format!(
         "{root} > {} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.groups"),
         tr(self.lang, "control_center.system_accounts")
       ),
       Page::Group | Page::GroupMembers | Page::CreateGroup => format!(
         "{root} > {} > {}",
-        tr(self.lang, "control_center.system"),
+        tr(self.lang, "control_center.general"),
         tr(self.lang, "control_center.groups")
       ),
       Page::Hostname => format!(
-        "{root} > {} > Hostname",
-        tr(self.lang, "control_center.system")
+        "{general_root} > {}",
+        tr(self.lang, "control_center.hostname")
       ),
     }
   }
@@ -1248,9 +1253,16 @@ impl App {
     changed
   }
 
+  /// Whether the System Locales page can run on this distribution. Its
+  /// backend (`locale-gen`) is implemented only for Arch Linux, so callers
+  /// hide the entry instead of offering a page that always fails.
+  pub fn system_locales_available(&self) -> bool {
+    self.distro.id == "arch"
+  }
+
   /// Executes the `open_system_page` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn open_system_page(&mut self, page: Page) {
-    if page == Page::SystemLocales && self.distro.id != "arch" {
+    if page == Page::SystemLocales && !self.system_locales_available() {
       let name = if self.distro.pretty_name.is_empty() {
         self.distro.id.clone()
       } else {

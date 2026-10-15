@@ -27,6 +27,8 @@ use argvus_tui::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Item {
   // Home
+  Desktop,
+  ApplicationStyle,
   Themes,
   Accent,
   Wallpaper,
@@ -136,6 +138,8 @@ impl Item {
   /// icon column disappears on those pages.
   pub(super) fn icon(self) -> Option<&'static str> {
     let glyph = match self {
+      Self::Desktop => icons::WALLPAPER,
+      Self::ApplicationStyle => icons::TERMINAL,
       Self::Themes => icons::PALETTE,
       Self::Accent => icons::ACCENT,
       Self::Wallpaper => icons::WALLPAPER,
@@ -291,6 +295,8 @@ impl AppearanceApp {
   pub(super) fn page_rows(&self) -> Vec<Row<Item>> {
     match self.page {
       AppearancePage::Home => self.home_rows(),
+      AppearancePage::Desktop => self.desktop_rows(),
+      AppearancePage::ApplicationStyle => self.application_style_rows(),
       AppearancePage::Themes => vec![
         self.submenu(
           Item::OfficialThemes,
@@ -683,7 +689,16 @@ impl AppearanceApp {
     }
   }
 
+  /// Appearance root: groups the Desktop and Application Style pages.
   fn home_rows(&self) -> Vec<Row<Item>> {
+    vec![
+      self.submenu(Item::Desktop, "control_center.desktop"),
+      self.submenu(Item::ApplicationStyle, "control_center.application_style"),
+    ]
+  }
+
+  /// Appearance > Desktop: theme, appearance mode, accent color and wallpaper.
+  fn desktop_rows(&self) -> Vec<Row<Item>> {
     let mode = self.label(if self.state.is_float_theme() {
       "control_center.theme_mode_float"
     } else {
@@ -702,16 +717,22 @@ impl AppearanceApp {
           current_family_label(&self.state, &self.lang)
         )),
       self
+        .submenu(Item::Mode, "control_center.appearance_mode")
+        .detail(mode),
+      self
         .submenu(Item::Accent, "control_center.highlight_color")
         .detail(accent_label(&self.state.accent)),
       self
         .submenu(Item::Wallpaper, "control_center.wallpaper")
         .detail(wallpaper),
+    ]
+  }
+
+  /// Appearance > Application Style: terminal and launcher transparency.
+  fn application_style_rows(&self) -> Vec<Row<Item>> {
+    vec![
       self.submenu(Item::Terminal, "control_center.terminal"),
       self.submenu(Item::Launcher, "control_center.launcher"),
-      self
-        .submenu(Item::Mode, "control_center.appearance_mode")
-        .detail(mode),
     ]
   }
 

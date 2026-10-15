@@ -151,6 +151,10 @@ pub struct WallpaperEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppearancePage {
   Home,
+  /// Appearance > Desktop: Theme, Appearance Mode, Accent Color and Wallpaper.
+  Desktop,
+  /// Appearance > Application Style: Terminal and Launcher transparency.
+  ApplicationStyle,
   Themes,
   OfficialThemes,
   ThemeFamilies {

@@ -554,8 +554,8 @@ fn draw_home_card(app: &App, frame: &mut Frame, area: Rect, card: &HomeCard, col
 
 fn home_category_description(app: &App, label: &str) -> &'static str {
   let key = match label {
-    value if value == tr(app.lang, "control_center.hyprland") => {
-      "control_center.hyprland_description"
+    value if value == tr(app.lang, "control_center.desktop_shell") => {
+      "control_center.desktop_shell_description"
     }
     value if value == tr(app.lang, "control_center.language_region") => {
       "control_center.language_region_description"
@@ -563,17 +563,11 @@ fn home_category_description(app: &App, label: &str) -> &'static str {
     value if value == tr(app.lang, "control_center.appearance") => {
       "control_center.appearance_description"
     }
-    value if value == tr(app.lang, "control_center.taskbar") => {
-      "control_center.taskbar_description"
-    }
-    value if value == tr(app.lang, "control_center.control_panel") => {
-      "control_center.control_panel_description"
-    }
-    value if value == tr(app.lang, "control_center.widget_telemetry") => {
-      "control_center.widget_telemetry_description"
-    }
     value if value == tr(app.lang, "control_center.applications") => {
       "control_center.applications_description"
+    }
+    value if value == tr(app.lang, "control_center.security_category") => {
+      "control_center.security_category_description"
     }
     value if value == tr(app.lang, "control_center.hardware") => {
       "control_center.hardware_description"
@@ -650,7 +644,7 @@ fn home_glyph(action: usize) -> &'static str {
   match action {
     0 => argvus_tui::icons::APPS,
     1 => argvus_tui::icons::FONTS,
-    2 => argvus_tui::icons::NETWORK,
+    2 => argvus_tui::icons::TRANSLATE,
     3 => argvus_tui::icons::KEYBOARD,
     4 => argvus_tui::icons::MONITOR,
     5 => argvus_tui::icons::NETWORK,
@@ -667,7 +661,6 @@ fn home_glyph(action: usize) -> &'static str {
     16 => argvus_tui::icons::POWER,
     17 => argvus_tui::icons::REFRESH,
     18 => argvus_tui::icons::MONITOR,
-    19 => argvus_tui::icons::PALETTE,
     20 => argvus_tui::icons::MOUSE,
     21 => argvus_tui::icons::KEYBOARD,
     22 => argvus_tui::icons::WINDOW_RULES,
@@ -678,7 +671,14 @@ fn home_glyph(action: usize) -> &'static str {
     25 => argvus_tui::icons::TASKBAR,
     26 => argvus_tui::icons::CONTROL_PANEL,
     27 => argvus_tui::icons::TELEMETRY,
-    31 => argvus_tui::icons::SHIELD,
+    31 => argvus_tui::icons::LOCK,
+    32 => argvus_tui::icons::CLOCK,
+    33 => argvus_tui::icons::CALENDAR,
+    34 => argvus_tui::icons::EARTH,
+    35 => argvus_tui::icons::KEYBOARD_VARIANT,
+    36 => argvus_tui::icons::WALLPAPER,
+    37 => argvus_tui::icons::TERMINAL,
+    39 => argvus_tui::icons::SHIELD,
     _ => "",
   }
 }
@@ -686,19 +686,14 @@ fn home_glyph(action: usize) -> &'static str {
 /// Executes the `home_icon_for_header` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 fn home_icon_for_header(app: &App, label: &str) -> String {
   let glyph = [
-    ("control_center.hyprland", argvus_tui::icons::LAYOUT),
-    ("control_center.language_region", argvus_tui::icons::NETWORK),
+    ("control_center.desktop_shell", argvus_tui::icons::LAYOUT),
+    ("control_center.language_region", argvus_tui::icons::EARTH),
     ("control_center.appearance", argvus_tui::icons::PALETTE),
-    ("control_center.taskbar", argvus_tui::icons::TASKBAR),
-    (
-      "control_center.control_panel",
-      argvus_tui::icons::CONTROL_PANEL,
-    ),
-    (
-      "control_center.widget_telemetry",
-      argvus_tui::icons::TELEMETRY,
-    ),
     ("control_center.applications", argvus_tui::icons::APPS),
+    (
+      "control_center.security_category",
+      argvus_tui::icons::SHIELD,
+    ),
     ("control_center.hardware", argvus_tui::icons::MONITOR),
     ("control_center.power_session", argvus_tui::icons::POWER),
     ("control_center.connectivity", argvus_tui::icons::NETWORK),

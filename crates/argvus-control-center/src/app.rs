@@ -445,7 +445,7 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.ssh_keys",
-        "applications",
+        "security_category",
         "SSH keys",
         "ssh keys key pair generate load unload agent passphrase chaves ssh gerar carregar descarregar agente senha par",
         "settings/ssh-keys",
@@ -453,10 +453,18 @@ impl App {
       #[cfg(feature = "apps")]
       (
         "settings.gpg_keys",
-        "applications",
+        "security_category",
         "GPG keys",
         "gpg keys key pair generate export import pinentry passphrase chaves gpg gerar exportar importar senha pinentry",
         "settings/gpg-keys",
+      ),
+      #[cfg(feature = "system")]
+      (
+        "settings.firewall",
+        "security_category",
+        "Firewall",
+        "firewall ports rules block allow network security portas regras bloquear permitir rede seguranca",
+        "settings/firewall",
       ),
       #[cfg(feature = "about")]
       (
@@ -1249,11 +1257,34 @@ impl App {
   /// Executes the `home_rows` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   pub fn home_rows(&self) -> Vec<HomeRow> {
     let mut rows = Vec::new();
-    rows.push(HomeRow::Header(tr(self.lang, "control_center.hyprland")));
+    // Desktop Shell groups the four shell surfaces that used to be separate
+    // cards. Each item keeps its own route; only the card changed.
+    rows.push(HomeRow::Header(tr(
+      self.lang,
+      "control_center.desktop_shell",
+    )));
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.settings"),
+      label: tr(self.lang, "control_center.hyprland"),
       action: 24,
     });
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.taskbar"),
+      action: 25,
+    });
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.control_panel"),
+      action: 26,
+    });
+    #[cfg(feature = "appearance")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.widget_telemetry"),
+      action: 27,
+    });
+    // Language & Region opens each setting directly. The first entry is the
+    // former Regional Locale page, renamed to Language. Preferences > Language
+    // keeps the UI language; the two entries are intentionally distinct.
     #[cfg(feature = "locale")]
     rows.push(HomeRow::Header(tr(
       self.lang,
@@ -1261,8 +1292,30 @@ impl App {
     )));
     #[cfg(feature = "locale")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.locale_region"),
+      label: tr(self.lang, "control_center.language"),
       action: 2,
+    });
+    #[cfg(feature = "locale")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.time_zone"),
+      action: 32,
+    });
+    #[cfg(feature = "locale")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.date_time"),
+      action: 33,
+    });
+    #[cfg(feature = "locale")]
+    if self.settings.system_locales_available() {
+      rows.push(HomeRow::Item {
+        label: tr(self.lang, "control_center.system_locales"),
+        action: 34,
+      });
+    }
+    #[cfg(feature = "locale")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.keyboard_layout"),
+      action: 35,
     });
     rows.push(HomeRow::Header(tr(self.lang, "control_center.appearance")));
     #[cfg(feature = "fonts")]
@@ -1272,35 +1325,13 @@ impl App {
     });
     #[cfg(feature = "appearance")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.themes_and_visuals"),
-      action: 19,
+      label: tr(self.lang, "control_center.desktop"),
+      action: 36,
     });
     #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Header(tr(self.lang, "control_center.taskbar")));
-    #[cfg(feature = "appearance")]
     rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.settings"),
-      action: 25,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.control_panel",
-    )));
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.settings"),
-      action: 26,
-    });
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Header(tr(
-      self.lang,
-      "control_center.widget_telemetry",
-    )));
-    #[cfg(feature = "appearance")]
-    rows.push(HomeRow::Item {
-      label: tr(self.lang, "control_center.settings"),
-      action: 27,
+      label: tr(self.lang, "control_center.application_style"),
+      action: 37,
     });
     rows.push(HomeRow::Header(tr(
       self.lang,
@@ -1321,6 +1352,13 @@ impl App {
       label: tr(self.lang, "control_center.snippets"),
       action: 29,
     });
+    // Security holds credentials and firewall policy, which were scattered
+    // across Applications and Network.
+    #[cfg(any(feature = "apps", feature = "system"))]
+    rows.push(HomeRow::Header(tr(
+      self.lang,
+      "control_center.security_category",
+    )));
     #[cfg(feature = "apps")]
     rows.push(HomeRow::Item {
       label: tr(self.lang, "control_center.ssh_keys"),
@@ -1330,6 +1368,11 @@ impl App {
     rows.push(HomeRow::Item {
       label: tr(self.lang, "control_center.gpg_keys"),
       action: 31,
+    });
+    #[cfg(feature = "system")]
+    rows.push(HomeRow::Item {
+      label: tr(self.lang, "control_center.firewall"),
+      action: 39,
     });
     #[cfg(any(feature = "hardware", feature = "displays", feature = "audio"))]
     rows.push(HomeRow::Header(tr(self.lang, "control_center.hardware")));
@@ -1548,7 +1591,17 @@ impl App {
       #[cfg(feature = "fonts")]
       1 => self.open_settings(Page::Fonts),
       #[cfg(feature = "locale")]
-      2 => self.open_settings(Page::LocaleRegion),
+      2 => self.open_settings(Page::RegionalLocale),
+      #[cfg(feature = "locale")]
+      32 => self.open_settings(Page::TimeZone),
+      #[cfg(feature = "locale")]
+      33 => self.open_settings(Page::DateTime),
+      #[cfg(feature = "locale")]
+      34 => self.open_settings(Page::SystemLocales),
+      #[cfg(feature = "locale")]
+      35 => self.open_settings(Page::KeyboardLayout),
+      #[cfg(feature = "system")]
+      39 => self.open_settings(Page::Firewall),
       #[cfg(feature = "language")]
       3 => self.open_settings(Page::Language),
       #[cfg(feature = "hardware")]
@@ -1614,7 +1667,9 @@ impl App {
         self.displays.reload();
       }
       #[cfg(feature = "appearance")]
-      19 => self.open_appearance_page(AppearancePage::Home),
+      36 => self.open_appearance_page(AppearancePage::Desktop),
+      #[cfg(feature = "appearance")]
+      37 => self.open_appearance_page(AppearancePage::ApplicationStyle),
       20 => self.open_settings(Page::MouseTouchpad),
       24 => self.route = Route::Hyprland,
       #[cfg(feature = "appearance")]
@@ -1782,6 +1837,8 @@ impl App {
       (_, "ssh-keys") => self.open_settings(Page::SshKeys),
       #[cfg(feature = "apps")]
       (_, "gpg-keys") => self.open_settings(Page::GpgKeys),
+      #[cfg(feature = "system")]
+      (_, "firewall") => self.open_settings(Page::Firewall),
       #[cfg(feature = "fonts")]
       (_, "fonts") => self.open_settings(Page::Fonts),
       (_, "keybindings") => self.open_settings(Page::Keybindings),
@@ -2367,15 +2424,17 @@ mod tests {
 
   #[test]
   fn home_category_navigation_moves_between_category_items() {
-    // Categories: Hyprland (1 item) › Language & Region (1 item) ›
-    // Appearance (2 items) › ...
+    // Categories: Desktop Shell (first card) › Language & Region › Appearance
+    // › ... The Desktop Shell card lists its items first, so the first item of
+    // Language & Region follows them and depends on how many items it has.
     let mut app = App::new(InitialRoute::Home);
+    let desktop_shell_items = app.home_category_items()[0].len();
     app.move_home_category(1);
-    assert_eq!(app.home_selected, 1);
+    assert_eq!(app.home_selected, desktop_shell_items);
     app.move_home(1);
-    assert_eq!(app.home_selected, 2);
+    assert_eq!(app.home_selected, desktop_shell_items + 1);
     app.move_home_category(-1);
-    assert_eq!(app.home_selected, 1);
+    assert_eq!(app.home_selected, 0);
   }
 
   #[cfg(feature = "hardware")]
