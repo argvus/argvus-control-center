@@ -5,6 +5,7 @@
 mod animations;
 mod backend;
 mod blur;
+mod icons;
 mod model;
 mod profile;
 mod ui;

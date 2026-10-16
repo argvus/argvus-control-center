@@ -670,6 +670,17 @@ impl AppearanceApp {
       Item::Themes => self.go(AppearancePage::Themes),
       Item::Accent => self.go(AppearancePage::Accents),
       Item::Wallpaper => self.go(AppearancePage::Wallpapers),
+      Item::Icons => self.go(AppearancePage::Icons),
+      Item::IconTheme(index) => {
+        let Some(entry) = self.state.icon_themes.get(index) else {
+          return;
+        };
+        let name = entry.directory_name.clone();
+        self.apply(
+          tr(self.lang, "control_center.icon_theme_applied").into(),
+          move || backend::set_icon_theme(&name),
+        );
+      }
       Item::Terminal => self.go(AppearancePage::Terminal),
       Item::Launcher => self.go(AppearancePage::Launchers),
       Item::Mode => self.go(AppearancePage::Mode),
@@ -1495,6 +1506,7 @@ impl AppearanceApp {
       }
       AppearancePage::Themes
       | AppearancePage::Wallpapers
+      | AppearancePage::Icons
       | AppearancePage::Accents
       | AppearancePage::Mode => {
         self.go(AppearancePage::Desktop);
@@ -1843,6 +1855,9 @@ impl AppearanceApp {
           "{desktop_root} > {}",
           tr(self.lang, "control_center.wallpapers")
         )
+      }
+      AppearancePage::Icons => {
+        format!("{desktop_root} > {}", tr(self.lang, "control_center.icons"))
       }
       AppearancePage::WallpaperModes { collection } => format!(
         "{desktop_root} > {} > {}",

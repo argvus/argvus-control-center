@@ -602,7 +602,7 @@ mod tests {
     unsafe { std::env::set_var("ARGVUS_CONFIG_PATH", &path) };
     let app = with_operation(Arc::new(RecordingOperation::default()));
     let row = app.rows().into_iter().next().unwrap();
-    assert!(row.starts_with("[x] Icones"), "{row}");
+    assert!(row.starts_with("[x] Ícones"), "{row}");
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
     let _ = std::fs::remove_dir_all(&dir);
   }
@@ -749,7 +749,7 @@ mod tests {
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Estilo") || text.contains("Style"));
     assert!(text.contains("[x]") || text.contains("[ ]"));
-    assert!(text.contains("Icones") || text.contains("Icons"));
+    assert!(text.contains("Ícones") || text.contains("Icons"));
     unsafe { std::env::remove_var("ARGVUS_CONFIG_PATH") };
     let _ = std::fs::remove_dir_all(&dir);
   }

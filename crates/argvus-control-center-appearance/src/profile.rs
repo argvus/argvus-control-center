@@ -35,20 +35,22 @@ enum FileId {
   Borders,
   WallpaperCustom,
   Fonts,
-  /// Legacy profile identifier kept for importing format v1 archives.
-  Effects,
-  Animations,
-  Transparency,
   ThemeEffects,
-  TaskbarRight2Mode,
   WidgetTelemetryBlocks,
   ControlPanelCards,
   /// Version 4 canonical `appearance` scope embedded in newer profiles.
   CanonicalConfig,
+  /// Legacy state of archives created before the canonical `appearance`
+  /// scope. Never exported; imported into argvus-config (see `LEGACY`).
+  Effects,
+  Animations,
+  Transparency,
+  TaskbarRight2Mode,
 }
 
 impl FileId {
-  const ALL: [Self; 14] = [
+  /// Every file a profile exports.
+  const ALL: [Self; 11] = [
     Self::ActiveTheme,
     Self::Accent,
     Self::GtkMode,
@@ -56,13 +58,17 @@ impl FileId {
     Self::Borders,
     Self::WallpaperCustom,
     Self::Fonts,
-    Self::Animations,
-    Self::Transparency,
     Self::ThemeEffects,
-    Self::TaskbarRight2Mode,
     Self::WidgetTelemetryBlocks,
     Self::ControlPanelCards,
     Self::CanonicalConfig,
+  ];
+  /// Legacy identifiers accepted only when importing older archives.
+  const LEGACY: [Self; 4] = [
+    Self::Effects,
+    Self::Animations,
+    Self::Transparency,
+    Self::TaskbarRight2Mode,
   ];
   fn id(self) -> &'static str {
     match self {
@@ -118,11 +124,10 @@ impl FileId {
       Self::WallpaperCustom => ".wallpaper-custom",
       // Every consumer reads the generated projection, not the data root.
       Self::Fonts => "generated/fonts.conf",
-      Self::Effects => "state/effects",
-      Self::Animations => "state/animations",
-      Self::Transparency => "state/transparency",
       Self::ThemeEffects => unreachable!(),
-      Self::TaskbarRight2Mode => "state/taskbar-right-2-mode",
+      Self::Effects | Self::Animations | Self::Transparency | Self::TaskbarRight2Mode => {
+        unreachable!("legacy state is applied through argvus-config")
+      }
       Self::WidgetTelemetryBlocks => "state/widget-telemetry-blocks",
       Self::ControlPanelCards => "control-panel/cards.json",
       // Never copied as a single file; the canonical document is imported.
@@ -130,11 +135,10 @@ impl FileId {
     })
   }
   fn parse(value: &str) -> Option<Self> {
-    if value == Self::Effects.id() {
-      Some(Self::Effects)
-    } else {
-      Self::ALL.into_iter().find(|id| id.id() == value)
-    }
+    Self::ALL
+      .into_iter()
+      .chain(Self::LEGACY)
+      .find(|id| id.id() == value)
   }
 }
 
@@ -528,6 +532,7 @@ fn apply_staged(
   let backup = tempdir().map_err(|e| e.to_string())?;
   let mut backups = Vec::new();
   let mut payload = Vec::new();
+  let mut legacy: Vec<(FileId, PathBuf)> = Vec::new();
   let has_canonical = staged
     .manifest
     .files
@@ -599,11 +604,9 @@ fn apply_staged(
       // dot-files are regenerated from the imported appearance scope.
       continue;
     }
-    if id == FileId::Effects {
-      // Format v1 stored one combined setting. Preserve that profile's
-      // meaning by initializing both independent settings.
-      payload.push((entry.path.clone(), FileId::Animations.destination(&root)));
-      payload.push((entry.path.clone(), FileId::Transparency.destination(&root)));
+    if FileId::LEGACY.contains(&id) {
+      // Older archives: applied through argvus-config below, never copied.
+      legacy.push((id, entry.path.clone()));
     } else if id == FileId::ThemeEffects {
       payload.push((entry.path.clone(), imported_effects.clone()));
     } else {
@@ -620,6 +623,10 @@ fn apply_staged(
     crate::backend::set_theme_static(&staged.manifest.argvus.theme)?;
     if has_canonical {
       import_canonical_appearance(staged)?;
+      project_canonical_config()?;
+    }
+    if !has_canonical && !legacy.is_empty() {
+      apply_legacy_state(&legacy)?;
       project_canonical_config()?;
     }
     for (source, destination) in &payload {
@@ -1285,22 +1292,61 @@ fn wallpaper_meta(path: &Path) -> WallpaperMeta {
 fn source_paths(root: &Path) -> Vec<(FileId, PathBuf)> {
   FileId::ALL
     .into_iter()
-    .map(|id| {
-      let destination = id.destination(root);
-      let source =
-        if !destination.is_file() && matches!(id, FileId::Animations | FileId::Transparency) {
-          let legacy = FileId::Effects.destination(root);
-          if legacy.is_file() {
-            legacy
-          } else {
-            destination
-          }
-        } else {
-          destination
-        };
-      (id, source)
-    })
+    .map(|id| (id, id.destination(root)))
     .collect()
+}
+
+/// Surfaces with their own transparency switch in argvus-config.
+const TRANSPARENCY_SURFACES: [&str; 6] = [
+  "taskbar",
+  "control-panel",
+  "widget-telemetry",
+  "terminal",
+  "launchers",
+  "control-center",
+];
+
+/// Applies the state of an archive that predates the canonical `appearance`
+/// scope. The values are written to argvus-config, the only store the desktop
+/// reads; the legacy state files are no longer written.
+fn apply_legacy_state(legacy: &[(FileId, PathBuf)]) -> Result<(), String> {
+  for (id, path) in legacy {
+    let value = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    match id {
+      // Format v1 stored one combined setting for both effects.
+      FileId::Effects => set_effects(value.trim(), true, true)?,
+      FileId::Animations => set_effects(value.trim(), true, false)?,
+      FileId::Transparency => set_effects(value.trim(), false, true)?,
+      FileId::TaskbarRight2Mode => {
+        let expanded = match value.trim() {
+          "always-expanded" => "true",
+          "auto" => "false",
+          _ => continue,
+        };
+        run_canonical_config_command(&["set", "/taskbar/icons/utilities/expanded", expanded])?;
+      }
+      _ => {}
+    }
+  }
+  Ok(())
+}
+
+fn set_effects(value: &str, animations: bool, transparency: bool) -> Result<(), String> {
+  let literal = match value {
+    "enabled" => "true",
+    "disabled" => "false",
+    _ => return Ok(()),
+  };
+  if animations {
+    run_canonical_config_command(&["set", "/effects/animations", literal])?;
+  }
+  if transparency {
+    for surface in TRANSPARENCY_SURFACES {
+      let pointer = format!("/effects/transparency_{surface}_enabled");
+      run_canonical_config_command(&["set", &pointer, literal])?;
+    }
+  }
+  Ok(())
 }
 
 /// Exports the canonical `appearance` scope into `destination`.
@@ -1570,6 +1616,26 @@ mod tests {
     assert_eq!(filename_slug("  Meu   Tema  "), "meu_tema");
     assert!(!filename_slug("../escape").contains(".."));
   }
+  #[test]
+  fn legacy_state_is_imported_but_never_exported() {
+    for legacy in [
+      "effects",
+      "animations",
+      "transparency",
+      "taskbar-right-2-mode",
+    ] {
+      assert!(
+        FileId::parse(legacy).is_some(),
+        "{legacy} must still import"
+      );
+    }
+    assert!(
+      FileId::ALL.iter().all(|id| !FileId::LEGACY.contains(id)),
+      "legacy identifiers must not be exported"
+    );
+    assert!(FileId::parse("widget-telemetry-blocks").is_some());
+  }
+
   #[test]
   fn rejects_bad_values() {
     assert!(validate_content(FileId::Accent, b"#GGGGGG\n").is_err());

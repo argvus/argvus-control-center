@@ -21,7 +21,7 @@ A tela inicial atual do Control Center oferece estas áreas:
 
 A tela inicial é um catálogo de destinos agrupados em seis cartões. Cada destino abre a própria página diretamente, e a busca o encontra independentemente do cartão.
 
-* **Aparência** — personalize o desktop: Fontes, Estilo do desktop (tema, modo de aparência, cor de destaque e wallpapers), Estilo dos aplicativos (transparência do terminal e do lançador), Taskbar, Painel de Controle e Widget Telemetry.
+* **Aparência** — personalize o desktop: Fontes, Estilo do desktop (tema, modo de aparência, cor de destaque, wallpapers e ícones), Estilo dos aplicativos (transparência do terminal e do lançador), Taskbar, Painel de Controle e Widget Telemetry.
 * **Desktop e entrada** — configure seu espaço de trabalho: Hyprland (regras de janela, espaços de janela, animações, blur, bordas e a versão instalada), Displays, Teclado e atalhos e Mouse e touchpad.
 * **Preferências** — configurações pessoais e regionais: Idioma e região (o hub de idioma, fuso horário, formatos e layout do teclado), Data e hora, Aplicativos padrão, Energia e Sessão.
 * **Hardware e conectividade** — dispositivos e conexões: Visão geral do hardware, Rede e Wi-Fi, Bluetooth, Áudio e Armazenamento.
@@ -43,7 +43,7 @@ A árvore atual de configurações inclui:
 
 | Área | Destinos atuais |
 | --- | --- |
-| Aparência | Fontes; Estilo do desktop: tema, modo de aparência, cor de destaque e wallpapers; Estilo dos aplicativos: transparência do terminal e do lançador; Taskbar; Painel de Controle; Widget Telemetry |
+| Aparência | Fontes; Estilo do desktop: tema, modo de aparência, cor de destaque, wallpapers e ícones; Estilo dos aplicativos: transparência do terminal e do lançador; Taskbar; Painel de Controle; Widget Telemetry |
 | Desktop e entrada | Hyprland (regras de janela, espaços de janela, animações, blur, bordas), Displays, Teclado e atalhos, Mouse e touchpad |
 | Preferências | Idioma e região (idioma, fuso horário, formatos, locales do sistema e layout do teclado), Data e hora, Aplicativos padrão, Energia, Sessão |
 | Hardware e conectividade | Visão geral do hardware (resumo, CPU, GPU, memória, dispositivos), Rede e Wi-Fi, Bluetooth, Áudio, Armazenamento |
@@ -59,7 +59,7 @@ Cada página mostra o seu caminho no cabeçalho, por exemplo `Central de Control
 
 ### Aparência
 
-Aparência é a principal área de personalização. Seu grupo Área de trabalho reúne o tema (com seu modo Sticky ou Float), o modo de aparência, a cor de destaque e os wallpapers, e seu grupo Estilo dos aplicativos reúne a transparência do terminal e do lançador. Taskbar, Painel de Controle e Widget Telemetry aparecem diretamente em Aparência na tela inicial e reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Animações funciona da mesma forma em Hyprland > Animations (Animações): o controle Ligar, as Curvas personalizadas (Bézier, Spring, Linear e Ease-out) e as cinco categorias de animações formam um único rascunho, aplicado junto com **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
+Aparência é a principal área de personalização. Seu grupo Área de trabalho reúne o tema (com seu modo Sticky ou Float), o modo de aparência, a cor de destaque, os wallpapers e o tema de ícones, e seu grupo Estilo dos aplicativos reúne a transparência do terminal e do lançador. Taskbar, Painel de Controle e Widget Telemetry aparecem diretamente em Aparência na tela inicial e reaproveitam a página de transparência compartilhada da Aparência para suas próprias superfícies. O blur é uma única configuração global, em Hyprland > Blur, e se aplica a todas as superfícies do ARGVUS com blur ativo. Nessa página, o controle Ligar e os valores do Hyprland (Tamanho, Passagens, Brilho, Ruído, Contraste, Vibrância e Escurecimento da vibrância) ficam em rascunho, e nada muda até selecionar **Aplicar**. Animações funciona da mesma forma em Hyprland > Animations (Animações): o controle Ligar, as Curvas personalizadas (Bézier, Spring, Linear e Ease-out) e as cinco categorias de animações formam um único rascunho, aplicado junto com **Aplicar**. Esses controles coordenam os componentes de aparência e sessão, em vez de alterar apenas a janela do Control Center.
 
 ### Taskbar
 
@@ -244,7 +244,7 @@ Enquanto a busca da tela inicial estiver ativa, as teclas imprimíveis são inse
 Abra **Aparência** para ver os controles visuais integrados. Seus grupos são:
 
 * **Fontes** — os alvos de fonte e as configurações de renderização.
-* **Área de trabalho** — **Tema** (escolha uma família incluída e seu modo Sticky ou Float, ou gerencie perfis de tema personalizados), **Modo de aparência** (Sticky ou Float, independente do tema), **Cor de destaque** (um acento incluído ou uma cor RGB válida de seis dígitos) e **Wallpaper** (um wallpaper incluído ou um arquivo personalizado).
+* **Área de trabalho** — **Tema** (escolha uma família incluída e seu modo Sticky ou Float, ou gerencie perfis de tema personalizados), **Modo de aparência** (Sticky ou Float, independente do tema), **Cor de destaque** (um acento incluído ou uma cor RGB válida de seis dígitos), **Wallpaper** (um wallpaper incluído ou um arquivo personalizado) e **Ícones** (um tema de ícones instalado, aplicado na hora).
 * **Estilo dos aplicativos** — a transparência do **Terminal** e do **Lançador**.
 
 O cartão Aparência reúne as superfícies que usam essas configurações: **Widget Telemetry** (ative a superfície de telemetria, selecione seus blocos disponíveis e reordene-os com `Shift+↑`/`Shift+↓` em um bloco focado) e **Control Panel** (ative, desative e reordene os cards do painel com `Shift+↑`/`Shift+↓` em um card focado, aplicado na hora através do mesmo mecanismo que o arrastar do painel real usa).
@@ -291,7 +291,7 @@ argvus-control-center keybindings
 
 Execute `argvus-control-center --help` para ver as rotas disponíveis na versão instalada. A rota pela linha de comando é um atalho para o mesmo aplicativo, não um segundo sistema de configuração.
 
-Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `firewall`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
+Rotas diretas úteis incluem `apps`, `window-rules`, `projects`, `snippets`, `ssh-keys`, `gpg-keys`, `firewall`, `fonts`, `locale`, `input`, `keybindings`, `language`, `config`, `system`, `hardware`, `services`, `dev-services`, `network`, `audio`, `bluetooth`, `boot`, `packages`, `storage`, `diagnostics`, `power`, `session`, `displays` e `appearance`. Appearance também aceita rotas específicas como `themes`, `wallpapers`, `icons`, `accents`, `effects`, `spaces`, `taskbar` e `widget-telemetry`; displays aceita `resolution`, `refresh`, `scale`, `position`, `orientation`, `primary`, `vrr` e `hdr`. Use a saída `--help` instalada ao criar scripts, pois a disponibilidade ainda depende do build instalado.
 
 ## Relacionados
 

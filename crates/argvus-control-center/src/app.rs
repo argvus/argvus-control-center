@@ -1155,6 +1155,14 @@ impl App {
       ),
       #[cfg(feature = "appearance")]
       (
+        "appearance.icons",
+        "appearance",
+        "control_center.icons",
+        "icons ícones icones icon theme tema de ícones tema de icones papirus adwaita",
+        "appearance/icons",
+      ),
+      #[cfg(feature = "appearance")]
+      (
         "appearance.accents",
         "appearance",
         "control_center.highlight_color",
@@ -1817,6 +1825,8 @@ impl App {
       ("appearance", "themes") => self.open_appearance_page(AppearancePage::Themes),
       #[cfg(feature = "appearance")]
       ("appearance", "wallpapers") => self.open_appearance_page(AppearancePage::Wallpapers),
+      #[cfg(feature = "appearance")]
+      ("appearance", "icons") => self.open_appearance_page(AppearancePage::Icons),
       #[cfg(feature = "appearance")]
       ("appearance", "accents") => self.open_appearance_page(AppearancePage::Accents),
       #[cfg(feature = "appearance")]

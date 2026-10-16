@@ -635,7 +635,7 @@ mod tests {
     assert!(text.contains("ARGVUS"));
     assert!(text.contains("Estilo") || text.contains("Style"));
     assert!(text.contains("[x]") || text.contains("[ ]"));
-    assert!(text.contains("Icones") || text.contains("Icons"));
+    assert!(text.contains("Ícones") || text.contains("Icons"));
   }
 
   #[cfg(feature = "apps")]

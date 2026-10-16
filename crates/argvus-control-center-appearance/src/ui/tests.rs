@@ -3,10 +3,10 @@ use crate::animations::{
   AnimationCurve, AnimationField, AnimationGroup, AnimationLeaf, AnimationStyle,
 };
 use crate::model::{
-  ControlPanelCard, TaskbarPosition, TaskbarUtilityWidget, WallpaperCollection, WallpaperMode,
-  WidgetTelemetryBlock,
+  ControlPanelCard, IconThemeEntry, IconThemeSource, IconThemeVariant, TaskbarPosition,
+  TaskbarUtilityWidget, WallpaperCollection, WallpaperMode, WidgetTelemetryBlock,
 };
-use argvus_tui::icons;
+use argvus_tui::{icons, menu::RowKind};
 use ratatui::{Terminal, backend::TestBackend};
 
 fn app(page: AppearancePage) -> AppearanceApp {
@@ -76,7 +76,7 @@ fn home_has_categories_and_spacing_is_nested() {
   // principal Home lists both groups directly. Taskbar/Control Panel/Widget
   // Telemetry are entered from the Desktop Shell card, not from here.
   assert_eq!(app(AppearancePage::Home).page_rows().len(), 2);
-  assert_eq!(app(AppearancePage::Desktop).page_rows().len(), 4);
+  assert_eq!(app(AppearancePage::Desktop).page_rows().len(), 5);
   assert_eq!(app(AppearancePage::ApplicationStyle).page_rows().len(), 2);
   // Position/Spaces (moved from the removed "Spaces, Borders & Position"
   // hub) now live inside Taskbar, between Transparency and Icons.
@@ -1338,4 +1338,92 @@ fn leaving_a_leaf_keeps_the_draft_and_leaving_the_root_asks() {
     "pending draft: Esc asks first"
   );
   assert!(animations.confirm.is_some(), "leaving the root asks first");
+}
+
+/// One installed icon theme for the Icons page tests.
+fn icon_theme(directory: &str, source: IconThemeSource, official: bool) -> IconThemeEntry {
+  IconThemeEntry {
+    directory_name: directory.into(),
+    display_name: directory.into(),
+    comment: None,
+    source,
+    official: official.then_some(IconThemeVariant::Default),
+  }
+}
+
+#[test]
+fn icons_page_lists_installed_themes_and_marks_the_configured_one() {
+  let mut application = app(AppearancePage::Icons);
+  application.state.icon_theme = "Papirus".into();
+  application.state.icon_themes = vec![
+    icon_theme("Argvus Icons", IconThemeSource::System, true),
+    icon_theme("Papirus", IconThemeSource::User, false),
+  ];
+
+  let rows = application.page_rows();
+
+  assert_eq!(rows.len(), 2);
+  assert_eq!(rows[0].label(), "Argvus Icons");
+  assert_eq!(rows[1].label(), "Papirus");
+  assert_eq!(rows[1].kind(), RowKind::Choice { current: true });
+  assert_eq!(rows[0].kind(), RowKind::Choice { current: false });
+  assert_eq!(rows[0].detail_text(), Some("Official · System"));
+  assert_eq!(rows[1].detail_text(), Some("User"));
+}
+
+#[test]
+fn icons_page_reports_a_missing_configured_theme_with_a_non_focusable_row() {
+  let mut application = app(AppearancePage::Icons);
+  application.state.icon_theme = "Gone".into();
+  application.state.icon_themes = vec![icon_theme("Argvus Icons", IconThemeSource::System, true)];
+
+  let rows = application.rows();
+  assert_eq!(
+    rows[0].kind(),
+    RowKind::Info,
+    "fallback notice is informational"
+  );
+  assert!(!rows[0].is_selectable());
+
+  application.menu.normalize(&rows);
+  assert!(
+    matches!(
+      application.menu.selected_id(&rows),
+      Some(Item::IconTheme(0))
+    ),
+    "focus skips the info row and lands on the first theme"
+  );
+}
+
+#[test]
+fn icons_page_without_installed_themes_shows_only_an_info_row() {
+  let application = app(AppearancePage::Icons);
+
+  let rows = application.page_rows();
+
+  assert_eq!(rows.len(), 1);
+  assert_eq!(rows[0].kind(), RowKind::Info);
+}
+
+#[test]
+fn icons_page_breadcrumb_is_under_desktop_and_leaving_it_returns_there() {
+  let mut application = app(AppearancePage::Icons);
+
+  let breadcrumb = application.breadcrumb_of(AppearancePage::Icons);
+  assert!(breadcrumb.ends_with("> Desktop > Icons"), "{breadcrumb}");
+
+  assert!(!application.navigate_back());
+  assert_eq!(application.page, AppearancePage::Desktop);
+}
+
+#[test]
+fn desktop_lists_icons_after_wallpaper_with_a_unique_glyph() {
+  let rows = app(AppearancePage::Desktop).rows();
+  let icons_row = rows
+    .iter()
+    .find(|row| row.id() == Some(&Item::Icons))
+    .expect("Desktop lists Icons");
+
+  assert_eq!(icons_row.icon_glyph(), Some(icons::APPS));
+  assert_eq!(rows.last().and_then(|row| row.id()), Some(&Item::Icons));
 }

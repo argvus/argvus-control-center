@@ -148,6 +148,38 @@ pub struct WallpaperEntry {
   pub mode: WallpaperMode,
 }
 
+/// Where an installed icon theme was found. Only system themes can be
+/// official, so the Icons page can tell the two apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconThemeSource {
+  /// Installed by a package under `/usr/share/icons`.
+  System,
+  /// Found in `~/.icons` or `$XDG_DATA_HOME/icons`.
+  User,
+}
+
+/// The variant an official ARGVUS icon theme declares in its manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconThemeVariant {
+  Default,
+  Dark,
+  Light,
+}
+
+/// One icon theme the user can select. `directory_name` is the value stored
+/// in `/appearance/icon_theme`, because the shell helper looks the theme up
+/// by that directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IconThemeEntry {
+  pub directory_name: String,
+  /// `Name=` from `index.theme`, falling back to the directory name.
+  pub display_name: String,
+  pub comment: Option<String>,
+  pub source: IconThemeSource,
+  /// Set only for system themes that have an official ARGVUS manifest.
+  pub official: Option<IconThemeVariant>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppearancePage {
   Home,
@@ -164,6 +196,9 @@ pub enum AppearancePage {
   ThemeImport,
   /// Sticky/Float, independent of theme selection (Appearance > Mode).
   Mode,
+  /// Appearance > Desktop > Icons: the installed icon themes. Selecting one
+  /// applies it at once, like a wallpaper.
+  Icons,
   Wallpapers,
   WallpaperModes {
     collection: WallpaperCollection,
@@ -928,6 +963,11 @@ pub struct AppearanceState {
   pub accent: String,
   pub wallpapers: Vec<WallpaperEntry>,
   pub wallpaper_active: Option<String>,
+  /// Configured icon theme name. An empty configuration resolves to the
+  /// ARGVUS default, so this always holds a name.
+  pub icon_theme: String,
+  /// Installed icon themes, loaded by the Icons page.
+  pub icon_themes: Vec<IconThemeEntry>,
   pub animations: bool,
   pub transparency: bool,
   pub blur: bool,
@@ -1003,6 +1043,8 @@ impl Default for AppearanceState {
       accent: "#3590bd".into(),
       wallpapers: Vec::new(),
       wallpaper_active: None,
+      icon_theme: crate::icons::DEFAULT_ICON_THEME.into(),
+      icon_themes: Vec::new(),
       animations: true,
       transparency: true,
       blur: true,

@@ -45,7 +45,8 @@ fn script(name: &str) -> PathBuf {
     | "taskbar-right-2-mode.sh"
     | "taskbar-widgets-mode.sh"
     | "brightness-switch.sh"
-    | "layout-mode-switch.sh" => "appearance",
+    | "layout-mode-switch.sh"
+    | "icon-switch.sh" => "appearance",
     "bluetooth-control.sh" => "network",
     "hyprlock-theme.sh" => "lock",
     "spaces-switch.sh" | "borders-switch.sh" => "hyprland",
@@ -749,6 +750,58 @@ fn persist_wallpaper_canonical(wallpaper: &Path) -> Result<(), String> {
   reload_argvus_config_service()
 }
 
+/// Reads `/appearance/icon_theme` through `argvus config get`. A failed read
+/// resolves to the ARGVUS default, so the Icons page still opens.
+pub fn read_configured_icon_theme() -> String {
+  let output = argvus_control_center_core::process::command("argvus")
+    .args(["config", "get", "/appearance/icon_theme", "--raw"])
+    .output()
+    .ok()
+    .filter(|output| output.status.success())
+    .map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
+  crate::icons::configured_icon_theme(output.as_deref())
+}
+
+/// Loads the configured icon theme and the installed icon themes for the
+/// Icons page.
+pub(crate) fn load_icon_themes(state: &mut AppearanceState) {
+  state.icon_theme = read_configured_icon_theme();
+  state.icon_themes = crate::icons::installed_icon_themes();
+}
+
+/// Writes the icon theme to `/appearance/icon_theme` and reloads the config
+/// service so consumers read the new value.
+fn persist_icon_theme_canonical(name: &str) -> Result<(), String> {
+  let patch = serde_json::json!({
+    "/appearance/icon_theme": name,
+  });
+  let patch = serde_json::to_string(&patch).map_err(|error| error.to_string())?;
+  let status = argvus_control_center_core::process::command("argvus")
+    .arg("config")
+    .args(["patch", &patch])
+    .status()
+    .map_err(|error| format!("failed to persist icon theme settings: {error}"))?;
+  if !status.success() {
+    return Err("argvus-config rejected the icon theme settings".into());
+  }
+  reload_argvus_config_service()
+}
+
+/// Selects an installed icon theme and applies it to GNOME, GTK and Qt.
+/// The name is checked before anything is written, so an unknown or
+/// unsafe name leaves the configuration untouched.
+pub fn set_icon_theme(name: &str) -> Result<(), String> {
+  crate::icons::validate_icon_theme_name(name)?;
+  let installed = crate::icons::installed_icon_themes()
+    .iter()
+    .any(|entry| entry.directory_name == name);
+  if !installed {
+    return Err(format!("icon theme is not installed: {name}"));
+  }
+  persist_icon_theme_canonical(name)?;
+  run_script(&script("icon-switch.sh"), &["apply"])
+}
+
 /// Executes the `active_wallpaper` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
 pub fn active_wallpaper() -> Option<String> {
   let content = fs::read_to_string(hyprpaper_config_path()).ok()?;
@@ -797,6 +850,9 @@ pub fn load_page(
   }
   if page == AppearancePage::Wallpapers {
     state.wallpapers = list_wallpapers();
+  }
+  if page == AppearancePage::Icons {
+    load_icon_themes(&mut state);
   }
   if matches!(
     page,

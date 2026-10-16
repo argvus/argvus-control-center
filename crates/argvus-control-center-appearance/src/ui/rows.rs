@@ -9,9 +9,9 @@ use crate::animations::{
 };
 use crate::blur::BlurField;
 use crate::model::{
-  AppearancePage, ControlPanelCard, EffectSurface, PromptGoal, SurfaceSection, TaskbarDateFormat,
-  TaskbarPosition, TaskbarTimeFormat, TaskbarUtilityGroupMode, TaskbarUtilityWidget,
-  WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label,
+  AppearancePage, ControlPanelCard, EffectSurface, IconThemeSource, PromptGoal, SurfaceSection,
+  TaskbarDateFormat, TaskbarPosition, TaskbarTimeFormat, TaskbarUtilityGroupMode,
+  TaskbarUtilityWidget, WallpaperCollection, WallpaperMode, WidgetTelemetryBlock, accent_label,
 };
 use argvus_i18n::tr;
 use argvus_theme::discovery::ThemeCategory;
@@ -35,6 +35,7 @@ pub(super) enum Item {
   Terminal,
   Launcher,
   Mode,
+  Icons,
   // Themes
   OfficialThemes,
   CustomThemes,
@@ -49,6 +50,9 @@ pub(super) enum Item {
   ImportArchive(usize),
   ModeSticky,
   ModeFloat,
+  // Icons
+  /// Index into `AppearanceState::icon_themes`.
+  IconTheme(usize),
   // Wallpapers
   ChooseWallpaper,
   Collection(WallpaperCollection),
@@ -146,6 +150,7 @@ impl Item {
       Self::Terminal => icons::TERMINAL,
       Self::Launcher => icons::LAUNCHER,
       Self::Mode => icons::THEME_MODE,
+      Self::Icons => icons::APPS,
       Self::OfficialThemes => icons::PALETTE,
       Self::CustomThemes => icons::EDIT,
       Self::ExportTheme => icons::EXPORT,
@@ -200,6 +205,7 @@ impl Item {
       | Self::CustomTheme(_)
       | Self::ImportArchive(_)
       | Self::WallpaperFile(_)
+      | Self::IconTheme(_)
       | Self::UtilityWidget(_)
       | Self::DateFormat(_)
       | Self::TimeFormat(_)
@@ -377,6 +383,7 @@ impl AppearanceApp {
           ),
         ]
       }
+      AppearancePage::Icons => self.icon_theme_rows(),
       AppearancePage::Wallpapers => std::iter::once(with_icon(
         Row::action(
           Item::ChooseWallpaper,
@@ -725,7 +732,64 @@ impl AppearanceApp {
       self
         .submenu(Item::Wallpaper, "control_center.wallpaper")
         .detail(wallpaper),
+      self
+        .submenu(Item::Icons, "control_center.icons")
+        .detail(self.state.icon_theme.clone()),
     ]
+  }
+
+  /// Appearance > Desktop > Icons: one choice per installed icon theme.
+  /// The configured theme is marked; when it is not installed, an info row
+  /// says which theme is used instead. Info rows are not focusable.
+  fn icon_theme_rows(&self) -> Vec<Row<Item>> {
+    if self.state.icon_themes.is_empty() {
+      return vec![Row::info(
+        self.label("control_center.icon_themes_empty"),
+        String::new(),
+      )];
+    }
+
+    let configured = self.state.icon_theme.as_str();
+    let configured_installed = self
+      .state
+      .icon_themes
+      .iter()
+      .any(|entry| entry.directory_name == configured);
+    let mut rows = Vec::new();
+    if !configured_installed {
+      rows.push(Row::info(
+        self.label("control_center.icon_theme_missing_fallback"),
+        configured.to_string(),
+      ));
+    }
+    rows.extend(
+      self
+        .state
+        .icon_themes
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+          let origin = match entry.source {
+            IconThemeSource::System => self.label("control_center.icon_theme_source_system"),
+            IconThemeSource::User => self.label("control_center.icon_theme_source_user"),
+          };
+          let detail = match entry.official {
+            Some(_) => format!(
+              "{} · {origin}",
+              self.label("control_center.icon_theme_official")
+            ),
+            None => origin.to_string(),
+          };
+          self
+            .choice_row(
+              Item::IconTheme(index),
+              entry.display_name.clone(),
+              entry.directory_name == configured,
+            )
+            .detail(detail)
+        }),
+    );
+    rows
   }
 
   /// Appearance > Application Style: terminal and launcher transparency.
