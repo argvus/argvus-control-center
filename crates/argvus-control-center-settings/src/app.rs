@@ -363,6 +363,11 @@ impl App {
     let category_root = |label: &str| format!("{root} > {label}");
     let desktop_input_root = category_root(HomeCardId::DesktopInput.label(self.lang));
     let appearance_root = category_root(HomeCardId::Appearance.label(self.lang));
+    // Fonts is reached from Appearance > Desktop Style.
+    let fonts_root = format!(
+      "{appearance_root} > {}",
+      tr(self.lang, "control_center.desktop_style")
+    );
     let tools_root = category_root(HomeCardId::Tools.label(self.lang));
     let system_root = category_root(HomeCardId::System.label(self.lang));
     let language_root = format!(
@@ -387,17 +392,14 @@ impl App {
         tr(self.lang, "control_center.default_apps"),
         category_label(self.lang, category)
       ),
-      Page::Fonts => format!(
-        "{appearance_root} > {}",
-        tr(self.lang, "control_center.fonts")
-      ),
+      Page::Fonts => format!("{fonts_root} > {}", tr(self.lang, "control_center.fonts")),
       Page::FontSelector(target) => format!(
-        "{appearance_root} > {} > {}",
+        "{fonts_root} > {} > {}",
         tr(self.lang, "control_center.fonts"),
         font_target_label(self.lang, target)
       ),
       Page::SettingSelector(setting) => format!(
-        "{appearance_root} > {} > {}",
+        "{fonts_root} > {} > {}",
         tr(self.lang, "control_center.fonts"),
         setting_label(self.lang, setting)
       ),

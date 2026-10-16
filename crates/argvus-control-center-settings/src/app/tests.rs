@@ -1536,6 +1536,10 @@ fn breadcrumbs_show_the_home_card_of_each_page() {
       Page::SshKeys,
       "Control Center > Tools & Diagnostics > SSH keys",
     ),
+    (
+      Page::Fonts,
+      "Control Center > Appearance > Desktop Style > Fonts",
+    ),
   ];
   for (page, expected) in cases {
     assert_eq!(app(page).breadcrumb(), expected, "{page:?}");
@@ -1568,6 +1572,10 @@ fn breadcrumbs_are_translated_in_pt_br() {
     (
       Page::LocaleRegion,
       "Central de Controle > Preferências > Idioma e Região",
+    ),
+    (
+      Page::Fonts,
+      "Central de Controle > Aparência > Estilo do desktop > Fontes",
     ),
     (
       Page::Keybindings,

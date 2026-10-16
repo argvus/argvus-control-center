@@ -323,6 +323,10 @@ impl App {
     let mut displays = DisplaysApp::new(lang, theme.clone());
     #[cfg(feature = "appearance")]
     let mut appearance = AppearanceApp::new(lang, theme.clone());
+    #[cfg(feature = "appearance")]
+    {
+      appearance.fonts_available = cfg!(feature = "fonts");
+    }
     #[cfg(feature = "hardware")]
     if let InitialRoute::Hardware(page) = initial {
       hardware.page = page;
@@ -1404,8 +1408,6 @@ impl App {
   /// the reload that the destination used before the catalog existed.
   fn open_destination(&mut self, destination: HomeDestination) {
     match destination {
-      #[cfg(feature = "fonts")]
-      HomeDestination::Fonts => self.open_settings(Page::Fonts),
       #[cfg(feature = "appearance")]
       HomeDestination::DesktopStyle => self.open_appearance_page(AppearancePage::Desktop),
       #[cfg(feature = "appearance")]

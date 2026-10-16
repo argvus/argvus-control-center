@@ -5,7 +5,7 @@ It consolidates the working features of `argvus-settings-term` and
 `argvus-about-term` into one full-screen TUI without introducing GTK or a second
 configuration system.
 
-The home screen opens Default Apps, Fonts, or About. Settings retain the existing
+The home screen opens Default Apps or About; Fonts is under Appearance > Desktop Style. Settings retain the existing
 list/search workflows and ARGVUS backends. About retains its distinct five-tab
 layout, responsive logo, system information, links, credits, donation page, and
 full copyright text.

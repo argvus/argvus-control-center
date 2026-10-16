@@ -210,6 +210,11 @@ pub fn handle(app: &mut App, event: Event) {
       }
       if app.appearance.handle(domain_key(key.code)) {
         app.route = std::mem::replace(&mut app.return_route, Route::Home);
+      } else if app.appearance.take_fonts_request() {
+        // Fonts belongs to the settings crate. Esc on its main page returns
+        // here, to Appearance > Desktop Style.
+        app.return_route = Route::Appearance;
+        app.open_settings(argvus_control_center_settings::Page::Fonts);
       }
     }
     Route::Hyprland => {

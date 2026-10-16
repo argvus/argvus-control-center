@@ -20,7 +20,7 @@ The current Control Center home provides these areas:
 
 The home is a catalog of destinations grouped in six cards. Each destination opens its page directly, and the search finds it under any card.
 
-- **Appearance** — customize the desktop: Fonts, Desktop Style (theme, appearance mode, accent color, wallpapers and icons), Application Style (terminal and launcher transparency), Taskbar, Control Panel and Widget Telemetry.
+- **Appearance** — customize the desktop: Desktop Style (theme, appearance mode, accent color, wallpapers, icons and fonts), Application Style (terminal and launcher transparency), Taskbar, Control Panel and Widget Telemetry.
 - **Desktop & Input** — configure the workspace: Hyprland (window rules, window spaces, animations, blur, borders and the installed version), Displays, Keyboard & Shortcuts and Mouse & Touchpad.
 - **Preferences** — personal and regional settings: Language & Region (the language, time zone, formats and keyboard layout hub), Date & Time, Default Applications, Power and Session.
 - **Hardware & Connectivity** — devices and connections: Hardware Overview, Network & Wi-Fi, Bluetooth, Audio and Storage.
@@ -42,7 +42,7 @@ The main settings tree currently includes:
 
 | Area | Current destinations |
 | --- | --- |
-| Appearance | Fonts; Desktop Style: theme, appearance mode, accent color, wallpapers and icons; Application Style: terminal and launcher transparency; Taskbar; Control Panel; Widget Telemetry |
+| Appearance | Desktop Style: theme, appearance mode, accent color, wallpapers, icons and fonts; Application Style: terminal and launcher transparency; Taskbar; Control Panel; Widget Telemetry |
 | Desktop & Input | Hyprland (window rules, window spaces, animations, blur, borders), Displays, Keyboard & Shortcuts, Mouse & Touchpad |
 | Preferences | Language & Region (language, time zone, formats, system locales and keyboard layout), Date & Time, Default Applications, Power, Session |
 | Hardware & Connectivity | Hardware Overview (summary, CPU, GPU, memory, devices), Network & Wi-Fi, Bluetooth, Audio, Storage |
@@ -58,7 +58,7 @@ Each page shows its path in the header, for example `Control Center > Hardware &
 
 ### Appearance
 
-Appearance is the main customization area. Its Desktop group holds the theme (with its Sticky or Float mode), the appearance mode, the accent color, the wallpapers and the icon theme, and its Application Style group holds the terminal and launcher transparency. Taskbar, Control Panel and Widget Telemetry are listed directly under Appearance on the home and reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. Animations works the same way under Hyprland > Animations: its Enable switch, the Custom curves (Bézier, Spring, Linear and Ease-out) and the five animation categories form one draft that is applied together with **Apply**. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
+Appearance is the main customization area. Its Desktop group holds the theme (with its Sticky or Float mode), the appearance mode, the accent color, the wallpapers, the icon theme and the Fonts page, and its Application Style group holds the terminal and launcher transparency. Taskbar, Control Panel and Widget Telemetry are listed directly under Appearance on the home and reuse Appearance's shared transparency page for their own surfaces. Blur is one global setting, under Hyprland > Blur, and it applies to every ARGVUS surface that has blur enabled. That page edits its Enable switch and the Hyprland blur values (Size, Passes, Brightness, Noise, Contrast, Vibrancy and Vibrancy darkness) as a draft, and nothing changes until **Apply** is selected. Animations works the same way under Hyprland > Animations: its Enable switch, the Custom curves (Bézier, Spring, Linear and Ease-out) and the five animation categories form one draft that is applied together with **Apply**. These controls coordinate with the appearance and session components instead of changing only the Control Center window.
 
 ### Taskbar
 
@@ -74,7 +74,7 @@ Widget Telemetry configures the system-information widget's sessions and transpa
 
 ### Fonts
 
-Fonts lets you select a family and size for the taskbar, telemetry/system information, Control Panel, ARGVUS system interface, applications, terminal and browser. It also exposes font rendering settings such as antialiasing, hinting, subpixel mode and DPI. The default primary family is IBM Plex Mono; individual targets can be changed independently and restored from the Fonts page.
+Fonts is reached from **Appearance > Desktop Style > Fonts**. It lets you select a family and size for the taskbar, telemetry/system information, Control Panel, ARGVUS system interface, applications, terminal and browser. It also exposes font rendering settings such as antialiasing, hinting, subpixel mode and DPI. The default primary family is IBM Plex Mono; individual targets can be changed independently and restored from the Fonts page.
 
 ### Default applications
 
@@ -242,8 +242,7 @@ While the Home search is active, printable keys are entered into the query, incl
 
 Open **Appearance** to see the integrated visual controls. Its groups are:
 
-- **Fonts** — the font targets and font rendering settings.
-- **Desktop** — **Theme** (choose a bundled family and its Sticky or Float mode, or manage custom theme profiles), **Appearance Mode** (Sticky or Float, independent of the theme), **Accent Color** (a bundled accent or a valid six-digit RGB color), **Wallpaper** (a bundled wallpaper or a custom file) and **Icons** (an installed icon theme, applied at once).
+- **Desktop** — **Theme** (choose a bundled family and its Sticky or Float mode, or manage custom theme profiles), **Appearance Mode** (Sticky or Float, independent of the theme), **Accent Color** (a bundled accent or a valid six-digit RGB color), **Wallpaper** (a bundled wallpaper or a custom file) **Icons** (an installed icon theme: search the list with `/`, choose one with Space or Enter, then select **Apply**; nothing changes before Apply) and **Fonts** (the font targets and font rendering settings, opened on the Fonts page).
 - **Application Style** — the **Terminal** and **Launcher** transparency.
 
 The Appearance card holds the surfaces that use these settings: **Widget Telemetry** (enable the telemetry surface, select its available blocks and reorder them with `Shift+Up`/`Shift+Down` on a focused block) and **Control Panel** (enable, disable and reorder panel cards with `Shift+Up`/`Shift+Down` on a focused card, applied immediately through the same primitive the real panel's drag-and-drop uses).

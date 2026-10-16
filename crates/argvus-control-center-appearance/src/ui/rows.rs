@@ -36,6 +36,8 @@ pub(super) enum Item {
   Launcher,
   Mode,
   Icons,
+  /// Opens the Fonts page, which the host app owns (settings crate).
+  Fonts,
   // Themes
   OfficialThemes,
   CustomThemes,
@@ -143,6 +145,7 @@ impl Item {
   pub(super) fn icon(self) -> Option<&'static str> {
     let glyph = match self {
       Self::Desktop => icons::WALLPAPER,
+      Self::Fonts => icons::FONTS,
       Self::ApplicationStyle => icons::TERMINAL,
       Self::Themes => icons::PALETTE,
       Self::Accent => icons::ACCENT,
@@ -383,7 +386,7 @@ impl AppearanceApp {
           ),
         ]
       }
-      AppearancePage::Icons => self.icon_theme_rows(),
+      AppearancePage::Icons => self.icon_rows(),
       AppearancePage::Wallpapers => std::iter::once(with_icon(
         Row::action(
           Item::ChooseWallpaper,
@@ -716,7 +719,7 @@ impl AppearanceApp {
       .wallpaper_active
       .clone()
       .unwrap_or_else(|| self.label("control_center.none").to_string());
-    vec![
+    let mut rows = vec![
       self
         .submenu(Item::Themes, "control_center.theme")
         .detail(format!(
@@ -735,13 +738,17 @@ impl AppearanceApp {
       self
         .submenu(Item::Icons, "control_center.icons")
         .detail(self.state.icon_theme.clone()),
-    ]
+    ];
+    if self.fonts_available {
+      rows.push(self.submenu(Item::Fonts, "control_center.fonts"));
+    }
+    rows
   }
 
   /// Appearance > Desktop > Icons: one choice per installed icon theme.
   /// The configured theme is marked; when it is not installed, an info row
   /// says which theme is used instead. Info rows are not focusable.
-  fn icon_theme_rows(&self) -> Vec<Row<Item>> {
+  pub(super) fn icon_theme_rows(&self) -> Vec<Row<Item>> {
     if self.state.icon_themes.is_empty() {
       return vec![Row::info(
         self.label("control_center.icon_themes_empty"),
@@ -750,6 +757,8 @@ impl AppearanceApp {
     }
 
     let configured = self.state.icon_theme.as_str();
+    // The mark follows the draft: a chosen theme is shown before it is applied.
+    let marked = self.icon_draft.as_deref().unwrap_or(configured);
     let configured_installed = self
       .state
       .icon_themes
@@ -784,7 +793,7 @@ impl AppearanceApp {
             .choice_row(
               Item::IconTheme(index),
               entry.display_name.clone(),
-              entry.directory_name == configured,
+              entry.directory_name == marked,
             )
             .detail(detail)
         }),

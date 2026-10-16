@@ -2,6 +2,7 @@
 //!
 //! External tool dependencies remain in backend layers;
 //! the UI consumes normalized models and results.
+mod icon_page;
 mod rows;
 
 use crate::{
@@ -31,6 +32,7 @@ use argvus_control_center_core::{
 use argvus_i18n::{Lang, tr};
 use argvus_theme::Theme;
 use argvus_tui::{
+  action_buttons::ActionFocus,
   components::{StatusKind, StatusMessage},
   confirm::{ConfirmDialog, ConfirmOutcome, ConfirmState, draw_confirm},
   hints::{HintContext, confirm_hints, hints},
@@ -163,6 +165,16 @@ pub struct AppearanceApp {
   pending_import: Option<std::path::PathBuf>,
   pending_import_name: Option<String>,
   manager: JobManager,
+  /// Set by Desktop > Fonts; the host app takes it and opens the Fonts page.
+  open_fonts: bool,
+  /// Whether the host compiles the Fonts page in (the `fonts` feature).
+  pub fonts_available: bool,
+  /// Icons page: the search text, whether it is being typed, the unapplied
+  /// theme choice (`None` means the configured theme) and the Actions focus.
+  icon_search: String,
+  icon_searching: bool,
+  icon_draft: Option<String>,
+  icon_actions: ActionFocus,
 }
 impl AppearanceApp {
   /// Executes the `reload` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
@@ -238,7 +250,19 @@ impl AppearanceApp {
       pending_import: None,
       pending_import_name: None,
       manager: JobManager::default(),
+      open_fonts: false,
+      fonts_available: true,
+      icon_search: String::new(),
+      icon_searching: false,
+      icon_draft: None,
+      icon_actions: ActionFocus::default(),
     }
+  }
+
+  /// Returns and clears the request to open the Fonts page, which lives in
+  /// the settings crate. The host app routes to it after the key is handled.
+  pub fn take_fonts_request(&mut self) -> bool {
+    std::mem::take(&mut self.open_fonts)
   }
   /// Executes the `refresh` step in this module. The behavior is encapsulated here so callers depend on a clear domain decision instead of duplicating system or UI details.
   fn refresh(&mut self) {
@@ -464,6 +488,11 @@ impl AppearanceApp {
     }
     self.page = page;
     self.menu = MenuState::default();
+    // The Icons draft, search and Actions focus belong to that page only.
+    self.icon_search.clear();
+    self.icon_searching = false;
+    self.icon_draft = None;
+    self.icon_actions = ActionFocus::default();
     if page == AppearancePage::ControlPanel {
       self.control_panel_draft = Some(self.state.control_panel_cards.clone());
     }
@@ -671,16 +700,9 @@ impl AppearanceApp {
       Item::Accent => self.go(AppearancePage::Accents),
       Item::Wallpaper => self.go(AppearancePage::Wallpapers),
       Item::Icons => self.go(AppearancePage::Icons),
-      Item::IconTheme(index) => {
-        let Some(entry) = self.state.icon_themes.get(index) else {
-          return;
-        };
-        let name = entry.directory_name.clone();
-        self.apply(
-          tr(self.lang, "control_center.icon_theme_applied").into(),
-          move || backend::set_icon_theme(&name),
-        );
-      }
+      Item::Fonts => self.open_fonts = true,
+      // Choosing a theme only sets the draft; `[ Apply ]` writes it.
+      Item::IconTheme(index) => self.select_icon_theme(index),
       Item::Terminal => self.go(AppearancePage::Terminal),
       Item::Launcher => self.go(AppearancePage::Launchers),
       Item::Mode => self.go(AppearancePage::Mode),
@@ -1318,12 +1340,18 @@ impl AppearanceApp {
   /// not act as the global quit/help keys. Same condition [`Self::handle`]
   /// uses to route keys to `prompt_key`.
   pub fn captures_text(&self) -> bool {
-    self.prompt_back.is_some() || self.page == AppearancePage::AccentEdit
+    self.prompt_back.is_some() || self.page == AppearancePage::AccentEdit || self.icon_searching
   }
 
   /// Processes one key press. Returns `true` when the user leaves the
   /// Appearance Home and the router should go back to the Control Center.
   pub fn handle(&mut self, key: KeyCode) -> bool {
+    if self.page == AppearancePage::Icons
+      && self.confirm.is_none()
+      && let Some(leave) = self.handle_icon_key(key)
+    {
+      return leave;
+    }
     if self.captures_text() {
       return self.prompt_key(key);
     }
@@ -1432,6 +1460,9 @@ impl AppearanceApp {
   fn back_discards_draft(&self) -> bool {
     if self.action.is_some() {
       return false;
+    }
+    if self.page == AppearancePage::Icons {
+      return self.icon_changed();
     }
     if self.page == AppearancePage::Animations {
       return self.animations_draft_has_changes();
@@ -1813,7 +1844,7 @@ impl AppearanceApp {
     );
     // Theme, Appearance Mode, Accent Color and Wallpaper live under the
     // Desktop group; Terminal and Launcher live under Application Style.
-    let desktop_root = format!("{root} > {}", tr(self.lang, "control_center.desktop"));
+    let desktop_root = format!("{root} > {}", tr(self.lang, "control_center.desktop_style"));
     let style_root = format!(
       "{root} > {}",
       tr(self.lang, "control_center.application_style")
@@ -2118,17 +2149,25 @@ impl AppearanceApp {
   pub fn draw(&mut self, frame: &mut Frame) {
     let rows = self.rows();
     self.menu.normalize(&rows);
+    // The Icons page draws its own footer (status left, shortcuts right).
+    let icons_page = self.page == AppearancePage::Icons;
+    let hints = if icons_page {
+      String::new()
+    } else {
+      self.hints(&rows)
+    };
     let area = shell(
       frame,
       frame.area(),
       &self.theme,
       self.lang,
       &self.breadcrumb(),
-      &self.hints(&rows),
+      &hints,
     );
     match self.page {
       AppearancePage::AccentEdit => self.draw_accent_editor(frame, area),
       AppearancePage::Prompt { goal } => self.draw_prompt(frame, area, goal),
+      AppearancePage::Icons => self.draw_icons(frame, area, &rows),
       _ => {
         self.list_height = area.height;
         draw_menu(
@@ -2145,6 +2184,10 @@ impl AppearanceApp {
     }
     if let Some((confirmation, state)) = &self.confirm {
       self.draw_confirmation(frame, area, *confirmation, state);
+    }
+    if icons_page {
+      self.draw_icons_footer(frame, area);
+      return;
     }
     if let Some(message) = &self.status {
       status(frame, area, &self.theme, message);

@@ -13,8 +13,6 @@ use argvus_tui::icons;
 /// feature that provides its page is compiled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HomeDestination {
-  #[cfg(feature = "fonts")]
-  Fonts,
   #[cfg(feature = "appearance")]
   DesktopStyle,
   #[cfg(feature = "appearance")]
@@ -87,8 +85,6 @@ impl HomeDestination {
   /// destinations of the same card share it.
   pub const fn glyph(self) -> &'static str {
     match self {
-      #[cfg(feature = "fonts")]
-      Self::Fonts => icons::FONTS,
       #[cfg(feature = "appearance")]
       Self::DesktopStyle => icons::WALLPAPER,
       #[cfg(feature = "appearance")]
@@ -207,8 +203,6 @@ pub fn home_rows(
 
   #[allow(unused_mut)]
   let mut items = Vec::new();
-  #[cfg(feature = "fonts")]
-  items.push(item(lang, "control_center.fonts", HomeDestination::Fonts));
   #[cfg(feature = "appearance")]
   items.push(item(
     lang,
