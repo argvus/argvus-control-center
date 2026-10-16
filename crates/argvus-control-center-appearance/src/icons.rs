@@ -12,9 +12,23 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Theme used when `/appearance/icon_theme` is empty. Same name as the
-/// `argvus-icons` package ships and as `icon-switch.sh` falls back to.
-pub const DEFAULT_ICON_THEME: &str = "Argvus Icons";
+/// Default icon theme for dark themes, used when `/appearance/icon_theme` is
+/// empty. `icon-switch.sh` resolves the same names.
+pub const DEFAULT_ICON_THEME: &str = "Argvus Dark Icons";
+/// Default icon theme for light themes.
+pub const DEFAULT_LIGHT_ICON_THEME: &str = "Argvus Light Icons";
+/// Built-in theme families that use the light mode. Mirrors `gtk_mode_for_theme`
+/// in `theme-manifest.sh`; drop-in themes declare their category instead.
+const BUILT_IN_LIGHT_THEMES: [&str; 8] = [
+  "argvus-light",
+  "github-light",
+  "solarized-light",
+  "one-light",
+  "everforest-light",
+  "frost",
+  "gruvbox-light",
+  "catppuccin-latte",
+];
 
 /// System root where packages install icon themes.
 const SYSTEM_ICON_ROOT: &str = "/usr/share/icons";
@@ -266,14 +280,32 @@ pub fn validate_icon_theme_name(name: &str) -> Result<(), String> {
   Ok(())
 }
 
+/// The ARGVUS default icon theme of a theme, by its mode. A `-float` variant
+/// uses the mode of its family.
+pub fn default_icon_theme_for(
+  theme_id: &str,
+  official_themes: &[argvus_theme::discovery::ThemeEntry],
+) -> &'static str {
+  let family = theme_id.strip_suffix("-float").unwrap_or(theme_id);
+  let is_light = match official_themes.iter().find(|entry| entry.id == family) {
+    Some(entry) => entry.category == argvus_theme::discovery::ThemeCategory::Light,
+    None => BUILT_IN_LIGHT_THEMES.contains(&family),
+  };
+  if is_light {
+    DEFAULT_LIGHT_ICON_THEME
+  } else {
+    DEFAULT_ICON_THEME
+  }
+}
+
 /// Resolves the raw output of `argvus config get /appearance/icon_theme --raw`.
-/// A missing or empty value means the ARGVUS default.
-pub fn configured_icon_theme(raw_output: Option<&str>) -> String {
+/// A missing or empty value means the default of the active theme's mode.
+pub fn configured_icon_theme(raw_output: Option<&str>, default: &str) -> String {
   raw_output
     .map(|value| value.trim().trim_matches('"').trim())
     .filter(|value| !value.is_empty())
     .map(str::to_string)
-    .unwrap_or_else(|| DEFAULT_ICON_THEME.to_string())
+    .unwrap_or_else(|| default.to_string())
 }
 
 #[cfg(test)]
@@ -513,11 +545,58 @@ mod tests {
   }
 
   #[test]
-  fn empty_or_missing_configuration_resolves_to_the_default_theme() {
-    assert_eq!(configured_icon_theme(None), DEFAULT_ICON_THEME);
-    assert_eq!(configured_icon_theme(Some("")), DEFAULT_ICON_THEME);
-    assert_eq!(configured_icon_theme(Some("\"\"\n")), DEFAULT_ICON_THEME);
-    assert_eq!(configured_icon_theme(Some("Papirus\n")), "Papirus");
-    assert_eq!(configured_icon_theme(Some("\"Papirus\"")), "Papirus");
+  fn empty_or_missing_configuration_resolves_to_the_mode_default() {
+    assert_eq!(
+      configured_icon_theme(None, DEFAULT_LIGHT_ICON_THEME),
+      DEFAULT_LIGHT_ICON_THEME
+    );
+    assert_eq!(
+      configured_icon_theme(Some(""), DEFAULT_ICON_THEME),
+      DEFAULT_ICON_THEME
+    );
+    assert_eq!(
+      configured_icon_theme(Some("\"\"\n"), DEFAULT_ICON_THEME),
+      DEFAULT_ICON_THEME
+    );
+    assert_eq!(
+      configured_icon_theme(Some("Papirus\n"), DEFAULT_ICON_THEME),
+      "Papirus"
+    );
+    assert_eq!(
+      configured_icon_theme(Some("\"Papirus\""), DEFAULT_ICON_THEME),
+      "Papirus"
+    );
+  }
+
+  #[test]
+  fn default_follows_the_mode_of_the_theme() {
+    let official = [argvus_theme::discovery::ThemeEntry {
+      id: "nord-light".into(),
+      name: "Nord Light".into(),
+      category: argvus_theme::discovery::ThemeCategory::Light,
+      accent: String::new(),
+      wallpaper: String::new(),
+      name_i18n: std::collections::HashMap::new(),
+    }];
+    assert_eq!(
+      default_icon_theme_for("argvus-dark", &[]),
+      DEFAULT_ICON_THEME
+    );
+    assert_eq!(
+      default_icon_theme_for("argvus-light", &[]),
+      DEFAULT_LIGHT_ICON_THEME
+    );
+    assert_eq!(
+      default_icon_theme_for("argvus-light-float", &[]),
+      DEFAULT_LIGHT_ICON_THEME
+    );
+    assert_eq!(
+      default_icon_theme_for("nord-light-float", &official),
+      DEFAULT_LIGHT_ICON_THEME
+    );
+    assert_eq!(
+      default_icon_theme_for("monokai-dark-float", &official),
+      DEFAULT_ICON_THEME
+    );
   }
 }

@@ -752,20 +752,24 @@ fn persist_wallpaper_canonical(wallpaper: &Path) -> Result<(), String> {
 
 /// Reads `/appearance/icon_theme` through `argvus config get`. A failed read
 /// resolves to the ARGVUS default, so the Icons page still opens.
-pub fn read_configured_icon_theme() -> String {
+pub fn read_configured_icon_theme(default: &str) -> String {
   let output = argvus_control_center_core::process::command("argvus")
     .args(["config", "get", "/appearance/icon_theme", "--raw"])
     .output()
     .ok()
     .filter(|output| output.status.success())
     .map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
-  crate::icons::configured_icon_theme(output.as_deref())
+  crate::icons::configured_icon_theme(output.as_deref(), default)
 }
 
 /// Loads the configured icon theme and the installed icon themes for the
 /// Icons page.
 pub(crate) fn load_icon_themes(state: &mut AppearanceState) {
-  state.icon_theme = read_configured_icon_theme();
+  // The empty-configuration default depends on the mode of the active theme,
+  // so the official themes (which declare their category) must be loaded.
+  refresh_official_themes(state);
+  let default = crate::icons::default_icon_theme_for(&state.theme, &state.official_themes);
+  state.icon_theme = read_configured_icon_theme(default);
   state.icon_themes = crate::icons::installed_icon_themes();
 }
 
